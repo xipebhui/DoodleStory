@@ -154,10 +154,6 @@ GET /api/v1/styles?query=&status=active&limit=20&cursor=...
   "name": "水彩故事书",
   "description": "柔和水彩插画场景。",
   "status": "active",
-  "image_model_config": {
-    "provider_key": "provider",
-    "model_key": "model-name"
-  },
   "thumbnail_asset": {
     "id": "asset_...",
     "url": "/api/v1/assets/asset_.../content"
@@ -180,11 +176,6 @@ POST /api/v1/styles
   "name": "水彩故事书",
   "description": "柔和水彩插画场景。",
   "status": "draft",
-  "image_provider_key": "provider",
-  "image_model_key": "model-name",
-  "image_model_parameters": {
-    "size": "1024x1024"
-  },
   "style_prompt": "使用柔和水彩质感、温和描边和温暖故事书光线。",
   "reference_asset_ids": ["asset_..."]
 }
@@ -192,8 +183,9 @@ POST /api/v1/styles
 
 校验：
 
-- `name`、`image_provider_key`、`image_model_key`、`style_prompt` 必填。
-- 模型配置是风格的一部分，不通过独立图片模型模块选择。
+- `name`、`style_prompt` 必填。
+- provider key、model key 和默认参数不出现在普通风格接口中。
+- 风格使用哪个生图配置由后台配置决定，不由普通用户提交。
 
 ### 获取风格详情
 
@@ -201,7 +193,7 @@ POST /api/v1/styles
 GET /api/v1/styles/{style_id}
 ```
 
-详情包含完整 `style_prompt`、参考图片、图片模型配置、最近测试记录和使用摘要。
+详情包含完整 `style_prompt`、参考图片、最近测试记录和使用摘要。普通用户详情不返回 provider、model 或模型参数。
 
 ### 更新风格
 
@@ -209,7 +201,29 @@ GET /api/v1/styles/{style_id}
 PATCH /api/v1/styles/{style_id}
 ```
 
-修改图片模型配置只影响未来风格测试和未来任务。已有任务保留创建时的模型配置快照。
+普通风格更新接口只修改名称、描述、状态、风格提示词和参考图片，不修改 provider、model 或模型参数。
+
+### 后台配置风格生成配置
+
+```http
+PATCH /api/v1/admin/styles/{style_id}/generation-config
+```
+
+该接口只允许 Admin 或后台管理流程调用，不向普通用户开放。
+
+请求：
+
+```json
+{
+  "generation_profile_key": "storybook-watercolor-v1"
+}
+```
+
+规则：
+
+- `generation_profile_key` 是服务端配置引用，不是 provider key、model key 或密钥。
+- provider key、model key、API key 和默认参数保存在后台配置或环境变量中。
+- 修改该配置只影响未来风格测试和未来任务。已有任务保留创建时的 `generation_profile_key` 快照。
 
 ### 删除风格
 
@@ -252,7 +266,7 @@ POST /api/v1/styles/{style_id}/tests
 
 行为：
 
-- 加载风格和风格内部的图片模型配置。
+- 加载风格和后台绑定的生成配置。
 - 将 `test_text` 与 `style_prompt` 组合为测试 prompt。
 - 创建 `style_tests` 记录，状态为 `queued`。
 - 将风格测试 ID 放入进程内队列。
@@ -266,10 +280,6 @@ POST /api/v1/styles/{style_id}/tests
   "style_id": "style_...",
   "status": "queued",
   "test_text": "一只小狐狸站在发光的路灯下。",
-  "image_model_snapshot": {
-    "provider_key": "provider",
-    "model_key": "model-name"
-  },
   "created_at": "2026-05-29T15:00:00Z"
 }
 ```
@@ -348,7 +358,7 @@ POST /api/v1/tasks
 
 - 按收到的内容原样保存 `original_text`。
 - 将当前登录用户保存为任务 owner。
-- 将选中风格的提示词和图片模型配置快照保存到任务。
+- 将选中风格的提示词和后台生成配置引用快照保存到任务。
 - 创建状态为 `queued` 的任务。
 - 将任务 ID 放入进程内队列。
 - 返回 `202 Accepted` 和任务详情。
@@ -397,7 +407,9 @@ POST /api/v1/tasks/{task_id}/cancel
 POST /api/v1/tasks/{task_id}/retry
 ```
 
-只允许失败或部分成功且存在可重试失败步骤的任务。重试必须复用已持久化的 panels 和已完成输出，避免重复副作用。
+只允许任务级重试，不支持单图片重试。第一版也不提供用户可编辑 prompt 后重试的能力。
+
+任务级重试必须复用已持久化的 panels 和已完成输出，避免重复副作用。
 
 ### 删除任务
 
@@ -468,6 +480,13 @@ POST /api/v1/tasks/{task_id}/downloads
 
 资产表示上传参考图、生成图片和生成压缩包。
 
+第一版文件存储使用本地磁盘：
+
+- 存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置。
+- 未配置时默认使用项目目录下的 `./storage`。
+- API 不直接暴露本地磁盘路径。
+- 数据库中的 `storage_key` 是相对存储根目录的内部文件定位符，不是密钥，也不是公开 URL。
+
 ### 上传资产
 
 ```http
@@ -528,3 +547,4 @@ Provider 错误规则：
 - 永久性校验错误不重试。
 - 临时 provider 失败可以在次数上限内重试。
 - 用户取消的任务永不自动重试。
+- 第一版不支持单图片重试，每个 panel 只生成一张图。

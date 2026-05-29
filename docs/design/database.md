@@ -45,31 +45,19 @@ file_assets 1--N task_downloads
 
 - `idx_users_role_created_at`：`role`, `created_at desc`，用于 Admin 用户查询。
 
-### `sessions`
+### Session 存储
 
-如果所选认证模块不自带 session 表，再创建该表；如果使用 Supabase Auth、Better Auth 等自带存储，可不创建本表，以 provider 的 session 存储为准。
+第一版不在业务 schema 中固定设计 `sessions` 表。登录会话由后续选定的认证模块负责，例如 Supabase Auth、Better Auth 或其他与技术栈匹配的方案。
 
-字段：
+原因：
 
-- `id` 主键
-- `user_id` 外键到 `users.id`，not null
-- `session_token_hash` text not null
-- `expires_at` timestamptz not null
-- `created_at` timestamptz not null
-- `revoked_at` timestamptz null
-
-约束：
-
-- `session_token_hash` 唯一。
-
-索引：
-
-- `idx_sessions_user_expires_at`：`user_id`, `expires_at desc`。
-- `idx_sessions_expires_at`：`expires_at`，用于清理过期 session。
+- session 的表结构和 token 机制高度依赖认证模块。
+- 提前设计自定义 session 表会限制后续认证选型。
+- 当前业务数据库只需要保存用户资料和角色。
 
 ### `styles`
 
-保存可复用视觉风格及其内置图片模型配置。图片模型不作为独立业务模块存在。
+保存可复用视觉风格。provider key、model key、API key 和模型默认参数属于后台私密配置，不进入普通风格编辑流程。
 
 字段：
 
@@ -77,9 +65,7 @@ file_assets 1--N task_downloads
 - `name` text not null
 - `description` text null
 - `status` text not null，取值 `draft`、`active`、`disabled`
-- `image_provider_key` text not null
-- `image_model_key` text not null
-- `image_model_parameters` jsonb not null，默认 `{}`
+- `generation_profile_key` text null
 - `style_prompt` text not null
 - `last_tested_at` timestamptz null
 - `created_at` timestamptz not null
@@ -89,17 +75,29 @@ file_assets 1--N task_downloads
 
 - `name` 唯一。
 - `style_prompt` 不能为空字符串。
-- `image_provider_key` 不能为空字符串。
-- `image_model_key` 不能为空字符串。
 
 索引：
 
 - `idx_styles_status_updated_at`：`status`, `updated_at desc`，用于风格列表。
-- `idx_styles_image_model_config`：`image_provider_key`, `image_model_key`，用于按模型配置排查风格。
+- `idx_styles_generation_profile_key`：`generation_profile_key`，用于 Admin 排查后台生成配置绑定。
+
+说明：
+
+- `generation_profile_key` 是服务端后台生成配置的引用，不是 provider key、model key 或密钥。
+- 真实 provider key、model key、API key 和默认参数保存在后台配置或环境变量中。
+- 普通用户 API 不返回该字段；Admin 或后台流程可以维护该字段。
 
 ### `file_assets`
 
-保存上传文件和生成文件的元数据。文件内容后续可存本地磁盘、对象存储或其他存储系统。
+保存上传文件和生成文件的元数据。第一版文件内容存本地磁盘。
+
+存储规则：
+
+- 存储根目录通过环境变量 `DOODLESTORY_STORAGE_ROOT` 配置。
+- 未配置时默认使用项目目录下的 `./storage`。
+- `storage_key` 是相对存储根目录的内部文件定位符，例如 `generated-images/task_123/panel-1.png`。
+- `storage_key` 不是密钥，也不是公开 URL。
+- API 读取文件时由后端根据 `storage_key` 定位本地文件，不能把服务器绝对路径暴露给用户。
 
 字段：
 
@@ -153,7 +151,7 @@ file_assets 1--N task_downloads
 - `style_id` 外键到 `styles.id`，not null
 - `test_text` text not null
 - `style_prompt_snapshot` text not null
-- `image_model_snapshot` jsonb not null
+- `generation_profile_key_snapshot` text null
 - `composed_prompt` text not null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
 - `attempts` integer not null，默认 `0`
@@ -195,7 +193,7 @@ file_assets 1--N task_downloads
 - `style_id` 外键到 `styles.id`，not null
 - `style_name_snapshot` text not null
 - `style_prompt_snapshot` text not null
-- `image_model_snapshot` jsonb not null
+- `generation_profile_key_snapshot` text null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`partial_succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
 - `current_step` text null，取值 `segment_story`、`generate_panel_prompts`、`generate_images`、`package_download`
 - `progress_current` integer not null，默认 `0`
@@ -295,14 +293,11 @@ file_assets 1--N task_downloads
 - `id` 主键
 - `task_id` 外键到 `generation_tasks.id`，not null
 - `panel_id` 外键到 `task_panels.id`，not null
-- `image_order` integer not null，默认 `1`
-- `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`、`retrying`
+- `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`
 - `final_prompt` text not null
-- `image_model_snapshot` jsonb not null
+- `generation_profile_key_snapshot` text null
 - `asset_id` 外键到 `file_assets.id`，null
 - `provider_request_id` text null
-- `attempts` integer not null，默认 `0`
-- `max_attempts` integer not null，默认 `3`
 - `started_at` timestamptz null
 - `finished_at` timestamptz null
 - `error_code` text null
@@ -313,13 +308,13 @@ file_assets 1--N task_downloads
 
 约束：
 
-- `panel_id` + `image_order` 唯一。
+- `panel_id` 唯一。第一版每个 panel 只生成一张图片。
 - 当 `status = 'succeeded'` 时，`asset_id` 不能为空。
 
 索引：
 
 - `idx_generated_images_task_created_at`：`task_id`, `created_at`。
-- `idx_generated_images_panel_order`：`panel_id`, `image_order`。
+- `idx_generated_images_panel_id`：`panel_id`。
 - `idx_generated_images_status_updated_at`：`status`, `updated_at`，用于恢复和卡住图片检测。
 
 ### `task_downloads`
@@ -352,7 +347,7 @@ file_assets 1--N task_downloads
 
 任务创建：
 
-1. 插入 `generation_tasks`，保存 `owner_user_id`、精确 `original_text`、风格快照和模型配置快照。
+1. 插入 `generation_tasks`，保存 `owner_user_id`、精确 `original_text`、风格快照和后台生成配置引用快照。
 2. 插入初始 `generation_steps`，或在步骤开始时创建。
 3. 进程内队列只放入任务 ID。
 
@@ -382,7 +377,9 @@ Worker 执行：
 ## 数据完整性说明
 
 - `generation_tasks.original_text` 必须原样保存。
-- 任务和风格测试保存风格 prompt 与图片模型配置快照，保证风格后续编辑不影响历史审计。
+- 任务和风格测试保存风格 prompt 与 `generation_profile_key` 快照，保证风格后续编辑不影响历史审计。
+- 第一版不支持用户编辑生成 prompt。
+- 第一版不支持单图片重试，每个 panel 只生成一张图片。
 - `error_message` 保存用户可读错误；`internal_error_ref` 保存内部细节引用。
 - 大型 provider 响应和原始日志不放入主工作流表。
 - 被任务引用的风格不应被硬删除。
@@ -399,7 +396,5 @@ Worker 执行：
 
 ## 未决 Schema 问题
 
-- 所选认证模块是否自带 session 表；若自带，则不创建本设计中的 `sessions` 表。
-- 生成 prompt 是否需要在生图前支持编辑和版本。
-- 每个 panel 多图是否是一版能力，还是未来扩展。
-- 具体存储后端如何定义 `storage_key`。
+- 认证模块具体选择。
+- 后台生成配置如何加载 provider key、model key、API key 和默认参数。
