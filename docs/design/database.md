@@ -1,12 +1,12 @@
-# Database Design
+# 数据库设计
 
-## Scope
+## 范围
 
-This design assumes a relational OLTP database, PostgreSQL-compatible naming, and a small-project/MVP scale. It documents tables, relationships, constraints, and indexes. It does not require a specific ORM or migration tool.
+本设计假设使用关系型 OLTP 数据库，命名风格兼容 PostgreSQL，但不绑定具体 ORM 或 migration 工具。当前规模按小项目/MVP 处理。
 
-The database is the source of truth for generation workflow state. The in-process queue only schedules task IDs.
+数据库是生成工作流状态的事实来源。进程内队列只负责调度任务 ID，不能作为进度或结果的唯一记录。
 
-## Entity Relationship Summary
+## 实体关系概要
 
 ```text
 image_models 1--N styles
@@ -20,66 +20,66 @@ file_assets 1--N generated_images
 file_assets 1--N task_downloads
 ```
 
-## Tables
+## 数据表
 
 ### `image_models`
 
-Stores image model configuration that styles bind to.
+保存可被风格绑定的图片模型配置。
 
-Columns:
+字段：
 
-- `id` primary key
+- `id` 主键
 - `display_name` text not null
 - `provider_key` text not null
 - `model_key` text not null
-- `status` text not null check in `active`, `disabled`
-- `default_parameters` jsonb not null default `{}`
+- `status` text not null，取值 `active`、`disabled`
+- `default_parameters` jsonb not null，默认 `{}`
 - `notes` text null
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- Unique `provider_key`, `model_key`.
+- `provider_key` + `model_key` 唯一。
 
-Indexes:
+索引：
 
-- `idx_image_models_status_updated_at` on `status`, `updated_at desc` for model lists.
+- `idx_image_models_status_updated_at`：`status`, `updated_at desc`，用于模型列表筛选和排序。
 
 ### `styles`
 
-Stores reusable visual styles and the bound image model.
+保存可复用视觉风格及其绑定模型。
 
-Columns:
+字段：
 
-- `id` primary key
+- `id` 主键
 - `name` text not null
 - `description` text null
-- `status` text not null check in `draft`, `active`, `disabled`
-- `image_model_id` foreign key to `image_models.id` not null
+- `status` text not null，取值 `draft`、`active`、`disabled`
+- `image_model_id` 外键到 `image_models.id`，not null
 - `style_prompt` text not null
 - `last_tested_at` timestamptz null
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- Unique `name`.
-- `style_prompt` must not be empty.
+- `name` 唯一。
+- `style_prompt` 不能为空字符串。
 
-Indexes:
+索引：
 
-- `idx_styles_status_updated_at` on `status`, `updated_at desc` for style list.
-- `idx_styles_image_model_id` on `image_model_id` for model usage checks.
+- `idx_styles_status_updated_at`：`status`, `updated_at desc`，用于风格列表。
+- `idx_styles_image_model_id`：用于模型使用检查。
 
 ### `file_assets`
 
-Stores metadata for uploaded and generated files. File bytes may live on local disk, object storage, or another selected storage system later.
+保存上传文件和生成文件的元数据。文件内容后续可存本地磁盘、对象存储或其他存储系统。
 
-Columns:
+字段：
 
-- `id` primary key
-- `purpose` text not null check in `style_reference`, `generated_image`, `download_archive`
+- `id` 主键
+- `purpose` text not null，取值 `style_reference`、`generated_image`、`download_archive`
 - `storage_key` text not null
 - `original_filename` text null
 - `content_type` text not null
@@ -89,55 +89,55 @@ Columns:
 - `height` integer null
 - `created_at` timestamptz not null
 
-Constraints:
+约束：
 
-- Unique `storage_key`.
-- `byte_size` must be greater than `0`.
+- `storage_key` 唯一。
+- `byte_size` 必须大于 `0`。
 
-Indexes:
+索引：
 
-- `idx_file_assets_purpose_created_at` on `purpose`, `created_at desc` for asset administration and cleanup views.
+- `idx_file_assets_purpose_created_at`：`purpose`, `created_at desc`，用于资产管理和清理视图。
 
 ### `style_reference_images`
 
-Links styles to uploaded reference images.
+连接风格和参考图片资产。
 
-Columns:
+字段：
 
-- `id` primary key
-- `style_id` foreign key to `styles.id` not null
-- `asset_id` foreign key to `file_assets.id` not null
-- `display_order` integer not null default `0`
+- `id` 主键
+- `style_id` 外键到 `styles.id`，not null
+- `asset_id` 外键到 `file_assets.id`，not null
+- `display_order` integer not null，默认 `0`
 - `created_at` timestamptz not null
 
-Constraints:
+约束：
 
-- Unique `style_id`, `asset_id`.
+- `style_id` + `asset_id` 唯一。
 
-Indexes:
+索引：
 
-- `idx_style_reference_images_style_order` on `style_id`, `display_order`, `created_at`.
+- `idx_style_reference_images_style_order`：`style_id`, `display_order`, `created_at`，用于风格详情参考图排序。
 
 ### `style_tests`
 
-Stores style test generation workflow state and output.
+保存风格测试的工作流状态和输出。
 
-Columns:
+字段：
 
-- `id` primary key
-- `style_id` foreign key to `styles.id` not null
+- `id` 主键
+- `style_id` 外键到 `styles.id`，not null
 - `test_text` text not null
 - `style_prompt_snapshot` text not null
 - `image_model_snapshot` jsonb not null
 - `composed_prompt` text not null
-- `status` text not null check in `queued`, `running`, `succeeded`, `failed`, `cancel_requested`, `cancelled`, `retrying`
-- `attempts` integer not null default `0`
-- `max_attempts` integer not null default `3`
+- `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
+- `attempts` integer not null，默认 `0`
+- `max_attempts` integer not null，默认 `3`
 - `next_run_at` timestamptz null
 - `cancel_requested_at` timestamptz null
 - `started_at` timestamptz null
 - `finished_at` timestamptz null
-- `output_asset_id` foreign key to `file_assets.id` null
+- `output_asset_id` 外键到 `file_assets.id`，null
 - `provider_request_id` text null
 - `error_code` text null
 - `error_message` text null
@@ -145,37 +145,37 @@ Columns:
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- `test_text` must not be empty.
-- `composed_prompt` must not be empty.
+- `test_text` 不能为空字符串。
+- `composed_prompt` 不能为空字符串。
 
-Indexes:
+索引：
 
-- `idx_style_tests_style_created_at` on `style_id`, `created_at desc` for recent tests.
-- `idx_style_tests_status_next_run_at` on `status`, `next_run_at` for worker recovery.
+- `idx_style_tests_style_created_at`：`style_id`, `created_at desc`，用于最近测试记录。
+- `idx_style_tests_status_next_run_at`：`status`, `next_run_at`，用于 worker 恢复。
 
 ### `generation_tasks`
 
-Stores user-facing text-to-image tasks.
+保存用户发起的文本转图片任务。
 
-Columns:
+字段：
 
-- `id` primary key
+- `id` 主键
 - `display_title` text not null
 - `original_text` text not null
-- `image_count_mode` text not null check in `auto`, `fixed`
+- `image_count_mode` text not null，取值 `auto`、`fixed`
 - `requested_image_count` integer null
-- `style_id` foreign key to `styles.id` not null
+- `style_id` 外键到 `styles.id`，not null
 - `style_name_snapshot` text not null
 - `style_prompt_snapshot` text not null
 - `image_model_snapshot` jsonb not null
-- `status` text not null check in `queued`, `running`, `succeeded`, `partial_succeeded`, `failed`, `cancel_requested`, `cancelled`, `retrying`
-- `current_step` text null check in `segment_story`, `generate_panel_prompts`, `generate_images`, `package_download`
-- `progress_current` integer not null default `0`
-- `progress_total` integer not null default `0`
-- `attempts` integer not null default `0`
-- `max_attempts` integer not null default `3`
+- `status` text not null，取值 `queued`、`running`、`succeeded`、`partial_succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
+- `current_step` text null，取值 `segment_story`、`generate_panel_prompts`、`generate_images`、`package_download`
+- `progress_current` integer not null，默认 `0`
+- `progress_total` integer not null，默认 `0`
+- `attempts` integer not null，默认 `0`
+- `max_attempts` integer not null，默认 `3`
 - `next_run_at` timestamptz null
 - `cancel_requested_at` timestamptz null
 - `started_at` timestamptz null
@@ -186,31 +186,31 @@ Columns:
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- `original_text` must not be empty.
-- If `image_count_mode = 'auto'`, `requested_image_count` must be null.
-- If `image_count_mode = 'fixed'`, `requested_image_count` must be greater than `0`.
-- `style_prompt_snapshot` must not be empty.
+- `original_text` 不能为空字符串。
+- 当 `image_count_mode = 'auto'` 时，`requested_image_count` 必须为 null。
+- 当 `image_count_mode = 'fixed'` 时，`requested_image_count` 必须大于 `0`。
+- `style_prompt_snapshot` 不能为空字符串。
 
-Indexes:
+索引：
 
-- `idx_generation_tasks_status_next_run_at` on `status`, `next_run_at` for worker polling and recovery.
-- `idx_generation_tasks_status_updated_at` on `status`, `updated_at desc` for task list filtering.
-- `idx_generation_tasks_style_created_at` on `style_id`, `created_at desc` for style usage and task list filters.
-- `idx_generation_tasks_created_at` on `created_at desc` for newest-first task list.
+- `idx_generation_tasks_status_next_run_at`：`status`, `next_run_at`，用于 worker 轮询和恢复。
+- `idx_generation_tasks_status_updated_at`：`status`, `updated_at desc`，用于任务列表筛选。
+- `idx_generation_tasks_style_created_at`：`style_id`, `created_at desc`，用于风格使用情况和任务筛选。
+- `idx_generation_tasks_created_at`：`created_at desc`，用于任务列表默认排序。
 
 ### `generation_steps`
 
-Stores step-level workflow state for visibility, retries, and activity trail.
+保存任务步骤级状态，用于可视化进度、重试和活动记录。
 
-Columns:
+字段：
 
-- `id` primary key
-- `task_id` foreign key to `generation_tasks.id` not null
-- `step_name` text not null check in `segment_story`, `generate_panel_prompts`, `generate_images`, `package_download`
-- `status` text not null check in `queued`, `running`, `succeeded`, `failed`, `cancelled`, `retrying`
-- `attempts` integer not null default `0`
+- `id` 主键
+- `task_id` 外键到 `generation_tasks.id`，not null
+- `step_name` text not null，取值 `segment_story`、`generate_panel_prompts`、`generate_images`、`package_download`
+- `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`、`retrying`
+- `attempts` integer not null，默认 `0`
 - `idempotency_key` text not null
 - `started_at` timestamptz null
 - `finished_at` timestamptz null
@@ -221,26 +221,26 @@ Columns:
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- Unique `idempotency_key`.
+- `idempotency_key` 唯一。
 
-Indexes:
+索引：
 
-- `idx_generation_steps_task_created_at` on `task_id`, `created_at`.
-- `idx_generation_steps_status_updated_at` on `status`, `updated_at` for stuck step detection.
+- `idx_generation_steps_task_created_at`：`task_id`, `created_at`，用于任务详情活动记录。
+- `idx_generation_steps_status_updated_at`：`status`, `updated_at`，用于检测卡住的步骤。
 
 ### `task_panels`
 
-Stores semantic story segments and generated image prompts.
+保存语义切分后的故事片段和生成图 prompt。
 
-Columns:
+字段：
 
-- `id` primary key
-- `task_id` foreign key to `generation_tasks.id` not null
+- `id` 主键
+- `task_id` 外键到 `generation_tasks.id`，not null
 - `panel_order` integer not null
 - `original_text_segment` text not null
-- `prompt_status` text not null check in `pending`, `generated`, `failed`
+- `prompt_status` text not null，取值 `pending`、`generated`、`failed`
 - `generated_prompt` text null
 - `prompt_model_snapshot` jsonb null
 - `error_code` text null
@@ -248,34 +248,34 @@ Columns:
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- Unique `task_id`, `panel_order`.
-- `panel_order` must be greater than `0`.
-- `original_text_segment` must not be empty.
-- When `prompt_status = 'generated'`, `generated_prompt` must not be null.
+- `task_id` + `panel_order` 唯一。
+- `panel_order` 必须大于 `0`。
+- `original_text_segment` 不能为空字符串。
+- 当 `prompt_status = 'generated'` 时，`generated_prompt` 不能为空。
 
-Indexes:
+索引：
 
-- `idx_task_panels_task_order` on `task_id`, `panel_order` for task detail.
+- `idx_task_panels_task_order`：`task_id`, `panel_order`，用于任务详情。
 
 ### `generated_images`
 
-Stores image-generation results for panels.
+保存 panel 的图片生成结果。
 
-Columns:
+字段：
 
-- `id` primary key
-- `task_id` foreign key to `generation_tasks.id` not null
-- `panel_id` foreign key to `task_panels.id` not null
-- `image_order` integer not null default `1`
-- `status` text not null check in `queued`, `running`, `succeeded`, `failed`, `cancelled`, `retrying`
+- `id` 主键
+- `task_id` 外键到 `generation_tasks.id`，not null
+- `panel_id` 外键到 `task_panels.id`，not null
+- `image_order` integer not null，默认 `1`
+- `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`、`retrying`
 - `final_prompt` text not null
 - `image_model_snapshot` jsonb not null
-- `asset_id` foreign key to `file_assets.id` null
+- `asset_id` 外键到 `file_assets.id`，null
 - `provider_request_id` text null
-- `attempts` integer not null default `0`
-- `max_attempts` integer not null default `3`
+- `attempts` integer not null，默认 `0`
+- `max_attempts` integer not null，默认 `3`
 - `started_at` timestamptz null
 - `finished_at` timestamptz null
 - `error_code` text null
@@ -284,28 +284,28 @@ Columns:
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- Unique `panel_id`, `image_order`.
-- When `status = 'succeeded'`, `asset_id` must not be null.
+- `panel_id` + `image_order` 唯一。
+- 当 `status = 'succeeded'` 时，`asset_id` 不能为空。
 
-Indexes:
+索引：
 
-- `idx_generated_images_task_created_at` on `task_id`, `created_at`.
-- `idx_generated_images_panel_order` on `panel_id`, `image_order`.
-- `idx_generated_images_status_updated_at` on `status`, `updated_at` for recovery and stuck image detection.
+- `idx_generated_images_task_created_at`：`task_id`, `created_at`。
+- `idx_generated_images_panel_order`：`panel_id`, `image_order`。
+- `idx_generated_images_status_updated_at`：`status`, `updated_at`，用于恢复和卡住图片检测。
 
 ### `task_downloads`
 
-Stores generated archive metadata for batch downloads.
+保存批量下载压缩包元数据。
 
-Columns:
+字段：
 
-- `id` primary key
-- `task_id` foreign key to `generation_tasks.id` not null
-- `status` text not null check in `queued`, `running`, `ready`, `failed`
-- `image_count` integer not null default `0`
-- `asset_id` foreign key to `file_assets.id` null
+- `id` 主键
+- `task_id` 外键到 `generation_tasks.id`，not null
+- `status` text not null，取值 `queued`、`running`、`ready`、`failed`
+- `image_count` integer not null，默认 `0`
+- `asset_id` 外键到 `file_assets.id`，null
 - `filename` text not null
 - `error_code` text null
 - `error_message` text null
@@ -313,65 +313,65 @@ Columns:
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
-Constraints:
+约束：
 
-- When `status = 'ready'`, `asset_id` must not be null.
+- 当 `status = 'ready'` 时，`asset_id` 不能为空。
 
-Indexes:
+索引：
 
-- `idx_task_downloads_task_created_at` on `task_id`, `created_at desc` for task detail download history.
+- `idx_task_downloads_task_created_at`：`task_id`, `created_at desc`，用于任务详情下载记录。
 
-## Workflow State Rules
+## 工作流状态规则
 
-Task creation:
+任务创建：
 
-1. Insert `generation_tasks` with exact `original_text`, style snapshot, and model snapshot.
-2. Insert initial `generation_steps` rows or create them as each step starts.
-3. Enqueue only the task ID in memory.
+1. 插入 `generation_tasks`，保存精确 `original_text`、风格快照和模型快照。
+2. 插入初始 `generation_steps`，或在步骤开始时创建。
+3. 进程内队列只放入任务 ID。
 
-Worker execution:
+Worker 执行：
 
-1. Load current task from `generation_tasks`.
-2. Exit without side effects if task is terminal or cancelled.
-3. Update `current_step`, `progress_current`, and `progress_total` at step boundaries.
-4. Store segmentation output in `task_panels`.
-5. Store prompt output in `task_panels.generated_prompt`.
-6. Store generated image metadata in `generated_images`.
-7. Store file metadata in `file_assets`.
-8. Mark task `succeeded`, `partial_succeeded`, `failed`, or `cancelled`.
+1. 从 `generation_tasks` 读取当前任务状态。
+2. 如果任务已终态或已取消，不产生副作用。
+3. 在步骤边界更新 `current_step`、`progress_current`、`progress_total`。
+4. 将切分结果写入 `task_panels`。
+5. 将 prompt 结果写入 `task_panels.generated_prompt`。
+6. 将图片生成元数据写入 `generated_images`。
+7. 将文件元数据写入 `file_assets`。
+8. 最终将任务标记为 `succeeded`、`partial_succeeded`、`failed` 或 `cancelled`。
 
-Startup recovery:
+启动恢复：
 
-- Re-enqueue tasks with `queued`, `retrying`, or stale `running` status.
-- Re-enqueue style tests with `queued`, `retrying`, or stale `running` status.
-- Use step status and idempotency keys to avoid repeating completed side effects.
+- 重新入队状态为 `queued`、`retrying` 或过久停留在 `running` 的任务。
+- 重新入队状态为 `queued`、`retrying` 或过久停留在 `running` 的风格测试。
+- 使用步骤状态和幂等键避免重复已完成副作用。
 
-Cancellation:
+取消：
 
-- Set `cancel_requested_at` on task.
-- Workers check cancellation between segmentation, prompt generation, and each image generation.
-- Completed images remain linked to the task.
+- 设置任务的 `cancel_requested_at`。
+- Worker 在切分、prompt 生成和每张图片生成之间检查取消状态。
+- 已完成图片继续保留在任务下。
 
-## Data Integrity Notes
+## 数据完整性说明
 
-- Preserve `generation_tasks.original_text` exactly.
-- Use snapshots for style prompt and image model on tasks/tests so historical runs stay auditable after style edits.
-- Store user-safe errors in `error_message`; store internal details in `internal_error_ref`.
-- Large provider responses and raw logs should not be stored in primary workflow rows.
-- Deleting a style or image model should be blocked while referenced by tasks or styles.
+- `generation_tasks.original_text` 必须原样保存。
+- 任务和风格测试保存风格 prompt 与图片模型快照，保证风格后续编辑不影响历史审计。
+- `error_message` 保存用户可读错误；`internal_error_ref` 保存内部细节引用。
+- 大型 provider 响应和原始日志不放入主工作流表。
+- 被任务或风格引用的风格/模型不应被硬删除。
 
-## Initial Query Patterns
+## 初始查询路径
 
-- Task list: filter by status/style and order by `created_at desc`.
-- Task detail: load one task, ordered panels, generated images, and recent steps.
-- Style list: filter by status/model and order by `updated_at desc`.
-- Style detail: load one style, reference images, recent tests, and usage summary.
-- Worker polling: find queued/retrying tasks by `status`, `next_run_at`.
-- Recovery: find stale running tasks by `status`, `updated_at`.
+- 任务列表：按状态/风格筛选，并按 `created_at desc` 排序。
+- 任务详情：加载单个任务、有序 panels、生成图片和最近步骤。
+- 风格列表：按状态/模型筛选，并按 `updated_at desc` 排序。
+- 风格详情：加载单个风格、参考图、最近测试和使用摘要。
+- Worker 轮询：按 `status`、`next_run_at` 查找排队/重试任务。
+- 恢复：按 `status`、`updated_at` 查找卡住的运行中任务。
 
-## Open Schema Questions
+## 未决 Schema 问题
 
-- Whether authentication will introduce `users` and ownership columns.
-- Whether generated prompts should become editable versions before image generation.
-- Whether multiple images per panel are a first-class feature or only a future extension.
-- Which storage backend will provide `storage_key` semantics.
+- 登录系统是否会引入 `users` 和归属字段。
+- 生成 prompt 是否需要在生图前支持编辑和版本。
+- 每个 panel 多图是否是一版能力，还是未来扩展。
+- 具体存储后端如何定义 `storage_key`。

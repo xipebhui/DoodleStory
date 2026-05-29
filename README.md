@@ -2,24 +2,24 @@
 
 [中文](README.zh-CN.md) | [English](README.en.md)
 
-DoodleStory is a text-to-image story generation project. It turns a user's original text into a sequence of illustrated panels by combining story segmentation, panel prompt generation, style templates, and a style-bound image model.
+DoodleStory 是一个文本转图片的故事生成项目。它会把用户输入的原始文本切分成一组画面片段，再结合风格库、风格提示词和风格绑定的图片模型生成多张图片。
 
-## Product Shape
+## 产品形态
 
-- Style library: CRUD for image styles, reference images, style metadata, style prompts, and the image model bound to each style.
-- Style testing: generate a sample image from custom test text plus the selected style prompt, using the style's bound model.
-- Generation tasks: accept the user's original text without rewriting it, bind the task to a selected style, split the story into panels, generate image prompts, then create images.
-- Result handling: preview generated images, enlarge an image on click, and batch download all generated images.
+- 风格库：管理图片风格、参考图片、风格基础信息、风格提示词，以及该风格绑定的图片生成模型。
+- 风格测试：输入一段测试文本，将测试文本和风格提示词组合后，用风格绑定的模型生成测试图，方便调试风格。
+- 生成任务：用户输入原始文本，不改写原文；选择自动判断图片数量或固定图片数量；选择风格后提交生成。
+- 结果处理：生成后支持图片点击放大，以及一键批量下载所有图片。
 
 ## Codex Harness
 
-This repository uses the Codex project harness from `codex-project-template`, adapted for DoodleStory.
+本仓库使用 `codex-project-template` 的 Codex 开发 harness，并已结合 DoodleStory 的业务进行适配。
 
-Read these first before substantial implementation work:
+开始较大实现工作前，请先阅读：
 
-- [Project Spec](docs/spec.md)
-- [Progress Log](docs/progress.md)
-- [Active Sprint Contract](docs/contracts/sprint-01-product-design.md)
-- [Product Design](docs/design/README.md)
-- [Development Standards](docs/standards/)
-- [Reference: Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)
+- [项目规格](docs/spec.md)
+- [进度记录](docs/progress.md)
+- [当前 Sprint 合同](docs/contracts/sprint-01-product-design.md)
+- [产品设计](docs/design/README.md)
+- [开发规范](docs/standards/)
+- [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

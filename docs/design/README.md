@@ -1,17 +1,17 @@
-# DoodleStory Product Design
+# DoodleStory 产品设计
 
-This directory contains the first implementation-ready product design for DoodleStory.
+本目录保存 DoodleStory 第一版可实施的产品设计。
 
-## Documents
+## 文档
 
-- [UI Design](ui.md): product navigation, screens, interaction states, and generation workflow UX.
-- [Backend API Design](api.md): REST resources, request and response shapes, pagination, errors, and workflow actions.
-- [Database Design](database.md): initial relational schema, constraints, indexes, and workflow state model.
+- [UI 设计](ui.md)：产品导航、页面结构、交互状态和生成流程体验。
+- [后端 API 设计](api.md)：REST 资源、请求与响应结构、分页、错误和工作流动作。
+- [数据库设计](database.md)：初始关系型 schema、约束、索引和工作流状态模型。
 
-## Design Principles
+## 设计原则
 
-- Preserve the user's submitted story text exactly.
-- Make style tuning inspectable through reference images, style prompts, tests, and model bindings.
-- Keep AI-generated intermediate outputs visible: panels and generated prompts are product state, not invisible internals.
-- Use database-backed workflow state as the source of truth.
-- Keep the first workflow small. Do not introduce external queue or durable workflow infrastructure without a later explicit decision.
+- 原样保存用户提交的故事文本。
+- 通过参考图、风格提示词、测试记录和模型绑定，让风格调试可追踪。
+- 将 AI 生成的中间结果产品化：panel 和生成 prompt 是可查看的业务状态，不是隐藏内部细节。
+- 以数据库中的任务状态作为生成流程的唯一事实来源。
+- 第一版保持轻量工作流；未经后续明确决策，不引入外部队列或重型工作流基础设施。

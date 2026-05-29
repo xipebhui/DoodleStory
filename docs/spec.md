@@ -1,98 +1,98 @@
-# Product Spec
+# 产品规格
 
-## Product Summary
+## 产品概述
 
-`DoodleStory` is a text-to-image story generation product. A user provides original text, selects a generation style, and receives one or more generated images that correspond to semantically segmented panels from the story.
+`DoodleStory` 是一个文本转图片的故事生成产品。用户提供原始文本，选择生成风格后，系统将故事按语义切分为多个 panel，并为每个 panel 生成对应图片。
 
-The product must preserve the user's original text. LLM calls may segment the text and create image-generation prompts, but they must not rewrite the user's source story.
+产品必须原样保存用户输入的原始文本。LLM 可以用于文本切分和图片生成 prompt 生成，但不能改写用户提交的源故事。
 
-## Users
+## 用户
 
-- Creators who want to turn short story text into a sequence of images.
-- Operators or maintainers who tune reusable image styles and bind them to image-generation models.
+- 希望把短故事文本转换成连续图片的创作者。
+- 负责调试可复用图片风格、维护风格 prompt 和模型绑定的运营/维护者。
 
-## Core Concepts
+## 核心概念
 
-- Style: a reusable image style with reference images, metadata, a style prompt, and a bound image model.
-- Style test: a generation test that combines custom test text with a style prompt and sends it to the style's bound model.
-- Task: a user-facing text-to-image generation request.
-- Panel: a semantic segment produced from the user's original story. A panel contains the original segment text and later receives an image-generation prompt.
-- Generated image: an image output for one panel within a task.
+- 风格：可复用图片风格，包含参考图片、基础信息、风格提示词和绑定图片模型。
+- 风格测试：将测试文本与风格提示词组合后，发送给该风格绑定的模型生成测试图。
+- 任务：用户发起的一次文本转图片请求。
+- Panel：由用户原始故事切分出的语义片段。Panel 保存原始片段文本，之后会关联生图 prompt。
+- 生成图片：任务中某个 panel 对应的图片输出。
 
-## Core User Journeys
+## 核心用户路径
 
-1. Manage styles.
-   - Create, read, update, and delete styles.
-   - Attach reference images and style metadata.
-   - Configure the style prompt.
-   - Bind the style to a specific image-generation model.
+1. 管理风格。
+   - 创建、查看、更新、删除风格。
+   - 添加参考图片和风格基础信息。
+   - 配置风格提示词。
+   - 将风格绑定到指定图片生成模型。
 
-2. Test a style.
-   - Select a style.
-   - Enter test text.
-   - Combine the test text with the style prompt.
-   - Generate a test image with the style's bound model.
-   - Use the result to refine the style prompt or model binding.
+2. 测试风格。
+   - 选择风格。
+   - 输入测试文本。
+   - 将测试文本与风格提示词组合。
+   - 使用风格绑定的模型生成测试图片。
+   - 根据结果调整风格提示词或模型绑定。
 
-3. Create a generation task.
-   - Enter original text.
-   - Choose automatic image count or a fixed image count.
-   - Select a style.
-   - Submit the task.
+3. 创建生成任务。
+   - 输入原始文本。
+   - 选择自动判断图片数量，或输入固定图片数量。
+   - 选择风格。
+   - 提交任务。
 
-4. Generate images for a task.
-   - Call an LLM with a segmentation system prompt.
-   - If the user selected a fixed image count, split the story into that number of semantic panels.
-   - If no fixed count was selected, split by semantic boundaries, roughly around ten Chinese characters per panel as a starting heuristic.
-   - Call an LLM again with the original story, selected style, and panel text to produce image prompts.
-   - The generated image prompt should describe subject, action, scene state, and static visual content without contradicting the style prompt.
-   - The prompt-generation system message must emphasize that the selected style must be followed.
-   - Send each panel prompt to the image model bound to the selected style.
+4. 执行任务生成。
+   - 调用 LLM，使用文本切分系统提示词。
+   - 如果用户选择固定图片数量，将故事切成对应数量的语义 panels。
+   - 如果未固定数量，按语义边界自动切分，初始启发是每段约十个中文字符。
+   - 再次调用 LLM，输入原始故事、所选风格和 panel 文本，生成每张图的生图 prompt。
+   - 生成 prompt 应描述主体、动作、场景状态和静态视觉内容，不能与风格提示词冲突。
+   - prompt 生成的系统消息必须强调遵守所选风格。
+   - 将每个 panel prompt 发送给该风格绑定的图片模型。
 
-5. Review and download results.
-   - View generated images in the task detail.
-   - Click an image to enlarge it.
-   - Download all generated images in one action, preferably as a folder-like batch when supported, otherwise as a compressed archive.
+5. 查看和下载结果。
+   - 在任务详情页查看生成图片。
+   - 点击图片放大预览。
+   - 一键下载所有生成图片，优先以压缩包方式提供。
 
-## Product Priorities
+## 产品优先级
 
-1. Preserve the user's original text exactly.
-2. Make style tuning explicit and repeatable through style metadata, prompts, test generation, and model bindings.
-3. Keep the task workflow inspectable: original text, panels, generated prompts, model, and images should be traceable.
-4. Make failed LLM or image-generation steps visible rather than silently ignored.
-5. Keep the Codex harness as the durable project memory for future implementation work.
+1. 精确保留用户原始文本。
+2. 通过风格基础信息、提示词、测试生成和模型绑定，让风格调试明确且可重复。
+3. 任务流程必须可检查：原始文本、panels、生成 prompts、模型和图片都应可追踪。
+4. LLM 或图片生成步骤失败时必须可见，不能静默忽略。
+5. 使用 Codex harness 作为后续实现工作的持久项目记忆。
 
-## Technical Shape
+## 技术形态
 
-- Frontend: concrete framework not selected yet. Product UI design is documented in `docs/design/ui.md`.
-- Backend: concrete framework not selected yet. Initial REST API design is documented in `docs/design/api.md`.
-- Storage: relational OLTP database design is documented in `docs/design/database.md`.
-- External integrations: LLM provider and image-generation model provider are not selected yet.
-- Background workflow: image generation is asynchronous and starts as a small workflow: in-process queue plus database-backed task state.
-- Standards: markdown guidance under `docs/standards/` for Python, Java, database design, backend workflows, frontend work, UI interaction, and reusable modules.
+- 前端：具体框架未选择。产品 UI 设计见 `docs/design/ui.md`。
+- 后端：具体框架未选择。初始 REST API 设计见 `docs/design/api.md`。
+- 存储：关系型 OLTP 数据库设计见 `docs/design/database.md`。
+- 外部集成：LLM provider 和图片生成 provider 尚未选择。
+- 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
+- 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 
-## Constraints
+## 约束
 
-- Do not introduce fallback behavior, compatibility layers, mocks, placeholder responses, or silent error handling unless the user explicitly requests it.
-- Do not rewrite, summarize, or sanitize the user's submitted source text as part of task creation.
-- Do not let panel prompt generation conflict with the selected style prompt.
-- Do not bind a style test or task to a model other than the model configured on the selected style, unless the user explicitly changes that style binding.
-- Technology choices are still open. Future implementation should select a concrete stack through a sprint contract before writing application code.
+- 未经用户明确要求，不引入兜底策略、降级逻辑、兼容性回退、占位实现、Mock 结果或静默错误处理。
+- 创建任务时，不改写、不摘要、不清洗用户提交的源文本。
+- Panel prompt 生成不能与所选风格提示词冲突。
+- 风格测试和任务必须使用所选风格绑定的模型，除非用户明确修改该风格绑定。
+- 技术选型仍未确定。未来实现代码前，应先通过 sprint contract 选择具体技术栈。
 
-## Non-Goals
+## 非目标
 
-- Building a generic prompt marketplace.
-- Building a general-purpose image model abstraction before concrete providers are selected.
-- Adding production-scale workflow infrastructure before the project's actual scale requires it and the user approves it.
+- 构建通用 prompt 市场。
+- 在具体 provider 选定前构建泛化图片模型抽象层。
+- 在项目规模证明需要之前引入生产级工作流基础设施。
 
-## Acceptance Direction
+## 验收方向
 
-The primary acceptance flow is: define a sprint, implement within that sprint, run verification, record QA, and leave clear progress for the next Codex run.
+主要验收流程是：定义 sprint，在 sprint 范围内实现，运行验证，记录 QA，并为下一次 Codex 会话留下明确进度。
 
-## Open Questions
+## 未决问题
 
-- Which frontend and backend stack should DoodleStory use?
-- Which LLM provider and image-generation provider should be integrated first?
-- What metadata is required for a style beyond name, description, reference images, prompt, status, and model binding?
-- Should generated panel prompts be editable before image generation, or only visible for debugging?
-- What image formats and naming conventions should batch download use?
+- DoodleStory 第一版前端和后端技术栈使用什么？
+- 第一版接入哪个 LLM provider 和图片生成 provider？
+- 风格除了名称、描述、参考图片、prompt、状态和模型绑定外，还需要哪些元数据？
+- 生成的 panel prompt 是只用于调试查看，还是需要在生图前支持编辑？
+- 批量下载支持哪些图片格式和命名规则？

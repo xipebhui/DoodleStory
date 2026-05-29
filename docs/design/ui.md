@@ -1,292 +1,292 @@
-# UI Design
+# UI 设计
 
-## Navigation
+## 导航
 
-DoodleStory starts as an operational creative tool, not a marketing site. The first screen should be the task workspace.
+DoodleStory 是一个创作型生产工具，第一屏应直接进入任务工作台，不做营销落地页。
 
-Primary navigation:
+主导航：
 
-- Tasks
-- Styles
-- Image Models
-- Settings
+- 任务
+- 风格
+- 图片模型
+- 设置
 
-Secondary global controls:
+全局辅助控制：
 
-- Display mode: `System`, `Light`, `Dark`
-- Provider health/status area when real providers exist
+- 显示模式：`跟随系统`、`浅色`、`深色`
+- provider 健康状态区域，等真实 provider 接入后再启用
 
-## Information Architecture
+## 信息架构
 
-### Tasks
+### 任务
 
-Tasks are the main user workflow.
+任务是用户的主流程。
 
-Screens:
+页面：
 
-- Task list
-- Create task
-- Task detail
-- Image preview dialog
-- Batch download confirmation/progress dialog
+- 任务列表
+- 创建任务
+- 任务详情
+- 图片预览弹窗
+- 批量下载确认/进度弹窗
 
-### Styles
+### 风格
 
-Styles are reusable generation presets.
+风格是可复用的生成预设。
 
-Screens:
+页面：
 
-- Style list
-- Create style
-- Style detail
-- Edit style
-- Style test panel
-- Delete style confirmation
+- 风格列表
+- 创建风格
+- 风格详情
+- 编辑风格
+- 风格测试面板
+- 删除风格确认
 
-### Image Models
+### 图片模型
 
-Image models are controlled configuration records used by styles.
+图片模型是供风格绑定的配置记录。
 
-Screens:
+页面：
 
-- Model list
-- Create model
-- Edit model
-- Model detail
-- Disable model confirmation
+- 模型列表
+- 创建模型
+- 编辑模型
+- 模型详情
+- 禁用模型确认
 
-Model records should be manageable before real provider integration exists, but they must not return mock generation results.
+真实 provider 尚未接入前，可以管理模型配置记录，但不能返回 Mock 生成结果。
 
-## Task List
+## 任务列表
 
-Purpose: find previous generation tasks, inspect state, and start a new task.
+用途：查找历史生成任务、查看任务状态、创建新任务。
 
-Layout:
+布局：
 
-- Page title: `Tasks`
-- Primary action: `Create task`
-- Search input: task title or story excerpt
-- Filters: status, style, created date
-- Sort: newest first by default
-- Table columns:
-  - Task title or story excerpt
-  - Style
-  - Status
-  - Progress
-  - Image count
-  - Created time
-  - Updated time
+- 页面标题：`任务`
+- 主操作：`创建任务`
+- 搜索：任务标题或故事片段
+- 筛选：状态、风格、创建时间
+- 排序：默认按最新创建时间倒序
+- 表格列：
+  - 任务标题或故事片段
+  - 风格
+  - 状态
+  - 进度
+  - 图片数量
+  - 创建时间
+  - 更新时间
 
-States:
+状态：
 
-- Loading: table skeleton with stable row height.
-- Empty: explain that no tasks exist and offer `Create task`.
-- No results: explain that filters matched nothing and offer `Clear filters`.
-- Error: show retry and preserve current filters.
+- 加载：使用高度稳定的表格骨架屏。
+- 空状态：说明还没有任务，并提供 `创建任务`。
+- 无结果：说明当前筛选没有匹配项，并提供 `清空筛选`。
+- 错误：提供重试，保留当前筛选条件。
 
-Behavior:
+交互规则：
 
-- Server-backed pagination with bounded page size.
-- Clicking the task title opens task detail.
-- Returning from detail preserves filters, pagination, and scroll position.
-- Row actions are always reachable by keyboard and touch.
+- 使用服务端有界分页。
+- 点击任务标题进入任务详情。
+- 从详情返回列表时保留筛选、分页和滚动位置。
+- 行操作必须对键盘和触屏用户可访问，不能只依赖 hover。
 
-## Create Task
+## 创建任务
 
-Container: full page or wide drawer. Use full page if the text input and style chooser need more room.
+容器：完整页面或宽抽屉。若文本输入和风格选择需要更大空间，优先使用完整页面。
 
-Fields:
+字段：
 
-- Original text: required multiline textarea.
-- Image count mode: segmented control with `Auto` and `Fixed`.
-- Fixed image count: numeric input shown only when `Fixed` is selected.
-- Style: searchable selector with style cards showing thumbnail, name, model, and short description.
+- 原始文本：必填，多行文本框。
+- 图片数量模式：分段控件，选项为 `自动` 和 `固定数量`。
+- 固定图片数量：只在选择 `固定数量` 时显示的数字输入框。
+- 风格：可搜索选择器，展示风格缩略图、名称、绑定模型和简短描述。
 
-Rules:
+规则：
 
-- Do not alter the original text in the form.
-- Required validation runs before submit and again on submit.
-- `Create task` is disabled until original text and style are valid.
-- If `Fixed` is selected, count must be a positive integer within the configured product limit.
-- On failure, keep all input and focus the first actionable error.
-- On success, navigate to the new task detail page.
+- 表单内不得改写原始文本。
+- 提交前做前端校验，提交时仍需后端校验。
+- 原始文本和风格有效后，才允许点击 `创建任务`。
+- 固定数量必须是产品配置允许范围内的正整数。
+- 提交失败时保留全部输入，并把焦点移动到第一个可处理错误。
+- 提交成功后进入新任务详情页。
 
-Primary action: `Create task`
+主操作：`创建任务`
 
-Secondary action: `Cancel`
+次操作：`取消`
 
-## Task Detail
+## 任务详情
 
-Purpose: watch generation, inspect intermediate outputs, review images, and download results.
+用途：查看生成过程、检查中间结果、浏览图片并下载结果。
 
-Header:
+头部：
 
-- Task title or generated display name from story excerpt.
-- Status badge.
-- Style name and linked model.
-- Created and updated time.
-- Primary action by state:
-  - `Start generation` when created but not queued.
-  - `Cancel generation` when queued, running, or retrying.
-  - `Download images` when at least one generated image exists.
-  - `Retry failed step` only when a retryable failed state exists.
+- 任务标题或故事片段标题。
+- 状态徽标。
+- 风格名称和绑定模型。
+- 创建时间和更新时间。
+- 根据状态显示主操作：
+  - 已创建但未排队：`开始生成`
+  - 排队、运行或重试中：`取消生成`
+  - 已有生成图片：`下载图片`
+  - 存在可重试失败步骤：`重试失败步骤`
 
-Main regions:
+主体区域：
 
-- Original text: exact submitted text, read-only.
-- Generation progress: current step, progress count, started time, latest user-safe error.
-- Panels: ordered list with panel number, original panel text, generated prompt, status, and image result.
-- Images: grid of generated images with panel number, status, and preview action.
-- Activity trail: step-level events from workflow state.
+- 原始文本：只读展示，必须是用户提交的原文。
+- 生成进度：当前步骤、进度计数、开始时间、最新用户可读错误。
+- Panels：按顺序展示 panel 编号、原始片段文本、生成 prompt、状态和图片结果。
+- 图片：生成图片网格，展示 panel 编号、状态和预览操作。
+- 活动记录：来自工作流步骤状态的事件轨迹。
 
-States:
+状态：
 
-- Queued: show waiting state and allow cancellation.
-- Segmenting: show LLM segmentation step.
-- Prompting: show prompt generation step.
-- Generating images: show per-panel progress.
-- Succeeded: show all images and download action.
-- Partial succeeded: show successful images, failed panels, and retry action where valid.
-- Failed: show user-safe error and retry eligibility.
-- Cancel requested: show that cancellation is pending.
-- Cancelled: show preserved completed outputs and no automatic retry.
+- `queued`：展示等待状态，允许取消。
+- `segmenting`：展示 LLM 正在切分故事。
+- `prompting`：展示正在生成生图 prompt。
+- `generating images`：展示按 panel 生成图片的进度。
+- `succeeded`：展示全部图片和下载操作。
+- `partial_succeeded`：展示成功图片、失败 panel 和可用重试操作。
+- `failed`：展示用户可读错误和是否可重试。
+- `cancel_requested`：展示取消请求已提交。
+- `cancelled`：保留已完成输出，不自动重试。
 
-Behavior:
+交互规则：
 
-- Auto-refresh while task is active, with visible refresh state.
-- Do not hide failed panels.
-- Do not overwrite the original story text with panel text or generated prompts.
-- Generated prompts are visible for debugging and future edit/retry decisions, but editing prompts is not part of the first design.
+- 任务活跃时自动刷新，并显示刷新状态。
+- 失败 panel 不隐藏。
+- 不用 panel 文本或生成 prompt 覆盖原始故事。
+- 第一版中生成 prompt 可查看但不可编辑；后续若要支持编辑，需要单独设计。
 
-## Image Preview Dialog
+## 图片预览弹窗
 
-Triggered by selecting an image.
+由点击图片触发。
 
-Required behavior:
+要求：
 
-- Dialog traps focus and restores focus to the triggering image when closed.
-- Large image preview with panel number and prompt summary.
-- Actions: `Download image`, `Open original`, `Close`.
-- Keyboard: `Escape` closes; arrow keys move to previous/next image when multiple images exist.
-- The preview chrome must not distort or recolor generated images.
+- 弹窗打开后锁定焦点，关闭后焦点回到触发图片。
+- 展示大图预览、panel 编号和 prompt 摘要。
+- 操作：`下载图片`、`打开原图`、`关闭`。
+- 键盘：`Escape` 关闭；存在多张图片时，方向键切换上一张/下一张。
+- 预览外框不得改变、反色或扭曲生成图片。
 
-## Batch Download
+## 批量下载
 
-Preferred behavior:
+优先行为：
 
-- One `Download images` action creates a compressed archive containing all available generated images.
-- Archive naming: `doodlestory-task-{task_id}.zip`.
-- File naming inside archive: `panel-{panel_order}-{image_id}.{ext}`.
+- `下载图片` 一次性生成包含所有可用图片的压缩包。
+- 压缩包命名：`doodlestory-task-{task_id}.zip`。
+- 压缩包内文件命名：`panel-{panel_order}-{image_id}.{ext}`。
 
-Interaction:
+交互：
 
-- If archive preparation is immediate, start the download directly.
-- If archive preparation is asynchronous, create a download workflow with visible progress.
-- If no images exist, disable `Download images` with an explanation.
-- If some panels failed, the action label remains `Download images`, and the confirmation states how many images will be included.
+- 如果压缩包可以即时生成，直接开始下载。
+- 如果需要异步打包，创建下载任务并展示进度。
+- 没有图片时禁用 `下载图片`，并说明原因。
+- 如果部分 panel 失败，按钮仍叫 `下载图片`，确认文案说明会包含多少张图片。
 
-## Style List
+## 风格列表
 
-Purpose: manage reusable visual styles.
+用途：管理可复用视觉风格。
 
-Layout:
+布局：
 
-- Page title: `Styles`
-- Primary action: `Create style`
-- Search: name and description
-- Filters: model, status
-- Sort: updated newest by default
-- Cards or table:
-  - Reference thumbnail
-  - Name
-  - Bound model
-  - Status
-  - Last tested time
-  - Updated time
+- 页面标题：`风格`
+- 主操作：`创建风格`
+- 搜索：名称和描述
+- 筛选：模型、状态
+- 排序：默认按更新时间倒序
+- 卡片或表格字段：
+  - 参考图缩略图
+  - 名称
+  - 绑定模型
+  - 状态
+  - 最近测试时间
+  - 更新时间
 
-Cards are acceptable here because styles have visual reference images.
+风格有视觉参考图，因此这里可以使用卡片。若列表需要强比较，也可以切换为表格。
 
-States:
+状态：
 
-- Loading, empty, no results, and error states are required.
-- Server-backed pagination is required when styles can grow beyond a small fixed set.
+- 必须包含加载、空状态、无结果和错误状态。
+- 当风格数量可能增长时，必须使用服务端分页。
 
-## Create And Edit Style
+## 创建和编辑风格
 
-Fields:
+字段：
 
-- Name: required.
-- Description: optional.
-- Status: draft or active.
-- Bound image model: required.
-- Style prompt: required multiline textarea.
-- Reference images: optional multiple upload.
+- 名称：必填。
+- 描述：选填。
+- 状态：草稿或启用。
+- 绑定图片模型：必填。
+- 风格提示词：必填，多行文本框。
+- 参考图片：选填，支持多图上传。
 
-Rules:
+规则：
 
-- Style prompt is saved as authored.
-- Bound model is explicit and visible near the style prompt.
-- Removing a reference image requires confirmation if the image is already used by a saved style.
-- Deleting a style requires confirmation and must be blocked if active tasks still reference it, unless a later product decision defines archival behavior.
+- 风格提示词按作者输入保存。
+- 绑定模型在风格提示词附近明确展示。
+- 删除已保存的参考图需要确认。
+- 如果已有任务引用某个风格，删除该风格应被阻止；除非后续产品明确设计归档策略。
 
-Primary actions:
+主操作：
 
-- `Create style`
-- `Save style`
+- `创建风格`
+- `保存风格`
 
-Secondary actions:
+次操作：
 
-- `Cancel`
-- `Test style`
+- `取消`
+- `测试风格`
 
-## Style Detail And Test Panel
+## 风格详情和测试面板
 
-Style detail shows:
+风格详情展示：
 
-- Name, status, bound model, description.
-- Reference image gallery.
-- Style prompt.
-- Recent style tests.
-- Linked tasks using the style.
+- 名称、状态、绑定模型、描述。
+- 参考图片画廊。
+- 风格提示词。
+- 最近风格测试记录。
+- 使用该风格的任务。
 
-Style test panel:
+风格测试面板：
 
-- Test text: required textarea.
-- Read-only composed prompt preview:
-  - Test text
-  - Style prompt
-  - Bound model
-- Primary action: `Generate test image`
-- Result area: latest test image, status, error, and timestamps.
+- 测试文本：必填文本框。
+- 只读组合 prompt 预览：
+  - 测试文本
+  - 风格提示词
+  - 绑定模型
+- 主操作：`生成测试图`
+- 结果区域：最近测试图、状态、错误和时间。
 
-Rules:
+规则：
 
-- Testing uses the style's bound model only.
-- Testing must not silently switch models.
-- Failure shows the provider or validation error in user-safe language and stores internal details separately.
+- 风格测试只能使用该风格绑定的模型。
+- 不能静默切换模型。
+- 失败时用用户可读语言展示 provider 或校验错误，内部细节另存。
 
-## Image Model Management
+## 图片模型管理
 
-Model fields:
+模型字段：
 
-- Display name.
-- Provider key.
-- Model key.
-- Status: active or disabled.
-- Default parameters as structured configuration.
-- Notes.
+- 展示名称。
+- Provider key。
+- Model key。
+- 状态：启用或禁用。
+- 默认参数，使用结构化配置。
+- 备注。
 
-Rules:
+规则：
 
-- Disabled models cannot be selected for new styles.
-- Existing styles bound to a disabled model show a warning.
-- Deleting a model is blocked when styles reference it. Prefer disabling over deletion.
+- 禁用模型不能被新风格选择。
+- 绑定了禁用模型的既有风格展示警告。
+- 如果模型被风格引用，删除应被阻止。优先使用禁用而不是删除。
 
-## Accessibility And Theme
+## 可访问性和主题
 
-- All forms use labels, help text, and visible focus states.
-- Dialogs follow accessible focus management.
-- Icon-only actions need accessible names and tooltips.
-- Status is communicated with text plus color or icon, never color alone.
-- Support `System`, `Light`, and `Dark` display modes when frontend implementation starts.
-- Generated images are never theme-inverted.
+- 所有表单都有 label、辅助说明和可见焦点态。
+- 弹窗遵循可访问焦点管理。
+- 纯图标操作必须有 accessible name 和 tooltip。
+- 状态不能只靠颜色表达，必须有文本或图标辅助。
+- 前端实现时支持 `跟随系统`、`浅色`、`深色`。
+- 生成图片不得被主题模式反色或重新着色。

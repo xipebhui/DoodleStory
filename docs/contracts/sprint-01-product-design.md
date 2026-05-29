@@ -1,60 +1,60 @@
-# Sprint 01 Contract: Product UI, API, And Database Design
+# Sprint 01 合同：产品 UI、API 与数据库设计
 
-## Goal
+## 目标
 
-Design DoodleStory's first product shape across UI workflows, backend REST API contracts, and relational database schema so implementation can begin from a documented, harness-compliant plan.
+设计 DoodleStory 第一版产品形态，覆盖 UI 工作流、后端 REST API 契约和关系型数据库 schema，让后续实现可以从清晰、符合 harness 规范的方案开始。
 
-## In Scope
+## 范围内
 
-- Define the primary UI screens and interaction states for styles, style testing, tasks, generation progress, image preview, and batch download.
-- Define backend API resources, request/response shapes, pagination rules, and workflow endpoints.
-- Define an initial relational database schema for styles, model bindings, assets, tasks, panels, generated prompts, generated images, and workflow state.
-- Keep the workflow design small: in-process queue plus database-backed task state.
-- Update project spec, progress, and QA notes.
+- 定义风格、风格测试、任务、生成进度、图片预览和批量下载的主要 UI 页面与交互状态。
+- 定义后端 API 资源、请求/响应结构、分页规则和工作流接口。
+- 定义风格、模型绑定、资产、任务、panel、生成 prompt、生成图片和工作流状态的初始关系型数据库 schema。
+- 保持轻量工作流设计：进程内队列 + 数据库持久化任务状态。
+- 更新项目规格、进度和 QA 记录。
 
-## Out of Scope
+## 范围外
 
-- Implementing frontend or backend code.
-- Selecting a concrete framework, ORM, or cloud provider.
-- Integrating a real LLM or image model provider.
-- Adding authentication, billing, teams, or permissions.
-- Introducing Redis, RabbitMQ, Kafka, Temporal, Inngest, or another external workflow engine.
+- 实现前端或后端代码。
+- 选择具体框架、ORM 或云服务商。
+- 接入真实 LLM 或图片生成模型 provider。
+- 增加登录、计费、团队或权限系统。
+- 引入 Redis、RabbitMQ、Kafka、Temporal、Inngest 或其他外部工作流引擎。
 
-## Deliverables
+## 交付物
 
 - `docs/design/README.md`
 - `docs/design/ui.md`
 - `docs/design/api.md`
 - `docs/design/database.md`
 - `docs/qa/sprint-01-product-design-report.md`
-- Updates to `docs/spec.md` and `docs/progress.md`
+- 更新 `docs/spec.md` 和 `docs/progress.md`
 
-## Done Means
+## 完成标准
 
-- Future implementation work can start from clear product screens, API contracts, and schema notes.
-- The design preserves the original user text exactly.
-- The task workflow stores progress, step state, errors, and generated asset references in the database.
-- Dynamic lists use bounded server-side pagination.
-- Verification has been run through `./scripts/check.sh`.
+- 后续实现可以从明确的产品页面、API 契约和 schema 说明开始。
+- 设计明确要求原样保存用户原始文本。
+- 任务流程在数据库中保存进度、步骤状态、错误和生成资产引用。
+- 动态列表使用服务端有界分页。
+- 已运行 `./scripts/check.sh` 验证。
 
-## Verification
+## 验证
 
 ```bash
 ./scripts/check.sh
 ```
 
-Manual or QA checks:
+人工/QA 检查：
 
-- Confirm UI design includes list, create, detail, edit, loading, empty, error, destructive, and preview states.
-- Confirm API list endpoints enforce `limit` and do not return full detail payloads.
-- Confirm database design includes constraints, indexes, and persisted workflow state.
-- Confirm no default fallback, mock, or silent error strategy has been introduced.
+- 确认 UI 设计包含列表、创建、详情、编辑、加载、空状态、错误、删除确认和图片预览状态。
+- 确认 API 列表接口强制 `limit`，且不返回完整详情负载。
+- 确认数据库设计包含约束、索引和持久化工作流状态。
+- 确认没有引入默认兜底、Mock 或静默忽略错误策略。
 
-## Risks / Notes
+## 风险 / 备注
 
-- Provider-specific fields may need adjustment after the first LLM and image-generation providers are selected.
-- Authentication is intentionally left out until the user requests it or a multi-user product requirement appears.
+- 具体 provider 的字段需要在选择第一版 LLM 和图片生成 provider 后调整。
+- 登录和数据归属暂时不纳入第一版设计，除非用户后续明确要求。
 
-## Handoff
+## 交接
 
-- Next likely step: choose a concrete stack and create an implementation sprint for the app skeleton.
+- 下一步建议：选择具体技术栈，并创建应用骨架实现 sprint。

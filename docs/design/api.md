@@ -1,27 +1,27 @@
-# Backend API Design
+# 后端 API 设计
 
-## Scope
+## 范围
 
-This API design uses REST resources and JSON payloads. It does not select a concrete web framework.
+本设计使用 REST 资源和 JSON 负载，不绑定具体 Web 框架。
 
-All dynamic list endpoints must enforce a default `limit` and a maximum `limit`. List responses return summary fields only. Detail endpoints return full object data and bounded child collections.
+所有动态列表接口必须强制默认 `limit` 和最大 `limit`。列表响应只返回摘要字段；详情接口返回完整对象和有界子集合。
 
-## Common Rules
+## 通用规则
 
-Base path:
+基础路径：
 
 ```text
 /api/v1
 ```
 
-Pagination query parameters:
+分页查询参数：
 
-- `limit`: default `20`, maximum `100`.
-- `cursor`: opaque cursor for cursor-paginated lists.
-- `sort`: allowed endpoint-specific sort key.
-- `direction`: `asc` or `desc`.
+- `limit`：默认 `20`，最大 `100`。
+- `cursor`：不透明游标。
+- `sort`：接口允许的排序字段。
+- `direction`：`asc` 或 `desc`。
 
-List response shape:
+列表响应结构：
 
 ```json
 {
@@ -34,42 +34,42 @@ List response shape:
 }
 ```
 
-Error response shape:
+错误响应结构：
 
 ```json
 {
   "error": {
     "code": "validation_failed",
-    "message": "Some fields need attention.",
+    "message": "部分字段需要修正。",
     "fields": {
-      "original_text": "Original text is required."
+      "original_text": "原始文本不能为空。"
     },
     "request_id": "req_..."
   }
 }
 ```
 
-Error handling:
+错误处理：
 
-- Return user-safe messages in `message`.
-- Store internal provider details in database fields or logs, not in public API payloads.
-- Do not silently ignore failed provider calls.
-- Do not return mock generation results when providers are unavailable.
+- `message` 返回用户可读信息。
+- 内部 provider 细节存入数据库字段或日志，不直接暴露在公开 API 中。
+- provider 调用失败不能静默忽略。
+- provider 不可用时不能返回 Mock 生成结果。
 
-## Image Models
+## 图片模型
 
-### List Models
+### 查询模型列表
 
 ```http
 GET /api/v1/image-models?status=active&limit=20&cursor=...
 ```
 
-Summary item:
+摘要项：
 
 ```json
 {
   "id": "model_...",
-  "display_name": "Example Image Model",
+  "display_name": "示例图片模型",
   "provider_key": "provider",
   "model_key": "model-name",
   "status": "active",
@@ -77,67 +77,67 @@ Summary item:
 }
 ```
 
-### Create Model
+### 创建模型
 
 ```http
 POST /api/v1/image-models
 ```
 
-Request:
+请求：
 
 ```json
 {
-  "display_name": "Example Image Model",
+  "display_name": "示例图片模型",
   "provider_key": "provider",
   "model_key": "model-name",
   "default_parameters": {
     "size": "1024x1024"
   },
-  "notes": "Used for story illustration styles."
+  "notes": "用于故事插画风格。"
 }
 ```
 
-Response: `201 Created` with model detail.
+响应：`201 Created`，返回模型详情。
 
-### Get Model
+### 获取模型详情
 
 ```http
 GET /api/v1/image-models/{model_id}
 ```
 
-### Update Model
+### 更新模型
 
 ```http
 PATCH /api/v1/image-models/{model_id}
 ```
 
-### Disable Model
+### 禁用模型
 
 ```http
 POST /api/v1/image-models/{model_id}/disable
 ```
 
-Disabling preserves existing references. New styles cannot bind to disabled models.
+禁用会保留既有引用。新风格不能绑定禁用模型。
 
-## Styles
+## 风格
 
-### List Styles
+### 查询风格列表
 
 ```http
 GET /api/v1/styles?query=&status=active&image_model_id=&limit=20&cursor=...
 ```
 
-Summary item:
+摘要项：
 
 ```json
 {
   "id": "style_...",
-  "name": "Watercolor Storybook",
-  "description": "Soft illustrated watercolor scenes.",
+  "name": "水彩故事书",
+  "description": "柔和水彩插画场景。",
   "status": "active",
   "image_model": {
     "id": "model_...",
-    "display_name": "Example Image Model"
+    "display_name": "示例图片模型"
   },
   "thumbnail_asset": {
     "id": "asset_...",
@@ -148,101 +148,101 @@ Summary item:
 }
 ```
 
-### Create Style
+### 创建风格
 
 ```http
 POST /api/v1/styles
 ```
 
-Request:
+请求：
 
 ```json
 {
-  "name": "Watercolor Storybook",
-  "description": "Soft illustrated watercolor scenes.",
+  "name": "水彩故事书",
+  "description": "柔和水彩插画场景。",
   "status": "draft",
   "image_model_id": "model_...",
-  "style_prompt": "Use soft watercolor textures, gentle outlines, and warm storybook lighting.",
+  "style_prompt": "使用柔和水彩质感、温和描边和温暖故事书光线。",
   "reference_asset_ids": ["asset_..."]
 }
 ```
 
-Validation:
+校验：
 
-- `name`, `image_model_id`, and `style_prompt` are required.
-- `image_model_id` must reference an active image model.
+- `name`、`image_model_id`、`style_prompt` 必填。
+- `image_model_id` 必须指向启用状态的图片模型。
 
-### Get Style
+### 获取风格详情
 
 ```http
 GET /api/v1/styles/{style_id}
 ```
 
-Detail includes full `style_prompt`, reference images, bound model detail, recent tests, and usage summary.
+详情包含完整 `style_prompt`、参考图片、绑定模型详情、最近测试记录和使用摘要。
 
-### Update Style
+### 更新风格
 
 ```http
 PATCH /api/v1/styles/{style_id}
 ```
 
-Changing `image_model_id` affects future style tests and future tasks. Existing tasks keep the model snapshot recorded at task creation.
+修改 `image_model_id` 只影响未来风格测试和未来任务。已有任务保留创建时的模型快照。
 
-### Delete Style
+### 删除风格
 
 ```http
 DELETE /api/v1/styles/{style_id}
 ```
 
-Deletion is blocked when tasks reference the style. A later archival flow may replace hard deletion if needed.
+当已有任务引用该风格时阻止删除。后续如需要可改为归档流程。
 
-### Upload Style Reference Image
+### 上传风格参考图
 
 ```http
 POST /api/v1/styles/{style_id}/reference-images
 Content-Type: multipart/form-data
 ```
 
-Response includes the created asset and style reference record.
+响应包含创建的资产和风格参考图记录。
 
-### Remove Style Reference Image
+### 移除风格参考图
 
 ```http
 DELETE /api/v1/styles/{style_id}/reference-images/{reference_id}
 ```
 
-## Style Tests
+## 风格测试
 
-### Create Style Test
+### 创建风格测试
 
 ```http
 POST /api/v1/styles/{style_id}/tests
 ```
 
-Request:
+请求：
 
 ```json
 {
-  "test_text": "A little fox stands under a glowing streetlamp."
+  "test_text": "一只小狐狸站在发光的路灯下。"
 }
 ```
 
-Behavior:
+行为：
 
-- Load the style and its bound image model.
-- Compose the test prompt from `test_text` and `style_prompt`.
-- Create a `style_tests` row with `queued` status.
-- Enqueue the style test ID in the in-process queue.
-- Return the test record.
+- 加载风格和绑定图片模型。
+- 将 `test_text` 与 `style_prompt` 组合为测试 prompt。
+- 创建 `style_tests` 记录，状态为 `queued`。
+- 将风格测试 ID 放入进程内队列。
+- 返回测试记录。
 
-Response: `202 Accepted`
+响应：`202 Accepted`
 
 ```json
 {
   "id": "styletest_...",
   "style_id": "style_...",
   "status": "queued",
-  "test_text": "A little fox stands under a glowing streetlamp.",
+  "test_text": "一只小狐狸站在发光的路灯下。",
   "image_model_snapshot": {
     "id": "model_...",
     "provider_key": "provider",
@@ -252,33 +252,33 @@ Response: `202 Accepted`
 }
 ```
 
-### Get Style Test
+### 获取风格测试
 
 ```http
 GET /api/v1/style-tests/{style_test_id}
 ```
 
-## Tasks
+## 任务
 
-### List Tasks
+### 查询任务列表
 
 ```http
 GET /api/v1/tasks?query=&status=&style_id=&limit=20&cursor=...
 ```
 
-Summary item:
+摘要项：
 
 ```json
 {
   "id": "task_...",
-  "display_title": "The rabbit found a lantern...",
+  "display_title": "兔子找到了一盏灯...",
   "status": "running",
   "current_step": "generate_images",
   "progress_current": 2,
   "progress_total": 6,
   "style": {
     "id": "style_...",
-    "name": "Watercolor Storybook"
+    "name": "水彩故事书"
   },
   "requested_image_count": null,
   "image_count_mode": "auto",
@@ -288,13 +288,13 @@ Summary item:
 }
 ```
 
-### Create Task
+### 创建任务
 
 ```http
 POST /api/v1/tasks
 ```
 
-Request:
+自动数量请求：
 
 ```json
 {
@@ -305,7 +305,7 @@ Request:
 }
 ```
 
-Fixed count request:
+固定数量请求：
 
 ```json
 {
@@ -316,111 +316,111 @@ Fixed count request:
 }
 ```
 
-Behavior:
+行为：
 
-- Save `original_text` exactly as received.
-- Snapshot the selected style prompt and bound image model onto the task.
-- Create task with `queued` status.
-- Enqueue task ID in the in-process queue.
-- Return `202 Accepted` with task detail.
+- 按收到的内容原样保存 `original_text`。
+- 将选中风格的提示词和绑定图片模型快照保存到任务。
+- 创建状态为 `queued` 的任务。
+- 将任务 ID 放入进程内队列。
+- 返回 `202 Accepted` 和任务详情。
 
-Validation:
+校验：
 
-- `original_text` is required.
-- `style_id` must reference an active style.
-- Fixed mode requires a valid positive `requested_image_count`.
-- Auto mode requires `requested_image_count` to be null.
+- `original_text` 必填。
+- `style_id` 必须指向启用风格。
+- 固定数量模式必须提供有效正整数 `requested_image_count`。
+- 自动模式要求 `requested_image_count` 为 `null`。
 
-### Get Task
+### 获取任务详情
 
 ```http
 GET /api/v1/tasks/{task_id}
 ```
 
-Detail includes:
+详情包含：
 
-- exact original text
-- style snapshot
-- task status and progress
-- ordered panels
-- generated prompts
-- generated images
-- step activity
-- user-safe error state
+- 精确原始文本
+- 风格快照
+- 任务状态和进度
+- 有序 panels
+- 生成 prompts
+- 生成图片
+- 步骤活动记录
+- 用户可读错误状态
 
-### Cancel Task
+### 取消任务
 
 ```http
 POST /api/v1/tasks/{task_id}/cancel
 ```
 
-Behavior:
+行为：
 
-- Set `cancel_requested_at`.
-- Transition to `cancel_requested` when current state allows cancellation.
-- Worker checks cancellation at step boundaries.
+- 设置 `cancel_requested_at`。
+- 当前状态允许取消时切换为 `cancel_requested`。
+- worker 在步骤边界检查取消状态。
 
-### Retry Task
+### 重试任务
 
 ```http
 POST /api/v1/tasks/{task_id}/retry
 ```
 
-Only valid for failed or partial states with retryable failed steps. Retries must reuse persisted panels and completed outputs when safe.
+只允许失败或部分成功且存在可重试失败步骤的任务。重试必须复用已持久化的 panels 和已完成输出，避免重复副作用。
 
-### Delete Task
+### 删除任务
 
 ```http
 DELETE /api/v1/tasks/{task_id}
 ```
 
-Deletion requires confirmation in the UI. The first design may hard-delete only when no provider-side cleanup is required. If provider cleanup becomes necessary, replace this with archival or explicit cleanup design before implementation.
+UI 必须要求确认。第一版仅在不需要 provider 侧清理时允许硬删除；如果后续需要清理外部资产，应先重新设计归档或显式清理流程。
 
 ## Panels
 
-Panels are created by the task workflow and are not created directly by users in the first design.
+Panels 由任务工作流创建，第一版不允许用户直接创建。
 
-### List Task Panels
+### 查询任务 Panels
 
 ```http
 GET /api/v1/tasks/{task_id}/panels
 ```
 
-The list is bounded by the task's panel count and ordered by `panel_order`.
+该列表受任务 panel 数量天然限制，并按 `panel_order` 排序。
 
-### Get Panel
+### 获取 Panel
 
 ```http
 GET /api/v1/panels/{panel_id}
 ```
 
-## Generated Images
+## 生成图片
 
-### Get Image Metadata
+### 获取图片元数据
 
 ```http
 GET /api/v1/generated-images/{image_id}
 ```
 
-### Download Single Image
+### 下载单张图片
 
 ```http
 GET /api/v1/generated-images/{image_id}/download
 ```
 
-### Create Batch Download
+### 创建批量下载
 
 ```http
 POST /api/v1/tasks/{task_id}/downloads
 ```
 
-Behavior:
+行为：
 
-- If archive creation is immediate, return a download URL.
-- If archive creation needs a background task, return `202 Accepted` with download job status.
-- The first implementation should prefer direct archive creation for small task image counts.
+- 若压缩包可即时创建，返回下载 URL。
+- 若需要后台打包，返回 `202 Accepted` 和下载任务状态。
+- 第一版在任务图片数量较小时优先直接创建压缩包。
 
-Response:
+响应：
 
 ```json
 {
@@ -433,38 +433,38 @@ Response:
 }
 ```
 
-## Assets
+## 资产
 
-Assets represent uploaded reference images, generated images, and generated archives.
+资产表示上传参考图、生成图片和生成压缩包。
 
-### Upload Asset
+### 上传资产
 
 ```http
 POST /api/v1/assets
 Content-Type: multipart/form-data
 ```
 
-Allowed initial purposes:
+第一版允许直接上传的用途：
 
 - `style_reference`
 
-Generated image and archive assets are created by workflows, not direct upload.
+生成图片和下载压缩包由工作流创建，不通过直接上传创建。
 
-### Get Asset Metadata
+### 获取资产元数据
 
 ```http
 GET /api/v1/assets/{asset_id}
 ```
 
-### Get Asset Content
+### 获取资产内容
 
 ```http
 GET /api/v1/assets/{asset_id}/content
 ```
 
-## Workflow Statuses
+## 工作流状态
 
-Task statuses:
+任务状态：
 
 - `queued`
 - `running`
@@ -475,14 +475,14 @@ Task statuses:
 - `cancelled`
 - `retrying`
 
-Task steps:
+任务步骤：
 
 - `segment_story`
 - `generate_panel_prompts`
 - `generate_images`
 - `package_download`
 
-Style test statuses:
+风格测试状态：
 
 - `queued`
 - `running`
@@ -492,8 +492,8 @@ Style test statuses:
 - `cancelled`
 - `retrying`
 
-Provider errors:
+Provider 错误规则：
 
-- Permanent validation errors are not retried.
-- Transient provider failures may retry with bounded attempts.
-- User cancellation is never retried automatically.
+- 永久性校验错误不重试。
+- 临时 provider 失败可以在次数上限内重试。
+- 用户取消的任务永不自动重试。
