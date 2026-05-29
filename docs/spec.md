@@ -64,11 +64,11 @@ The product must preserve the user's original text. LLM calls may segment the te
 
 ## Technical Shape
 
-- Frontend: not selected yet.
-- Backend: not selected yet.
-- Storage: not selected yet, but task state, panels, prompts, style records, model bindings, and generated image metadata will need persistence.
+- Frontend: concrete framework not selected yet. Product UI design is documented in `docs/design/ui.md`.
+- Backend: concrete framework not selected yet. Initial REST API design is documented in `docs/design/api.md`.
+- Storage: relational OLTP database design is documented in `docs/design/database.md`.
 - External integrations: LLM provider and image-generation model provider are not selected yet.
-- Background workflow: image generation is likely asynchronous. For small initial scope, follow `docs/standards/backend-workflows.md`: in-process queue plus database-backed task state unless a stronger workflow system is explicitly justified and approved.
+- Background workflow: image generation is asynchronous and starts as a small workflow: in-process queue plus database-backed task state.
 - Standards: markdown guidance under `docs/standards/` for Python, Java, database design, backend workflows, frontend work, UI interaction, and reusable modules.
 
 ## Constraints
@@ -93,6 +93,6 @@ The primary acceptance flow is: define a sprint, implement within that sprint, r
 
 - Which frontend and backend stack should DoodleStory use?
 - Which LLM provider and image-generation provider should be integrated first?
-- What metadata is required for a style beyond name, reference images, prompt, and model binding?
+- What metadata is required for a style beyond name, description, reference images, prompt, status, and model binding?
 - Should generated panel prompts be editable before image generation, or only visible for debugging?
 - What image formats and naming conventions should batch download use?

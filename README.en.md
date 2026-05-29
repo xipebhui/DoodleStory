@@ -19,6 +19,7 @@ Read these first before substantial implementation work:
 
 - [Project Spec](docs/spec.md)
 - [Progress Log](docs/progress.md)
-- [Active Sprint Contract](docs/contracts/sprint-00-harness-adaptation.md)
+- [Active Sprint Contract](docs/contracts/sprint-01-product-design.md)
+- [Product Design](docs/design/README.md)
 - [Development Standards](docs/standards/)
 - [Reference: Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

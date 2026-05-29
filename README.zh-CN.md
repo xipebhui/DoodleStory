@@ -19,6 +19,7 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 
 - [项目规格](docs/spec.md)
 - [进度记录](docs/progress.md)
-- [当前 Sprint 合同](docs/contracts/sprint-00-harness-adaptation.md)
+- [当前 Sprint 合同](docs/contracts/sprint-01-product-design.md)
+- [产品设计](docs/design/README.md)
 - [开发规范](docs/standards/)
 - [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

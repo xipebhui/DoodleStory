@@ -9,7 +9,7 @@
 
 ## Active Contract
 
-- `docs/contracts/sprint-00-harness-adaptation.md`
+- `docs/contracts/sprint-01-product-design.md`
 
 ## Latest Completed Work
 
@@ -25,15 +25,21 @@
   - story segmentation into panels
   - panel prompt generation with style constraints
   - image generation, preview enlargement, and batch download
+- Designed the first product UI, backend API, and database schema:
+  - `docs/design/ui.md`
+  - `docs/design/api.md`
+  - `docs/design/database.md`
+- Added QA notes for the product design sprint.
 
 ## Verification Evidence
 
 - `./scripts/check.sh` passed after harness adaptation.
+- `./scripts/check.sh` passed after product design documentation.
 
 ## Known Gaps
 
 - No application stack has been selected yet.
-- No frontend, backend, database schema, or provider integration exists yet.
+- No frontend, backend, concrete migration files, or provider integration exists yet.
 - LLM segmentation prompt and panel prompt-generation prompt still need to be designed and tested.
 - Image model provider, storage strategy, and generated-image download format are not yet selected.
 - Existing standards are documentation-only until a concrete stack is introduced.
@@ -41,6 +47,6 @@
 ## Recommended Next Steps
 
 1. Choose the first implementation stack and create a sprint contract for the application skeleton.
-2. Define initial data model for styles, style reference images, tasks, panels, generated prompts, and generated images.
-3. Specify the exact LLM prompts for segmentation and panel prompt generation.
-4. Select the first LLM provider and image-generation provider.
+2. Select the first LLM provider and image-generation provider.
+3. Specify and test the exact LLM prompts for segmentation and panel prompt generation.
+4. Convert `docs/design/database.md` into migrations after the database tool is selected.
