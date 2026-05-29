@@ -56,75 +56,94 @@
 - provider 调用失败不能静默忽略。
 - provider 不可用时不能返回 Mock 生成结果。
 
-## 图片模型
+## 认证和用户
 
-### 查询模型列表
-
-```http
-GET /api/v1/image-models?status=active&limit=20&cursor=...
-```
-
-摘要项：
-
-```json
-{
-  "id": "model_...",
-  "display_name": "示例图片模型",
-  "provider_key": "provider",
-  "model_key": "model-name",
-  "status": "active",
-  "updated_at": "2026-05-29T15:00:00Z"
-}
-```
-
-### 创建模型
+### 注册
 
 ```http
-POST /api/v1/image-models
+POST /api/v1/auth/register
 ```
 
 请求：
 
 ```json
 {
-  "display_name": "示例图片模型",
-  "provider_key": "provider",
-  "model_key": "model-name",
-  "default_parameters": {
-    "size": "1024x1024"
-  },
-  "notes": "用于故事插画风格。"
+  "email": "user@example.com",
+  "password": "strong-password",
+  "display_name": "创作者"
 }
 ```
 
-响应：`201 Created`，返回模型详情。
+行为：
 
-### 获取模型详情
+- 创建普通用户，角色为 `user`。
+- 如果所选认证模块支持邮箱验证，则发送验证邮件。
+- 不在注册接口里创建任何示例任务或 Mock 数据。
 
-```http
-GET /api/v1/image-models/{model_id}
-```
-
-### 更新模型
+### 登录
 
 ```http
-PATCH /api/v1/image-models/{model_id}
+POST /api/v1/auth/login
 ```
 
-### 禁用模型
+请求：
+
+```json
+{
+  "email": "user@example.com",
+  "password": "strong-password"
+}
+```
+
+响应包含当前用户摘要和会话建立结果。具体 session/cookie/token 形态由后续技术栈决定。
+
+### 退出登录
 
 ```http
-POST /api/v1/image-models/{model_id}/disable
+POST /api/v1/auth/logout
 ```
 
-禁用会保留既有引用。新风格不能绑定禁用模型。
+### 当前用户
+
+```http
+GET /api/v1/auth/me
+```
+
+响应：
+
+```json
+{
+  "id": "user_...",
+  "email": "user@example.com",
+  "display_name": "创作者",
+  "role": "user"
+}
+```
+
+### 找回密码
+
+```http
+POST /api/v1/auth/password-reset/request
+POST /api/v1/auth/password-reset/confirm
+```
+
+第一版使用所选认证模块提供的邮箱找回密码能力，不手写密码重置 token 机制。
+
+## 权限规则
+
+- 未登录用户不能访问任务、风格、风格测试、资产内容和下载接口。
+- 普通用户只能查询、查看、取消、重试和下载自己创建的任务。
+- Admin 可以查询和查看所有用户的任务。
+- 第一版不做组织、团队、项目空间或租户隔离。
+- 风格管理暂定为登录用户可见；如果后续需要限制风格维护权限，应新增明确的 admin-only 规则。
+- 服务端必须在每个任务详情、panel、图片和下载接口校验任务归属，不能只依赖前端隐藏。
 
 ## 风格
 
 ### 查询风格列表
 
 ```http
-GET /api/v1/styles?query=&status=active&image_model_id=&limit=20&cursor=...
+GET /api/v1/styles?query=&status=active&limit=20&cursor=...
 ```
 
 摘要项：
@@ -135,9 +154,9 @@ GET /api/v1/styles?query=&status=active&image_model_id=&limit=20&cursor=...
   "name": "水彩故事书",
   "description": "柔和水彩插画场景。",
   "status": "active",
-  "image_model": {
-    "id": "model_...",
-    "display_name": "示例图片模型"
+  "image_model_config": {
+    "provider_key": "provider",
+    "model_key": "model-name"
   },
   "thumbnail_asset": {
     "id": "asset_...",
@@ -161,7 +180,11 @@ POST /api/v1/styles
   "name": "水彩故事书",
   "description": "柔和水彩插画场景。",
   "status": "draft",
-  "image_model_id": "model_...",
+  "image_provider_key": "provider",
+  "image_model_key": "model-name",
+  "image_model_parameters": {
+    "size": "1024x1024"
+  },
   "style_prompt": "使用柔和水彩质感、温和描边和温暖故事书光线。",
   "reference_asset_ids": ["asset_..."]
 }
@@ -169,8 +192,8 @@ POST /api/v1/styles
 
 校验：
 
-- `name`、`image_model_id`、`style_prompt` 必填。
-- `image_model_id` 必须指向启用状态的图片模型。
+- `name`、`image_provider_key`、`image_model_key`、`style_prompt` 必填。
+- 模型配置是风格的一部分，不通过独立图片模型模块选择。
 
 ### 获取风格详情
 
@@ -178,7 +201,7 @@ POST /api/v1/styles
 GET /api/v1/styles/{style_id}
 ```
 
-详情包含完整 `style_prompt`、参考图片、绑定模型详情、最近测试记录和使用摘要。
+详情包含完整 `style_prompt`、参考图片、图片模型配置、最近测试记录和使用摘要。
 
 ### 更新风格
 
@@ -186,7 +209,7 @@ GET /api/v1/styles/{style_id}
 PATCH /api/v1/styles/{style_id}
 ```
 
-修改 `image_model_id` 只影响未来风格测试和未来任务。已有任务保留创建时的模型快照。
+修改图片模型配置只影响未来风格测试和未来任务。已有任务保留创建时的模型配置快照。
 
 ### 删除风格
 
@@ -229,7 +252,7 @@ POST /api/v1/styles/{style_id}/tests
 
 行为：
 
-- 加载风格和绑定图片模型。
+- 加载风格和风格内部的图片模型配置。
 - 将 `test_text` 与 `style_prompt` 组合为测试 prompt。
 - 创建 `style_tests` 记录，状态为 `queued`。
 - 将风格测试 ID 放入进程内队列。
@@ -244,7 +267,6 @@ POST /api/v1/styles/{style_id}/tests
   "status": "queued",
   "test_text": "一只小狐狸站在发光的路灯下。",
   "image_model_snapshot": {
-    "id": "model_...",
     "provider_key": "provider",
     "model_key": "model-name"
   },
@@ -263,8 +285,10 @@ GET /api/v1/style-tests/{style_test_id}
 ### 查询任务列表
 
 ```http
-GET /api/v1/tasks?query=&status=&style_id=&limit=20&cursor=...
+GET /api/v1/tasks?query=&status=&style_id=&user_id=&limit=20&cursor=...
 ```
+
+普通用户传入 `user_id` 时返回权限错误，避免静默忽略查询条件。普通用户任务列表只返回自己的任务；Admin 可以使用 `user_id` 筛选任意用户任务。
 
 摘要项：
 
@@ -272,6 +296,10 @@ GET /api/v1/tasks?query=&status=&style_id=&limit=20&cursor=...
 {
   "id": "task_...",
   "display_title": "兔子找到了一盏灯...",
+  "owner": {
+    "id": "user_...",
+    "display_name": "创作者"
+  },
   "status": "running",
   "current_step": "generate_images",
   "progress_current": 2,
@@ -319,7 +347,8 @@ POST /api/v1/tasks
 行为：
 
 - 按收到的内容原样保存 `original_text`。
-- 将选中风格的提示词和绑定图片模型快照保存到任务。
+- 将当前登录用户保存为任务 owner。
+- 将选中风格的提示词和图片模型配置快照保存到任务。
 - 创建状态为 `queued` 的任务。
 - 将任务 ID 放入进程内队列。
 - 返回 `202 Accepted` 和任务详情。
@@ -328,6 +357,7 @@ POST /api/v1/tasks
 
 - `original_text` 必填。
 - `style_id` 必须指向启用风格。
+- 必须是登录用户。
 - 固定数量模式必须提供有效正整数 `requested_image_count`。
 - 自动模式要求 `requested_image_count` 为 `null`。
 
@@ -340,6 +370,7 @@ GET /api/v1/tasks/{task_id}
 详情包含：
 
 - 精确原始文本
+- 任务 owner，Admin 可见
 - 风格快照
 - 任务状态和进度
 - 有序 panels

@@ -9,7 +9,7 @@
 ## 实体关系概要
 
 ```text
-image_models 1--N styles
+users 1--N generation_tasks
 styles 1--N style_reference_images N--1 file_assets
 styles 1--N style_tests
 styles 1--N generation_tasks
@@ -22,33 +22,54 @@ file_assets 1--N task_downloads
 
 ## 数据表
 
-### `image_models`
+### `users`
 
-保存可被风格绑定的图片模型配置。
+保存应用用户资料和最小权限角色。认证凭证、密码哈希、邮箱验证和重置 token 优先交给所选认证模块管理；本表保存业务侧用户信息。
 
 字段：
 
 - `id` 主键
-- `display_name` text not null
-- `provider_key` text not null
-- `model_key` text not null
-- `status` text not null，取值 `active`、`disabled`
-- `default_parameters` jsonb not null，默认 `{}`
-- `notes` text null
+- `email` text not null
+- `display_name` text null
+- `role` text not null，取值 `user`、`admin`
+- `auth_provider_subject` text null，保存外部/认证模块用户标识
 - `created_at` timestamptz not null
 - `updated_at` timestamptz not null
 
 约束：
 
-- `provider_key` + `model_key` 唯一。
+- `email` 唯一。
+- `role` 默认为 `user`。
 
 索引：
 
-- `idx_image_models_status_updated_at`：`status`, `updated_at desc`，用于模型列表筛选和排序。
+- `idx_users_role_created_at`：`role`, `created_at desc`，用于 Admin 用户查询。
+
+### `sessions`
+
+如果所选认证模块不自带 session 表，再创建该表；如果使用 Supabase Auth、Better Auth 等自带存储，可不创建本表，以 provider 的 session 存储为准。
+
+字段：
+
+- `id` 主键
+- `user_id` 外键到 `users.id`，not null
+- `session_token_hash` text not null
+- `expires_at` timestamptz not null
+- `created_at` timestamptz not null
+- `revoked_at` timestamptz null
+
+约束：
+
+- `session_token_hash` 唯一。
+
+索引：
+
+- `idx_sessions_user_expires_at`：`user_id`, `expires_at desc`。
+- `idx_sessions_expires_at`：`expires_at`，用于清理过期 session。
 
 ### `styles`
 
-保存可复用视觉风格及其绑定模型。
+保存可复用视觉风格及其内置图片模型配置。图片模型不作为独立业务模块存在。
 
 字段：
 
@@ -56,7 +77,9 @@ file_assets 1--N task_downloads
 - `name` text not null
 - `description` text null
 - `status` text not null，取值 `draft`、`active`、`disabled`
-- `image_model_id` 外键到 `image_models.id`，not null
+- `image_provider_key` text not null
+- `image_model_key` text not null
+- `image_model_parameters` jsonb not null，默认 `{}`
 - `style_prompt` text not null
 - `last_tested_at` timestamptz null
 - `created_at` timestamptz not null
@@ -66,11 +89,13 @@ file_assets 1--N task_downloads
 
 - `name` 唯一。
 - `style_prompt` 不能为空字符串。
+- `image_provider_key` 不能为空字符串。
+- `image_model_key` 不能为空字符串。
 
 索引：
 
 - `idx_styles_status_updated_at`：`status`, `updated_at desc`，用于风格列表。
-- `idx_styles_image_model_id`：用于模型使用检查。
+- `idx_styles_image_model_config`：`image_provider_key`, `image_model_key`，用于按模型配置排查风格。
 
 ### `file_assets`
 
@@ -162,6 +187,7 @@ file_assets 1--N task_downloads
 字段：
 
 - `id` 主键
+- `owner_user_id` 外键到 `users.id`，not null
 - `display_title` text not null
 - `original_text` text not null
 - `image_count_mode` text not null，取值 `auto`、`fixed`
@@ -198,6 +224,7 @@ file_assets 1--N task_downloads
 - `idx_generation_tasks_status_next_run_at`：`status`, `next_run_at`，用于 worker 轮询和恢复。
 - `idx_generation_tasks_status_updated_at`：`status`, `updated_at desc`，用于任务列表筛选。
 - `idx_generation_tasks_style_created_at`：`style_id`, `created_at desc`，用于风格使用情况和任务筛选。
+- `idx_generation_tasks_owner_created_at`：`owner_user_id`, `created_at desc`，用于普通用户只查询自己的任务。
 - `idx_generation_tasks_created_at`：`created_at desc`，用于任务列表默认排序。
 
 ### `generation_steps`
@@ -325,7 +352,7 @@ file_assets 1--N task_downloads
 
 任务创建：
 
-1. 插入 `generation_tasks`，保存精确 `original_text`、风格快照和模型快照。
+1. 插入 `generation_tasks`，保存 `owner_user_id`、精确 `original_text`、风格快照和模型配置快照。
 2. 插入初始 `generation_steps`，或在步骤开始时创建。
 3. 进程内队列只放入任务 ID。
 
@@ -355,23 +382,24 @@ Worker 执行：
 ## 数据完整性说明
 
 - `generation_tasks.original_text` 必须原样保存。
-- 任务和风格测试保存风格 prompt 与图片模型快照，保证风格后续编辑不影响历史审计。
+- 任务和风格测试保存风格 prompt 与图片模型配置快照，保证风格后续编辑不影响历史审计。
 - `error_message` 保存用户可读错误；`internal_error_ref` 保存内部细节引用。
 - 大型 provider 响应和原始日志不放入主工作流表。
-- 被任务或风格引用的风格/模型不应被硬删除。
+- 被任务引用的风格不应被硬删除。
+- 普通用户读取任务时必须按 `owner_user_id` 过滤；Admin 可以跨用户查询。
 
 ## 初始查询路径
 
-- 任务列表：按状态/风格筛选，并按 `created_at desc` 排序。
+- 任务列表：普通用户按 `owner_user_id`、状态、风格筛选，并按 `created_at desc` 排序；Admin 可以不加 owner 限制。
 - 任务详情：加载单个任务、有序 panels、生成图片和最近步骤。
-- 风格列表：按状态/模型筛选，并按 `updated_at desc` 排序。
+- 风格列表：按状态筛选，并按 `updated_at desc` 排序。
 - 风格详情：加载单个风格、参考图、最近测试和使用摘要。
 - Worker 轮询：按 `status`、`next_run_at` 查找排队/重试任务。
 - 恢复：按 `status`、`updated_at` 查找卡住的运行中任务。
 
 ## 未决 Schema 问题
 
-- 登录系统是否会引入 `users` 和归属字段。
+- 所选认证模块是否自带 session 表；若自带，则不创建本设计中的 `sessions` 表。
 - 生成 prompt 是否需要在生图前支持编辑和版本。
 - 每个 panel 多图是否是一版能力，还是未来扩展。
 - 具体存储后端如何定义 `storage_key`。
