@@ -606,29 +606,33 @@ function TasksView({ user }: { user: User }) {
                   {rowImages.length === 0 ? <span className="thumb-empty">等待图片</span> : null}
                   {rowImages.length > 7 ? <span className="thumb-more">+{rowImages.length - 7}</span> : null}
                 </div>
-                <div className="task-style-cell">
-                  <strong>{task.style_name_snapshot}</strong>
-                  <small>{task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}</small>
-                </div>
-                <div className="task-status-cell">
-                  <span className={`status-pill ${task.status}`}>{taskStatusLabel(task.status)}</span>
-                  <div className="progress-line">
-                    <span style={{ width: `${taskProgress(task)}%` }} />
+                <div className="task-row-side">
+                  <div className="task-style-cell">
+                    <strong>{task.style_name_snapshot}</strong>
+                    <small>{task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}</small>
                   </div>
-                  <small>
-                    {task.progress_current}/{task.progress_total}
-                  </small>
-                </div>
-                <span>{imageCount} 张</span>
-                <span>{formatDateTime(task.created_at)}</span>
-                <div className="row-actions">
-                  {task.generated_images.some((image) => image.asset) ? (
-                    <span className="mini-action">
-                      <Download size={15} />
+                  <div className="task-status-cell">
+                    <span className={`status-pill ${task.status}`}>{taskStatusLabel(task.status)}</span>
+                    <div className="progress-line">
+                      <span style={{ width: `${taskProgress(task)}%` }} />
+                    </div>
+                    <small>
+                      {task.progress_current}/{task.progress_total}
+                    </small>
+                  </div>
+                  <div className="task-row-foot">
+                    <span>{imageCount} 张</span>
+                    <span>{formatDateTime(task.created_at)}</span>
+                    <span className="row-actions">
+                      {task.generated_images.some((image) => image.asset) ? (
+                        <span className="mini-action">
+                          <Download size={15} />
+                        </span>
+                      ) : (
+                        <span className="muted">-</span>
+                      )}
                     </span>
-                  ) : (
-                    <span className="muted">-</span>
-                  )}
+                  </div>
                 </div>
               </button>
             );
