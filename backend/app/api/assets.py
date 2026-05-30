@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
 from app.core.database import get_db
-from app.models.entities import FileAsset, GeneratedImage, TaskDownload, User
+from app.models.entities import FileAsset, GeneratedImage, StyleReferenceImage, TaskDownload, User
 from app.models.enums import FileAssetPurpose, UserRole
 from app.schemas.common import ApiData
 from app.schemas.style import FileAssetRead
@@ -16,7 +16,8 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 
 def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
     if asset.purpose == FileAssetPurpose.style_reference:
-        return True
+        reference = db.scalar(select(StyleReferenceImage).where(StyleReferenceImage.asset_id == asset.id))
+        return reference is not None
     if user.role == UserRole.admin:
         return True
     if asset.purpose == FileAssetPurpose.generated_image:

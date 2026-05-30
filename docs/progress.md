@@ -40,6 +40,8 @@
 - 纠正错误的 Next.js 全栈实现，改为 React + Vite 前端和 Python 3.11 + FastAPI 后端的双服务结构。
 - 记录当前 React/FastAPI 实现与产品设计之间的差距，并新增实施计划：`docs/implementation/react-fastapi-implementation-plan.md`。
 - 完成 React/FastAPI 工程基线的第一轮清理，接入 Alembic，并补齐初始数据库表：`sessions`、`generation_steps`、`task_downloads` 等工作流表已进入迁移。
+- 完成统一 API 契约：列表分页、标准错误结构、认证响应包裹、普通用户任务可见性边界已落地。
+- 完成风格模块基础闭环：风格 CRUD、参考图上传/删除、已引用风格删除保护、普通用户禁止编辑后台生成配置 Key、风格页 9:16 参考图展示已落地。
 
 ## 验证记录
 
@@ -52,17 +54,17 @@
 ## 已知缺口
 
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
-- 尚未实现统一分页响应、标准错误结构和完整任务工作流接口。
-- 尚未实现完整风格模块，尤其是参考图删除、风格测试、被任务引用时禁止删除和普通用户不编辑后台生成配置。
+- 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
+- 风格测试真实生图尚未实现，当前仍会明确返回 Provider 未接入错误，避免产生 Mock 结果。
 - LLM 文本切分 prompt 和 panel prompt 生成 prompt 仍需设计和测试。
 - LLM provider 已倾向 SiliconFlow，但尚未实现客户端和 prompts。
 - 图片生成 provider 已明确使用 XG `/v1/images/edits`，但尚未实现客户端。
 - 对象存储第一版继续本地磁盘，七牛作为可选 `StorageBackend` 尚未实现。
 - 后台生成配置的 env 加载方式尚未实现。
-- UI 尚未达到 Runway / Creative AI Studio 风格。
+- UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
 
 ## 建议下一步
 
-1. 继续执行 `docs/implementation/react-fastapi-implementation-plan.md` 中的 PR 03：统一 API 响应、分页和权限边界。
-2. 优先完成 PR 04：风格模块完整实现。
-3. 再实现 SiliconFlow LLM、XG 生图和任务队列。
+1. 继续执行 `docs/implementation/react-fastapi-implementation-plan.md` 中的 PR 05：Provider 配置加载。
+2. 接着实现 SiliconFlow LLM 客户端和 prompts。
+3. 再实现 XG 生图客户端、任务队列、下载和预览。

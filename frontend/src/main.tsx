@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BookImage, Images, LogOut, Plus, Settings, Sparkles } from "lucide-react";
+import { BookImage, Images, LogOut, Plus, Save, Search, Settings, Sparkles, Trash2, Upload } from "lucide-react";
 import { api, type Style, type Task, type User } from "./api/client";
 import "./styles/app.css";
 
@@ -31,7 +31,7 @@ function App() {
   return (
     <Shell user={user} view={view} setView={setView} onLogout={() => setUser(null)}>
       {view === "tasks" ? <TasksView /> : null}
-      {view === "styles" ? <StylesView /> : null}
+      {view === "styles" ? <StylesView user={user} /> : null}
       {view === "settings" ? <SettingsView user={user} /> : null}
     </Shell>
   );
@@ -195,69 +195,231 @@ function TasksView() {
   );
 }
 
-function StylesView() {
+function StylesView({ user }: { user: User }) {
   const [styles, setStyles] = useState<Style[]>([]);
   const [message, setMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<Style["status"] | "all">("all");
+  const [selectedId, setSelectedId] = useState("");
+  const [mode, setMode] = useState<"create" | "edit">("create");
   const activeCount = useMemo(() => styles.filter((style) => style.status === "active").length, [styles]);
+  const selectedStyle = useMemo(
+    () => styles.find((style) => style.id === selectedId) ?? styles[0] ?? null,
+    [selectedId, styles],
+  );
 
   useEffect(() => {
     refresh();
   }, []);
 
   async function refresh() {
-    const result = await api.styles();
+    const result = await api.styles({ query, status });
     setStyles(result.items);
+    if (!selectedId && result.items[0]) {
+      setSelectedId(result.items[0].id);
+    }
+  }
+
+  function startCreate() {
+    setMode("create");
+    setMessage("");
+  }
+
+  function startEdit(style: Style) {
+    setSelectedId(style.id);
+    setMode("edit");
+    setMessage("");
   }
 
   async function createStyle(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    const payload: Partial<Style> = {
+      name: String(formData.get("name") ?? ""),
+      status: String(formData.get("status") ?? "draft") as Style["status"],
+      style_prompt: String(formData.get("style_prompt") ?? ""),
+      description: String(formData.get("description") ?? ""),
+    };
+    if (user.role === "admin") {
+      payload.generation_profile_key = String(formData.get("generation_profile_key") ?? "");
+    }
+
     try {
-      await api.createStyle({
-        name: String(formData.get("name") ?? ""),
-        status: String(formData.get("status") ?? "draft") as Style["status"],
-        generation_profile_key: String(formData.get("generation_profile_key") ?? ""),
-        style_prompt: String(formData.get("style_prompt") ?? ""),
-        description: String(formData.get("description") ?? ""),
-      });
-      event.currentTarget.reset();
-      setMessage("风格已创建");
+      const saved =
+        mode === "edit" && selectedStyle
+          ? await api.updateStyle(selectedStyle.id, payload)
+          : await api.createStyle(payload);
+      setSelectedId(saved.id);
+      setMode("edit");
+      setMessage(mode === "edit" ? "风格已保存" : "风格已创建");
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
     }
   }
 
+  async function deleteStyle(style: Style) {
+    if (!window.confirm(`删除风格「${style.name}」？已被任务引用的风格会被后端拒绝删除。`)) {
+      return;
+    }
+    try {
+      await api.deleteStyle(style.id);
+      setSelectedId("");
+      setMode("create");
+      setMessage("风格已删除");
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "删除失败");
+    }
+  }
+
+  async function uploadReferences(event: React.ChangeEvent<HTMLInputElement>) {
+    if (!selectedStyle || !event.target.files?.length) {
+      return;
+    }
+    try {
+      for (const file of Array.from(event.target.files)) {
+        await api.uploadStyleReferenceImage(selectedStyle.id, file);
+      }
+      setMessage("参考图已上传");
+      event.target.value = "";
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "上传失败");
+    }
+  }
+
+  async function deleteReference(referenceId: string) {
+    if (!selectedStyle) return;
+    try {
+      await api.deleteStyleReferenceImage(selectedStyle.id, referenceId);
+      setMessage("参考图已移除");
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "删除参考图失败");
+    }
+  }
+
+  const formStyle = mode === "edit" ? selectedStyle : null;
+
   return (
-    <section className="page">
+    <section className="page style-workspace">
       <header className="page-header">
         <div>
           <h1>风格</h1>
-          <p>共 {styles.length} 个风格，{activeCount} 个启用。</p>
+          <p>共 {styles.length} 个风格，{activeCount} 个启用。参考图会作为后续 9:16 生图的视觉锚点。</p>
         </div>
+        <button onClick={startCreate}>
+          <Plus size={18} />
+          新建风格
+        </button>
       </header>
-      <form className="panel form-grid" onSubmit={createStyle}>
-        <input name="name" placeholder="风格名称" required />
-        <select name="status" defaultValue="draft">
+
+      <div className="toolbar">
+        <label className="search-box">
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索风格名称或描述" />
+        </label>
+        <select value={status} onChange={(event) => setStatus(event.target.value as Style["status"] | "all")}>
+          <option value="all">全部状态</option>
           <option value="draft">草稿</option>
           <option value="active">启用</option>
           <option value="disabled">停用</option>
         </select>
-        <input name="generation_profile_key" placeholder="后台生成配置 Key" />
-        <textarea name="description" placeholder="描述" />
-        <textarea name="style_prompt" placeholder="风格提示词" required />
-        {message ? <p>{message}</p> : null}
-        <button type="submit">创建风格</button>
-      </form>
-      <div className="grid">
-        {styles.map((style) => (
-          <article className="card" key={style.id}>
-            <span>{style.status}</span>
-            <h2>{style.name}</h2>
-            <p>{style.description || style.style_prompt}</p>
-            <small>{style.generation_profile_key || "未配置生成配置 Key"}</small>
-          </article>
-        ))}
+        <button onClick={refresh}>筛选</button>
+      </div>
+
+      <div className="style-layout">
+        <div className="style-gallery">
+          {styles.length === 0 ? <div className="empty">还没有风格。</div> : null}
+          {styles.map((style) => {
+            const cover = style.cover_asset ?? style.reference_images[0]?.asset;
+            return (
+              <button
+                type="button"
+                className={`style-card ${selectedStyle?.id === style.id ? "selected" : ""}`}
+                key={style.id}
+                onClick={() => startEdit(style)}
+              >
+                <div className="poster">
+                  {cover ? <img src={api.assetContentUrl(cover.id)} alt={style.name} /> : <span>9:16</span>}
+                </div>
+                <div className="style-card-copy">
+                  <span className={`status-pill ${style.status}`}>{style.status}</span>
+                  <strong>{style.name}</strong>
+                  <small>{style.reference_images.length} 张参考图</small>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <aside className="style-editor">
+          <form key={`${mode}-${formStyle?.id ?? "new"}`} className="panel form-grid" onSubmit={createStyle}>
+            <div className="editor-title">
+              <div>
+                <h2>{mode === "edit" && formStyle ? "编辑风格" : "新建风格"}</h2>
+                <p>{mode === "edit" && formStyle ? formStyle.name : "创建一个可复用的生图风格资产"}</p>
+              </div>
+              {mode === "edit" && formStyle ? (
+                <button type="button" className="danger-button" onClick={() => deleteStyle(formStyle)}>
+                  <Trash2 size={16} />
+                </button>
+              ) : null}
+            </div>
+            <input name="name" placeholder="风格名称" defaultValue={formStyle?.name ?? ""} required />
+            <select name="status" defaultValue={formStyle?.status ?? "draft"}>
+              <option value="draft">草稿</option>
+              <option value="active">启用</option>
+              <option value="disabled">停用</option>
+            </select>
+            {user.role === "admin" ? (
+              <input
+                name="generation_profile_key"
+                placeholder="管理员生成配置 Key"
+                defaultValue={formStyle?.generation_profile_key ?? ""}
+              />
+            ) : (
+              <div className="profile-state">
+                {formStyle?.generation_profile_configured ? "已绑定后台生成配置" : "未绑定后台生成配置"}
+              </div>
+            )}
+            <textarea name="description" placeholder="描述" defaultValue={formStyle?.description ?? ""} />
+            <textarea name="style_prompt" placeholder="风格提示词" defaultValue={formStyle?.style_prompt ?? ""} required />
+            {message ? <p className="form-message">{message}</p> : null}
+            <button type="submit">
+              <Save size={16} />
+              {mode === "edit" ? "保存风格" : "创建风格"}
+            </button>
+          </form>
+
+          {selectedStyle ? (
+            <section className="panel reference-panel">
+              <div className="editor-title">
+                <div>
+                  <h2>参考图</h2>
+                  <p>图片按 9:16 容器展示，后续会作为图生图参考。</p>
+                </div>
+                <label className="upload-button">
+                  <Upload size={16} />
+                  上传
+                  <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} />
+                </label>
+              </div>
+              <div className="reference-grid">
+                {selectedStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
+                {selectedStyle.reference_images.map((reference) => (
+                  <figure key={reference.id} className="reference-item">
+                    <img src={api.assetContentUrl(reference.asset.id)} alt={reference.asset.original_filename ?? "参考图"} />
+                    <button type="button" onClick={() => deleteReference(reference.id)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </figure>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </aside>
       </div>
     </section>
   );

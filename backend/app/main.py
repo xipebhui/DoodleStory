@@ -3,7 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import assets, auth, styles, tasks
+from app.api import assets, auth, style_tests, styles, tasks
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
 
@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(styles.router, prefix="/api/v1")
+    app.include_router(style_tests.router, prefix="/api/v1")
     app.include_router(tasks.router, prefix="/api/v1")
     app.include_router(assets.router, prefix="/api/v1")
 

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import StyleStatus
+from app.models.enums import StyleStatus, WorkflowStatus
 from app.schemas.common import TimestampFields
 
 
@@ -28,6 +28,8 @@ class FileAssetRead(TimestampFields):
     original_filename: str | None
     content_type: str
     byte_size: int
+    width: int | None = None
+    height: int | None = None
 
 
 class StyleReferenceImageRead(BaseModel):
@@ -45,10 +47,28 @@ class StyleRead(TimestampFields):
     description: str | None
     status: StyleStatus
     generation_profile_key: str | None
+    generation_profile_configured: bool = False
     style_prompt: str
+    cover_asset: FileAssetRead | None = None
     last_tested_at: datetime | None
     reference_images: list[StyleReferenceImageRead] = []
 
 
 class StyleTestCreate(BaseModel):
     test_text: str = Field(min_length=1, max_length=2000)
+
+
+class StyleTestRead(TimestampFields):
+    id: str
+    style_id: str
+    test_text: str
+    style_prompt_snapshot: str
+    generation_profile_key_snapshot: str | None
+    composed_prompt: str
+    status: WorkflowStatus
+    output_asset: FileAssetRead | None = None
+    provider_request_id: str | None
+    error_code: str | None
+    error_message: str | None
+    started_at: datetime | None
+    finished_at: datetime | None
