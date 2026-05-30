@@ -924,9 +924,6 @@ function StylesView({ user }: { user: User }) {
       style_prompt: String(formData.get("style_prompt") ?? ""),
       description: String(formData.get("description") ?? ""),
     };
-    if (user.role === "admin") {
-      payload.generation_profile_key = String(formData.get("generation_profile_key") ?? "");
-    }
 
     try {
       const saved =
@@ -1159,17 +1156,6 @@ function StylesView({ user }: { user: User }) {
               <option value="active">启用</option>
               <option value="disabled">停用</option>
             </select>
-            {user.role === "admin" ? (
-              <input
-                name="generation_profile_key"
-                placeholder="管理员生成配置 Key"
-                defaultValue={formStyle?.generation_profile_key ?? ""}
-              />
-            ) : (
-              <div className="profile-state">
-                {formStyle?.generation_profile_configured ? "已绑定后台生成配置" : "未绑定后台生成配置"}
-              </div>
-            )}
             <textarea name="description" placeholder="描述" defaultValue={formStyle?.description ?? ""} />
             <textarea name="style_prompt" placeholder="风格提示词" defaultValue={formStyle?.style_prompt ?? ""} required />
             {message ? <p className="form-message">{message}</p> : null}
