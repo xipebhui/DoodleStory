@@ -28,7 +28,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { api, type Style, type StyleTest, type Task, type User } from "./api/client";
+import { API_BASE_URL, api, type Style, type StyleTest, type Task, type User } from "./api/client";
 import "./styles/app.css";
 
 type View = "tasks" | "styles" | "settings";
@@ -1256,7 +1256,7 @@ function StylesView({ user }: { user: User }) {
 function SettingsView({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [displayMode, setDisplayMode] = useState<"system" | "light" | "dark">("dark");
   const [archiveName, setArchiveName] = useState("doodlestory-task-{task_id}.zip");
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+  const apiBaseUrl = API_BASE_URL;
 
   async function logout() {
     await api.logout();

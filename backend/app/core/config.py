@@ -47,6 +47,14 @@ class Settings(BaseSettings):
         return f"sqlite:///{quote(str(db_path.resolve()))}"
 
     @property
+    def frontend_origin_list(self) -> list[str]:
+        return [
+            origin.strip().rstrip("/")
+            for origin in self.frontend_origin.split(",")
+            if origin.strip()
+        ]
+
+    @property
     def admin_email_set(self) -> set[str]:
         return {
             email.strip().lower()

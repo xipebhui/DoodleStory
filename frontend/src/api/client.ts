@@ -143,7 +143,40 @@ export type ApiList<T> = {
   page: PageInfo;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "0.0.0.0" || hostname === "::1" || hostname.startsWith("127.");
+}
+
+function resolveApiBaseUrl(): string {
+  const configured = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (typeof window === "undefined") {
+    return configured ? trimTrailingSlash(configured) : "http://127.0.0.1:8000";
+  }
+
+  const current = window.location;
+  if (configured) {
+    try {
+      const configuredUrl = new URL(configured);
+      if (isLoopbackHost(configuredUrl.hostname) && !isLoopbackHost(current.hostname)) {
+        return `${current.protocol}//${current.hostname}:8000`;
+      }
+    } catch {
+      return trimTrailingSlash(configured);
+    }
+    return trimTrailingSlash(configured);
+  }
+
+  if (isLoopbackHost(current.hostname)) {
+    return "http://127.0.0.1:8000";
+  }
+  return `${current.protocol}//${current.hostname}:8000`;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
