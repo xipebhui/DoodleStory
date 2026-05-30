@@ -20,6 +20,10 @@ run_if_present() {
   fi
 }
 
+run_if_present "root prisma generate" "$ROOT_DIR/package.json" npm run prisma:generate
+run_if_present "root lint" "$ROOT_DIR/package.json" npm run lint
+run_if_present "root build" "$ROOT_DIR/package.json" npm run build
+
 run_if_present "frontend build" "$ROOT_DIR/frontend/package.json" npm run build
 run_if_present "frontend lint" "$ROOT_DIR/frontend/package.json" npm run lint
 

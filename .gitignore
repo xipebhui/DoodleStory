@@ -10,6 +10,7 @@ build/
 .turbo/
 .vite/
 .cache/
+.playwright-cli/
 coverage/
 __pycache__/
 *.pyc
@@ -22,3 +23,7 @@ tmp/
 tmp-*/
 *.log
 storage/
+*.db
+*.db-journal
+
+/generated/prisma
