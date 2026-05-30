@@ -1,6 +1,21 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BookImage, Images, LogOut, Plus, Save, Search, Settings, Sparkles, Trash2, Upload } from "lucide-react";
+import {
+  BookImage,
+  Download,
+  Eye,
+  Images,
+  LogOut,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Settings,
+  Sparkles,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { api, type Style, type StyleTest, type Task, type User } from "./api/client";
 import "./styles/app.css";
 
@@ -165,6 +180,18 @@ function TasksView() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+
+  const previewImage = useMemo(
+    () => selectedTask?.generated_images.find((image) => image.asset?.id === previewAssetId) ?? null,
+    [previewAssetId, selectedTask],
+  );
+  const selectedTaskFromList = useMemo(
+    () => tasks.find((task) => task.id === selectedId) ?? tasks[0] ?? null,
+    [selectedId, tasks],
+  );
 
   useEffect(() => {
     refresh();
@@ -175,9 +202,22 @@ function TasksView() {
       const [taskResult, styleResult] = await Promise.all([api.tasks(), api.styles({ status: "active" })]);
       setTasks(taskResult.items);
       setStyles(styleResult.items);
+      const nextSelectedId = selectedId || taskResult.items[0]?.id || "";
+      if (nextSelectedId) {
+        setSelectedId(nextSelectedId);
+        setSelectedTask(await api.task(nextSelectedId));
+      } else {
+        setSelectedTask(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     }
+  }
+
+  async function selectTask(taskId: string) {
+    setSelectedId(taskId);
+    setSelectedTask(await api.task(taskId));
+    setPreviewAssetId(null);
   }
 
   async function createTask(event: React.FormEvent<HTMLFormElement>) {
@@ -200,15 +240,54 @@ function TasksView() {
     }
   }
 
+  async function cancelSelectedTask() {
+    if (!selectedTask) return;
+    try {
+      const result = await api.cancelTask(selectedTask.id);
+      setSelectedTask(result);
+      setMessage("已提交取消请求");
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "取消失败");
+    }
+  }
+
+  async function downloadSelectedTask() {
+    if (!selectedTask) return;
+    try {
+      const result = await api.createTaskDownload(selectedTask.id);
+      if (result.status === "ready" && result.asset) {
+        window.location.href = api.assetContentUrl(result.asset.id);
+      } else {
+        setMessage(result.error_message ?? "下载包未就绪");
+      }
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "打包下载失败");
+    }
+  }
+
+  const taskForDetail = selectedTask ?? selectedTaskFromList;
+  const imagesByPanelId = useMemo(() => {
+    const map = new Map<string, Task["generated_images"][number]>();
+    taskForDetail?.generated_images.forEach((image) => map.set(image.panel_id, image));
+    return map;
+  }, [taskForDetail]);
+  const canCancel =
+    taskForDetail?.status === "queued" || taskForDetail?.status === "running" || taskForDetail?.status === "retrying";
+  const canDownload = Boolean(
+    taskForDetail?.generated_images.some((image) => image.status === "succeeded" && image.asset),
+  );
+
   return (
-    <section className="page">
+    <section className="page tasks-workspace">
       <header className="page-header">
         <div>
           <h1>任务</h1>
           <p>用户原文会原样保存，后续由队列执行切分、提示词和 9:16 生图。</p>
         </div>
         <button onClick={refresh}>
-          <Plus size={18} />
+          <RefreshCw size={18} />
           刷新
         </button>
       </header>
@@ -233,21 +312,116 @@ function TasksView() {
         <button type="submit">提交任务</button>
       </form>
       {error ? <div className="error">{error}</div> : null}
-      {tasks.length === 0 ? (
-        <div className="empty">还没有任务。</div>
-      ) : (
-        tasks.map((task) => (
-          <article className="row" key={task.id}>
-            <div>
-              <strong>{task.display_title}</strong>
-              <p>{task.style_name_snapshot}</p>
-            </div>
-            <span>
-              {task.status} · {task.progress_current}/{task.progress_total}
-            </span>
-          </article>
-        ))
-      )}
+      <div className="task-layout">
+        <div className="task-list">
+          {tasks.length === 0 ? <div className="empty">还没有任务。</div> : null}
+          {tasks.map((task) => (
+            <button
+              type="button"
+              className={`task-row ${taskForDetail?.id === task.id ? "selected" : ""}`}
+              key={task.id}
+              onClick={() => selectTask(task.id)}
+            >
+              <div>
+                <strong>{task.display_title}</strong>
+                <p>{task.style_name_snapshot}</p>
+              </div>
+              <span className={`status-pill ${task.status}`}>{task.status}</span>
+              <small>
+                {task.progress_current}/{task.progress_total}
+              </small>
+            </button>
+          ))}
+        </div>
+
+        <aside className="task-detail">
+          {taskForDetail ? (
+            <>
+              <section className="panel detail-head">
+                <div>
+                  <span className={`status-pill ${taskForDetail.status}`}>{taskForDetail.status}</span>
+                  <h2>{taskForDetail.display_title}</h2>
+                  <p>{taskForDetail.style_name_snapshot}</p>
+                </div>
+                <div className="detail-actions">
+                  <button type="button" disabled={!canDownload} onClick={downloadSelectedTask}>
+                    <Download size={16} />
+                    下载
+                  </button>
+                  <button type="button" disabled={!canCancel} onClick={cancelSelectedTask}>
+                    <X size={16} />
+                    取消
+                  </button>
+                </div>
+                {taskForDetail.error_message ? <p className="error">{taskForDetail.error_message}</p> : null}
+              </section>
+
+              {taskForDetail.steps.length > 0 ? (
+                <section className="panel step-strip">
+                  {taskForDetail.steps.map((step) => (
+                    <div key={step.id} className={`step-chip ${step.status}`}>
+                      <strong>{step.step_name}</strong>
+                      <span>{step.status}</span>
+                    </div>
+                  ))}
+                </section>
+              ) : null}
+
+              <section className="panel story-panel">
+                <h2>原始文本</h2>
+                <p>{taskForDetail.original_text}</p>
+              </section>
+
+              <section className="panel panel-wall">
+                <div className="editor-title">
+                  <div>
+                    <h2>分镜与图片</h2>
+                    <p>每个 panel 对应一张 9:16 图片。</p>
+                  </div>
+                </div>
+                <div className="task-image-grid">
+                  {taskForDetail.panels.length === 0 ? <div className="empty mini">等待故事切分</div> : null}
+                  {taskForDetail.panels.map((panel) => {
+                    const image = imagesByPanelId.get(panel.id);
+                    return (
+                      <article key={panel.id} className="panel-card">
+                        <div className="poster">
+                          {image?.asset ? (
+                            <button
+                              type="button"
+                              className="image-button"
+                              onClick={() => setPreviewAssetId(image.asset?.id ?? null)}
+                            >
+                              <img src={api.assetContentUrl(image.asset.id)} alt={`分镜 ${panel.panel_order}`} />
+                              <Eye size={18} />
+                            </button>
+                          ) : (
+                            <span>{image?.status ?? panel.prompt_status}</span>
+                          )}
+                        </div>
+                        <strong>Panel {panel.panel_order}</strong>
+                        <p>{panel.original_text_segment}</p>
+                        {panel.generated_prompt ? <small>{panel.generated_prompt}</small> : null}
+                        {image?.error_message ? <small className="error">{image.error_message}</small> : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            </>
+          ) : (
+            <div className="empty">选择一个任务查看详情。</div>
+          )}
+        </aside>
+      </div>
+      {previewImage?.asset ? (
+        <div className="image-modal" onClick={() => setPreviewAssetId(null)}>
+          <button type="button" className="modal-close" onClick={() => setPreviewAssetId(null)}>
+            <X size={18} />
+          </button>
+          <img src={api.assetContentUrl(previewImage.asset.id)} alt="生成图预览" />
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -54,13 +54,79 @@ export type StyleTest = {
 
 export type Task = {
   id: string;
+  owner_user_id: string;
   display_title: string;
   original_text: string;
-  status: string;
+  image_count_mode: "auto" | "fixed";
+  requested_image_count: number | null;
+  style_id: string;
   style_name_snapshot: string;
+  generation_profile_key_snapshot: string | null;
+  status:
+    | "queued"
+    | "running"
+    | "succeeded"
+    | "partial_succeeded"
+    | "failed"
+    | "cancel_requested"
+    | "cancelled"
+    | "retrying";
   progress_current: number;
   progress_total: number;
+  error_code: string | null;
+  error_message: string | null;
+  current_step: string | null;
+  panels: TaskPanel[];
+  steps: GenerationStep[];
+  generated_images: GeneratedImage[];
+  downloads: TaskDownload[];
   created_at: string;
+  updated_at: string;
+};
+
+export type TaskPanel = {
+  id: string;
+  panel_order: number;
+  original_text_segment: string;
+  prompt_status: "pending" | "generated" | "failed";
+  generated_prompt: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GenerationStep = {
+  id: string;
+  step_name: string;
+  status: string;
+  attempts: number;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GeneratedImage = {
+  id: string;
+  panel_id: string;
+  status: string;
+  final_prompt: string;
+  asset: FileAsset | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskDownload = {
+  id: string;
+  status: "queued" | "running" | "ready" | "failed";
+  image_count: number;
+  filename: string;
+  asset: FileAsset | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type PageInfo = {
@@ -146,10 +212,15 @@ export const api = {
     }).then((result) => result.data),
   assetContentUrl: (assetId: string) => `${API_BASE_URL}/api/v1/assets/${assetId}/content`,
   tasks: () => request<ApiList<Task>>("/tasks"),
+  task: (id: string) => request<ApiData<Task>>(`/tasks/${id}`).then((result) => result.data),
   createTask: (payload: {
     original_text: string;
     image_count_mode: "auto" | "fixed";
     requested_image_count?: number | null;
     style_id: string;
   }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
+  cancelTask: (id: string) =>
+    request<ApiData<Task>>(`/tasks/${id}/cancel`, { method: "POST" }).then((result) => result.data),
+  createTaskDownload: (id: string) =>
+    request<ApiData<TaskDownload>>(`/tasks/${id}/downloads`, { method: "POST" }).then((result) => result.data),
 };

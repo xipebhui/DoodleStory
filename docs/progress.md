@@ -46,6 +46,8 @@
 - 完成 SiliconFlow LLM 客户端基础实现：新增故事切分与 panel prompt 生成的版本化 Prompt，并封装 OpenAI SDK 兼容 JSON 调用与响应结构校验。
 - 完成 XG 图片生成客户端基础实现：支持 `/v1/images/edits` multipart、多参考图 `image[]`、9:16 参数、URL 结果下载到本地文件存储，并接入风格测试入口。
 - 完成任务队列基础链路：任务创建会原样保存用户文本并入进程内队列，worker 顺序执行故事切分、panel prompt 和图片生成 steps，失败会写回任务与 step 错误。
+- 完成下载和预览基础闭环：成功图片可批量打包为 zip，下载包写入 `task_downloads` 与 `file_assets`，前端任务详情支持 9:16 图片墙、放大预览和下载。
+- 完成 Runway / Creative AI Studio 风格基础重做：任务页和风格页统一为深色影像工作台，强化 9:16 图片容器、状态标识、右侧详情面板和专业工具感。
 
 ## 验证记录
 
@@ -61,13 +63,13 @@
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试真实生图尚未实现，当前仍会明确返回 Provider 未接入错误，避免产生 Mock 结果。
 - LLM 客户端和 prompts 已实现，但尚未接入任务 worker 流程。
-- 任务 worker 已接入 LLM 和 XG 客户端，但任务详情 UI、批量下载、预览弹窗和更精细的运行中恢复策略仍需继续完善。
+- 任务 worker 已接入 LLM 和 XG 客户端，基础任务详情、批量下载和预览已完成；更精细的运行中恢复策略、单图下载入口和更系统的组件拆分仍可继续完善。
 - 对象存储第一版继续本地磁盘，七牛作为可选 `StorageBackend` 尚未实现。
 - 后台生成配置 registry 已实现，但 SiliconFlow 与 XG 的真实客户端尚未接入。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
 
 ## 建议下一步
 
-1. 继续实现任务详情中的 panels、图片结果和进度展示。
-2. 接着实现批量下载和图片预览。
-3. 再继续打磨 Runway / Creative AI Studio 风格 UI。
+1. 继续做组件拆分，把当前 `frontend/src/main.tsx` 拆成页面、组件和 API 模块。
+2. 补充更细的自动化测试和任务 worker 运行恢复策略。
+3. 用真实 SiliconFlow 与 XG 配置跑一条完整端到端任务，校验真实生成质量。

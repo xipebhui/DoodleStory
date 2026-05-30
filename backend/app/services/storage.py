@@ -55,6 +55,20 @@ def save_bytes(purpose: str, content: bytes, content_type: str, filename_hint: s
     return storage_key, len(content), checksum
 
 
+def save_binary_file(purpose: str, content: bytes, suffix: str) -> tuple[str, int, str]:
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件内容不能为空")
+    if not suffix.startswith(".") or "/" in suffix or "\\" in suffix:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件后缀不合法")
+
+    storage_key = str(Path(purpose) / f"{uuid4().hex}{suffix}")
+    absolute_path = get_settings().storage_root / storage_key
+    absolute_path.parent.mkdir(parents=True, exist_ok=True)
+    absolute_path.write_bytes(content)
+    checksum = hashlib.sha256(content).hexdigest()
+    return storage_key, len(content), checksum
+
+
 def resolve_storage_key(storage_key: str) -> Path:
     if Path(storage_key).is_absolute() or ".." in Path(storage_key).parts:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="非法文件路径")

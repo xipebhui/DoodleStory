@@ -2,7 +2,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import GeneratedImageStatus, GenerationStepName, ImageCountMode, PromptStatus, StepStatus, TaskStatus
+from app.models.enums import (
+    DownloadStatus,
+    GeneratedImageStatus,
+    GenerationStepName,
+    ImageCountMode,
+    PromptStatus,
+    StepStatus,
+    TaskStatus,
+)
 from app.schemas.common import TimestampFields
 from app.schemas.style import FileAssetRead
 
@@ -41,6 +49,16 @@ class GeneratedImageRead(TimestampFields):
     error_message: str | None
 
 
+class TaskDownloadRead(TimestampFields):
+    id: str
+    status: DownloadStatus
+    image_count: int
+    filename: str
+    asset: FileAssetRead | None = None
+    error_code: str | None
+    error_message: str | None
+
+
 class TaskRead(TimestampFields):
     id: str
     owner_user_id: str
@@ -60,3 +78,4 @@ class TaskRead(TimestampFields):
     panels: list[TaskPanelRead] = []
     steps: list[GenerationStepRead] = []
     generated_images: list[GeneratedImageRead] = []
+    downloads: list[TaskDownloadRead] = []

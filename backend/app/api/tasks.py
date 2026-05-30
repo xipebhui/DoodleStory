@@ -1,3 +1,6 @@
+from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -5,16 +8,26 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
-from app.models.entities import GeneratedImage, GenerationStep, GenerationTask, Style, User
-from app.models.enums import GenerationStepName, ImageCountMode, StyleStatus, TaskStatus, UserRole
+from app.models.entities import FileAsset, GeneratedImage, GenerationStep, GenerationTask, Style, TaskDownload, User
+from app.models.enums import (
+    DownloadStatus,
+    FileAssetPurpose,
+    GeneratedImageStatus,
+    GenerationStepName,
+    ImageCountMode,
+    StyleStatus,
+    TaskStatus,
+    UserRole,
+)
 from app.schemas.common import ApiData, ApiList
-from app.schemas.task import TaskCreate, TaskRead
+from app.schemas.task import TaskCreate, TaskDownloadRead, TaskRead
 from app.services.generation_profiles import (
     GenerationProfileConfigError,
     UnknownGenerationProfileError,
     validate_generation_profile_key,
 )
 from app.services.task_worker import enqueue_task
+from app.services.storage import resolve_storage_key, save_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -23,6 +36,23 @@ def task_access_filter(user: User):
     if user.role == UserRole.admin:
         return True
     return GenerationTask.owner_user_id == user.id
+
+
+def task_options():
+    return (
+        selectinload(GenerationTask.panels),
+        selectinload(GenerationTask.steps),
+        selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
+        selectinload(GenerationTask.downloads).selectinload(TaskDownload.asset),
+    )
+
+
+def ensure_task_access(task: GenerationTask | None, user: User) -> GenerationTask:
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    if user.role != UserRole.admin and task.owner_user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="没有权限访问该任务")
+    return task
 
 
 @router.get("", response_model=ApiList[TaskRead])
@@ -40,11 +70,7 @@ def list_tasks(
 
     statement = (
         select(GenerationTask)
-        .options(
-            selectinload(GenerationTask.panels),
-            selectinload(GenerationTask.steps),
-            selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
-        )
+        .options(*task_options())
         .order_by(GenerationTask.created_at.desc())
         .offset(pagination.offset)
         .limit(pagination.limit + 1)
@@ -125,11 +151,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
     task = db.scalar(
         select(GenerationTask)
         .where(GenerationTask.id == task.id)
-        .options(
-            selectinload(GenerationTask.panels),
-            selectinload(GenerationTask.steps),
-            selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
-        )
+        .options(*task_options())
     )
     return ApiData(data=TaskRead.model_validate(task))
 
@@ -139,16 +161,9 @@ def get_task(task_id: str, user: User = Depends(current_user), db: Session = Dep
     task = db.scalar(
         select(GenerationTask)
         .where(GenerationTask.id == task_id)
-        .options(
-            selectinload(GenerationTask.panels),
-            selectinload(GenerationTask.steps),
-            selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
-        )
+        .options(*task_options())
     )
-    if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
-    if user.role != UserRole.admin and task.owner_user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="没有权限访问该任务")
+    task = ensure_task_access(task, user)
 
     return ApiData(data=TaskRead.model_validate(task))
 
@@ -158,16 +173,9 @@ def cancel_task(task_id: str, user: User = Depends(current_user), db: Session = 
     task = db.scalar(
         select(GenerationTask)
         .where(GenerationTask.id == task_id)
-        .options(
-            selectinload(GenerationTask.panels),
-            selectinload(GenerationTask.steps),
-            selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
-        )
+        .options(*task_options())
     )
-    if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
-    if user.role != UserRole.admin and task.owner_user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="没有权限访问该任务")
+    task = ensure_task_access(task, user)
     if task.status in {TaskStatus.succeeded, TaskStatus.failed, TaskStatus.partial_succeeded, TaskStatus.cancelled}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务状态不能取消")
 
@@ -175,3 +183,73 @@ def cancel_task(task_id: str, user: User = Depends(current_user), db: Session = 
     db.commit()
     db.refresh(task)
     return ApiData(data=TaskRead.model_validate(task))
+
+
+@router.post("/{task_id}/downloads", response_model=ApiData[TaskDownloadRead])
+def create_task_download(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskDownloadRead]:
+    task = db.scalar(
+        select(GenerationTask)
+        .where(GenerationTask.id == task_id)
+        .options(*task_options())
+    )
+    task = ensure_task_access(task, user)
+
+    images = [
+        image
+        for image in sorted(task.generated_images, key=lambda item: item.panel.panel_order if item.panel else 0)
+        if image.status == GeneratedImageStatus.succeeded and image.asset is not None
+    ]
+    if not images:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务暂无可下载的成功图片")
+
+    filename = f"doodlestory-{task.id}.zip"
+    download = TaskDownload(
+        task_id=task.id,
+        status=DownloadStatus.running,
+        image_count=len(images),
+        filename=filename,
+    )
+    db.add(download)
+    db.commit()
+    db.refresh(download)
+
+    try:
+        buffer = BytesIO()
+        with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
+            for index, image in enumerate(images, start=1):
+                asset = image.asset
+                source_path = resolve_storage_key(asset.storage_key)
+                if not source_path.exists():
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="生成图片文件不存在")
+                suffix = source_path.suffix or ".png"
+                archive.write(source_path, arcname=f"panel-{index:02d}{suffix}")
+
+        storage_key, byte_size, checksum = save_binary_file(
+            FileAssetPurpose.download_archive.value,
+            buffer.getvalue(),
+            ".zip",
+        )
+        asset = FileAsset(
+            purpose=FileAssetPurpose.download_archive,
+            storage_key=storage_key,
+            original_filename=filename,
+            content_type="application/zip",
+            byte_size=byte_size,
+            checksum_sha256=checksum,
+        )
+        db.add(asset)
+        db.flush()
+        download.asset_id = asset.id
+        download.status = DownloadStatus.ready
+    except Exception as exc:
+        download.status = DownloadStatus.failed
+        download.error_code = exc.__class__.__name__
+        download.error_message = str(exc)
+
+    db.commit()
+    download = db.scalar(
+        select(TaskDownload)
+        .where(TaskDownload.id == download.id)
+        .options(selectinload(TaskDownload.asset))
+    )
+    return ApiData(data=TaskDownloadRead.model_validate(download))
