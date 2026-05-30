@@ -22,6 +22,7 @@ venv/
 tmp/
 tmp-*/
 *.log
+*.tsbuildinfo
 storage/
 *.db
 *.db-journal
