@@ -1,26 +1,45 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
+from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
-from app.models.entities import FileAsset, Style, StyleReferenceImage, User
-from app.models.enums import FileAssetPurpose, WorkflowStatus
-from app.schemas.common import ApiData
+from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, User
+from app.models.enums import FileAssetPurpose, StyleStatus
+from app.schemas.common import ApiData, ApiList
 from app.schemas.style import StyleCreate, StyleRead, StyleTestCreate, StyleUpdate
 from app.services.storage import save_upload_file
 
 router = APIRouter(prefix="/styles", tags=["styles"])
 
 
-@router.get("", response_model=ApiData[list[StyleRead]])
-def list_styles(_: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[list[StyleRead]]:
-    styles = db.scalars(
+@router.get("", response_model=ApiList[StyleRead])
+def list_styles(
+    _: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    pagination: Pagination = Depends(get_pagination),
+    query: str | None = Query(default=None, max_length=120),
+    status_filter: StyleStatus | None = Query(default=None, alias="status"),
+) -> ApiList[StyleRead]:
+    statement = (
         select(Style)
         .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
         .order_by(Style.updated_at.desc())
-    ).all()
-    return ApiData(data=[StyleRead.model_validate(style) for style in styles])
+        .offset(pagination.offset)
+        .limit(pagination.limit + 1)
+    )
+    if query:
+        statement = statement.where(or_(Style.name.contains(query), Style.description.contains(query)))
+    if status_filter:
+        statement = statement.where(Style.status == status_filter)
+
+    styles = db.scalars(statement).all()
+    visible_styles = styles[: pagination.limit]
+    return ApiList(
+        items=[StyleRead.model_validate(style) for style in visible_styles],
+        page=build_page(pagination.limit, pagination.offset, len(styles)),
+    )
 
 
 @router.post("", response_model=ApiData[StyleRead], status_code=status.HTTP_201_CREATED)
@@ -58,15 +77,19 @@ def update_style(style_id: str, payload: StyleUpdate, _: User = Depends(current_
     return ApiData(data=StyleRead.model_validate(style))
 
 
-@router.delete("/{style_id}")
-def delete_style(style_id: str, _: User = Depends(current_user), db: Session = Depends(get_db)) -> dict[str, bool]:
+@router.delete("/{style_id}", response_model=ApiData[dict[str, bool]])
+def delete_style(style_id: str, _: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[dict[str, bool]]:
     style = db.scalar(select(Style).where(Style.id == style_id))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
+    task_count = db.query(GenerationTask).filter(GenerationTask.style_id == style_id).count()
+    if task_count > 0:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="已有任务引用该风格，不能删除")
+
     db.delete(style)
     db.commit()
-    return {"deleted": True}
+    return ApiData(data={"deleted": True})
 
 
 @router.post("/{style_id}/reference-images")
@@ -75,7 +98,7 @@ async def upload_reference_image(
     file: UploadFile,
     _: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict[str, str]:
+) -> ApiData[dict[str, str]]:
     style = db.scalar(select(Style).where(Style.id == style_id))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
@@ -95,7 +118,7 @@ async def upload_reference_image(
     reference = StyleReferenceImage(style_id=style_id, asset_id=asset.id, display_order=order)
     db.add(reference)
     db.commit()
-    return {"id": reference.id}
+    return ApiData(data={"id": reference.id})
 
 
 @router.post("/{style_id}/tests")

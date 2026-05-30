@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,9 +10,22 @@ class ApiData(BaseModel, Generic[T]):
     data: T
 
 
+class PageInfo(BaseModel):
+    limit: int
+    next_cursor: str | None
+    has_more: bool
+
+
+class ApiList(BaseModel, Generic[T]):
+    items: list[T]
+    page: PageInfo
+
+
 class ApiError(BaseModel):
     code: str
     message: str
+    fields: dict[str, Any] | None = None
+    request_id: str
 
 
 class ApiErrorResponse(BaseModel):

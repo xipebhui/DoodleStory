@@ -29,6 +29,21 @@ export type Task = {
   created_at: string;
 };
 
+export type PageInfo = {
+  limit: number;
+  next_cursor: string | null;
+  has_more: boolean;
+};
+
+export type ApiData<T> = {
+  data: T;
+};
+
+export type ApiList<T> = {
+  items: T[];
+  page: PageInfo;
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -45,21 +60,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = contentType.includes("application/json") ? await response.json() : null;
 
   if (!response.ok) {
-    throw new Error(body?.detail ?? body?.error?.message ?? "请求失败");
+    throw new Error(body?.error?.message ?? body?.detail ?? "请求失败");
   }
 
   return body as T;
 }
 
 export const api = {
-  me: () => request<{ user: User }>("/auth/me"),
+  me: async () => (await request<ApiData<{ user: User }>>("/auth/me")).data,
   login: (payload: { email: string; password: string }) =>
-    request<{ user: User }>("/auth/login", { method: "POST", body: JSON.stringify(payload) }),
+    request<ApiData<{ user: User }>>("/auth/login", { method: "POST", body: JSON.stringify(payload) }).then(
+      (result) => result.data,
+    ),
   register: (payload: { email: string; password: string; display_name?: string }) =>
-    request<{ user: User }>("/auth/register", { method: "POST", body: JSON.stringify(payload) }),
-  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
-  styles: () => request<{ data: Style[] }>("/styles"),
+    request<ApiData<{ user: User }>>("/auth/register", { method: "POST", body: JSON.stringify(payload) }).then(
+      (result) => result.data,
+    ),
+  logout: () => request<ApiData<{ ok: boolean }>>("/auth/logout", { method: "POST" }),
+  styles: () => request<ApiList<Style>>("/styles"),
   createStyle: (payload: Partial<Style>) =>
-    request<{ data: Style }>("/styles", { method: "POST", body: JSON.stringify(payload) }),
-  tasks: () => request<{ data: Task[] }>("/tasks"),
+    request<ApiData<Style>>("/styles", { method: "POST", body: JSON.stringify(payload) }),
+  tasks: () => request<ApiList<Task>>("/tasks"),
 };

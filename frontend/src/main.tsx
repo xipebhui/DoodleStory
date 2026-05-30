@@ -164,7 +164,7 @@ function TasksView() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.tasks().then((result) => setTasks(result.data)).catch((err) => setError(err.message));
+    api.tasks().then((result) => setTasks(result.items)).catch((err) => setError(err.message));
   }, []);
 
   return (
@@ -206,7 +206,7 @@ function StylesView() {
 
   async function refresh() {
     const result = await api.styles();
-    setStyles(result.data);
+    setStyles(result.items);
   }
 
   async function createStyle(event: React.FormEvent<HTMLFormElement>) {
