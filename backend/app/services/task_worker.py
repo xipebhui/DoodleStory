@@ -140,12 +140,14 @@ def fail_step_and_task(db: Session, task: GenerationTask, step_name: GenerationS
     db.commit()
 
 
-def build_final_prompt(style_prompt: str, panel_prompt: str) -> str:
+def build_final_prompt(style_prompt: str, panel_prompt: str, panel_text: str) -> str:
     return "\n\n".join(
         [
             style_prompt.strip(),
             f"画面内容：{panel_prompt.strip()}",
-            "输出要求：9:16 竖图，无文字、无水印、无 Logo。",
+            "画面文字：请把下面的 panel 原文作为图片内可读文字完整呈现。可以自行决定换行、字号层级、重点强调和排版位置，但不要删改文案内容。",
+            panel_text.strip(),
+            "输出要求：9:16 竖图，无水印、无 Logo，不添加 panel 原文之外的无关文字。",
         ]
     )
 
@@ -246,7 +248,11 @@ def process_task(task_id: str) -> None:
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
             if should_stop_for_cancel(db, task):
                 return
-            final_prompt = build_final_prompt(task.style_prompt_snapshot, panel.generated_prompt or "")
+            final_prompt = build_final_prompt(
+                task.style_prompt_snapshot,
+                panel.generated_prompt or "",
+                panel.original_text_segment,
+            )
             image = GeneratedImage(
                 task_id=task.id,
                 panel_id=panel.id,
