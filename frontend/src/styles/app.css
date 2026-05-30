@@ -116,8 +116,14 @@ textarea {
   height: 42px;
   place-items: center;
   border-radius: 8px;
-  background: #eef2f7;
-  color: #0b0d10;
+  background: transparent;
+  color: #eef2f7;
+}
+
+.brand-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .form {
@@ -320,38 +326,31 @@ textarea {
   padding-left: 38px;
 }
 
-.style-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 430px;
-  gap: 18px;
-  align-items: start;
-}
-
 .style-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .style-card {
   display: grid;
-  gap: 12px;
-  min-height: 0;
-  padding: 10px;
-  background: #111318;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  min-height: 132px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 38%),
+    #111318;
   color: #eef2f7;
+  padding: 12px 14px;
   text-align: left;
-}
-
-.style-card.selected {
-  border-color: rgba(104, 211, 145, 0.7);
-  background: #151a1d;
 }
 
 .poster {
   display: grid;
   aspect-ratio: 9 / 16;
-  width: 100%;
+  width: 72px;
   place-items: center;
   overflow: hidden;
   border-radius: 6px;
@@ -369,14 +368,33 @@ textarea {
 .style-card-copy {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .style-card-copy strong {
+  overflow: hidden;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-card-copy p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .style-card-copy small {
   color: #8d96a6;
+}
+
+.style-card-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .status-pill {
@@ -415,13 +433,6 @@ textarea {
   color: #ff9d9d;
 }
 
-.style-editor {
-  display: grid;
-  gap: 18px;
-  position: sticky;
-  top: 24px;
-}
-
 .editor-title {
   display: flex;
   justify-content: space-between;
@@ -453,6 +464,7 @@ textarea {
 .reference-panel {
   display: grid;
   gap: 14px;
+  margin-top: 16px;
 }
 
 .task-create-form {
@@ -693,14 +705,83 @@ textarea {
   background: #1a1d24;
 }
 
+.style-form-drawer {
+  width: clamp(620px, 42vw, 860px);
+}
+
+.style-form-drawer .form-grid {
+  margin-bottom: 0;
+}
+
+.style-test-page {
+  width: min(100%, 1640px);
+}
+
+.style-test-page .page-header {
+  display: grid;
+  gap: 12px;
+}
+
+.back-button {
+  width: fit-content;
+  margin-bottom: 12px;
+}
+
+.style-test-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 0.92fr) minmax(360px, 1.08fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.style-test-control,
+.style-test-output {
+  display: grid;
+  gap: 16px;
+}
+
+.test-reference-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.test-reference-strip img,
+.test-reference-strip span {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: #171a21;
+  object-fit: cover;
+}
+
+.test-reference-strip span {
+  display: grid;
+  grid-column: 1 / -1;
+  min-height: 160px;
+  place-items: center;
+  color: #6f7785;
+}
+
+.style-test-control textarea {
+  min-height: 220px;
+}
+
+.style-test-output > img {
+  width: min(100%, 460px);
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #171a21;
+}
+
 @media (max-width: 1080px) {
   .style-layout,
-  .task-layout {
+  .task-layout,
+  .style-test-layout {
     grid-template-columns: 1fr;
-  }
-
-  .style-editor {
-    position: static;
   }
 }
 
@@ -1760,6 +1841,18 @@ textarea {
   .task-create-drawer {
     width: 100%;
     padding: 20px;
+  }
+
+  .style-card {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .style-card-actions {
+    grid-column: 1 / -1;
+  }
+
+  .style-card-actions button {
+    flex: 1;
   }
 
   .image-modal {

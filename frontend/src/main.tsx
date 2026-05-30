@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import {
   AlertCircle,
   ArrowUpRight,
-  BookImage,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -99,7 +98,7 @@ function AuthScreen({
       <section className="auth-card">
         <div className="brand">
           <span className="brand-mark">
-            <BookImage size={22} />
+            <img className="brand-icon" src="/doodlestory-icon.svg" alt="" />
           </span>
           <div>
             <strong>DoodleStory</strong>
@@ -158,7 +157,7 @@ function Shell({
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">
-            <BookImage size={22} />
+            <img className="brand-icon" src="/doodlestory-icon.svg" alt="" />
           </span>
           <div>
             <strong>DoodleStory</strong>
@@ -862,38 +861,58 @@ function StylesView({ user }: { user: User }) {
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<Style["status"] | "all">("all");
-  const [selectedId, setSelectedId] = useState("");
-  const [mode, setMode] = useState<"create" | "edit">("create");
+  const [styleDrawerOpen, setStyleDrawerOpen] = useState(false);
+  const [styleFormMode, setStyleFormMode] = useState<"create" | "edit">("create");
+  const [editingStyleId, setEditingStyleId] = useState("");
+  const [stylePage, setStylePage] = useState<"library" | "test">("library");
+  const [testingStyleId, setTestingStyleId] = useState("");
   const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
   const activeCount = useMemo(() => styles.filter((style) => style.status === "active").length, [styles]);
-  const selectedStyle = useMemo(
-    () => styles.find((style) => style.id === selectedId) ?? styles[0] ?? null,
-    [selectedId, styles],
+  const editingStyle = useMemo(() => styles.find((style) => style.id === editingStyleId) ?? null, [editingStyleId, styles]);
+  const testingStyle = useMemo(
+    () => styles.find((style) => style.id === testingStyleId) ?? styles[0] ?? null,
+    [testingStyleId, styles],
   );
 
   useEffect(() => {
     refresh();
   }, []);
 
-  async function refresh() {
+  async function refresh(preferredStyleId?: string) {
     const result = await api.styles({ query, status });
     setStyles(result.items);
-    if (!selectedId && result.items[0]) {
-      setSelectedId(result.items[0].id);
+    if (preferredStyleId) {
+      setEditingStyleId(preferredStyleId);
+      setTestingStyleId(preferredStyleId);
+      return;
+    }
+    if (!editingStyleId && result.items[0]) {
+      setEditingStyleId(result.items[0].id);
+    }
+    if (!testingStyleId && result.items[0]) {
+      setTestingStyleId(result.items[0].id);
     }
   }
 
   function startCreate() {
-    setMode("create");
+    setStyleFormMode("create");
+    setEditingStyleId("");
     setMessage("");
-    setStyleTest(null);
+    setStyleDrawerOpen(true);
   }
 
   function startEdit(style: Style) {
-    setSelectedId(style.id);
-    setMode("edit");
+    setEditingStyleId(style.id);
+    setStyleFormMode("edit");
     setMessage("");
+    setStyleDrawerOpen(true);
+  }
+
+  function openStyleTest(style: Style) {
+    setTestingStyleId(style.id);
     setStyleTest(null);
+    setMessage("");
+    setStylePage("test");
   }
 
   async function createStyle(event: React.FormEvent<HTMLFormElement>) {
@@ -911,13 +930,15 @@ function StylesView({ user }: { user: User }) {
 
     try {
       const saved =
-        mode === "edit" && selectedStyle
-          ? await api.updateStyle(selectedStyle.id, payload)
+        styleFormMode === "edit" && editingStyle
+          ? await api.updateStyle(editingStyle.id, payload)
           : await api.createStyle(payload);
-      setSelectedId(saved.id);
-      setMode("edit");
-      setMessage(mode === "edit" ? "风格已保存" : "风格已创建");
-      await refresh();
+      setEditingStyleId(saved.id);
+      setTestingStyleId(saved.id);
+      setStyleFormMode("edit");
+      setStyleDrawerOpen(false);
+      setMessage(styleFormMode === "edit" ? "风格已保存" : "风格已创建");
+      await refresh(saved.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
     }
@@ -929,8 +950,12 @@ function StylesView({ user }: { user: User }) {
     }
     try {
       await api.deleteStyle(style.id);
-      setSelectedId("");
-      setMode("create");
+      setEditingStyleId("");
+      if (testingStyleId === style.id) {
+        setTestingStyleId("");
+        setStylePage("library");
+      }
+      setStyleDrawerOpen(false);
       setMessage("风格已删除");
       await refresh();
     } catch (error) {
@@ -939,27 +964,27 @@ function StylesView({ user }: { user: User }) {
   }
 
   async function uploadReferences(event: React.ChangeEvent<HTMLInputElement>) {
-    if (!selectedStyle || !event.target.files?.length) {
+    if (!editingStyle || !event.target.files?.length) {
       return;
     }
     try {
       for (const file of Array.from(event.target.files)) {
-        await api.uploadStyleReferenceImage(selectedStyle.id, file);
+        await api.uploadStyleReferenceImage(editingStyle.id, file);
       }
       setMessage("参考图已上传");
       event.target.value = "";
-      await refresh();
+      await refresh(editingStyle.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "上传失败");
     }
   }
 
   async function deleteReference(referenceId: string) {
-    if (!selectedStyle) return;
+    if (!editingStyle) return;
     try {
-      await api.deleteStyleReferenceImage(selectedStyle.id, referenceId);
+      await api.deleteStyleReferenceImage(editingStyle.id, referenceId);
       setMessage("参考图已移除");
-      await refresh();
+      await refresh(editingStyle.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "删除参考图失败");
     }
@@ -967,10 +992,10 @@ function StylesView({ user }: { user: User }) {
 
   async function runStyleTest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedStyle) return;
+    if (!testingStyle) return;
     const formData = new FormData(event.currentTarget);
     try {
-      const result = await api.createStyleTest(selectedStyle.id, {
+      const result = await api.createStyleTest(testingStyle.id, {
         test_text: String(formData.get("test_text") ?? ""),
       });
       setStyleTest(result);
@@ -980,7 +1005,72 @@ function StylesView({ user }: { user: User }) {
     }
   }
 
-  const formStyle = mode === "edit" ? selectedStyle : null;
+  const formStyle = styleFormMode === "edit" ? editingStyle : null;
+
+  if (stylePage === "test") {
+    return (
+      <section className="page style-test-page">
+        <header className="page-header">
+          <div>
+            <button type="button" className="ghost-button back-button" onClick={() => setStylePage("library")}>
+              <ChevronLeft size={16} />
+              返回风格库
+            </button>
+            <h1>测试风格</h1>
+            <p>{testingStyle ? `使用「${testingStyle.name}」生成一张 9:16 测试图。` : "请选择一个风格后再测试。"}</p>
+          </div>
+        </header>
+
+        {message ? <p className="form-message">{message}</p> : null}
+
+        {testingStyle ? (
+          <div className="style-test-layout">
+            <section className="panel style-test-control">
+              <div className="editor-title">
+                <div>
+                  <h2>{testingStyle.name}</h2>
+                  <p>{testingStyle.description || "暂无描述"}</p>
+                </div>
+                <span className={`status-pill ${testingStyle.status}`}>{testingStyle.status}</span>
+              </div>
+              <div className="test-reference-strip">
+                {stylePreviewAssets(testingStyle)
+                  .slice(0, 6)
+                  .map((asset) => (
+                    <img key={asset.id} src={api.assetContentUrl(asset.id)} alt={testingStyle.name} />
+                  ))}
+                {testingStyle.reference_images.length === 0 ? <span>暂无参考图</span> : null}
+              </div>
+              <form className="test-form" onSubmit={runStyleTest}>
+                <textarea name="test_text" placeholder="输入要测试的画面文本" required />
+                <button type="submit">
+                  <Sparkles size={16} />
+                  生成测试图
+                </button>
+              </form>
+            </section>
+
+            <section className="panel style-test-output">
+              <div className="editor-title">
+                <div>
+                  <h2>测试结果</h2>
+                  <p>测试图仅用于校准风格提示词和参考图方向。</p>
+                </div>
+                {styleTest ? <span className={`status-pill ${styleTest.status}`}>{styleTest.status}</span> : null}
+              </div>
+              {styleTest?.output_asset ? (
+                <img src={api.assetContentUrl(styleTest.output_asset.id)} alt="风格测试结果" />
+              ) : (
+                <div className="empty mini">{styleTest?.error_message || "还没有测试结果"}</div>
+              )}
+            </section>
+          </div>
+        ) : (
+          <div className="empty">暂无可测试风格。</div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="page style-workspace">
@@ -1006,42 +1096,58 @@ function StylesView({ user }: { user: User }) {
           <option value="active">启用</option>
           <option value="disabled">停用</option>
         </select>
-        <button onClick={refresh}>筛选</button>
+        <button type="button" onClick={() => refresh()}>筛选</button>
       </div>
 
-      <div className="style-layout">
-        <div className="style-gallery">
-          {styles.length === 0 ? <div className="empty">还没有风格。</div> : null}
-          {styles.map((style) => {
-            const cover = style.cover_asset ?? style.reference_images[0]?.asset;
-            return (
-              <button
-                type="button"
-                className={`style-card ${selectedStyle?.id === style.id ? "selected" : ""}`}
-                key={style.id}
-                onClick={() => startEdit(style)}
-              >
-                <div className="poster">
-                  {cover ? <img src={api.assetContentUrl(cover.id)} alt={style.name} /> : <span>9:16</span>}
-                </div>
-                <div className="style-card-copy">
-                  <span className={`status-pill ${style.status}`}>{style.status}</span>
-                  <strong>{style.name}</strong>
-                  <small>{style.reference_images.length} 张参考图</small>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      {message ? <p className="form-message">{message}</p> : null}
 
-        <aside className="style-editor">
-          <form key={`${mode}-${formStyle?.id ?? "new"}`} className="panel form-grid" onSubmit={createStyle}>
+      <div className="style-gallery">
+        {styles.length === 0 ? <div className="empty">还没有风格。</div> : null}
+        {styles.map((style) => {
+          const cover = style.cover_asset ?? style.reference_images[0]?.asset;
+          return (
+            <article className="style-card" key={style.id}>
+              <div className="poster">
+                {cover ? <img src={api.assetContentUrl(cover.id)} alt={style.name} /> : <span>9:16</span>}
+              </div>
+              <div className="style-card-copy">
+                <span className={`status-pill ${style.status}`}>{style.status}</span>
+                <strong>{style.name}</strong>
+                <p>{style.description || "暂无描述"}</p>
+                <small>{style.reference_images.length} 张参考图 · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
+              </div>
+              <div className="style-card-actions">
+                <button type="button" className="secondary-button" onClick={() => startEdit(style)}>
+                  编辑
+                </button>
+                <button type="button" onClick={() => openStyleTest(style)}>
+                  测试
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      {styleDrawerOpen ? (
+        <div className="drawer-backdrop" role="presentation" onMouseDown={() => setStyleDrawerOpen(false)}>
+          <aside className="task-create-drawer style-form-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>{styleFormMode === "edit" && formStyle ? "编辑风格" : "新建风格"}</h2>
+                <p>{styleFormMode === "edit" && formStyle ? formStyle.name : "创建一个可复用的生图风格资产"}</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setStyleDrawerOpen(false)} aria-label="关闭">
+                <X size={18} />
+              </button>
+            </div>
+            <form key={`${styleFormMode}-${formStyle?.id ?? "new"}`} className="form-grid" onSubmit={createStyle}>
             <div className="editor-title">
               <div>
-                <h2>{mode === "edit" && formStyle ? "编辑风格" : "新建风格"}</h2>
-                <p>{mode === "edit" && formStyle ? formStyle.name : "创建一个可复用的生图风格资产"}</p>
+                <h2>基础信息</h2>
+                <p>风格提示词和后台生成配置会用于任务生图。</p>
               </div>
-              {mode === "edit" && formStyle ? (
+              {styleFormMode === "edit" && formStyle ? (
                 <button type="button" className="danger-button" onClick={() => deleteStyle(formStyle)}>
                   <Trash2 size={16} />
                 </button>
@@ -1069,11 +1175,11 @@ function StylesView({ user }: { user: User }) {
             {message ? <p className="form-message">{message}</p> : null}
             <button type="submit">
               <Save size={16} />
-              {mode === "edit" ? "保存风格" : "创建风格"}
+              {styleFormMode === "edit" ? "保存风格" : "创建风格"}
             </button>
           </form>
 
-          {selectedStyle ? (
+          {formStyle ? (
             <section className="panel reference-panel">
               <div className="editor-title">
                 <div>
@@ -1087,8 +1193,8 @@ function StylesView({ user }: { user: User }) {
                 </label>
               </div>
               <div className="reference-grid">
-                {selectedStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
-                {selectedStyle.reference_images.map((reference) => (
+                {formStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
+                {formStyle.reference_images.map((reference) => (
                   <figure key={reference.id} className="reference-item">
                     <img src={api.assetContentUrl(reference.asset.id)} alt={reference.asset.original_filename ?? "参考图"} />
                     <button type="button" onClick={() => deleteReference(reference.id)}>
@@ -1099,33 +1205,9 @@ function StylesView({ user }: { user: User }) {
               </div>
             </section>
           ) : null}
-
-          {selectedStyle ? (
-            <section className="panel reference-panel">
-              <div className="editor-title">
-                <div>
-                  <h2>测试风格</h2>
-                  <p>使用当前风格提示词和参考图生成一张 9:16 测试图。</p>
-                </div>
-              </div>
-              <form className="test-form" onSubmit={runStyleTest}>
-                <textarea name="test_text" placeholder="输入要测试的画面文本" required />
-                <button type="submit">生成测试图</button>
-              </form>
-              {styleTest ? (
-                <div className="test-result">
-                  <span className={`status-pill ${styleTest.status}`}>{styleTest.status}</span>
-                  {styleTest.output_asset ? (
-                    <img src={api.assetContentUrl(styleTest.output_asset.id)} alt="风格测试结果" />
-                  ) : (
-                    <p>{styleTest.error_message || "暂无测试图"}</p>
-                  )}
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-        </aside>
-      </div>
+          </aside>
+        </div>
+      ) : null}
     </section>
   );
 }
