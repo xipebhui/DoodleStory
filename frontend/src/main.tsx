@@ -197,12 +197,15 @@ function TasksView() {
     refresh();
   }, []);
 
-  async function refresh() {
+  async function refresh(preferredTaskId = selectedId) {
     try {
       const [taskResult, styleResult] = await Promise.all([api.tasks(), api.styles({ status: "active" })]);
       setTasks(taskResult.items);
       setStyles(styleResult.items);
-      const nextSelectedId = selectedId || taskResult.items[0]?.id || "";
+      const nextSelectedId =
+        (preferredTaskId && taskResult.items.some((task) => task.id === preferredTaskId) ? preferredTaskId : "") ||
+        taskResult.items[0]?.id ||
+        "";
       if (nextSelectedId) {
         setSelectedId(nextSelectedId);
         setSelectedTask(await api.task(nextSelectedId));
@@ -247,8 +250,9 @@ function TasksView() {
       const result = await api.cancelTask(selectedTask.id);
       setSelectedTask(result);
       setMessage("已提交取消请求");
-      await refresh();
+      await refresh(result.id);
     } catch (err) {
+      await refresh(selectedTask.id);
       setMessage(err instanceof Error ? err.message : "取消失败");
     }
   }
@@ -287,7 +291,7 @@ function TasksView() {
           <h1>任务</h1>
           <p>用户原文会原样保存，后续由队列执行切分、提示词和 9:16 生图。</p>
         </div>
-        <button onClick={refresh}>
+        <button onClick={() => refresh()}>
           <RefreshCw size={18} />
           刷新
         </button>
