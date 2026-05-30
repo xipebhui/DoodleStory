@@ -59,7 +59,7 @@ function App() {
     <Shell user={user} view={view} setView={setView} onLogout={() => setUser(null)}>
       {view === "tasks" ? <TasksView user={user} /> : null}
       {view === "styles" ? <StylesView user={user} /> : null}
-      {view === "settings" ? <SettingsView user={user} /> : null}
+      {view === "settings" ? <SettingsView user={user} onLogout={() => setUser(null)} /> : null}
     </Shell>
   );
 }
@@ -268,6 +268,10 @@ function stylePreviewAssets(style: Style) {
   return assets;
 }
 
+function styleCover(style: Style) {
+  return style.cover_asset ?? style.reference_images[0]?.asset ?? null;
+}
+
 function TasksView({ user }: { user: User }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [styles, setStyles] = useState<Style[]>([]);
@@ -299,6 +303,7 @@ function TasksView({ user }: { user: User }) {
   const previewImage = previewIndex >= 0 ? previewItems[previewIndex] : null;
   const previewPanel = previewImage ? taskForDetail?.panels.find((panel) => panel.id === previewImage.panel_id) : null;
   const activeTaskSignature = tasks.map((task) => `${task.id}:${task.status}:${task.updated_at}`).join("|");
+  const selectedCreateStyle = styles.find((style) => style.id === createStyleId) ?? styles[0] ?? null;
 
   useEffect(() => {
     refresh(undefined, { quiet: false });
@@ -763,8 +768,27 @@ function TasksView({ user }: { user: User }) {
               </label>
               <fieldset className="style-picker">
                 <legend>选择风格</legend>
-                <p>通过参考图判断视觉方向，提交后会使用该风格绑定的后台生成配置。</p>
+                <p>通过参考图判断视觉方向，提交后会使用该风格绑定的模型名生成图片。</p>
                 {styles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
+                {selectedCreateStyle ? (
+                  <div className="selected-style-preview">
+                    <div className="selected-style-poster">
+                      {styleCover(selectedCreateStyle) ? (
+                        <img src={api.assetContentUrl(styleCover(selectedCreateStyle)!.id)} alt={selectedCreateStyle.name} />
+                      ) : (
+                        <span>9:16</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className={`status-pill ${selectedCreateStyle.status}`}>
+                        {selectedCreateStyle.status === "active" ? "启用" : selectedCreateStyle.status}
+                      </span>
+                      <strong>{selectedCreateStyle.name}</strong>
+                      <p>{selectedCreateStyle.description || "暂无描述"}</p>
+                      <small>{selectedCreateStyle.reference_images.length} 张参考图</small>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="style-picker-grid">
                   {styles.map((style) => {
                     const assets = stylePreviewAssets(style);
@@ -776,7 +800,7 @@ function TasksView({ user }: { user: User }) {
                         onClick={() => setCreateStyleId(style.id)}
                       >
                         <div className="style-pick-images">
-                          {assets.slice(0, 3).map((asset) => (
+                          {assets.slice(0, 4).map((asset) => (
                             <img key={asset.id} src={api.assetContentUrl(asset.id)} alt={style.name} />
                           ))}
                           {assets.length === 0 ? <span>9:16</span> : null}
@@ -1101,17 +1125,26 @@ function StylesView({ user }: { user: User }) {
       <div className="style-gallery">
         {styles.length === 0 ? <div className="empty">还没有风格。</div> : null}
         {styles.map((style) => {
-          const cover = style.cover_asset ?? style.reference_images[0]?.asset;
+          const cover = styleCover(style);
+          const assets = stylePreviewAssets(style);
           return (
             <article className="style-card" key={style.id}>
               <div className="poster">
                 {cover ? <img src={api.assetContentUrl(cover.id)} alt={style.name} /> : <span>9:16</span>}
               </div>
               <div className="style-card-copy">
-                <span className={`status-pill ${style.status}`}>{style.status}</span>
-                <strong>{style.name}</strong>
+                <div className="style-row-title">
+                  <strong>{style.name}</strong>
+                  <span className={`status-pill ${style.status}`}>{style.status}</span>
+                </div>
                 <p>{style.description || "暂无描述"}</p>
                 <small>{style.reference_images.length} 张参考图 · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
+              </div>
+              <div className="style-row-strip">
+                {assets.slice(0, 5).map((asset) => (
+                  <img key={asset.id} src={api.assetContentUrl(asset.id)} alt={style.name} />
+                ))}
+                {assets.length === 0 ? <span>无参考图</span> : null}
               </div>
               <div className="style-card-actions">
                 <button type="button" className="secondary-button" onClick={() => startEdit(style)}>
@@ -1142,7 +1175,7 @@ function StylesView({ user }: { user: User }) {
             <div className="editor-title">
               <div>
                 <h2>基础信息</h2>
-                <p>风格提示词和后台生成配置会用于任务生图。</p>
+                <p>风格提示词、描述和参考图会用于任务生图。</p>
               </div>
               {styleFormMode === "edit" && formStyle ? (
                 <button type="button" className="danger-button" onClick={() => deleteStyle(formStyle)}>
@@ -1198,10 +1231,15 @@ function StylesView({ user }: { user: User }) {
   );
 }
 
-function SettingsView({ user }: { user: User }) {
+function SettingsView({ user, onLogout }: { user: User; onLogout: () => void }) {
   const [displayMode, setDisplayMode] = useState<"system" | "light" | "dark">("dark");
   const [archiveName, setArchiveName] = useState("doodlestory-task-{task_id}.zip");
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+
+  async function logout() {
+    await api.logout();
+    onLogout();
+  }
 
   return (
     <section className="page settings-page">
@@ -1231,10 +1269,14 @@ function SettingsView({ user }: { user: User }) {
               </div>
               <div className="account-actions">
                 <button type="button" className="secondary-button" disabled>
-                  修改昵称 · 待接入
+                  修改昵称
                 </button>
                 <button type="button" className="ghost-button" disabled>
-                  修改密码 · 待接入
+                  修改密码
+                </button>
+                <button type="button" className="danger-button text-danger-button" onClick={logout}>
+                  <LogOut size={16} />
+                  退出登录
                 </button>
               </div>
             </div>
@@ -1321,16 +1363,16 @@ function SettingsView({ user }: { user: User }) {
             <div className="security-list">
               <div>
                 <strong>密码与登录</strong>
-                <span>修改密码和找回密码需要邮件服务接入。</span>
+                <span>密码修改和找回密码会在账号安全能力接入后开放。</span>
                 <button type="button" className="secondary-button" disabled>
-                  管理密码 · 待接入
+                  管理密码
                 </button>
               </div>
               <div>
                 <strong>最近登录记录</strong>
-                <span>会话审计尚未接入。</span>
+                <span>用于查看近期登录设备和时间。</span>
                 <button type="button" className="ghost-button" disabled>
-                  查看记录 · 待接入
+                  查看记录
                 </button>
               </div>
             </div>
@@ -1366,7 +1408,7 @@ function SettingsView({ user }: { user: User }) {
             <div className="mini-auth-form">
               <input value={user.email} readOnly aria-label="找回密码邮箱" />
               <button type="button" disabled>
-                发送重置链接 · 待接入
+                发送重置链接
               </button>
             </div>
           </section>

@@ -333,7 +333,7 @@ textarea {
 
 .style-card {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) auto;
+  grid-template-columns: 84px minmax(240px, 1fr) minmax(180px, 300px) auto;
   gap: 16px;
   align-items: center;
   min-height: 132px;
@@ -371,7 +371,15 @@ textarea {
   min-width: 0;
 }
 
-.style-card-copy strong {
+.style-row-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.style-card-copy strong,
+.style-row-title strong {
   overflow: hidden;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -395,6 +403,33 @@ textarea {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.style-row-strip {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.style-row-strip img,
+.style-row-strip span {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 74px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: #171a21;
+  color: #6f7785;
+  object-fit: cover;
+}
+
+.style-row-strip span {
+  display: grid;
+  flex-basis: 120px;
+  width: 120px;
+  place-items: center;
+  font-size: 12px;
 }
 
 .status-pill {
@@ -1257,7 +1292,7 @@ textarea {
 }
 
 .task-create-drawer {
-  width: clamp(560px, 38vw, 760px);
+  width: clamp(620px, 42vw, 860px);
   max-width: 100%;
   height: 100%;
   border-left: 1px solid rgba(255, 255, 255, 0.12);
@@ -1337,7 +1372,7 @@ textarea {
 
 .style-pick-card {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr) auto;
+  grid-template-columns: 168px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   width: 100%;
@@ -1356,7 +1391,7 @@ textarea {
 
 .style-pick-images {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   height: 96px;
 }
@@ -1381,6 +1416,67 @@ textarea {
 .style-pick-card strong,
 .style-pick-card small {
   display: block;
+}
+
+.selected-style-preview {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(214, 162, 74, 0.32);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(214, 162, 74, 0.1), rgba(214, 162, 74, 0.025)),
+    #101319;
+  padding: 12px;
+}
+
+.selected-style-poster {
+  display: grid;
+  width: 84px;
+  aspect-ratio: 9 / 16;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: #171a21;
+  color: #697282;
+}
+
+.selected-style-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.selected-style-preview strong,
+.selected-style-preview small {
+  display: block;
+}
+
+.selected-style-preview strong {
+  margin-top: 8px;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-style-preview p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 6px 0 0;
+  color: #9aa4b4;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.selected-style-preview small {
+  margin-top: 8px;
+  color: #d8aa57;
+  font-weight: 800;
 }
 
 .style-pick-card small {
@@ -1482,7 +1578,7 @@ textarea {
 
 .settings-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
   gap: 24px;
   align-items: start;
 }
@@ -1575,6 +1671,12 @@ textarea {
 .account-actions {
   display: grid;
   gap: 10px;
+}
+
+.text-danger-button {
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
 }
 
 .setting-row {
