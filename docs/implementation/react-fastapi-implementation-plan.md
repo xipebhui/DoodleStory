@@ -103,7 +103,7 @@ XG_API_BASE_URL=https://api.xgapi.top
 XG_IMAGE_MODEL=gpt-image-2
 XG_IMAGE_ASPECT_RATIO=9:16
 
-GENERATION_PROFILES_JSON={"runway_creative":{"llm_model":"deepseek-ai/DeepSeek-V3.2","image_model":"gpt-image-2","image_provider":"xg","aspect_ratio":"9:16"}}
+GENERATION_PROFILES_JSON={"runway_creative":{"llm_provider":"siliconflow","llm_model":"deepseek-ai/DeepSeek-V3.2","image_provider":"xg","image_model":"gpt-image-2","aspect_ratio":"9:16"}}
 
 QINIU_ACCESS_KEY=
 QINIU_SECRET_KEY=
@@ -418,6 +418,8 @@ frontend/src/
 - 普通 UI 不暴露 provider/model/API key。
 
 ### PR 05：Provider 配置加载
+
+状态：已完成。
 
 - 从 env 读取 `GENERATION_PROFILES_JSON`。
 - 实现 `GenerationProfileRegistry`。

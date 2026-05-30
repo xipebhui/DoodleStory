@@ -9,6 +9,11 @@ from app.models.entities import FileAsset, GenerationTask, Style, StyleReference
 from app.models.enums import FileAssetPurpose, StyleStatus, UserRole
 from app.schemas.common import ApiData, ApiList
 from app.schemas.style import StyleCreate, StyleRead, StyleReferenceImageRead, StyleTestCreate, StyleUpdate
+from app.services.generation_profiles import (
+    GenerationProfileConfigError,
+    UnknownGenerationProfileError,
+    validate_generation_profile_key,
+)
 from app.services.storage import save_upload_file
 
 router = APIRouter(prefix="/styles", tags=["styles"])
@@ -34,6 +39,17 @@ def normalize_profile_key(value: str | None) -> str | None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def ensure_profile_key_is_valid(value: str | None) -> None:
+    if value is None:
+        return
+    try:
+        validate_generation_profile_key(value)
+    except UnknownGenerationProfileError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except GenerationProfileConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
 
 @router.get("", response_model=ApiList[StyleRead])
@@ -70,6 +86,7 @@ def create_style(payload: StyleCreate, user: User = Depends(current_user), db: S
     data["generation_profile_key"] = normalize_profile_key(data.get("generation_profile_key"))
     if user.role != UserRole.admin and data["generation_profile_key"] is not None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有管理员可以设置生成配置 Key")
+    ensure_profile_key_is_valid(data["generation_profile_key"])
 
     style = Style(**data)
     db.add(style)
@@ -101,6 +118,7 @@ def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(curre
         if user.role != UserRole.admin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有管理员可以设置生成配置 Key")
         data["generation_profile_key"] = normalize_profile_key(data["generation_profile_key"])
+        ensure_profile_key_is_valid(data["generation_profile_key"])
 
     for key, value in data.items():
         setattr(style, key, value)
