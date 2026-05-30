@@ -34,15 +34,15 @@
 - 添加产品设计 sprint 的 QA 记录。
 - 将 active 产品文档改为中文表达。
 - 根据新要求移除独立图片模型模块，并补充注册登录、用户角色和任务可见性规则。
-- 根据最新讨论收敛后台生成配置：provider、model、API key 和默认参数不暴露给普通用户；风格只通过后台 `generation_profile_key` 引用服务端配置。
+- 根据最新讨论收敛生成配置：LLM 固定一个平台和模型，生图固定一个平台和 API key；风格只绑定 `image_model_name`，不再存在旧的多 profile 配置层。
 - 明确第一版不支持 prompt 编辑和单图片重试，每个 panel 只生成一张图。
 - 明确文件存储使用本地磁盘，`DOODLESTORY_STORAGE_ROOT` 可配置，默认 `./storage`。
 - 纠正错误的 Next.js 全栈实现，改为 React + Vite 前端和 Python 3.11 + FastAPI 后端的双服务结构。
 - 记录当前 React/FastAPI 实现与产品设计之间的差距，并新增实施计划：`docs/implementation/react-fastapi-implementation-plan.md`。
 - 完成 React/FastAPI 工程基线的第一轮清理，接入 Alembic，并补齐初始数据库表：`sessions`、`generation_steps`、`task_downloads` 等工作流表已进入迁移。
 - 完成统一 API 契约：列表分页、标准错误结构、认证响应包裹、普通用户任务可见性边界已落地。
-- 完成风格模块基础闭环：风格 CRUD、参考图上传/删除、已引用风格删除保护、普通用户禁止编辑后台生成配置 Key、风格页 9:16 参考图展示已落地。
-- 完成 Provider 配置加载：`GENERATION_PROFILES_JSON` 会被解析为服务端生成配置 registry，管理员绑定不存在的配置 Key 会收到明确错误。
+- 完成风格模块基础闭环：风格 CRUD、参考图上传/删除、已引用风格删除保护、风格绑定生图模型名、风格页 9:16 参考图展示已落地。
+- 已移除旧的多 profile 设计，后端直接从 env 读取 SiliconFlow 与 XG 配置。
 - 完成 SiliconFlow LLM 客户端基础实现：新增故事切分与 panel prompt 生成的版本化 Prompt，并封装 OpenAI SDK 兼容 JSON 调用与响应结构校验。
 - 完成 XG 图片生成客户端基础实现：支持 `/v1/images/edits` multipart、多参考图 `image[]`、9:16 参数、URL 结果下载到本地文件存储，并接入风格测试入口。
 - 完成任务队列基础链路：任务创建会原样保存用户文本并入进程内队列，worker 顺序执行故事切分、panel prompt 和图片生成 steps，失败会写回任务与 step 错误。
@@ -55,7 +55,7 @@
 - 产品设计文档完成后，`./scripts/check.sh` 通过。
 - 产品设计文档中文化后，`./scripts/check.sh` 通过。
 - 用户和模型模块设计调整后，`./scripts/check.sh` 通过。
-- 后台生成配置和本地文件存储设计调整后，`./scripts/check.sh` 通过。
+- 风格模型名和本地文件存储设计调整后，`./scripts/check.sh` 通过。
 
 ## 已知缺口
 
@@ -65,7 +65,7 @@
 - LLM 客户端和 prompts 已实现，但尚未接入任务 worker 流程。
 - 任务 worker 已接入 LLM 和 XG 客户端，基础任务详情、批量下载和预览已完成；更精细的运行中恢复策略、单图下载入口和更系统的组件拆分仍可继续完善。
 - 对象存储第一版继续本地磁盘，七牛作为可选 `StorageBackend` 尚未实现。
-- 后台生成配置 registry 已实现，但 SiliconFlow 与 XG 的真实客户端尚未接入。
+- 旧的多 profile registry 已移除；SiliconFlow 与 XG 客户端按固定平台配置接入。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
 
 ## 建议下一步

@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.entities import (
     FileAsset,
@@ -22,7 +23,6 @@ from app.models.enums import (
     StepStatus,
     TaskStatus,
 )
-from app.services.generation_profiles import get_generation_profile
 from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image_edit
 from app.services.llm import LLMProviderError, StorySegment, generate_panel_prompts, segment_story
 from app.services.storage import resolve_storage_key
@@ -173,18 +173,11 @@ def process_task(task_id: str) -> None:
         db.commit()
 
         try:
-            profile = get_generation_profile(task.generation_profile_key_snapshot or "")
-        except Exception as exc:
-            fail_step_and_task(db, task, GenerationStepName.segment_story, exc)
-            return
-
-        try:
             set_step(db, task, GenerationStepName.segment_story, StepStatus.running)
             segmentation = segment_story(
                 original_text=task.original_text,
                 image_count_mode=task.image_count_mode,
                 requested_image_count=task.requested_image_count,
-                profile=profile,
             )
             for panel in segmentation.panels:
                 db.add(
@@ -216,13 +209,12 @@ def process_task(task_id: str) -> None:
                 original_text=task.original_text,
                 style_prompt=task.style_prompt_snapshot,
                 panels=story_segments,
-                profile=profile,
             )
             prompts_by_order = {item.panel_order: item.prompt for item in prompt_result.panels}
             for panel in task.panels:
                 panel.generated_prompt = prompts_by_order[panel.panel_order]
                 panel.prompt_status = PromptStatus.generated
-                panel.prompt_model_snapshot = profile.llm_model
+                panel.prompt_model_snapshot = get_settings().siliconflow_model
             task.progress_current = 2
             set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
         except LLMProviderError as exc:
@@ -260,7 +252,7 @@ def process_task(task_id: str) -> None:
                 panel_id=panel.id,
                 status=GeneratedImageStatus.running,
                 final_prompt=final_prompt,
-                generation_profile_key_snapshot=task.generation_profile_key_snapshot,
+                image_model_name_snapshot=task.image_model_name_snapshot,
                 started_at=datetime.utcnow(),
             )
             db.add(image)
@@ -268,7 +260,11 @@ def process_task(task_id: str) -> None:
             db.refresh(image)
 
             try:
-                generated = generate_xg_image_edit(prompt=final_prompt, reference_paths=reference_paths, profile=profile)
+                generated = generate_xg_image_edit(
+                    prompt=final_prompt,
+                    reference_paths=reference_paths,
+                    image_model_name=task.image_model_name_snapshot,
+                )
                 asset = FileAsset(
                     purpose=FileAssetPurpose.generated_image,
                     storage_key=generated.storage_key,

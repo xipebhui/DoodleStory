@@ -10,8 +10,7 @@ export type Style = {
   name: string;
   description: string | null;
   status: "draft" | "active" | "disabled";
-  generation_profile_key: string | null;
-  generation_profile_configured: boolean;
+  image_model_name: string;
   style_prompt: string;
   cover_asset: FileAsset | null;
   last_tested_at: string | null;
@@ -61,7 +60,7 @@ export type Task = {
   requested_image_count: number | null;
   style_id: string;
   style_name_snapshot: string;
-  generation_profile_key_snapshot: string | null;
+  image_model_name_snapshot: string;
   status:
     | "queued"
     | "running"
@@ -236,6 +235,8 @@ export const api = {
   }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
   cancelTask: (id: string) =>
     request<ApiData<Task>>(`/tasks/${id}/cancel`, { method: "POST" }).then((result) => result.data),
+  retryTask: (id: string) =>
+    request<ApiData<Task>>(`/tasks/${id}/retry`, { method: "POST" }).then((result) => result.data),
   createTaskDownload: (id: string) =>
     request<ApiData<TaskDownload>>(`/tasks/${id}/downloads`, { method: "POST" }).then((result) => result.data),
 };

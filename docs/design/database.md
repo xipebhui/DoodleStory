@@ -57,7 +57,7 @@ file_assets 1--N task_downloads
 
 ### `styles`
 
-保存可复用视觉风格。provider key、model key、API key 和模型默认参数属于后台私密配置，不进入普通风格编辑流程。
+保存可复用视觉风格。风格只绑定生图模型名；provider、API key 和模型默认参数属于后台私密配置，不进入普通风格编辑流程。
 
 字段：
 
@@ -65,7 +65,7 @@ file_assets 1--N task_downloads
 - `name` text not null
 - `description` text null
 - `status` text not null，取值 `draft`、`active`、`disabled`
-- `generation_profile_key` text null
+- `image_model_name` text not null
 - `style_prompt` text not null
 - `last_tested_at` timestamptz null
 - `created_at` timestamptz not null
@@ -79,13 +79,13 @@ file_assets 1--N task_downloads
 索引：
 
 - `idx_styles_status_updated_at`：`status`, `updated_at desc`，用于风格列表。
-- `idx_styles_generation_profile_key`：`generation_profile_key`，用于 Admin 排查后台生成配置绑定。
+- `idx_styles_image_model_name`：`image_model_name`，用于按生图模型名排查风格。
 
 说明：
 
-- `generation_profile_key` 是服务端后台生成配置的引用，不是 provider key、model key 或密钥。
-- 真实 provider key、model key、API key 和默认参数保存在后台配置或环境变量中。
-- 普通用户 API 不返回该字段；Admin 或后台流程可以维护该字段。
+- `image_model_name` 是调用统一生图平台时传入的模型名，例如 `gpt-image-2`。
+- XG API key、base url、LLM API key 和 LLM 模型保存在环境变量中，不进入数据库和普通用户 API。
+- 普通用户可以看到模型名以理解风格差异，但不接触密钥或 provider 配置。
 
 ### `file_assets`
 
@@ -151,7 +151,7 @@ file_assets 1--N task_downloads
 - `style_id` 外键到 `styles.id`，not null
 - `test_text` text not null
 - `style_prompt_snapshot` text not null
-- `generation_profile_key_snapshot` text null
+- `image_model_name_snapshot` text not null
 - `composed_prompt` text not null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
 - `attempts` integer not null，默认 `0`
@@ -193,7 +193,7 @@ file_assets 1--N task_downloads
 - `style_id` 外键到 `styles.id`，not null
 - `style_name_snapshot` text not null
 - `style_prompt_snapshot` text not null
-- `generation_profile_key_snapshot` text null
+- `image_model_name_snapshot` text not null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`partial_succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
 - `current_step` text null，取值 `segment_story`、`generate_panel_prompts`、`generate_images`、`package_download`
 - `progress_current` integer not null，默认 `0`
@@ -295,7 +295,7 @@ file_assets 1--N task_downloads
 - `panel_id` 外键到 `task_panels.id`，not null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`
 - `final_prompt` text not null
-- `generation_profile_key_snapshot` text null
+- `image_model_name_snapshot` text not null
 - `asset_id` 外键到 `file_assets.id`，null
 - `provider_request_id` text null
 - `started_at` timestamptz null
@@ -347,7 +347,7 @@ file_assets 1--N task_downloads
 
 任务创建：
 
-1. 插入 `generation_tasks`，保存 `owner_user_id`、精确 `original_text`、风格快照和后台生成配置引用快照。
+1. 插入 `generation_tasks`，保存 `owner_user_id`、精确 `original_text`、风格快照和生图模型名快照。
 2. 插入初始 `generation_steps`，或在步骤开始时创建。
 3. 进程内队列只放入任务 ID。
 
@@ -365,7 +365,7 @@ Worker 执行：
 启动恢复：
 
 - 重新入队状态为 `queued`、`retrying` 或过久停留在 `running` 的任务。
-- 重新入队状态为 `queued`、`retrying` 或过久停留在 `running` 的风格测试。
+- 风格测试当前为同步请求，不进入进程内任务队列。
 - 使用步骤状态和幂等键避免重复已完成副作用。
 
 取消：
@@ -377,9 +377,9 @@ Worker 执行：
 ## 数据完整性说明
 
 - `generation_tasks.original_text` 必须原样保存。
-- 任务和风格测试保存风格 prompt 与 `generation_profile_key` 快照，保证风格后续编辑不影响历史审计。
+- 任务和风格测试保存风格 prompt 与 `image_model_name` 快照，保证风格后续编辑不影响历史审计。
 - 第一版不支持用户编辑生成 prompt。
-- 第一版不支持单图片重试，每个 panel 只生成一张图片。
+- 第一版支持失败任务的任务级重试，不支持单图片重试；每个 panel 只生成一张图片。
 - `error_message` 保存用户可读错误；`internal_error_ref` 保存内部细节引用。
 - 大型 provider 响应和原始日志不放入主工作流表。
 - 被任务引用的风格不应被硬删除。
@@ -397,4 +397,4 @@ Worker 执行：
 ## 未决 Schema 问题
 
 - 认证模块具体选择。
-- 后台生成配置如何加载 provider key、model key、API key 和默认参数。
+- 是否需要在后续版本增加后台配置页来查看当前 env 中的 provider、API key 状态和模型参数。

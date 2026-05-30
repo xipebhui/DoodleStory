@@ -10,7 +10,7 @@ class StyleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     description: str | None = Field(default=None, max_length=500)
     status: StyleStatus = StyleStatus.draft
-    generation_profile_key: str | None = Field(default=None, max_length=120)
+    image_model_name: str = Field(min_length=1, max_length=120)
     style_prompt: str = Field(min_length=1, max_length=8000)
 
 
@@ -18,7 +18,7 @@ class StyleUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     description: str | None = Field(default=None, max_length=500)
     status: StyleStatus | None = None
-    generation_profile_key: str | None = Field(default=None, max_length=120)
+    image_model_name: str | None = Field(default=None, min_length=1, max_length=120)
     style_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
 
 
@@ -46,8 +46,7 @@ class StyleRead(TimestampFields):
     name: str
     description: str | None
     status: StyleStatus
-    generation_profile_key: str | None
-    generation_profile_configured: bool = False
+    image_model_name: str
     style_prompt: str
     cover_asset: FileAssetRead | None = None
     last_tested_at: datetime | None
@@ -63,7 +62,7 @@ class StyleTestRead(TimestampFields):
     style_id: str
     test_text: str
     style_prompt_snapshot: str
-    generation_profile_key_snapshot: str | None
+    image_model_name_snapshot: str
     composed_prompt: str
     status: WorkflowStatus
     output_asset: FileAssetRead | None = None

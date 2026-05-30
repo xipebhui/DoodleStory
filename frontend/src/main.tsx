@@ -457,6 +457,19 @@ function TasksView({ user }: { user: User }) {
     }
   }
 
+  async function retrySelectedTask() {
+    if (!selectedTask) return;
+    try {
+      const result = await api.retryTask(selectedTask.id);
+      setSelectedTask(result);
+      setMessage("任务已重新进入生成队列");
+      await refresh(result.id);
+    } catch (err) {
+      await refresh(selectedTask.id);
+      setMessage(err instanceof Error ? err.message : "重试失败");
+    }
+  }
+
   function showPreviewOffset(offset: number) {
     if (!previewItems.length) return;
     const current = Math.max(0, previewIndex);
@@ -494,6 +507,7 @@ function TasksView({ user }: { user: User }) {
   const canDownload = Boolean(
     taskForDetail?.generated_images.some((image) => image.status === "succeeded" && image.asset),
   );
+  const canRetry = taskForDetail?.status === "failed";
 
   return (
     <section className="page tasks-workspace">
@@ -660,13 +674,19 @@ function TasksView({ user }: { user: User }) {
                   <span className={`status-pill ${taskForDetail.status}`}>{taskStatusLabel(taskForDetail.status)}</span>
                   <h2>{taskForDetail.display_title}</h2>
                   <p>
-                    {taskForDetail.style_name_snapshot} · 创建于 {formatDateTime(taskForDetail.created_at)}
+                        {taskForDetail.style_name_snapshot} · 创建于 {formatDateTime(taskForDetail.created_at)}
+                        <br />
+                        模型 {taskForDetail.image_model_name_snapshot}
                   </p>
                 </div>
                 <div className="detail-actions">
                   <button type="button" className="secondary-button" disabled={!canDownload} onClick={downloadSelectedTask}>
                     <Download size={16} />
                     下载图片
+                  </button>
+                  <button type="button" className="secondary-button" disabled={!canRetry} onClick={retrySelectedTask}>
+                    <RefreshCw size={16} />
+                    重新生成
                   </button>
                   <button type="button" className="ghost-button" disabled={!canCancel} onClick={cancelSelectedTask}>
                     <X size={16} />
@@ -785,7 +805,7 @@ function TasksView({ user }: { user: User }) {
                       </span>
                       <strong>{selectedCreateStyle.name}</strong>
                       <p>{selectedCreateStyle.description || "暂无描述"}</p>
-                      <small>{selectedCreateStyle.reference_images.length} 张参考图</small>
+                      <small>{selectedCreateStyle.reference_images.length} 张参考图 · {selectedCreateStyle.image_model_name}</small>
                     </div>
                   </div>
                 ) : null}
@@ -807,7 +827,7 @@ function TasksView({ user }: { user: User }) {
                         </div>
                         <div>
                           <strong>{style.name}</strong>
-                          <small>{style.description || `${style.reference_images.length} 张参考图`}</small>
+                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {style.image_model_name}</small>
                         </div>
                         <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
                       </button>
@@ -945,6 +965,7 @@ function StylesView({ user }: { user: User }) {
     const payload: Partial<Style> = {
       name: String(formData.get("name") ?? ""),
       status: String(formData.get("status") ?? "draft") as Style["status"],
+      image_model_name: String(formData.get("image_model_name") ?? ""),
       style_prompt: String(formData.get("style_prompt") ?? ""),
       description: String(formData.get("description") ?? ""),
     };
@@ -1138,7 +1159,7 @@ function StylesView({ user }: { user: User }) {
                   <span className={`status-pill ${style.status}`}>{style.status}</span>
                 </div>
                 <p>{style.description || "暂无描述"}</p>
-                <small>{style.reference_images.length} 张参考图 · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
+                <small>{style.reference_images.length} 张参考图 · 模型 {style.image_model_name} · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
               </div>
               <div className="style-row-strip">
                 {assets.slice(0, 5).map((asset) => (
@@ -1184,6 +1205,7 @@ function StylesView({ user }: { user: User }) {
               ) : null}
             </div>
             <input name="name" placeholder="风格名称" defaultValue={formStyle?.name ?? ""} required />
+            <input name="image_model_name" placeholder="生图模型名，例如 gpt-image-2" defaultValue={formStyle?.image_model_name ?? ""} required />
             <select name="status" defaultValue={formStyle?.status ?? "draft"}>
               <option value="draft">草稿</option>
               <option value="active">启用</option>

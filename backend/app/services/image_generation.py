@@ -12,7 +12,6 @@ from fastapi import HTTPException
 
 from app.core.config import get_settings
 from app.models.enums import FileAssetPurpose
-from app.services.generation_profiles import GenerationProfile, GenerationProfileConfigError
 from app.services.storage import save_bytes
 
 logger = logging.getLogger(__name__)
@@ -38,13 +37,6 @@ class GeneratedImageFile:
     content_type: str
     original_filename: str
     provider_request_id: str | None
-
-
-def ensure_xg_profile(profile: GenerationProfile) -> None:
-    if profile.image_provider != "xg":
-        raise GenerationProfileConfigError(f"暂不支持的图片 provider：{profile.image_provider}")
-    if profile.aspect_ratio != "9:16":
-        raise GenerationProfileConfigError(f"当前产品只支持 9:16 图片比例，配置值为：{profile.aspect_ratio}")
 
 
 def parse_image_b64(response_body: dict[str, Any]) -> bytes:
@@ -79,8 +71,9 @@ def detect_image_content_type(content: bytes) -> str:
     raise ImageProviderResponseError("图片 Provider 返回的图片格式不是 PNG、JPEG 或 WebP")
 
 
-def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], profile: GenerationProfile) -> tuple[bytes, str, str | None]:
-    ensure_xg_profile(profile)
+def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> tuple[bytes, str, str | None]:
+    if not image_model_name.strip():
+        raise ImageProviderConfigError("风格未绑定生图模型名")
     if not reference_paths:
         raise ImageProviderConfigError("XG 图片编辑接口至少需要一张参考图")
 
@@ -90,9 +83,9 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], profile: 
 
     endpoint = f"{settings.xg_api_base_url.rstrip('/')}/v1/images/edits"
     data = {
-        "model": profile.image_model,
+        "model": image_model_name.strip(),
         "prompt": prompt,
-        "aspect_ratio": profile.aspect_ratio,
+        "aspect_ratio": "9:16",
         "response_format": "b64_json",
     }
     headers = {
@@ -129,11 +122,11 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], profile: 
     return image_content, content_type, body.get("id") if isinstance(body.get("id"), str) else None
 
 
-def generate_xg_image_edit(*, prompt: str, reference_paths: list[Path], profile: GenerationProfile) -> GeneratedImageFile:
+def generate_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> GeneratedImageFile:
     content, content_type, provider_request_id = request_xg_image_edit(
         prompt=prompt,
         reference_paths=reference_paths,
-        profile=profile,
+        image_model_name=image_model_name,
     )
     filename = f"generated-image{mimetypes.guess_extension(content_type) or '.png'}"
     try:

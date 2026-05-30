@@ -68,7 +68,7 @@ class TaskRead(TimestampFields):
     requested_image_count: int | None
     style_id: str
     style_name_snapshot: str
-    generation_profile_key_snapshot: str | None
+    image_model_name_snapshot: str
     status: TaskStatus
     progress_current: int
     progress_total: int

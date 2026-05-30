@@ -184,8 +184,8 @@ POST /api/v1/styles
 校验：
 
 - `name`、`style_prompt` 必填。
-- provider key、model key 和默认参数不出现在普通风格接口中。
-- 风格使用哪个生图配置由后台配置决定，不由普通用户提交。
+- provider、API key 和默认参数不出现在普通风格接口中。
+- 风格必须提交 `image_model_name`，作为统一生图平台的 `model` 参数。
 
 ### 获取风格详情
 
@@ -193,7 +193,7 @@ POST /api/v1/styles
 GET /api/v1/styles/{style_id}
 ```
 
-详情包含完整 `style_prompt`、参考图片、最近测试记录和使用摘要。普通用户详情不返回 provider、model 或模型参数。
+详情包含完整 `style_prompt`、参考图片、最近测试记录、生图模型名和使用摘要。普通用户详情不返回 provider、API key 或模型默认参数。
 
 ### 更新风格
 
@@ -201,29 +201,13 @@ GET /api/v1/styles/{style_id}
 PATCH /api/v1/styles/{style_id}
 ```
 
-普通风格更新接口只修改名称、描述、状态、风格提示词和参考图片，不修改 provider、model 或模型参数。
-
-### 后台配置风格生成配置
-
-```http
-PATCH /api/v1/admin/styles/{style_id}/generation-config
-```
-
-该接口只允许 Admin 或后台管理流程调用，不向普通用户开放。
-
-请求：
-
-```json
-{
-  "generation_profile_key": "storybook-watercolor-v1"
-}
-```
+普通风格更新接口只修改名称、描述、状态、风格提示词、参考图片和生图模型名，不修改 provider、API key 或模型默认参数。
 
 规则：
 
-- `generation_profile_key` 是服务端配置引用，不是 provider key、model key 或密钥。
-- provider key、model key、API key 和默认参数保存在后台配置或环境变量中。
-- 修改该配置只影响未来风格测试和未来任务。已有任务保留创建时的 `generation_profile_key` 快照。
+- `image_model_name` 是风格内部配置，保存模型名，不保存密钥。
+- XG API key、XG base url、SiliconFlow API key 和 LLM 模型保存在环境变量中。
+- 修改 `image_model_name` 只影响未来风格测试和未来任务。已有任务保留创建时的 `image_model_name` 快照。
 
 ### 删除风格
 
@@ -358,7 +342,7 @@ POST /api/v1/tasks
 
 - 按收到的内容原样保存 `original_text`。
 - 将当前登录用户保存为任务 owner。
-- 将选中风格的提示词和后台生成配置引用快照保存到任务。
+- 将选中风格的提示词和生图模型名快照保存到任务。
 - 创建状态为 `queued` 的任务。
 - 将任务 ID 放入进程内队列。
 - 返回 `202 Accepted` 和任务详情。

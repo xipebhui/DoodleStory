@@ -16,8 +16,8 @@
 | API 响应 | 统一错误结构、分页、摘要/详情分离 | 当前是简化 `{data}`，无分页 | 不符合设计 |
 | 数据库 | 完整任务工作流事实来源 | 缺 `generation_steps`、`task_downloads`、很多状态时间和错误字段 | 不符合设计 |
 | 迁移 | 可审计 migration | 当前 `Base.metadata.create_all` | 不符合长期维护 |
-| 风格 | CRUD、参考图、测试风格、后台生成配置引用、历史快照 | 有基础 CRUD 和上传入口，但 UI/API 都很薄 | 不符合核心需求 |
-| 风格配置 | 普通用户不暴露 provider/model/API key，只绑定 `generation_profile_key` | 字段存在，但前端仍可编辑，后端无 env 映射 | 不符合私密配置要求 |
+| 风格 | CRUD、参考图、测试风格、生图模型名、历史快照 | 有基础 CRUD 和上传入口，但 UI/API 都很薄 | 不符合核心需求 |
+| 风格配置 | 普通用户不暴露 provider/API key，只绑定 `image_model_name` | 字段由风格维护，密钥由 env 维护 | 符合当前收口方向 |
 | 任务创建 | 保存原始文本、选数量、选风格、入队 | 当前直接返回 503 | 未实现 |
 | LLM | SiliconFlow 调两次：切分、panel prompt | 未实现 | 未实现 |
 | 生图 | XG `/v1/images/edits`，多参考图 `image[]`，9:16 | 未实现 | 未实现 |
@@ -96,14 +96,10 @@ DOODLESTORY_STORAGE_ROOT=./storage
 
 SILICONFLOW_API_KEY=
 SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
-SILICONFLOW_TEXT_MODEL=deepseek-ai/DeepSeek-V3.2
+SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
 
 XG_API_KEY=
 XG_API_BASE_URL=https://api.xgapi.top
-XG_IMAGE_MODEL=gpt-image-2
-XG_IMAGE_ASPECT_RATIO=9:16
-
-GENERATION_PROFILES_JSON={"runway_creative":{"llm_provider":"siliconflow","llm_model":"deepseek-ai/DeepSeek-V3.2","image_provider":"xg","image_model":"gpt-image-2","aspect_ratio":"9:16"}}
 
 QINIU_ACCESS_KEY=
 QINIU_SECRET_KEY=
@@ -114,10 +110,10 @@ QINIU_PRIVATE_BUCKET=true
 
 规则：
 
-- `style.generation_profile_key` 只存 `runway_creative` 这类引用 key。
-- 普通用户 API 不返回 provider key、model key、API key 或默认参数。
-- 风格创建页不允许普通用户输入 `generation_profile_key`。
-- Admin 后台或服务端种子脚本维护 `generation_profile_key`。
+- `style.image_model_name` 保存统一生图平台的模型名，例如 `gpt-image-2`。
+- 普通用户 API 不返回 provider key、API key 或默认参数。
+- 风格创建页允许维护模型名，但不允许输入 provider 或密钥。
+- LLM 平台、LLM 模型、XG base url 和 XG API key 全部由 env 维护。
 
 ## 风格模块目标设计
 
@@ -132,7 +128,7 @@ QINIU_PRIVATE_BUCKET=true
 - `description`
 - `status`
 - `style_prompt`
-- `generation_profile_key`
+- `image_model_name`
 - `cover_asset_id`
 - `last_tested_at`
 - `created_at`
@@ -150,7 +146,7 @@ QINIU_PRIVATE_BUCKET=true
 - `style_id`
 - `test_text`
 - `style_prompt_snapshot`
-- `generation_profile_key_snapshot`
+- `image_model_name_snapshot`
 - `composed_prompt`
 - `status`
 - `output_asset_id`
@@ -193,15 +189,15 @@ QINIU_PRIVATE_BUCKET=true
 
 - 顶部大封面/参考图墙。
 - 右侧或下方展示风格 prompt。
-- 显示生成配置引用状态，但普通用户看不到密钥和模型私密参数。
+- 显示生图模型名，但普通用户看不到密钥和模型私密参数。
 - 风格测试面板可输入测试文本并生成 9:16 测试图。
 
 创建/编辑：
 
 - 名称、描述、状态、风格 prompt。
 - 多参考图上传、排序、删除。
-- 不展示 API key、provider key、model key。
-- `generation_profile_key` 仅 Admin 可见或由后台配置。
+- 不展示 API key 和 provider key。
+- `image_model_name` 是风格字段，用于调用统一生图平台。
 
 ## 任务工作流目标设计
 
@@ -216,7 +212,7 @@ QINIU_PRIVATE_BUCKET=true
 3. 后端读取 style，并保存：
    - `style_name_snapshot`
    - `style_prompt_snapshot`
-   - `generation_profile_key_snapshot`
+   - `image_model_name_snapshot`
 4. 创建任务状态 `queued`。
 5. 创建或准备 `generation_steps`。
 6. 将任务 ID 投入进程内队列。
@@ -409,21 +405,21 @@ frontend/src/
 - 风格列表/详情/创建/编辑/删除。
 - 多参考图上传、展示、删除。
 - 已被任务引用的风格禁止删除。
-- `generation_profile_key` 普通用户不可编辑。
+- `image_model_name` 可在风格表单维护，provider 与密钥不可编辑。
 
 验收：
 
 - 风格完整 CRUD 可用。
 - 参考图可上传和展示。
-- 普通 UI 不暴露 provider/model/API key。
+- 普通 UI 不暴露 provider/API key。
 
-### PR 05：Provider 配置加载
+### PR 05：固定平台配置加载
 
 状态：已完成。
 
-- 从 env 读取 `GENERATION_PROFILES_JSON`。
-- 实现 `GenerationProfileRegistry`。
-- 风格通过 `generation_profile_key` 获取 LLM/image 配置。
+- 从 env 读取 `SILICONFLOW_API_KEY`、`SILICONFLOW_MODEL`、`XG_API_KEY` 和 `XG_API_BASE_URL`。
+- 移除旧的多 profile registry。
+- 生图时使用风格上的 `image_model_name` 作为 XG `model` 参数。
 
 验收：
 

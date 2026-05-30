@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import get_settings
 from app.models.enums import ImageCountMode
-from app.services.generation_profiles import GenerationProfile, GenerationProfileConfigError
 
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 
@@ -65,6 +64,8 @@ def create_siliconflow_client():
     settings = get_settings()
     if not settings.siliconflow_api_key.strip():
         raise LLMConfigError("SILICONFLOW_API_KEY 未配置")
+    if not settings.siliconflow_model.strip():
+        raise LLMConfigError("SILICONFLOW_MODEL 未配置")
 
     try:
         from openai import OpenAI
@@ -74,13 +75,11 @@ def create_siliconflow_client():
     return OpenAI(api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url)
 
 
-def call_siliconflow_json(*, system_prompt: str, user_prompt: str, profile: GenerationProfile) -> dict[str, Any]:
-    if profile.llm_provider != "siliconflow":
-        raise GenerationProfileConfigError(f"暂不支持的 LLM provider：{profile.llm_provider}")
-
+def call_siliconflow_json(*, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+    settings = get_settings()
     client = create_siliconflow_client()
     response = client.chat.completions.create(
-        model=profile.llm_model,
+        model=settings.siliconflow_model,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system_prompt},
@@ -100,7 +99,6 @@ def segment_story(
     original_text: str,
     image_count_mode: ImageCountMode,
     requested_image_count: int | None,
-    profile: GenerationProfile,
 ) -> StorySegmentationResult:
     if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
         raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
@@ -118,7 +116,7 @@ def segment_story(
             original_text,
         ]
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt, profile=profile)
+    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
     try:
         result = StorySegmentationResult.model_validate(raw)
     except ValidationError as exc:
@@ -135,7 +133,6 @@ def generate_panel_prompts(
     original_text: str,
     style_prompt: str,
     panels: list[StorySegment],
-    profile: GenerationProfile,
 ) -> PanelPromptResult:
     system_prompt = read_prompt("generate_panel_prompt_v1.md")
     input_panels = [{"panel_order": panel.panel_order, "text": panel.text} for panel in panels]
@@ -147,7 +144,7 @@ def generate_panel_prompts(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt, profile=profile)
+    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
     try:
         result = PanelPromptResult.model_validate(raw)
     except ValidationError as exc:

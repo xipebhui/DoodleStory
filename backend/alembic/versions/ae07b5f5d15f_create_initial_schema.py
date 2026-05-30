@@ -72,7 +72,7 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=80), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('status', sa.Enum('draft', 'active', 'disabled', name='stylestatus'), nullable=False),
-    sa.Column('generation_profile_key', sa.String(length=120), nullable=True),
+    sa.Column('image_model_name', sa.String(length=120), nullable=False),
     sa.Column('style_prompt', sa.Text(), nullable=False),
     sa.Column('cover_asset_id', sa.String(length=32), nullable=True),
     sa.Column('last_tested_at', sa.DateTime(), nullable=True),
@@ -81,7 +81,7 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['cover_asset_id'], ['file_assets.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_styles_generation_profile_key'), 'styles', ['generation_profile_key'], unique=False)
+    op.create_index(op.f('ix_styles_image_model_name'), 'styles', ['image_model_name'], unique=False)
     op.create_index(op.f('ix_styles_name'), 'styles', ['name'], unique=True)
     op.create_index(op.f('ix_styles_status'), 'styles', ['status'], unique=False)
     op.create_table('generation_tasks',
@@ -94,7 +94,7 @@ def upgrade() -> None:
     sa.Column('style_id', sa.String(length=32), nullable=False),
     sa.Column('style_name_snapshot', sa.String(length=80), nullable=False),
     sa.Column('style_prompt_snapshot', sa.Text(), nullable=False),
-    sa.Column('generation_profile_key_snapshot', sa.String(length=120), nullable=True),
+    sa.Column('image_model_name_snapshot', sa.String(length=120), nullable=False),
     sa.Column('status', sa.Enum('queued', 'running', 'succeeded', 'partial_succeeded', 'failed', 'cancel_requested', 'cancelled', 'retrying', name='taskstatus'), nullable=False),
     sa.Column('current_step', sa.Enum('segment_story', 'generate_panel_prompts', 'generate_images', 'package_download', name='generationstepname'), nullable=True),
     sa.Column('progress_current', sa.Integer(), nullable=False),
@@ -136,7 +136,7 @@ def upgrade() -> None:
     sa.Column('style_id', sa.String(length=32), nullable=False),
     sa.Column('test_text', sa.Text(), nullable=False),
     sa.Column('style_prompt_snapshot', sa.Text(), nullable=False),
-    sa.Column('generation_profile_key_snapshot', sa.String(length=120), nullable=True),
+    sa.Column('image_model_name_snapshot', sa.String(length=120), nullable=False),
     sa.Column('composed_prompt', sa.Text(), nullable=False),
     sa.Column('status', sa.Enum('queued', 'running', 'succeeded', 'failed', 'cancel_requested', 'cancelled', 'retrying', name='workflowstatus'), nullable=False),
     sa.Column('attempts', sa.Integer(), nullable=False),
@@ -223,7 +223,7 @@ def upgrade() -> None:
     sa.Column('panel_id', sa.String(length=32), nullable=False),
     sa.Column('status', sa.Enum('queued', 'running', 'succeeded', 'failed', 'cancelled', name='generatedimagestatus'), nullable=False),
     sa.Column('final_prompt', sa.Text(), nullable=False),
-    sa.Column('generation_profile_key_snapshot', sa.String(length=120), nullable=True),
+    sa.Column('image_model_name_snapshot', sa.String(length=120), nullable=False),
     sa.Column('asset_id', sa.String(length=32), nullable=True),
     sa.Column('provider_request_id', sa.String(length=255), nullable=True),
     sa.Column('started_at', sa.DateTime(), nullable=True),
@@ -269,7 +269,7 @@ def downgrade() -> None:
     op.drop_table('generation_tasks')
     op.drop_index(op.f('ix_styles_status'), table_name='styles')
     op.drop_index(op.f('ix_styles_name'), table_name='styles')
-    op.drop_index(op.f('ix_styles_generation_profile_key'), table_name='styles')
+    op.drop_index(op.f('ix_styles_image_model_name'), table_name='styles')
     op.drop_table('styles')
     op.drop_index(op.f('ix_sessions_user_id'), table_name='sessions')
     op.drop_index(op.f('ix_sessions_token_hash'), table_name='sessions')

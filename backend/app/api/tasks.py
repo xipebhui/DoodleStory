@@ -21,11 +21,6 @@ from app.models.enums import (
 )
 from app.schemas.common import ApiData, ApiList
 from app.schemas.task import TaskCreate, TaskDownloadRead, TaskRead
-from app.services.generation_profiles import (
-    GenerationProfileConfigError,
-    UnknownGenerationProfileError,
-    validate_generation_profile_key,
-)
 from app.services.task_worker import enqueue_task
 from app.services.storage import resolve_storage_key, save_binary_file
 
@@ -101,19 +96,12 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
     if style.status != StyleStatus.active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只能使用启用状态的风格创建任务")
-    if not style.generation_profile_key:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格尚未绑定后台生成配置 Key")
+    if not style.image_model_name.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格尚未绑定生图模型名")
     if payload.image_count_mode == ImageCountMode.auto and payload.requested_image_count is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="自动判断图片数量时不能传 requested_image_count")
     if payload.image_count_mode == ImageCountMode.fixed and payload.requested_image_count is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="固定图片数量时必须传 requested_image_count")
-
-    try:
-        validate_generation_profile_key(style.generation_profile_key)
-    except UnknownGenerationProfileError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except GenerationProfileConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
     display_title = payload.original_text.strip().replace("\n", " ")[:36] or "未命名任务"
     task = GenerationTask(
@@ -125,7 +113,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         style_id=style.id,
         style_name_snapshot=style.name,
         style_prompt_snapshot=style.style_prompt,
-        generation_profile_key_snapshot=style.generation_profile_key,
+        image_model_name_snapshot=style.image_model_name,
         status=TaskStatus.queued,
         progress_current=0,
         progress_total=3,
@@ -146,6 +134,74 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         )
     db.commit()
     db.refresh(task)
+    await enqueue_task(task.id)
+
+    task = db.scalar(
+        select(GenerationTask)
+        .where(GenerationTask.id == task.id)
+        .options(*task_options())
+    )
+    return ApiData(data=TaskRead.model_validate(task))
+
+
+@router.post("/{task_id}/retry", response_model=ApiData[TaskRead], status_code=status.HTTP_202_ACCEPTED)
+async def retry_task(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
+    task = db.scalar(
+        select(GenerationTask)
+        .where(GenerationTask.id == task_id)
+        .options(*task_options())
+    )
+    task = ensure_task_access(task, user)
+    if task.status != TaskStatus.failed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败任务可以重试")
+    if task.attempts >= task.max_attempts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务已达到最大重试次数")
+
+    style = db.scalar(select(Style).where(Style.id == task.style_id))
+    if not style:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务绑定的风格不存在")
+    if style.status != StyleStatus.active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格不是启用状态，不能重试")
+    if not style.image_model_name.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格尚未绑定生图模型名")
+
+    for image in list(task.generated_images):
+        db.delete(image)
+    for panel in list(task.panels):
+        db.delete(panel)
+    for step in list(task.steps):
+        db.delete(step)
+    db.flush()
+
+    task.status = TaskStatus.retrying
+    task.current_step = None
+    task.progress_current = 0
+    task.progress_total = 3
+    task.attempts += 1
+    task.next_run_at = None
+    task.cancel_requested_at = None
+    task.started_at = None
+    task.finished_at = None
+    task.error_code = None
+    task.error_message = None
+    task.internal_error_ref = None
+    task.style_name_snapshot = style.name
+    task.style_prompt_snapshot = style.style_prompt
+    task.image_model_name_snapshot = style.image_model_name
+
+    for step_name in (
+        GenerationStepName.segment_story,
+        GenerationStepName.generate_panel_prompts,
+        GenerationStepName.generate_images,
+    ):
+        db.add(
+            GenerationStep(
+                task_id=task.id,
+                step_name=step_name,
+                idempotency_key=f"{task.id}:{step_name.value}:retry-{task.attempts}",
+            )
+        )
+    db.commit()
     await enqueue_task(task.id)
 
     task = db.scalar(

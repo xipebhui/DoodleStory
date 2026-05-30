@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://127.0.0.1:3000"
     siliconflow_api_key: str = ""
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
+    siliconflow_model: str = ""
     xg_api_key: str = ""
     xg_api_base_url: str = "https://api.xgapi.top"
-    generation_profiles_json: str = ""
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

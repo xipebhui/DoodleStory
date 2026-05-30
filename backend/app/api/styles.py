@@ -8,15 +8,9 @@ from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
 from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, User
-from app.models.enums import FileAssetPurpose, StyleStatus, UserRole, WorkflowStatus
+from app.models.enums import FileAssetPurpose, StyleStatus, WorkflowStatus
 from app.schemas.common import ApiData, ApiList
 from app.schemas.style import StyleCreate, StyleRead, StyleReferenceImageRead, StyleTestCreate, StyleTestRead, StyleUpdate
-from app.services.generation_profiles import (
-    GenerationProfileConfigError,
-    UnknownGenerationProfileError,
-    get_generation_profile,
-    validate_generation_profile_key,
-)
 from app.services.image_generation import (
     ImageProviderConfigError,
     ImageProviderResponseError,
@@ -35,30 +29,15 @@ def style_load_options():
     )
 
 
-def style_to_read(style: Style, user: User) -> StyleRead:
-    result = StyleRead.model_validate(style)
-    result.generation_profile_configured = bool(style.generation_profile_key)
-    if user.role != UserRole.admin:
-        result.generation_profile_key = None
-    return result
+def style_to_read(style: Style) -> StyleRead:
+    return StyleRead.model_validate(style)
 
 
-def normalize_profile_key(value: str | None) -> str | None:
-    if value is None:
-        return None
+def normalize_image_model_name(value: str) -> str:
     cleaned = value.strip()
-    return cleaned or None
-
-
-def ensure_profile_key_is_valid(value: str | None) -> None:
-    if value is None:
-        return
-    try:
-        validate_generation_profile_key(value)
-    except UnknownGenerationProfileError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except GenerationProfileConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    if not cleaned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格必须绑定生图模型名")
+    return cleaned
 
 
 @router.get("", response_model=ApiList[StyleRead])
@@ -84,7 +63,7 @@ def list_styles(
     styles = db.scalars(statement).all()
     visible_styles = styles[: pagination.limit]
     return ApiList(
-        items=[style_to_read(style, user) for style in visible_styles],
+        items=[style_to_read(style) for style in visible_styles],
         page=build_page(pagination.limit, pagination.offset, len(styles)),
     )
 
@@ -92,16 +71,13 @@ def list_styles(
 @router.post("", response_model=ApiData[StyleRead], status_code=status.HTTP_201_CREATED)
 def create_style(payload: StyleCreate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[StyleRead]:
     data = payload.model_dump()
-    data["generation_profile_key"] = normalize_profile_key(data.get("generation_profile_key"))
-    if user.role != UserRole.admin and data["generation_profile_key"] is not None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有管理员可以设置生成配置 Key")
-    ensure_profile_key_is_valid(data["generation_profile_key"])
+    data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
 
     style = Style(**data)
     db.add(style)
     db.commit()
     style = db.scalar(select(Style).where(Style.id == style.id).options(*style_load_options()))
-    return ApiData(data=style_to_read(style, user))
+    return ApiData(data=style_to_read(style))
 
 
 @router.get("/{style_id}", response_model=ApiData[StyleRead])
@@ -113,7 +89,7 @@ def get_style(style_id: str, user: User = Depends(current_user), db: Session = D
     )
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
-    return ApiData(data=style_to_read(style, user))
+    return ApiData(data=style_to_read(style))
 
 
 @router.patch("/{style_id}", response_model=ApiData[StyleRead])
@@ -123,18 +99,15 @@ def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(curre
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
     data = payload.model_dump(exclude_unset=True)
-    if "generation_profile_key" in data:
-        if user.role != UserRole.admin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只有管理员可以设置生成配置 Key")
-        data["generation_profile_key"] = normalize_profile_key(data["generation_profile_key"])
-        ensure_profile_key_is_valid(data["generation_profile_key"])
+    if "image_model_name" in data:
+        data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
 
     for key, value in data.items():
         setattr(style, key, value)
 
     db.commit()
     style = db.scalar(select(Style).where(Style.id == style_id).options(*style_load_options()))
-    return ApiData(data=style_to_read(style, user))
+    return ApiData(data=style_to_read(style))
 
 
 @router.delete("/{style_id}", response_model=ApiData[dict[str, bool]])
@@ -245,17 +218,8 @@ def create_style_test(
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
-    if not style.generation_profile_key:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格尚未绑定后台生成配置 Key")
     if not style.reference_images:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格测试至少需要一张参考图")
-
-    try:
-        profile = get_generation_profile(style.generation_profile_key)
-    except UnknownGenerationProfileError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    except GenerationProfileConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
     composed_prompt = "\n\n".join(
         [
@@ -269,7 +233,7 @@ def create_style_test(
         style_id=style.id,
         test_text=payload.test_text,
         style_prompt_snapshot=style.style_prompt,
-        generation_profile_key_snapshot=style.generation_profile_key,
+        image_model_name_snapshot=style.image_model_name,
         composed_prompt=composed_prompt,
         status=WorkflowStatus.running,
         attempts=1,
@@ -281,7 +245,11 @@ def create_style_test(
 
     try:
         reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
-        generated = generate_xg_image_edit(prompt=composed_prompt, reference_paths=reference_paths, profile=profile)
+        generated = generate_xg_image_edit(
+            prompt=composed_prompt,
+            reference_paths=reference_paths,
+            image_model_name=style.image_model_name,
+        )
         asset = FileAsset(
             purpose=FileAssetPurpose.generated_image,
             storage_key=generated.storage_key,
@@ -297,7 +265,7 @@ def create_style_test(
         style_test.status = WorkflowStatus.succeeded
         style_test.finished_at = datetime.utcnow()
         style.last_tested_at = style_test.finished_at
-    except (ImageProviderConfigError, ImageProviderResponseError, GenerationProfileConfigError) as exc:
+    except (ImageProviderConfigError, ImageProviderResponseError) as exc:
         style_test.status = WorkflowStatus.failed
         style_test.error_code = exc.__class__.__name__
         style_test.error_message = str(exc)
