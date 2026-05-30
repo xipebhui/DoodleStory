@@ -222,6 +222,7 @@ function TasksView() {
 
   async function createTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     const formData = new FormData(event.currentTarget);
     const requested = Number(formData.get("requested_image_count"));
     try {
@@ -231,7 +232,7 @@ function TasksView() {
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: String(formData.get("style_id") ?? ""),
       });
-      event.currentTarget.reset();
+      form.reset();
       setCountMode("auto");
       setMessage("任务已进入队列");
       await refresh();
