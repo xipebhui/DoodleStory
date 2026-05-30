@@ -238,7 +238,13 @@ textarea {
 .row {
   display: flex;
   justify-content: space-between;
+  gap: 16px;
+  align-items: center;
   padding: 18px;
+}
+
+.row p {
+  margin: 6px 0 0;
 }
 
 .panel {
@@ -426,6 +432,19 @@ textarea {
   gap: 14px;
 }
 
+.task-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px 220px auto;
+  gap: 12px;
+  margin-bottom: 18px;
+  align-items: start;
+}
+
+.task-create-form textarea,
+.task-create-form .form-message {
+  grid-column: 1 / -1;
+}
+
 .upload-button {
   position: relative;
   display: inline-flex;
@@ -527,7 +546,8 @@ textarea {
 
   .form-grid,
   .page-header,
-  .toolbar {
+  .toolbar,
+  .task-create-form {
     display: grid;
     grid-template-columns: 1fr;
   }

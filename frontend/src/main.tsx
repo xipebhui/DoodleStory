@@ -161,11 +161,44 @@ function Shell({
 
 function TasksView() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [styles, setStyles] = useState<Style[]>([]);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
 
   useEffect(() => {
-    api.tasks().then((result) => setTasks(result.items)).catch((err) => setError(err.message));
+    refresh();
   }, []);
+
+  async function refresh() {
+    try {
+      const [taskResult, styleResult] = await Promise.all([api.tasks(), api.styles({ status: "active" })]);
+      setTasks(taskResult.items);
+      setStyles(styleResult.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载失败");
+    }
+  }
+
+  async function createTask(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const requested = Number(formData.get("requested_image_count"));
+    try {
+      await api.createTask({
+        original_text: String(formData.get("original_text") ?? ""),
+        image_count_mode: countMode,
+        requested_image_count: countMode === "fixed" ? requested : null,
+        style_id: String(formData.get("style_id") ?? ""),
+      });
+      event.currentTarget.reset();
+      setCountMode("auto");
+      setMessage("任务已进入队列");
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "创建失败");
+    }
+  }
 
   return (
     <section className="page">
@@ -174,20 +207,44 @@ function TasksView() {
           <h1>任务</h1>
           <p>用户原文会原样保存，后续由队列执行切分、提示词和 9:16 生图。</p>
         </div>
-        <button disabled>
+        <button onClick={refresh}>
           <Plus size={18} />
-          新建任务
+          刷新
         </button>
       </header>
-      <div className="notice">图片生成 Provider 尚未接入，任务创建暂不开放。</div>
+      <form className="panel task-create-form" onSubmit={createTask}>
+        <textarea name="original_text" placeholder="输入原始故事文本，系统会原样保存" required />
+        <select name="style_id" required>
+          <option value="">选择启用风格</option>
+          {styles.map((style) => (
+            <option key={style.id} value={style.id}>
+              {style.name}
+            </option>
+          ))}
+        </select>
+        <select value={countMode} onChange={(event) => setCountMode(event.target.value as "auto" | "fixed")}>
+          <option value="auto">自动判断图片数量</option>
+          <option value="fixed">固定图片数量</option>
+        </select>
+        {countMode === "fixed" ? (
+          <input name="requested_image_count" type="number" min="1" max="80" placeholder="图片数量" required />
+        ) : null}
+        {message ? <p className="form-message">{message}</p> : null}
+        <button type="submit">提交任务</button>
+      </form>
       {error ? <div className="error">{error}</div> : null}
       {tasks.length === 0 ? (
         <div className="empty">还没有任务。</div>
       ) : (
         tasks.map((task) => (
           <article className="row" key={task.id}>
-            <strong>{task.display_title}</strong>
-            <span>{task.status}</span>
+            <div>
+              <strong>{task.display_title}</strong>
+              <p>{task.style_name_snapshot}</p>
+            </div>
+            <span>
+              {task.status} · {task.progress_current}/{task.progress_total}
+            </span>
           </article>
         ))
       )}

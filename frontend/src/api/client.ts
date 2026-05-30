@@ -146,4 +146,10 @@ export const api = {
     }).then((result) => result.data),
   assetContentUrl: (assetId: string) => `${API_BASE_URL}/api/v1/assets/${assetId}/content`,
   tasks: () => request<ApiList<Task>>("/tasks"),
+  createTask: (payload: {
+    original_text: string;
+    image_count_mode: "auto" | "fixed";
+    requested_image_count?: number | null;
+    style_id: string;
+  }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
 };

@@ -2,8 +2,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import ImageCountMode, PromptStatus, TaskStatus
+from app.models.enums import GeneratedImageStatus, GenerationStepName, ImageCountMode, PromptStatus, StepStatus, TaskStatus
 from app.schemas.common import TimestampFields
+from app.schemas.style import FileAssetRead
 
 
 class TaskCreate(BaseModel):
@@ -21,6 +22,25 @@ class TaskPanelRead(TimestampFields):
     generated_prompt: str | None
 
 
+class GenerationStepRead(TimestampFields):
+    id: str
+    step_name: GenerationStepName
+    status: StepStatus
+    attempts: int
+    error_code: str | None
+    error_message: str | None
+
+
+class GeneratedImageRead(TimestampFields):
+    id: str
+    panel_id: str
+    status: GeneratedImageStatus
+    final_prompt: str
+    asset: FileAssetRead | None = None
+    error_code: str | None
+    error_message: str | None
+
+
 class TaskRead(TimestampFields):
     id: str
     owner_user_id: str
@@ -36,4 +56,7 @@ class TaskRead(TimestampFields):
     progress_total: int
     error_code: str | None
     error_message: str | None
+    current_step: GenerationStepName | None
     panels: list[TaskPanelRead] = []
+    steps: list[GenerationStepRead] = []
+    generated_images: list[GeneratedImageRead] = []

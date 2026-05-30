@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import assets, auth, style_tests, styles, tasks
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
+from app.services.task_worker import init_task_queue, recover_queued_tasks, shutdown_task_queue
 
 settings = get_settings()
 
@@ -21,6 +22,15 @@ def create_app() -> FastAPI:
     )
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+    @app.on_event("startup")
+    async def startup() -> None:
+        init_task_queue()
+        await recover_queued_tasks()
+
+    @app.on_event("shutdown")
+    async def shutdown() -> None:
+        await shutdown_task_queue()
 
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(styles.router, prefix="/api/v1")
