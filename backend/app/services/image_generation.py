@@ -102,11 +102,20 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
             files.append(("image[]", (path.name, stack.enter_context(path.open("rb")), content_type)))
 
         try:
+            logger.info(
+                "requesting XG image edit endpoint=%s model=%s reference_count=%s prompt_chars=%s",
+                endpoint,
+                image_model_name.strip(),
+                len(reference_paths),
+                len(prompt),
+            )
             response = requests.post(endpoint, headers=headers, data=data, files=files, timeout=300)
         except requests.RequestException as exc:
+            logger.exception("XG image edit request exception model=%s", image_model_name.strip())
             raise ImageProviderResponseError(f"图片 Provider 请求异常：{exc}") from exc
 
     if response.status_code >= 400:
+        logger.warning("XG image edit failed status_code=%s response_chars=%s", response.status_code, len(response.text))
         raise ImageProviderResponseError(f"图片 Provider 请求失败：HTTP {response.status_code} {response.text}")
 
     try:

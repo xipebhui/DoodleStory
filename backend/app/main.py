@@ -6,9 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import assets, auth, style_tests, styles, tasks
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
+from app.core.logging import configure_logging
 from app.services.task_worker import init_task_queue, recover_queued_tasks, shutdown_task_queue
 
 settings = get_settings()
+configure_logging(settings.log_level)
 
 
 def create_app() -> FastAPI:

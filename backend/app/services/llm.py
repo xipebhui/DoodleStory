@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ from app.core.config import get_settings
 from app.models.enums import ImageCountMode
 
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
+logger = logging.getLogger(__name__)
 
 
 class LLMProviderError(Exception):
@@ -78,6 +80,12 @@ def create_siliconflow_client():
 def call_siliconflow_json(*, system_prompt: str, user_prompt: str) -> dict[str, Any]:
     settings = get_settings()
     client = create_siliconflow_client()
+    logger.info(
+        "calling siliconflow model=%s system_prompt_chars=%s user_prompt_chars=%s",
+        settings.siliconflow_model,
+        len(system_prompt),
+        len(user_prompt),
+    )
     response = client.chat.completions.create(
         model=settings.siliconflow_model,
         response_format={"type": "json_object"},
@@ -91,6 +99,7 @@ def call_siliconflow_json(*, system_prompt: str, user_prompt: str) -> dict[str, 
     content = response.choices[0].message.content
     if not content:
         raise LLMResponseError("LLM 返回内容为空")
+    logger.info("siliconflow returned content_chars=%s", len(content))
     return parse_json_object(content)
 
 
@@ -125,6 +134,12 @@ def segment_story(
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
         raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
+    logger.info(
+        "story segmentation succeeded image_count_mode=%s requested_image_count=%s panel_count=%s",
+        image_count_mode.value,
+        requested_image_count,
+        len(result.panels),
+    )
     return result
 
 
@@ -154,4 +169,5 @@ def generate_panel_prompts(
     expected_orders = [panel.panel_order for panel in panels]
     if returned_orders != expected_orders:
         raise LLMResponseError("LLM 返回的提示词分镜顺序与输入 panels 不一致")
+    logger.info("panel prompt generation succeeded panel_count=%s", len(result.panels))
     return result

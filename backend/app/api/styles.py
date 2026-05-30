@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
@@ -20,6 +21,7 @@ from app.services.storage import save_upload_file
 from app.services.storage import resolve_storage_key
 
 router = APIRouter(prefix="/styles", tags=["styles"])
+logger = logging.getLogger(__name__)
 
 
 def style_load_options():
@@ -242,6 +244,14 @@ def create_style_test(
     db.add(style_test)
     db.commit()
     db.refresh(style_test)
+    logger.info(
+        "style test started style_test_id=%s style_id=%s image_model=%s test_text_chars=%s reference_count=%s",
+        style_test.id,
+        style.id,
+        style.image_model_name,
+        len(payload.test_text),
+        len(style.reference_images),
+    )
 
     try:
         reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
@@ -265,7 +275,21 @@ def create_style_test(
         style_test.status = WorkflowStatus.succeeded
         style_test.finished_at = datetime.utcnow()
         style.last_tested_at = style_test.finished_at
+        logger.info(
+            "style test succeeded style_test_id=%s style_id=%s asset_storage_key=%s bytes=%s",
+            style_test.id,
+            style.id,
+            generated.storage_key,
+            generated.byte_size,
+        )
     except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+        logger.warning(
+            "style test failed style_test_id=%s style_id=%s error_type=%s error=%s",
+            style_test.id,
+            style.id,
+            exc.__class__.__name__,
+            exc,
+        )
         style_test.status = WorkflowStatus.failed
         style_test.error_code = exc.__class__.__name__
         style_test.error_message = str(exc)

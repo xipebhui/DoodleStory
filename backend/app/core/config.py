@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     admin_emails: str = ""
     doodlestory_storage_root: str = "./storage"
     frontend_origin: str = "http://127.0.0.1:3000"
+    log_level: str = "INFO"
     siliconflow_api_key: str = ""
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     siliconflow_model: str = ""

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 
 from sqlalchemy import select
@@ -29,12 +30,14 @@ from app.services.storage import resolve_storage_key
 
 _queue: asyncio.Queue[str] | None = None
 _worker_task: asyncio.Task[None] | None = None
+logger = logging.getLogger(__name__)
 
 
 def init_task_queue() -> None:
     global _queue, _worker_task
     _queue = asyncio.Queue()
     _worker_task = asyncio.create_task(worker_loop())
+    logger.info("task queue initialized")
 
 
 async def shutdown_task_queue() -> None:
@@ -47,12 +50,14 @@ async def shutdown_task_queue() -> None:
     except asyncio.CancelledError:
         pass
     _worker_task = None
+    logger.info("task queue shutdown complete")
 
 
 async def enqueue_task(task_id: str) -> None:
     if _queue is None:
         raise RuntimeError("任务队列尚未初始化")
     await _queue.put(task_id)
+    logger.info("task enqueued task_id=%s queue_size=%s", task_id, _queue.qsize())
 
 
 async def recover_queued_tasks() -> None:
@@ -70,6 +75,8 @@ async def recover_queued_tasks() -> None:
             task.error_message = "服务重启导致任务中断，请重新创建任务"
             task.finished_at = datetime.utcnow()
         db.commit()
+        if interrupted_tasks:
+            logger.warning("marked interrupted tasks as failed count=%s", len(interrupted_tasks))
 
         task_ids = db.scalars(
             select(GenerationTask.id)
@@ -78,15 +85,21 @@ async def recover_queued_tasks() -> None:
         ).all()
     for task_id in task_ids:
         await _queue.put(task_id)
+    logger.info("recovered queued tasks count=%s", len(task_ids))
 
 
 async def worker_loop() -> None:
     if _queue is None:
         raise RuntimeError("任务队列尚未初始化")
+    logger.info("task worker loop started")
     while True:
         task_id = await _queue.get()
         try:
+            logger.info("task worker picked task_id=%s queue_size=%s", task_id, _queue.qsize())
             await asyncio.to_thread(process_task, task_id)
+        except Exception as exc:
+            logger.exception("task worker unexpected error task_id=%s", task_id)
+            mark_task_failed_by_unhandled_error(task_id, exc)
         finally:
             _queue.task_done()
 
@@ -130,6 +143,13 @@ def set_step(db: Session, task: GenerationTask, step_name: GenerationStepName, s
 
 
 def fail_step_and_task(db: Session, task: GenerationTask, step_name: GenerationStepName, exc: Exception) -> None:
+    logger.warning(
+        "task step failed task_id=%s step=%s error_type=%s error=%s",
+        task.id,
+        step_name.value,
+        exc.__class__.__name__,
+        exc,
+    )
     step = set_step(db, task, step_name, StepStatus.failed)
     step.error_code = exc.__class__.__name__
     step.error_message = str(exc)
@@ -138,6 +158,18 @@ def fail_step_and_task(db: Session, task: GenerationTask, step_name: GenerationS
     task.error_message = str(exc)
     task.finished_at = datetime.utcnow()
     db.commit()
+
+
+def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
+    with SessionLocal() as db:
+        task = load_task(db, task_id)
+        if task is None:
+            return
+        task.status = TaskStatus.failed
+        task.error_code = exc.__class__.__name__
+        task.error_message = str(exc) or "任务执行出现未处理异常"
+        task.finished_at = datetime.utcnow()
+        db.commit()
 
 
 def build_final_prompt(style_prompt: str, panel_prompt: str, panel_text: str) -> str:
@@ -159,6 +191,7 @@ def should_stop_for_cancel(db: Session, task: GenerationTask) -> bool:
     task.status = TaskStatus.cancelled
     task.finished_at = datetime.utcnow()
     db.commit()
+    logger.info("task cancelled task_id=%s", task.id)
     return True
 
 
@@ -166,8 +199,17 @@ def process_task(task_id: str) -> None:
     with SessionLocal() as db:
         task = load_task(db, task_id)
         if task is None or task.status in {TaskStatus.cancelled, TaskStatus.cancel_requested}:
+            logger.info("task skipped task_id=%s reason=missing_or_cancelled", task_id)
             return
 
+        logger.info(
+            "task started task_id=%s owner_user_id=%s style_id=%s image_count_mode=%s requested_image_count=%s",
+            task.id,
+            task.owner_user_id,
+            task.style_id,
+            task.image_count_mode.value,
+            task.requested_image_count,
+        )
         task.status = TaskStatus.running
         task.started_at = task.started_at or datetime.utcnow()
         task.progress_current = 0
@@ -191,6 +233,7 @@ def process_task(task_id: str) -> None:
                 )
             task.progress_current = 1
             set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
+            logger.info("task segmentation completed task_id=%s panel_count=%s", task.id, len(segmentation.panels))
         except LLMProviderError as exc:
             fail_step_and_task(db, task, GenerationStepName.segment_story, exc)
             return
@@ -219,6 +262,7 @@ def process_task(task_id: str) -> None:
                 panel.prompt_model_snapshot = get_settings().siliconflow_model
             task.progress_current = 2
             set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
+            logger.info("task panel prompts completed task_id=%s panel_count=%s", task.id, len(story_segments))
         except LLMProviderError as exc:
             for panel in task.panels:
                 panel.prompt_status = PromptStatus.failed
@@ -244,6 +288,13 @@ def process_task(task_id: str) -> None:
             return
 
         reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        logger.info(
+            "task image generation started task_id=%s panel_count=%s reference_count=%s image_model=%s",
+            task.id,
+            len(task.panels),
+            len(reference_paths),
+            task.image_model_name_snapshot,
+        )
         success_count = 0
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
             if should_stop_for_cancel(db, task):
@@ -266,6 +317,14 @@ def process_task(task_id: str) -> None:
             db.refresh(image)
 
             try:
+                logger.info(
+                    "task panel image request task_id=%s panel_id=%s panel_order=%s image_id=%s prompt_chars=%s",
+                    task.id,
+                    panel.id,
+                    panel.panel_order,
+                    image.id,
+                    len(final_prompt),
+                )
                 generated = generate_xg_image_edit(
                     prompt=final_prompt,
                     reference_paths=reference_paths,
@@ -286,7 +345,23 @@ def process_task(task_id: str) -> None:
                 image.status = GeneratedImageStatus.succeeded
                 image.finished_at = datetime.utcnow()
                 success_count += 1
+                logger.info(
+                    "task panel image succeeded task_id=%s panel_id=%s image_id=%s asset_storage_key=%s bytes=%s",
+                    task.id,
+                    panel.id,
+                    image.id,
+                    generated.storage_key,
+                    generated.byte_size,
+                )
             except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+                logger.warning(
+                    "task panel image failed task_id=%s panel_id=%s image_id=%s error_type=%s error=%s",
+                    task.id,
+                    panel.id,
+                    image.id,
+                    exc.__class__.__name__,
+                    exc,
+                )
                 image.status = GeneratedImageStatus.failed
                 image.error_code = exc.__class__.__name__
                 image.error_message = str(exc)
@@ -308,3 +383,10 @@ def process_task(task_id: str) -> None:
             task.error_code = "ImageGenerationFailed"
             task.error_message = "所有分镜图片生成失败"
         db.commit()
+        logger.info(
+            "task finished task_id=%s status=%s success_count=%s panel_count=%s",
+            task.id,
+            task.status.value,
+            success_count,
+            len(task.panels),
+        )
