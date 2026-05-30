@@ -1,4 +1,9 @@
 :root {
+  --sidebar-width: 260px;
+  --content-gutter: clamp(28px, 2.2vw, 48px);
+  --page-max: 1320px;
+  --tasks-max: 1860px;
+  --settings-max: 1560px;
   color: #eef2f7;
   background: #0b0d10;
   font-family:
@@ -134,7 +139,7 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -184,12 +189,14 @@ textarea {
 }
 
 .content {
-  padding: 32px;
+  min-width: 0;
+  padding: var(--content-gutter);
   overflow: hidden;
 }
 
 .page {
-  max-width: 1280px;
+  width: min(100%, var(--page-max));
+  margin-inline: auto;
 }
 
 .page-header {
@@ -753,7 +760,7 @@ textarea {
 }
 
 .tasks-workspace {
-  max-width: 1500px;
+  --page-max: var(--tasks-max);
 }
 
 .tasks-workspace .page-header button:not(.secondary-button) {
@@ -764,7 +771,7 @@ textarea {
 
 .task-toolbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1.2fr) 170px 220px auto auto;
+  grid-template-columns: minmax(320px, 1fr) minmax(150px, 170px) minmax(180px, 220px) auto auto;
   gap: 12px;
   align-items: center;
   margin-bottom: 12px;
@@ -800,7 +807,7 @@ textarea {
 
 .task-cinema-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(340px, 28vw, 430px);
+  grid-template-columns: minmax(0, 1fr) clamp(360px, 27vw, 460px);
   gap: 18px;
   align-items: start;
 }
@@ -817,9 +824,13 @@ textarea {
   overflow: hidden;
 }
 
+.task-project-list {
+  container-type: inline-size;
+}
+
 .task-project-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(76px, 14vw, 270px) minmax(150px, 180px);
+  grid-template-columns: minmax(220px, 1fr) clamp(90px, 18vw, 420px) minmax(160px, 190px);
   gap: 14px;
   align-items: center;
 }
@@ -1003,6 +1014,24 @@ textarea {
 .row-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+@container (max-width: 760px) {
+  .task-project-row {
+    grid-template-columns: minmax(0, 1fr) minmax(78px, 100px) minmax(148px, 168px);
+  }
+
+  .task-story-cell p {
+    -webkit-line-clamp: 2;
+  }
+
+  .thumb-strip img,
+  .thumb-empty,
+  .thumb-more {
+    flex-basis: 48px;
+    width: 48px;
+    height: 86px;
+  }
 }
 
 .mini-action {
@@ -1342,7 +1371,7 @@ textarea {
 }
 
 .settings-page {
-  max-width: 1480px;
+  --page-max: var(--settings-max);
 }
 
 .settings-layout {
@@ -1551,6 +1580,49 @@ textarea {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@media (min-width: 1720px) {
+  :root {
+    --content-gutter: clamp(40px, 2.4vw, 56px);
+    --tasks-max: 1980px;
+    --settings-max: 1700px;
+  }
+
+  .task-cinema-layout {
+    grid-template-columns: minmax(0, 1fr) clamp(430px, 25vw, 520px);
+    gap: 22px;
+  }
+
+  .task-project-row {
+    grid-template-columns: minmax(260px, 1fr) clamp(220px, 22vw, 520px) minmax(180px, 220px);
+    min-height: 148px;
+    padding-inline: 20px;
+  }
+
+  .thumb-strip {
+    gap: 6px;
+  }
+
+  .thumb-strip img,
+  .thumb-empty,
+  .thumb-more {
+    flex-basis: 60px;
+    width: 60px;
+    height: 108px;
+  }
+}
+
+@media (min-width: 2200px) {
+  :root {
+    --content-gutter: 56px;
+    --tasks-max: 2160px;
+  }
+
+  .task-cinema-layout {
+    grid-template-columns: minmax(0, 1fr) 540px;
+    gap: 26px;
   }
 }
 
