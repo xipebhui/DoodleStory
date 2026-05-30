@@ -211,7 +211,22 @@ export const api = {
       body: JSON.stringify(payload),
     }).then((result) => result.data),
   assetContentUrl: (assetId: string) => `${API_BASE_URL}/api/v1/assets/${assetId}/content`,
-  tasks: () => request<ApiList<Task>>("/tasks"),
+  tasks: (params?: {
+    query?: string;
+    status?: Task["status"] | "all";
+    style_id?: string;
+    cursor?: string | null;
+    limit?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.status && params.status !== "all") search.set("status", params.status);
+    if (params?.style_id) search.set("style_id", params.style_id);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<Task>>(`/tasks${suffix}`);
+  },
   task: (id: string) => request<ApiData<Task>>(`/tasks/${id}`).then((result) => result.data),
   createTask: (payload: {
     original_text: string;

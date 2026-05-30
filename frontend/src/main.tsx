@@ -1,11 +1,19 @@
-import { StrictMode, useEffect, useMemo, useState } from "react";
+import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  AlertCircle,
+  ArrowUpRight,
   BookImage,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
   Download,
   Eye,
+  Filter,
   Images,
   LogOut,
+  Loader2,
   Plus,
   RefreshCw,
   Save,
@@ -45,7 +53,7 @@ function App() {
 
   return (
     <Shell user={user} view={view} setView={setView} onLogout={() => setUser(null)}>
-      {view === "tasks" ? <TasksView /> : null}
+      {view === "tasks" ? <TasksView user={user} /> : null}
       {view === "styles" ? <StylesView user={user} /> : null}
       {view === "settings" ? <SettingsView user={user} /> : null}
     </Shell>
@@ -174,53 +182,212 @@ function Shell({
   );
 }
 
-function TasksView() {
+const taskStatusOptions: Array<{ value: Task["status"] | "all"; label: string }> = [
+  { value: "all", label: "全部状态" },
+  { value: "queued", label: "排队中" },
+  { value: "running", label: "生成中" },
+  { value: "succeeded", label: "已完成" },
+  { value: "partial_succeeded", label: "部分完成" },
+  { value: "failed", label: "失败" },
+  { value: "cancel_requested", label: "取消中" },
+  { value: "cancelled", label: "已取消" },
+  { value: "retrying", label: "重试中" },
+];
+
+const stepLabels: Record<string, string> = {
+  segment_story: "故事切分",
+  generate_panel_prompts: "画面提示词",
+  generate_images: "图片生成",
+  package_download: "下载打包",
+};
+
+function taskStatusLabel(status: Task["status"]) {
+  return taskStatusOptions.find((item) => item.value === status)?.label ?? status;
+}
+
+function imageStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    queued: "排队中",
+    running: "生成中",
+    succeeded: "已生成",
+    failed: "失败",
+    cancelled: "已取消",
+  };
+  return labels[status] ?? status;
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "暂无";
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function isActiveTask(task: Task | null | undefined) {
+  return Boolean(task && ["queued", "running", "retrying", "cancel_requested"].includes(task.status));
+}
+
+function taskProgress(task: Task) {
+  if (task.progress_total <= 0) return 0;
+  return Math.min(100, Math.round((task.progress_current / task.progress_total) * 100));
+}
+
+function sortedPanels(task: Task | null | undefined) {
+  return [...(task?.panels ?? [])].sort((a, b) => a.panel_order - b.panel_order);
+}
+
+function imagesByPanel(task: Task | null | undefined) {
+  const map = new Map<string, Task["generated_images"][number]>();
+  task?.generated_images.forEach((image) => map.set(image.panel_id, image));
+  return map;
+}
+
+function succeededImages(task: Task | null | undefined) {
+  const panelMap = new Map(sortedPanels(task).map((panel) => [panel.id, panel.panel_order]));
+  return [...(task?.generated_images ?? [])]
+    .filter((image) => image.status === "succeeded" && image.asset)
+    .sort((a, b) => (panelMap.get(a.panel_id) ?? 0) - (panelMap.get(b.panel_id) ?? 0));
+}
+
+function shortId(value: string) {
+  return value.slice(0, 8);
+}
+
+function TasksView({ user }: { user: User }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [styles, setStyles] = useState<Style[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<Task["status"] | "all">("all");
+  const [styleFilter, setStyleFilter] = useState("");
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [previewAssetId, setPreviewAssetId] = useState<string | null>(null);
+  const [previewImageId, setPreviewImageId] = useState<string | null>(null);
+  const previewCloseRef = useRef<HTMLButtonElement | null>(null);
 
-  const previewImage = useMemo(
-    () => selectedTask?.generated_images.find((image) => image.asset?.id === previewAssetId) ?? null,
-    [previewAssetId, selectedTask],
-  );
-  const selectedTaskFromList = useMemo(
-    () => tasks.find((task) => task.id === selectedId) ?? tasks[0] ?? null,
-    [selectedId, tasks],
-  );
+  const taskForDetail = selectedTask ?? tasks.find((task) => task.id === selectedId) ?? tasks[0] ?? null;
+  const panelImageMap = useMemo(() => imagesByPanel(taskForDetail), [taskForDetail]);
+  const previewItems = useMemo(() => succeededImages(taskForDetail), [taskForDetail]);
+  const previewIndex = previewItems.findIndex((image) => image.id === previewImageId);
+  const previewImage = previewIndex >= 0 ? previewItems[previewIndex] : null;
+  const previewPanel = previewImage ? taskForDetail?.panels.find((panel) => panel.id === previewImage.panel_id) : null;
+  const activeTaskSignature = tasks.map((task) => `${task.id}:${task.status}:${task.updated_at}`).join("|");
 
   useEffect(() => {
-    refresh();
-  }, []);
+    refresh(undefined, { quiet: false });
+  }, [query, statusFilter, styleFilter, cursor]);
 
-  async function refresh(preferredTaskId = selectedId) {
+  useEffect(() => {
+    if (!isActiveTask(selectedTask) && !tasks.some(isActiveTask)) return;
+    const timer = window.setInterval(() => refresh(selectedId, { quiet: true }), 6000);
+    return () => window.clearInterval(timer);
+  }, [activeTaskSignature, selectedId, selectedTask?.status]);
+
+  useEffect(() => {
+    if (!previewImageId) return;
+    previewCloseRef.current?.focus();
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setPreviewImageId(null);
+      }
+      if (event.key === "ArrowLeft") {
+        showPreviewOffset(-1);
+      }
+      if (event.key === "ArrowRight") {
+        showPreviewOffset(1);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [previewImageId, previewItems]);
+
+  async function refresh(preferredTaskId = selectedId, options: { quiet?: boolean } = {}) {
     try {
-      const [taskResult, styleResult] = await Promise.all([api.tasks(), api.styles({ status: "active" })]);
+      if (options.quiet) {
+        setRefreshing(true);
+      } else {
+        setLoadingTasks(true);
+      }
+      const [taskResult, styleResult] = await Promise.all([
+        api.tasks({
+          query,
+          status: statusFilter,
+          style_id: styleFilter,
+          cursor,
+          limit: 10,
+        }),
+        api.styles({ status: "active" }),
+      ]);
       setTasks(taskResult.items);
+      setPageInfo(taskResult.page);
       setStyles(styleResult.items);
-      const nextSelectedId =
-        (preferredTaskId && taskResult.items.some((task) => task.id === preferredTaskId) ? preferredTaskId : "") ||
-        taskResult.items[0]?.id ||
-        "";
+      setError("");
+      const nextSelectedId = preferredTaskId || taskResult.items[0]?.id || "";
       if (nextSelectedId) {
         setSelectedId(nextSelectedId);
         setSelectedTask(await api.task(nextSelectedId));
       } else {
+        setSelectedId("");
         setSelectedTask(null);
       }
+      setLastRefreshedAt(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
+    } finally {
+      setLoadingTasks(false);
+      setRefreshing(false);
     }
   }
 
   async function selectTask(taskId: string) {
     setSelectedId(taskId);
     setSelectedTask(await api.task(taskId));
-    setPreviewAssetId(null);
+    setPreviewImageId(null);
+  }
+
+  function applyFilters(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCursor(null);
+    setCursorStack([]);
+    setQuery(queryInput.trim());
+  }
+
+  function clearFilters() {
+    setQueryInput("");
+    setQuery("");
+    setStatusFilter("all");
+    setStyleFilter("");
+    setCursor(null);
+    setCursorStack([]);
+  }
+
+  function goNextPage() {
+    if (!pageInfo?.next_cursor) return;
+    setCursorStack((items) => [...items, cursor ?? ""]);
+    setCursor(pageInfo.next_cursor);
+  }
+
+  function goPreviousPage() {
+    setCursorStack((items) => {
+      const next = [...items];
+      const previous = next.pop() ?? "";
+      setCursor(previous || null);
+      return next;
+    });
   }
 
   async function createTask(event: React.FormEvent<HTMLFormElement>) {
@@ -229,7 +396,8 @@ function TasksView() {
     const formData = new FormData(event.currentTarget);
     const requested = Number(formData.get("requested_image_count"));
     try {
-      await api.createTask({
+      setCreating(true);
+      const task = await api.createTask({
         original_text: String(formData.get("original_text") ?? ""),
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
@@ -237,10 +405,13 @@ function TasksView() {
       });
       form.reset();
       setCountMode("auto");
+      setCreateOpen(false);
       setMessage("任务已进入队列");
-      await refresh();
+      await refresh(task.id);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "创建失败");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -255,6 +426,23 @@ function TasksView() {
       await refresh(selectedTask.id);
       setMessage(err instanceof Error ? err.message : "取消失败");
     }
+  }
+
+  function showPreviewOffset(offset: number) {
+    if (!previewItems.length) return;
+    const current = Math.max(0, previewIndex);
+    const nextIndex = (current + offset + previewItems.length) % previewItems.length;
+    setPreviewImageId(previewItems[nextIndex].id);
+  }
+
+  function downloadPreviewImage() {
+    if (!previewImage?.asset) return;
+    window.location.href = api.assetContentUrl(previewImage.asset.id);
+  }
+
+  function openPreviewImage() {
+    if (!previewImage?.asset) return;
+    window.open(api.assetContentUrl(previewImage.asset.id), "_blank", "noopener,noreferrer");
   }
 
   async function downloadSelectedTask() {
@@ -272,12 +460,6 @@ function TasksView() {
     }
   }
 
-  const taskForDetail = selectedTask ?? selectedTaskFromList;
-  const imagesByPanelId = useMemo(() => {
-    const map = new Map<string, Task["generated_images"][number]>();
-    taskForDetail?.generated_images.forEach((image) => map.set(image.panel_id, image));
-    return map;
-  }, [taskForDetail]);
   const canCancel =
     taskForDetail?.status === "queued" || taskForDetail?.status === "running" || taskForDetail?.status === "retrying";
   const canDownload = Boolean(
@@ -289,95 +471,209 @@ function TasksView() {
       <header className="page-header">
         <div>
           <h1>任务</h1>
-          <p>用户原文会原样保存，后续由队列执行切分、提示词和 9:16 生图。</p>
+          <p>用影像项目列表追踪故事、分镜、生成进度和下载结果。</p>
         </div>
-        <button onClick={() => refresh()}>
-          <RefreshCw size={18} />
-          刷新
-        </button>
+        <div className="header-actions">
+          <button className="secondary-button" onClick={() => refresh(selectedId)}>
+            <RefreshCw size={18} className={refreshing ? "spin" : ""} />
+            刷新
+          </button>
+          <button onClick={() => setCreateOpen(true)}>
+            <Plus size={18} />
+            创建任务
+          </button>
+        </div>
       </header>
-      <form className="panel task-create-form" onSubmit={createTask}>
-        <textarea name="original_text" placeholder="输入原始故事文本，系统会原样保存" required />
-        <select name="style_id" required>
-          <option value="">选择启用风格</option>
-          {styles.map((style) => (
-            <option key={style.id} value={style.id}>
-              {style.name}
-            </option>
-          ))}
-        </select>
-        <select value={countMode} onChange={(event) => setCountMode(event.target.value as "auto" | "fixed")}>
-          <option value="auto">自动判断图片数量</option>
-          <option value="fixed">固定图片数量</option>
-        </select>
-        {countMode === "fixed" ? (
-          <input name="requested_image_count" type="number" min="1" max="80" placeholder="图片数量" required />
-        ) : null}
-        {message ? <p className="form-message">{message}</p> : null}
-        <button type="submit">提交任务</button>
-      </form>
-      {error ? <div className="error">{error}</div> : null}
-      <div className="task-layout">
-        <div className="task-list">
-          {tasks.length === 0 ? <div className="empty">还没有任务。</div> : null}
-          {tasks.map((task) => (
-            <button
-              type="button"
-              className={`task-row ${taskForDetail?.id === task.id ? "selected" : ""}`}
-              key={task.id}
-              onClick={() => selectTask(task.id)}
-            >
-              <div>
-                <strong>{task.display_title}</strong>
-                <p>{task.style_name_snapshot}</p>
-              </div>
-              <span className={`status-pill ${task.status}`}>{task.status}</span>
-              <small>
-                {task.progress_current}/{task.progress_total}
-              </small>
-            </button>
-          ))}
-        </div>
 
-        <aside className="task-detail">
+      <form className="task-toolbar" onSubmit={applyFilters}>
+        <label className="search-box">
+          <Search size={18} />
+          <input
+            value={queryInput}
+            onChange={(event) => setQueryInput(event.target.value)}
+            placeholder="搜索故事或任务"
+          />
+        </label>
+        <label>
+          <Filter size={16} />
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as Task["status"] | "all")}>
+            {taskStatusOptions.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <Sparkles size={16} />
+          <select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}>
+            <option value="">全部风格</option>
+            {styles.map((style) => (
+              <option key={style.id} value={style.id}>
+                {style.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="secondary-button">
+          筛选
+        </button>
+        <button type="button" className="ghost-button" onClick={clearFilters}>
+          清空
+        </button>
+      </form>
+
+      <div className="task-meta-bar">
+        <span>共显示 {tasks.length} 个任务</span>
+        <span>{lastRefreshedAt ? `上次刷新 ${formatDateTime(lastRefreshedAt.toISOString())}` : "等待刷新"}</span>
+      </div>
+
+      {error ? <div className="error">{error}</div> : null}
+
+      <div className="task-cinema-layout">
+        <section className="task-project-list">
+          <div className="task-list-head">
+            <span>故事</span>
+            <span>分镜预览</span>
+            <span>风格</span>
+            <span>状态</span>
+            <span>图片</span>
+            <span>创建</span>
+            <span>操作</span>
+          </div>
+          {loadingTasks ? <div className="empty">正在加载任务</div> : null}
+          {!loadingTasks && tasks.length === 0 ? (
+            <div className="empty">
+              <div>
+                <strong>{query || statusFilter !== "all" || styleFilter ? "没有匹配的任务" : "还没有任务"}</strong>
+                <p>{query || statusFilter !== "all" || styleFilter ? "调整筛选条件后再试。" : "创建第一条故事生成任务。"}</p>
+                <button type="button" onClick={() => setCreateOpen(true)}>
+                  <Plus size={18} />
+                  创建任务
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {tasks.map((task) => {
+            const rowImages = succeededImages(task);
+            const imageCount = task.generated_images.filter((image) => image.status === "succeeded").length;
+            return (
+              <button
+                type="button"
+                className={`task-project-row ${taskForDetail?.id === task.id ? "selected" : ""}`}
+                key={task.id}
+                onClick={() => selectTask(task.id)}
+              >
+                <div className="task-story-cell">
+                  <span className={`task-dot ${task.status}`} />
+                  <div>
+                    <strong>{task.display_title}</strong>
+                    <p>{task.original_text}</p>
+                    {user.role === "admin" ? <small>Owner {shortId(task.owner_user_id)}</small> : null}
+                  </div>
+                </div>
+                <div className="thumb-strip">
+                  {rowImages.slice(0, 7).map((image) =>
+                    image.asset ? (
+                      <img key={image.id} src={api.assetContentUrl(image.asset.id)} alt={task.display_title} />
+                    ) : null,
+                  )}
+                  {rowImages.length === 0 ? <span className="thumb-empty">等待图片</span> : null}
+                  {rowImages.length > 7 ? <span className="thumb-more">+{rowImages.length - 7}</span> : null}
+                </div>
+                <div className="task-style-cell">
+                  <strong>{task.style_name_snapshot}</strong>
+                  <small>{task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}</small>
+                </div>
+                <div className="task-status-cell">
+                  <span className={`status-pill ${task.status}`}>{taskStatusLabel(task.status)}</span>
+                  <div className="progress-line">
+                    <span style={{ width: `${taskProgress(task)}%` }} />
+                  </div>
+                  <small>
+                    {task.progress_current}/{task.progress_total}
+                  </small>
+                </div>
+                <span>{imageCount} 张</span>
+                <span>{formatDateTime(task.created_at)}</span>
+                <div className="row-actions">
+                  {task.generated_images.some((image) => image.asset) ? (
+                    <span className="mini-action">
+                      <Download size={15} />
+                    </span>
+                  ) : (
+                    <span className="muted">-</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+          <div className="pagination-bar">
+            <button className="icon-button" aria-label="上一页" disabled={cursorStack.length === 0} onClick={goPreviousPage}>
+              <ChevronLeft size={16} />
+            </button>
+            <span>{cursor ? `第 ${Math.floor(Number(cursor) / 10) + 1} 页` : "第 1 页"}</span>
+            <button className="icon-button" aria-label="下一页" disabled={!pageInfo?.has_more} onClick={goNextPage}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </section>
+
+        <aside className="task-inspector">
           {taskForDetail ? (
             <>
-              <section className="panel detail-head">
+              <section className="detail-head">
                 <div>
-                  <span className={`status-pill ${taskForDetail.status}`}>{taskForDetail.status}</span>
+                  <span className={`status-pill ${taskForDetail.status}`}>{taskStatusLabel(taskForDetail.status)}</span>
                   <h2>{taskForDetail.display_title}</h2>
-                  <p>{taskForDetail.style_name_snapshot}</p>
+                  <p>
+                    {taskForDetail.style_name_snapshot} · 创建于 {formatDateTime(taskForDetail.created_at)}
+                  </p>
                 </div>
                 <div className="detail-actions">
-                  <button type="button" disabled={!canDownload} onClick={downloadSelectedTask}>
+                  <button type="button" className="secondary-button" disabled={!canDownload} onClick={downloadSelectedTask}>
                     <Download size={16} />
-                    下载
+                    下载图片
                   </button>
-                  <button type="button" disabled={!canCancel} onClick={cancelSelectedTask}>
+                  <button type="button" className="ghost-button" disabled={!canCancel} onClick={cancelSelectedTask}>
                     <X size={16} />
-                    取消
+                    取消生成
                   </button>
                 </div>
                 {taskForDetail.error_message ? <p className="error">{taskForDetail.error_message}</p> : null}
               </section>
 
+              <section className="progress-panel">
+                <div>
+                  <strong>{taskForDetail.current_step ? stepLabels[taskForDetail.current_step] ?? taskForDetail.current_step : "等待任务"}</strong>
+                  <span>{taskProgress(taskForDetail)}%</span>
+                </div>
+                <div className="progress-line large">
+                  <span style={{ width: `${taskProgress(taskForDetail)}%` }} />
+                </div>
+              </section>
+
               {taskForDetail.steps.length > 0 ? (
-                <section className="panel step-strip">
+                <section className="step-strip">
                   {taskForDetail.steps.map((step) => (
                     <div key={step.id} className={`step-chip ${step.status}`}>
-                      <strong>{step.step_name}</strong>
+                      {step.status === "succeeded" ? <CheckCircle2 size={17} /> : null}
+                      {step.status === "running" ? <Loader2 size={17} className="spin" /> : null}
+                      {step.status === "failed" ? <AlertCircle size={17} /> : null}
+                      {!["succeeded", "running", "failed"].includes(step.status) ? <Clock3 size={17} /> : null}
+                      <strong>{stepLabels[step.step_name] ?? step.step_name}</strong>
                       <span>{step.status}</span>
                     </div>
                   ))}
                 </section>
               ) : null}
 
-              <section className="panel story-panel">
+              <section className="story-panel">
                 <h2>原始文本</h2>
                 <p>{taskForDetail.original_text}</p>
               </section>
 
-              <section className="panel panel-wall">
+              <section className="panel-wall">
                 <div className="editor-title">
                   <div>
                     <h2>分镜与图片</h2>
@@ -386,8 +682,8 @@ function TasksView() {
                 </div>
                 <div className="task-image-grid">
                   {taskForDetail.panels.length === 0 ? <div className="empty mini">等待故事切分</div> : null}
-                  {taskForDetail.panels.map((panel) => {
-                    const image = imagesByPanelId.get(panel.id);
+                  {sortedPanels(taskForDetail).map((panel) => {
+                    const image = panelImageMap.get(panel.id);
                     return (
                       <article key={panel.id} className="panel-card">
                         <div className="poster">
@@ -395,13 +691,13 @@ function TasksView() {
                             <button
                               type="button"
                               className="image-button"
-                              onClick={() => setPreviewAssetId(image.asset?.id ?? null)}
+                              onClick={() => setPreviewImageId(image.id)}
                             >
                               <img src={api.assetContentUrl(image.asset.id)} alt={`分镜 ${panel.panel_order}`} />
                               <Eye size={18} />
                             </button>
                           ) : (
-                            <span>{image?.status ?? panel.prompt_status}</span>
+                            <span>{imageStatusLabel(image?.status ?? panel.prompt_status)}</span>
                           )}
                         </div>
                         <strong>Panel {panel.panel_order}</strong>
@@ -419,12 +715,94 @@ function TasksView() {
           )}
         </aside>
       </div>
+
+      {createOpen ? (
+        <div className="drawer-backdrop" onClick={() => setCreateOpen(false)}>
+          <aside className="task-create-drawer" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>创建任务</h2>
+                <p>原文会原样保存，提交后进入生成队列。</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭创建任务" onClick={() => setCreateOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <form className="task-create-form" onSubmit={createTask}>
+              <label>
+                原始文本
+                <textarea name="original_text" placeholder="输入原始故事文本，系统会原样保存" required autoFocus />
+              </label>
+              <label>
+                风格
+                <select name="style_id" required>
+                  <option value="">选择启用风格</option>
+                  {styles.map((style) => (
+                    <option key={style.id} value={style.id}>
+                      {style.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="segmented-control">
+                <button type="button" className={countMode === "auto" ? "active" : ""} onClick={() => setCountMode("auto")}>
+                  自动
+                </button>
+                <button type="button" className={countMode === "fixed" ? "active" : ""} onClick={() => setCountMode("fixed")}>
+                  固定数量
+                </button>
+              </div>
+              {countMode === "fixed" ? (
+                <label>
+                  图片数量
+                  <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
+                </label>
+              ) : null}
+              {message ? <p className="form-message">{message}</p> : null}
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>
+                  取消
+                </button>
+                <button type="submit" disabled={creating}>
+                  {creating ? <Loader2 size={17} className="spin" /> : <Plus size={17} />}
+                  创建任务
+                </button>
+              </div>
+            </form>
+          </aside>
+        </div>
+      ) : null}
+
       {previewImage?.asset ? (
-        <div className="image-modal" onClick={() => setPreviewAssetId(null)}>
-          <button type="button" className="modal-close" onClick={() => setPreviewAssetId(null)}>
+        <div className="image-modal" onClick={() => setPreviewImageId(null)}>
+          <button ref={previewCloseRef} type="button" className="modal-close" aria-label="关闭预览" onClick={() => setPreviewImageId(null)}>
             <X size={18} />
           </button>
-          <img src={api.assetContentUrl(previewImage.asset.id)} alt="生成图预览" />
+          <button type="button" className="modal-nav left" aria-label="上一张图片" disabled={previewItems.length <= 1} onClick={(event) => { event.stopPropagation(); showPreviewOffset(-1); }}>
+            <ChevronLeft size={22} />
+          </button>
+          <figure className="image-preview-frame" onClick={(event) => event.stopPropagation()}>
+            <img src={api.assetContentUrl(previewImage.asset.id)} alt="生成图预览" />
+            <figcaption>
+              <div>
+                <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
+                <p>{previewImage.final_prompt}</p>
+              </div>
+              <div className="preview-actions">
+                <button type="button" className="secondary-button" onClick={downloadPreviewImage}>
+                  <Download size={16} />
+                  下载单图
+                </button>
+                <button type="button" className="secondary-button" onClick={openPreviewImage}>
+                  <ArrowUpRight size={16} />
+                  打开原图
+                </button>
+              </div>
+            </figcaption>
+          </figure>
+          <button type="button" className="modal-nav right" aria-label="下一张图片" disabled={previewItems.length <= 1} onClick={(event) => { event.stopPropagation(); showPreviewOffset(1); }}>
+            <ChevronRight size={22} />
+          </button>
         </div>
       ) : null}
     </section>
