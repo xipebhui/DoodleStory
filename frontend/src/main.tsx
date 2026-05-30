@@ -11,17 +11,22 @@ import {
   Download,
   Eye,
   Filter,
+  FolderOpen,
   Images,
+  KeyRound,
   LogOut,
   Loader2,
+  Monitor,
   Plus,
   RefreshCw,
   Save,
   Search,
   Settings,
+  Shield,
   Sparkles,
   Trash2,
   Upload,
+  UserRound,
   X,
 } from "lucide-react";
 import { api, type Style, type StyleTest, type Task, type User } from "./api/client";
@@ -256,6 +261,14 @@ function shortId(value: string) {
   return value.slice(0, 8);
 }
 
+function stylePreviewAssets(style: Style) {
+  const assets = style.reference_images.map((reference) => reference.asset);
+  if (style.cover_asset && !assets.some((asset) => asset.id === style.cover_asset?.id)) {
+    return [style.cover_asset, ...assets];
+  }
+  return assets;
+}
+
 function TasksView({ user }: { user: User }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [styles, setStyles] = useState<Style[]>([]);
@@ -273,6 +286,7 @@ function TasksView({ user }: { user: User }) {
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createStyleId, setCreateStyleId] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -314,6 +328,12 @@ function TasksView({ user }: { user: User }) {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [previewImageId, previewItems]);
+
+  useEffect(() => {
+    if (createOpen && !createStyleId && styles[0]) {
+      setCreateStyleId(styles[0].id);
+    }
+  }, [createOpen, createStyleId, styles]);
 
   async function refresh(preferredTaskId = selectedId, options: { quiet?: boolean } = {}) {
     try {
@@ -395,16 +415,21 @@ function TasksView({ user }: { user: User }) {
     const form = event.currentTarget;
     const formData = new FormData(event.currentTarget);
     const requested = Number(formData.get("requested_image_count"));
+    if (!createStyleId) {
+      setMessage("请选择一个风格");
+      return;
+    }
     try {
       setCreating(true);
       const task = await api.createTask({
         original_text: String(formData.get("original_text") ?? ""),
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
-        style_id: String(formData.get("style_id") ?? ""),
+        style_id: createStyleId,
       });
       form.reset();
       setCountMode("auto");
+      setCreateStyleId(styles[0]?.id ?? "");
       setCreateOpen(false);
       setMessage("任务已进入队列");
       await refresh(task.id);
@@ -733,17 +758,36 @@ function TasksView({ user }: { user: User }) {
                 原始文本
                 <textarea name="original_text" placeholder="输入原始故事文本，系统会原样保存" required autoFocus />
               </label>
-              <label>
-                风格
-                <select name="style_id" required>
-                  <option value="">选择启用风格</option>
-                  {styles.map((style) => (
-                    <option key={style.id} value={style.id}>
-                      {style.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <fieldset className="style-picker">
+                <legend>选择风格</legend>
+                <p>通过参考图判断视觉方向，提交后会使用该风格绑定的后台生成配置。</p>
+                {styles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
+                <div className="style-picker-grid">
+                  {styles.map((style) => {
+                    const assets = stylePreviewAssets(style);
+                    return (
+                      <button
+                        type="button"
+                        key={style.id}
+                        className={`style-pick-card ${createStyleId === style.id ? "selected" : ""}`}
+                        onClick={() => setCreateStyleId(style.id)}
+                      >
+                        <div className="style-pick-images">
+                          {assets.slice(0, 3).map((asset) => (
+                            <img key={asset.id} src={api.assetContentUrl(asset.id)} alt={style.name} />
+                          ))}
+                          {assets.length === 0 ? <span>9:16</span> : null}
+                        </div>
+                        <div>
+                          <strong>{style.name}</strong>
+                          <small>{style.description || `${style.reference_images.length} 张参考图`}</small>
+                        </div>
+                        <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
               <div className="segmented-control">
                 <button type="button" className={countMode === "auto" ? "active" : ""} onClick={() => setCountMode("auto")}>
                   自动
@@ -1083,18 +1127,178 @@ function StylesView({ user }: { user: User }) {
 }
 
 function SettingsView({ user }: { user: User }) {
+  const [displayMode, setDisplayMode] = useState<"system" | "light" | "dark">("dark");
+  const [archiveName, setArchiveName] = useState("doodlestory-task-{task_id}.zip");
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+
   return (
-    <section className="page">
+    <section className="page settings-page">
       <header className="page-header">
         <div>
           <h1>设置</h1>
-          <p>当前为 React 前端 + FastAPI 后端架构。</p>
+          <p>管理账号、显示偏好、本地存储和下载规则。</p>
         </div>
       </header>
-      <div className="panel">
-        <p>邮箱：{user.email}</p>
-        <p>角色：{user.role}</p>
-        <p>API：{import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000"}</p>
+
+      <div className="settings-layout">
+        <div className="settings-stack">
+          <section className="settings-section account-section">
+            <div className="section-title">
+              <UserRound size={22} />
+              <div>
+                <h2>账号信息</h2>
+                <p>当前登录身份和基础账号资料。</p>
+              </div>
+            </div>
+            <div className="account-card">
+              <div className="avatar-orb">{(user.display_name || user.email).slice(0, 1).toUpperCase()}</div>
+              <div>
+                <strong>{user.display_name || "未设置昵称"}</strong>
+                <span>{user.email}</span>
+                <small>{user.role === "admin" ? "管理员" : "普通用户"}</small>
+              </div>
+              <div className="account-actions">
+                <button type="button" className="secondary-button" disabled>
+                  修改昵称 · 待接入
+                </button>
+                <button type="button" className="ghost-button" disabled>
+                  修改密码 · 待接入
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-section setting-row">
+            <div className="section-title">
+              <Monitor size={22} />
+              <div>
+                <h2>显示模式</h2>
+                <p>选择界面外观模式。</p>
+              </div>
+            </div>
+            <div className="segmented-control setting-segment">
+              <button type="button" className={displayMode === "system" ? "active" : ""} onClick={() => setDisplayMode("system")}>
+                跟随系统
+              </button>
+              <button type="button" className={displayMode === "light" ? "active" : ""} onClick={() => setDisplayMode("light")}>
+                浅色
+              </button>
+              <button type="button" className={displayMode === "dark" ? "active" : ""} onClick={() => setDisplayMode("dark")}>
+                深色
+              </button>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <div className="section-title">
+              <FolderOpen size={22} />
+              <div>
+                <h2>本地存储说明</h2>
+                <p>生成图和下载包由后端保存到本地磁盘。</p>
+              </div>
+            </div>
+            <div className="info-lines">
+              <div>
+                <strong>存储位置</strong>
+                <span>由服务端 DOODLESTORY_STORAGE_ROOT 控制，默认项目目录下 storage/。</span>
+              </div>
+              <div>
+                <strong>访问方式</strong>
+                <span>前端通过资产接口读取，不直接暴露本地文件路径。</span>
+              </div>
+              <div>
+                <strong>当前 API</strong>
+                <span>{apiBaseUrl}</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <div className="section-title">
+              <Download size={22} />
+              <div>
+                <h2>下载偏好</h2>
+                <p>设置批量下载文件的命名展示。</p>
+              </div>
+            </div>
+            <div className="download-preference">
+              <label>
+                压缩包文件名格式
+                <input value={archiveName} onChange={(event) => setArchiveName(event.target.value)} />
+              </label>
+              <button type="button" className="secondary-button" onClick={() => setArchiveName("doodlestory-task-{task_id}.zip")}>
+                恢复默认
+              </button>
+            </div>
+            <div className="info-lines compact">
+              <div>
+                <strong>包含内容</strong>
+                <span>仅包含成功生成的图片，不包含原文、日志或内部 prompt。</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <div className="section-title">
+              <Shield size={22} />
+              <div>
+                <h2>安全</h2>
+                <p>密码、登录记录和帮助入口。</p>
+              </div>
+            </div>
+            <div className="security-list">
+              <div>
+                <strong>密码与登录</strong>
+                <span>修改密码和找回密码需要邮件服务接入。</span>
+                <button type="button" className="secondary-button" disabled>
+                  管理密码 · 待接入
+                </button>
+              </div>
+              <div>
+                <strong>最近登录记录</strong>
+                <span>会话审计尚未接入。</span>
+                <button type="button" className="ghost-button" disabled>
+                  查看记录 · 待接入
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <aside className="auth-preview-column">
+          <section className="auth-preview-card">
+            <div className="section-title">
+              <KeyRound size={20} />
+              <div>
+                <h2>登录表单预览</h2>
+                <p>账号相关操作的视觉基线。</p>
+              </div>
+            </div>
+            <div className="mini-auth-form">
+              <input value={user.email} readOnly aria-label="预览邮箱" />
+              <input value="••••••••••••" readOnly aria-label="预览密码" />
+              <label className="checkline">
+                <input type="checkbox" />
+                记住我
+              </label>
+              <button type="button">登录</button>
+              <button type="button" className="link-button">
+                还没有账号？立即注册
+              </button>
+            </div>
+          </section>
+
+          <section className="auth-preview-card">
+            <h2>找回密码</h2>
+            <p>输入注册邮箱后发送重置链接。邮件服务接入前保持禁用状态。</p>
+            <div className="mini-auth-form">
+              <input value={user.email} readOnly aria-label="找回密码邮箱" />
+              <button type="button" disabled>
+                发送重置链接 · 待接入
+              </button>
+            </div>
+          </section>
+        </aside>
       </div>
     </section>
   );
