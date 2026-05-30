@@ -432,6 +432,8 @@ frontend/src/
 
 ### PR 06：SiliconFlow LLM 客户端
 
+状态：已完成客户端与 Prompt 基础实现；任务 worker 集成在 PR 08。
+
 - 封装 OpenAI SDK 兼容客户端。
 - 实现故事切分。
 - 实现 panel prompt 生成。

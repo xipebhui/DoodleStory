@@ -43,6 +43,7 @@
 - 完成统一 API 契约：列表分页、标准错误结构、认证响应包裹、普通用户任务可见性边界已落地。
 - 完成风格模块基础闭环：风格 CRUD、参考图上传/删除、已引用风格删除保护、普通用户禁止编辑后台生成配置 Key、风格页 9:16 参考图展示已落地。
 - 完成 Provider 配置加载：`GENERATION_PROFILES_JSON` 会被解析为服务端生成配置 registry，管理员绑定不存在的配置 Key 会收到明确错误。
+- 完成 SiliconFlow LLM 客户端基础实现：新增故事切分与 panel prompt 生成的版本化 Prompt，并封装 OpenAI SDK 兼容 JSON 调用与响应结构校验。
 
 ## 验证记录
 
@@ -57,8 +58,7 @@
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试真实生图尚未实现，当前仍会明确返回 Provider 未接入错误，避免产生 Mock 结果。
-- LLM 文本切分 prompt 和 panel prompt 生成 prompt 仍需设计和测试。
-- LLM provider 已倾向 SiliconFlow，但尚未实现客户端和 prompts。
+- LLM 客户端和 prompts 已实现，但尚未接入任务 worker 流程。
 - 图片生成 provider 已明确使用 XG `/v1/images/edits`，但尚未实现客户端。
 - 对象存储第一版继续本地磁盘，七牛作为可选 `StorageBackend` 尚未实现。
 - 后台生成配置 registry 已实现，但 SiliconFlow 与 XG 的真实客户端尚未接入。
@@ -66,6 +66,6 @@
 
 ## 建议下一步
 
-1. 继续执行 `docs/implementation/react-fastapi-implementation-plan.md` 中的 PR 06：SiliconFlow LLM 客户端和 prompts。
-2. 接着实现 XG 生图客户端。
-3. 再实现任务队列、下载和预览。
+1. 继续执行 `docs/implementation/react-fastapi-implementation-plan.md` 中的 PR 07：XG 生图客户端。
+2. 接着实现任务队列和任务执行流程。
+3. 再实现下载和预览。
