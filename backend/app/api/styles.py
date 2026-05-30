@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -5,16 +7,23 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
-from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, User
-from app.models.enums import FileAssetPurpose, StyleStatus, UserRole
+from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, User
+from app.models.enums import FileAssetPurpose, StyleStatus, UserRole, WorkflowStatus
 from app.schemas.common import ApiData, ApiList
-from app.schemas.style import StyleCreate, StyleRead, StyleReferenceImageRead, StyleTestCreate, StyleUpdate
+from app.schemas.style import StyleCreate, StyleRead, StyleReferenceImageRead, StyleTestCreate, StyleTestRead, StyleUpdate
 from app.services.generation_profiles import (
     GenerationProfileConfigError,
     UnknownGenerationProfileError,
+    get_generation_profile,
     validate_generation_profile_key,
 )
+from app.services.image_generation import (
+    ImageProviderConfigError,
+    ImageProviderResponseError,
+    generate_xg_image_edit,
+)
 from app.services.storage import save_upload_file
+from app.services.storage import resolve_storage_key
 
 router = APIRouter(prefix="/styles", tags=["styles"])
 
@@ -221,15 +230,83 @@ def delete_reference_image(
     return ApiData(data={"deleted": True})
 
 
-@router.post("/{style_id}/tests")
+@router.post("/{style_id}/tests", response_model=ApiData[StyleTestRead])
 def create_style_test(
     style_id: str,
     payload: StyleTestCreate,
     _: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> None:
-    style = db.scalar(select(Style).where(Style.id == style_id))
+) -> ApiData[StyleTestRead]:
+    style = db.scalar(
+        select(Style)
+        .where(Style.id == style_id)
+        .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+    )
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
-    raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="图片生成 Provider 尚未接入，暂不允许创建风格测试")
+    if not style.generation_profile_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格尚未绑定后台生成配置 Key")
+    if not style.reference_images:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格测试至少需要一张参考图")
+
+    try:
+        profile = get_generation_profile(style.generation_profile_key)
+    except UnknownGenerationProfileError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except GenerationProfileConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    composed_prompt = "\n\n".join(
+        [
+            style.style_prompt.strip(),
+            f"画面内容：{payload.test_text.strip()}",
+            "输出要求：9:16 竖图，无文字、无水印、无 Logo。",
+        ]
+    )
+    now = datetime.utcnow()
+    style_test = StyleTest(
+        style_id=style.id,
+        test_text=payload.test_text,
+        style_prompt_snapshot=style.style_prompt,
+        generation_profile_key_snapshot=style.generation_profile_key,
+        composed_prompt=composed_prompt,
+        status=WorkflowStatus.running,
+        attempts=1,
+        started_at=now,
+    )
+    db.add(style_test)
+    db.commit()
+    db.refresh(style_test)
+
+    try:
+        reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        generated = generate_xg_image_edit(prompt=composed_prompt, reference_paths=reference_paths, profile=profile)
+        asset = FileAsset(
+            purpose=FileAssetPurpose.generated_image,
+            storage_key=generated.storage_key,
+            original_filename=generated.original_filename,
+            content_type=generated.content_type,
+            byte_size=generated.byte_size,
+            checksum_sha256=generated.checksum_sha256,
+        )
+        db.add(asset)
+        db.flush()
+        style_test.output_asset_id = asset.id
+        style_test.provider_request_id = generated.provider_request_id
+        style_test.status = WorkflowStatus.succeeded
+        style_test.finished_at = datetime.utcnow()
+        style.last_tested_at = style_test.finished_at
+    except (ImageProviderConfigError, ImageProviderResponseError, GenerationProfileConfigError) as exc:
+        style_test.status = WorkflowStatus.failed
+        style_test.error_code = exc.__class__.__name__
+        style_test.error_message = str(exc)
+        style_test.finished_at = datetime.utcnow()
+
+    db.commit()
+    style_test = db.scalar(
+        select(StyleTest)
+        .where(StyleTest.id == style_test.id)
+        .options(selectinload(StyleTest.output_asset))
+    )
+    return ApiData(data=StyleTestRead.model_validate(style_test))

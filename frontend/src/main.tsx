@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BookImage, Images, LogOut, Plus, Save, Search, Settings, Sparkles, Trash2, Upload } from "lucide-react";
-import { api, type Style, type Task, type User } from "./api/client";
+import { api, type Style, type StyleTest, type Task, type User } from "./api/client";
 import "./styles/app.css";
 
 type View = "tasks" | "styles" | "settings";
@@ -202,6 +202,7 @@ function StylesView({ user }: { user: User }) {
   const [status, setStatus] = useState<Style["status"] | "all">("all");
   const [selectedId, setSelectedId] = useState("");
   const [mode, setMode] = useState<"create" | "edit">("create");
+  const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
   const activeCount = useMemo(() => styles.filter((style) => style.status === "active").length, [styles]);
   const selectedStyle = useMemo(
     () => styles.find((style) => style.id === selectedId) ?? styles[0] ?? null,
@@ -223,12 +224,14 @@ function StylesView({ user }: { user: User }) {
   function startCreate() {
     setMode("create");
     setMessage("");
+    setStyleTest(null);
   }
 
   function startEdit(style: Style) {
     setSelectedId(style.id);
     setMode("edit");
     setMessage("");
+    setStyleTest(null);
   }
 
   async function createStyle(event: React.FormEvent<HTMLFormElement>) {
@@ -297,6 +300,21 @@ function StylesView({ user }: { user: User }) {
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "删除参考图失败");
+    }
+  }
+
+  async function runStyleTest(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedStyle) return;
+    const formData = new FormData(event.currentTarget);
+    try {
+      const result = await api.createStyleTest(selectedStyle.id, {
+        test_text: String(formData.get("test_text") ?? ""),
+      });
+      setStyleTest(result);
+      setMessage(result.status === "succeeded" ? "风格测试已完成" : result.error_message ?? "风格测试未成功");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "风格测试失败");
     }
   }
 
@@ -417,6 +435,31 @@ function StylesView({ user }: { user: User }) {
                   </figure>
                 ))}
               </div>
+            </section>
+          ) : null}
+
+          {selectedStyle ? (
+            <section className="panel reference-panel">
+              <div className="editor-title">
+                <div>
+                  <h2>测试风格</h2>
+                  <p>使用当前风格提示词和参考图生成一张 9:16 测试图。</p>
+                </div>
+              </div>
+              <form className="test-form" onSubmit={runStyleTest}>
+                <textarea name="test_text" placeholder="输入要测试的画面文本" required />
+                <button type="submit">生成测试图</button>
+              </form>
+              {styleTest ? (
+                <div className="test-result">
+                  <span className={`status-pill ${styleTest.status}`}>{styleTest.status}</span>
+                  {styleTest.output_asset ? (
+                    <img src={api.assetContentUrl(styleTest.output_asset.id)} alt="风格测试结果" />
+                  ) : (
+                    <p>{styleTest.error_message || "暂无测试图"}</p>
+                  )}
+                </div>
+              ) : null}
             </section>
           ) : null}
         </aside>

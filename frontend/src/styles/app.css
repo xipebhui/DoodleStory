@@ -476,6 +476,26 @@ textarea {
   color: #eef2f7;
 }
 
+.test-form {
+  display: grid;
+  gap: 12px;
+}
+
+.test-result {
+  display: grid;
+  gap: 10px;
+}
+
+.test-result img {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: #1a1d24;
+}
+
 @media (max-width: 1080px) {
   .style-layout {
     grid-template-columns: 1fr;

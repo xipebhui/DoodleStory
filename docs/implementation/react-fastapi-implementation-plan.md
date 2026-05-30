@@ -447,6 +447,8 @@ frontend/src/
 
 ### PR 07：XG 图片生成客户端
 
+状态：已完成客户端与风格测试接入；任务图片生成集成在 PR 08。
+
 - 实现 `/v1/images/edits` multipart 调用。
 - 多参考图字段 `image[]`。
 - `aspect_ratio=9:16`。

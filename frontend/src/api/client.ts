@@ -39,6 +39,19 @@ export type StyleReferenceImage = {
   asset: FileAsset;
 };
 
+export type StyleTest = {
+  id: string;
+  style_id: string;
+  test_text: string;
+  composed_prompt: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled" | "retrying";
+  output_asset: FileAsset | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Task = {
   id: string;
   display_title: string;
@@ -126,6 +139,11 @@ export const api = {
     request<ApiData<{ deleted: boolean }>>(`/styles/${styleId}/reference-images/${referenceId}`, {
       method: "DELETE",
     }),
+  createStyleTest: (styleId: string, payload: { test_text: string }) =>
+    request<ApiData<StyleTest>>(`/styles/${styleId}/tests`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
   assetContentUrl: (assetId: string) => `${API_BASE_URL}/api/v1/assets/${assetId}/content`,
   tasks: () => request<ApiList<Task>>("/tasks"),
 };
