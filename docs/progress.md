@@ -37,6 +37,8 @@
 - 根据最新讨论收敛后台生成配置：provider、model、API key 和默认参数不暴露给普通用户；风格只通过后台 `generation_profile_key` 引用服务端配置。
 - 明确第一版不支持 prompt 编辑和单图片重试，每个 panel 只生成一张图。
 - 明确文件存储使用本地磁盘，`DOODLESTORY_STORAGE_ROOT` 可配置，默认 `./storage`。
+- 纠正错误的 Next.js 全栈实现，改为 React + Vite 前端和 Python 3.11 + FastAPI 后端的双服务结构。
+- 记录当前 React/FastAPI 实现与产品设计之间的差距，并新增实施计划：`docs/implementation/react-fastapi-implementation-plan.md`。
 
 ## 验证记录
 
@@ -48,16 +50,20 @@
 
 ## 已知缺口
 
-- 尚未创建前端、后端、具体 migration 文件或 provider 集成。
+- 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
+- 尚未接入 Alembic migration，当前后端仍依赖 SQLAlchemy `create_all`。
+- 尚未实现统一分页响应、标准错误结构和完整任务工作流接口。
+- 尚未实现完整风格模块，尤其是参考图删除、风格测试、被任务引用时禁止删除和普通用户不编辑后台生成配置。
 - LLM 文本切分 prompt 和 panel prompt 生成 prompt 仍需设计和测试。
-- 图片模型 provider、存储策略和生成图片下载格式尚未最终选择。
-- 认证模块尚未选择，需随技术栈一起确定。
-- 后台生成配置的具体加载方式尚未实现，需随 provider 集成一起确定。
-- 现有规范仍是文档约束，直到具体技术栈落地后再接入自动化检查。
+- LLM provider 已倾向 SiliconFlow，但尚未实现客户端和 prompts。
+- 图片生成 provider 已明确使用 XG `/v1/images/edits`，但尚未实现客户端。
+- 对象存储第一版继续本地磁盘，七牛作为可选 `StorageBackend` 尚未实现。
+- 后台生成配置的 env 加载方式尚未实现。
+- UI 尚未达到 Runway / Creative AI Studio 风格。
 
 ## 建议下一步
 
-1. 选择第一版实现技术栈，并创建应用骨架实现 sprint。
-2. 选择第一版 LLM provider 和图片生成 provider。
-3. 明确并测试文本切分和 panel prompt 生成的系统提示词。
-4. 选择数据库工具后，将 `docs/design/database.md` 转换成 migration。
+1. 执行 `docs/implementation/react-fastapi-implementation-plan.md` 中的 PR 01：清理工程基线。
+2. 执行 PR 02：接入 Alembic 并固化完整数据库 schema。
+3. 优先完成 PR 04：风格模块完整实现。
+4. 再实现 SiliconFlow LLM、XG 生图和任务队列。
