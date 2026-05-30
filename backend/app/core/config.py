@@ -1,8 +1,11 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -21,7 +24,22 @@ class Settings(BaseSettings):
 
     @property
     def storage_root(self) -> Path:
-        return Path(self.doodlestory_storage_root).resolve()
+        configured = Path(self.doodlestory_storage_root)
+        if configured.is_absolute():
+            return configured
+        return (PROJECT_ROOT / configured).resolve()
+
+    @property
+    def resolved_database_url(self) -> str:
+        if not self.database_url.startswith("sqlite:///"):
+            return self.database_url
+
+        raw_path = self.database_url.removeprefix("sqlite:///")
+        db_path = Path(raw_path)
+        if not db_path.is_absolute():
+            db_path = PROJECT_ROOT / db_path
+
+        return f"sqlite:///{quote(str(db_path.resolve()))}"
 
     @property
     def admin_email_set(self) -> set[str]:

@@ -3,15 +3,19 @@ from enum import StrEnum
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.enums import (
+    DownloadStatus,
     FileAssetPurpose,
+    GenerationStepName,
     GeneratedImageStatus,
     ImageCountMode,
     PromptStatus,
+    StepStatus,
+    StorageBackend,
     StyleStatus,
     TaskStatus,
     UserRole,
@@ -36,8 +40,24 @@ class User(Base, TimestampMixin):
     display_name: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.user)
+    auth_provider_subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     tasks: Mapped[list["GenerationTask"]] = relationship(back_populates="owner")
+    sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class Session(Base, TimestampMixin):
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="sessions")
 
 
 class Style(Base, TimestampMixin):
@@ -49,8 +69,10 @@ class Style(Base, TimestampMixin):
     status: Mapped[StyleStatus] = mapped_column(Enum(StyleStatus), default=StyleStatus.draft, index=True)
     generation_profile_key: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, index=True)
     style_prompt: Mapped[str] = mapped_column(Text)
+    cover_asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
     last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    cover_asset: Mapped[Optional["FileAsset"]] = relationship(foreign_keys=[cover_asset_id])
     reference_images: Mapped[list["StyleReferenceImage"]] = relationship(back_populates="style", cascade="all, delete-orphan")
     tests: Mapped[list["StyleTest"]] = relationship(back_populates="style")
     tasks: Mapped[list["GenerationTask"]] = relationship(back_populates="style")
@@ -58,10 +80,13 @@ class Style(Base, TimestampMixin):
 
 class FileAsset(Base, TimestampMixin):
     __tablename__ = "file_assets"
+    __table_args__ = (CheckConstraint("byte_size > 0", name="ck_file_assets_byte_size_positive"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     purpose: Mapped[FileAssetPurpose] = mapped_column(Enum(FileAssetPurpose), index=True)
+    storage_backend: Mapped[StorageBackend] = mapped_column(Enum(StorageBackend), default=StorageBackend.local, index=True)
     storage_key: Mapped[str] = mapped_column(String(500), unique=True)
+    public_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     original_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     content_type: Mapped[str] = mapped_column(String(100))
     byte_size: Mapped[int] = mapped_column(Integer)
@@ -94,14 +119,31 @@ class StyleTest(Base, TimestampMixin):
     generation_profile_key_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     composed_prompt: Mapped[str] = mapped_column(Text)
     status: Mapped[WorkflowStatus] = mapped_column(Enum(WorkflowStatus), default=WorkflowStatus.queued)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    cancel_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    output_asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
+    provider_request_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     style: Mapped[Style] = relationship(back_populates="tests")
+    output_asset: Mapped[Optional[FileAsset]] = relationship()
 
 
 class GenerationTask(Base, TimestampMixin):
     __tablename__ = "generation_tasks"
+    __table_args__ = (
+        CheckConstraint(
+            "(image_count_mode = 'auto' AND requested_image_count IS NULL) OR "
+            "(image_count_mode = 'fixed' AND requested_image_count > 0)",
+            name="ck_generation_tasks_image_count_mode",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
@@ -114,19 +156,52 @@ class GenerationTask(Base, TimestampMixin):
     style_prompt_snapshot: Mapped[str] = mapped_column(Text)
     generation_profile_key_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.queued, index=True)
+    current_step: Mapped[Optional[GenerationStepName]] = mapped_column(Enum(GenerationStepName), nullable=True)
     progress_current: Mapped[int] = mapped_column(Integer, default=0)
     progress_total: Mapped[int] = mapped_column(Integer, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    cancel_requested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     owner: Mapped[User] = relationship(back_populates="tasks")
     style: Mapped[Style] = relationship(back_populates="tasks")
+    steps: Mapped[list["GenerationStep"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     panels: Mapped[list["TaskPanel"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    generated_images: Mapped[list["GeneratedImage"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    downloads: Mapped[list["TaskDownload"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+
+
+class GenerationStep(Base, TimestampMixin):
+    __tablename__ = "generation_steps"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
+    step_name: Mapped[GenerationStepName] = mapped_column(Enum(GenerationStepName), index=True)
+    status: Mapped[StepStatus] = mapped_column(Enum(StepStatus), default=StepStatus.queued, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    idempotency_key: Mapped[str] = mapped_column(String(160), unique=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    output_ref: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+    task: Mapped[GenerationTask] = relationship(back_populates="steps")
 
 
 class TaskPanel(Base, TimestampMixin):
     __tablename__ = "task_panels"
-    __table_args__ = (UniqueConstraint("task_id", "panel_order"),)
+    __table_args__ = (
+        UniqueConstraint("task_id", "panel_order"),
+        CheckConstraint("panel_order > 0", name="ck_task_panels_panel_order_positive"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
@@ -134,6 +209,9 @@ class TaskPanel(Base, TimestampMixin):
     original_text_segment: Mapped[str] = mapped_column(Text)
     prompt_status: Mapped[PromptStatus] = mapped_column(Enum(PromptStatus), default=PromptStatus.pending)
     generated_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt_model_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     task: Mapped[GenerationTask] = relationship(back_populates="panels")
     generated_image: Mapped[Optional["GeneratedImage"]] = relationship(back_populates="panel")
@@ -141,6 +219,9 @@ class TaskPanel(Base, TimestampMixin):
 
 class GeneratedImage(Base, TimestampMixin):
     __tablename__ = "generated_images"
+    __table_args__ = (
+        CheckConstraint("status != 'succeeded' OR asset_id IS NOT NULL", name="ck_generated_images_succeeded_asset"),
+    )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
@@ -149,6 +230,33 @@ class GeneratedImage(Base, TimestampMixin):
     final_prompt: Mapped[str] = mapped_column(Text)
     generation_profile_key_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
+    provider_request_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
+    task: Mapped[GenerationTask] = relationship(back_populates="generated_images")
     panel: Mapped[TaskPanel] = relationship(back_populates="generated_image")
+    asset: Mapped[Optional[FileAsset]] = relationship()
+
+
+class TaskDownload(Base, TimestampMixin):
+    __tablename__ = "task_downloads"
+    __table_args__ = (
+        CheckConstraint("status != 'ready' OR asset_id IS NOT NULL", name="ck_task_downloads_ready_asset"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
+    status: Mapped[DownloadStatus] = mapped_column(Enum(DownloadStatus), default=DownloadStatus.queued, index=True)
+    image_count: Mapped[int] = mapped_column(Integer, default=0)
+    asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+    task: Mapped[GenerationTask] = relationship(back_populates="downloads")
     asset: Mapped[Optional[FileAsset]] = relationship()

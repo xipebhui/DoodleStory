@@ -3,15 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import assets, auth, styles, tasks
 from app.core.config import get_settings
-from app.core.database import Base, engine
-from app.models import entities
 
 settings = get_settings()
 
 
 def create_app() -> FastAPI:
-    Base.metadata.create_all(bind=engine)
-
     app = FastAPI(title="DoodleStory API")
     app.add_middleware(
         CORSMiddleware,

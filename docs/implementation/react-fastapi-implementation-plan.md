@@ -362,6 +362,8 @@ frontend/src/
 
 ### PR 01：纠正工程基线
 
+状态：已完成。
+
 - 删除残留 Next 痕迹。
 - 更新 README 和 `docs/progress.md`，明确 React/FastAPI。
 - 清理 `__pycache__`、本地 DB、构建产物。
@@ -374,6 +376,8 @@ frontend/src/
 
 ### PR 02：数据库和迁移
 
+状态：已完成。
+
 - 接入 Alembic。
 - 完整迁移当前设计表。
 - 补齐任务、steps、downloads、assets 字段。
@@ -384,6 +388,8 @@ frontend/src/
 - `sqlite3` 可看到所有目标表。
 
 ### PR 03：统一 API 与认证边界
+
+状态：下一步。
 
 - 统一响应和错误结构。
 - 列表分页。

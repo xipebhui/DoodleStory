@@ -18,6 +18,11 @@ class FileAssetPurpose(StrEnum):
     download_archive = "download_archive"
 
 
+class StorageBackend(StrEnum):
+    local = "local"
+    qiniu = "qiniu"
+
+
 class ImageCountMode(StrEnum):
     auto = "auto"
     fixed = "fixed"
@@ -30,6 +35,22 @@ class TaskStatus(StrEnum):
     partial_succeeded = "partial_succeeded"
     failed = "failed"
     cancel_requested = "cancel_requested"
+    cancelled = "cancelled"
+    retrying = "retrying"
+
+
+class GenerationStepName(StrEnum):
+    segment_story = "segment_story"
+    generate_panel_prompts = "generate_panel_prompts"
+    generate_images = "generate_images"
+    package_download = "package_download"
+
+
+class StepStatus(StrEnum):
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
     cancelled = "cancelled"
     retrying = "retrying"
 
@@ -56,3 +77,10 @@ class WorkflowStatus(StrEnum):
     cancel_requested = "cancel_requested"
     cancelled = "cancelled"
     retrying = "retrying"
+
+
+class DownloadStatus(StrEnum):
+    queued = "queued"
+    running = "running"
+    ready = "ready"
+    failed = "failed"

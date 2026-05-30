@@ -39,6 +39,7 @@
 - 明确文件存储使用本地磁盘，`DOODLESTORY_STORAGE_ROOT` 可配置，默认 `./storage`。
 - 纠正错误的 Next.js 全栈实现，改为 React + Vite 前端和 Python 3.11 + FastAPI 后端的双服务结构。
 - 记录当前 React/FastAPI 实现与产品设计之间的差距，并新增实施计划：`docs/implementation/react-fastapi-implementation-plan.md`。
+- 完成 React/FastAPI 工程基线的第一轮清理，接入 Alembic，并补齐初始数据库表：`sessions`、`generation_steps`、`task_downloads` 等工作流表已进入迁移。
 
 ## 验证记录
 
@@ -51,7 +52,6 @@
 ## 已知缺口
 
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
-- 尚未接入 Alembic migration，当前后端仍依赖 SQLAlchemy `create_all`。
 - 尚未实现统一分页响应、标准错误结构和完整任务工作流接口。
 - 尚未实现完整风格模块，尤其是参考图删除、风格测试、被任务引用时禁止删除和普通用户不编辑后台生成配置。
 - LLM 文本切分 prompt 和 panel prompt 生成 prompt 仍需设计和测试。
@@ -63,7 +63,6 @@
 
 ## 建议下一步
 
-1. 执行 `docs/implementation/react-fastapi-implementation-plan.md` 中的 PR 01：清理工程基线。
-2. 执行 PR 02：接入 Alembic 并固化完整数据库 schema。
-3. 优先完成 PR 04：风格模块完整实现。
-4. 再实现 SiliconFlow LLM、XG 生图和任务队列。
+1. 继续执行 `docs/implementation/react-fastapi-implementation-plan.md` 中的 PR 03：统一 API 响应、分页和权限边界。
+2. 优先完成 PR 04：风格模块完整实现。
+3. 再实现 SiliconFlow LLM、XG 生图和任务队列。
