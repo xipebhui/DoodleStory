@@ -2,10 +2,12 @@ import base64
 import binascii
 import logging
 import mimetypes
+from time import monotonic
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 from fastapi import HTTPException
@@ -37,6 +39,27 @@ class GeneratedImageFile:
     content_type: str
     original_filename: str
     provider_request_id: str | None
+
+
+def describe_proxy_url(proxy_url: str) -> str:
+    if not proxy_url:
+        return ""
+    parsed = urlparse(proxy_url)
+    if not parsed.scheme or not parsed.hostname:
+        return "invalid-proxy-url"
+    host = parsed.hostname
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{host}{port}"
+
+
+def describe_reference_file(path: Path) -> dict[str, Any]:
+    stat = path.stat()
+    return {
+        "name": path.name,
+        "suffix": path.suffix,
+        "bytes": stat.st_size,
+        "content_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+    }
 
 
 def parse_image_b64(response_body: dict[str, Any]) -> bytes:
@@ -94,46 +117,93 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
     }
     proxy_url = settings.xg_proxy_url.strip()
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
+    proxy_description = describe_proxy_url(proxy_url)
+    request_started_at = monotonic()
 
     with ExitStack() as stack:
         files = []
+        reference_file_info = []
         for path in reference_paths:
             if not path.exists() or not path.is_file():
                 raise ImageProviderConfigError(f"参考图文件不存在：{path}")
+            file_info = describe_reference_file(path)
+            reference_file_info.append(file_info)
             content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             files.append(("image[]", (path.name, stack.enter_context(path.open("rb")), content_type)))
 
         try:
             logger.info(
-                "requesting XG image edit endpoint=%s model=%s reference_count=%s prompt_chars=%s proxy_enabled=%s",
+                "XG image edit request prepared endpoint=%s model=%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
                 endpoint,
                 image_model_name.strip(),
                 len(reference_paths),
+                reference_file_info,
                 len(prompt),
                 bool(proxies),
+                proxy_description,
+                300,
             )
             session = requests.Session()
             session.trust_env = False
             response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300, proxies=proxies)
         except requests.RequestException as exc:
-            logger.exception("XG image edit request exception model=%s", image_model_name.strip())
+            elapsed_ms = round((monotonic() - request_started_at) * 1000)
+            logger.exception(
+                "XG image edit request exception model=%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s",
+                image_model_name.strip(),
+                bool(proxies),
+                proxy_description,
+                elapsed_ms,
+                exc.__class__.__name__,
+            )
             raise ImageProviderResponseError(f"图片 Provider 请求异常：{exc}") from exc
 
+    elapsed_ms = round((monotonic() - request_started_at) * 1000)
+    provider_request_id = response.headers.get("x-oneapi-request-id") or response.headers.get("x-request-id")
+    logger.info(
+        "XG image edit response received status_code=%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+        response.status_code,
+        elapsed_ms,
+        len(response.content),
+        response.headers.get("content-type"),
+        provider_request_id,
+    )
+
     if response.status_code >= 400:
-        logger.warning("XG image edit failed status_code=%s response_chars=%s", response.status_code, len(response.text))
+        logger.warning(
+            "XG image edit failed status_code=%s response_chars=%s provider_request_id=%s response_preview=%s",
+            response.status_code,
+            len(response.text),
+            provider_request_id,
+            response.text[:500],
+        )
         raise ImageProviderResponseError(f"图片 Provider 请求失败：HTTP {response.status_code} {response.text}")
 
     try:
         body = response.json()
     except ValueError as exc:
+        logger.warning(
+            "XG image edit invalid JSON response status_code=%s response_bytes=%s provider_request_id=%s response_preview=%s",
+            response.status_code,
+            len(response.content),
+            provider_request_id,
+            response.text[:500],
+        )
         raise ImageProviderResponseError("图片 Provider 返回内容不是合法 JSON") from exc
     if not isinstance(body, dict):
         raise ImageProviderResponseError("图片 Provider 返回 JSON 必须是对象结构")
 
     image_content = parse_image_b64(body)
     content_type = detect_image_content_type(image_content)
-    logger.info("XG image edit returned b64 image content_type=%s bytes=%s", content_type, len(image_content))
-    return image_content, content_type, body.get("id") if isinstance(body.get("id"), str) else None
+    response_body_request_id = body.get("id") if isinstance(body.get("id"), str) else None
+    logger.info(
+        "XG image edit returned b64 image content_type=%s bytes=%s provider_request_id=%s response_body_request_id=%s",
+        content_type,
+        len(image_content),
+        provider_request_id,
+        response_body_request_id,
+    )
+    return image_content, content_type, response_body_request_id or provider_request_id
 
 
 def generate_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> GeneratedImageFile:
