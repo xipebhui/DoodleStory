@@ -175,11 +175,12 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
 def build_final_prompt(style_prompt: str, panel_prompt: str, panel_text: str) -> str:
     return "\n\n".join(
         [
-            style_prompt.strip(),
+            f"风格模板：{style_prompt.strip()}",
+            "统一文字要求：图片内文字必须使用中文。请把 panel 原文作为图片内可读文字完整呈现，不要删改、翻译、总结或补充文案内容。可以通过字体大小、字重、颜色、位置、换行和留白做视觉强调，但不要把强调理解成 Markdown 或排版符号。",
+            "文字禁止项：不要在图片文字里加入 #、##、**、*、-、项目符号、引号包裹、代码块符号、标题标记或任何 panel 原文之外的格式字符。",
             f"画面内容：{panel_prompt.strip()}",
-            "画面文字：请把下面的 panel 原文作为图片内可读文字完整呈现。可以自行决定换行、字号层级、重点强调和排版位置，但不要删改文案内容。",
-            panel_text.strip(),
-            "输出要求：9:16 竖图，无水印、无 Logo，不添加 panel 原文之外的无关文字。",
+            f"panel 原文：{panel_text.strip()}",
+            "输出要求：最终画布必须是 9:16 竖图；如果风格模板里出现 3:4、方图、横图等比例描述，只作为分格或构图参考，不能改变 9:16 画布比例。无水印、无 Logo，不添加 panel 原文之外的无关文字。",
         ]
     )
 
