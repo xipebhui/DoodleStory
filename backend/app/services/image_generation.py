@@ -19,7 +19,9 @@ from app.services.storage import save_bytes
 
 logger = logging.getLogger(__name__)
 
-CHAT_IMAGE_URL_PATTERN = re.compile(r"!\[[^\]]*\]\((https?://[^)\s]+)\)|(?P<url>https?://[^\s)]+)")
+CHAT_IMAGE_REFERENCE_PATTERN = re.compile(
+    r"!\[[^\]]*\]\((?P<markdown>(?:https?://|data:image/)[^)\s]+)\)|(?P<plain>(?:https?://|data:image/)[^\s)]+)"
+)
 
 
 class ImageProviderError(Exception):
@@ -119,7 +121,24 @@ def encode_reference_image(path: Path) -> dict[str, Any]:
     return {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{encoded}"}}
 
 
-def parse_chat_image_url(response_body: dict[str, Any]) -> str:
+def parse_image_data_url(data_url: str) -> tuple[bytes, str]:
+    header, separator, encoded = data_url.partition(",")
+    if separator != "," or not header.startswith("data:image/") or ";base64" not in header:
+        raise ImageProviderResponseError("图片 Provider 返回的 data URL 不是合法 Base64 图片")
+    content_type = header.removeprefix("data:").split(";", 1)[0]
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except binascii.Error as exc:
+        raise ImageProviderResponseError("图片 Provider 返回的 data URL 不是合法 Base64") from exc
+    if not content:
+        raise ImageProviderResponseError("图片 Provider 返回的 data URL 内容为空")
+    detected_content_type = detect_image_content_type(content)
+    if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        content_type = detected_content_type
+    return content, content_type
+
+
+def parse_chat_image_reference(response_body: dict[str, Any]) -> str:
     choices = response_body.get("choices")
     if not isinstance(choices, list) or not choices:
         raise ImageProviderResponseError("图片 Provider 返回中缺少 choices[0]")
@@ -143,10 +162,10 @@ def parse_chat_image_url(response_body: dict[str, Any]) -> str:
     else:
         raise ImageProviderResponseError("图片 Provider 返回 message.content 必须是字符串或文本数组")
 
-    match = CHAT_IMAGE_URL_PATTERN.search(text)
+    match = CHAT_IMAGE_REFERENCE_PATTERN.search(text)
     if not match:
-        raise ImageProviderResponseError("图片 Provider 返回中未找到图片 URL")
-    return match.group(1) or match.group("url")
+        raise ImageProviderResponseError("图片 Provider 返回中未找到图片 URL 或 data URL")
+    return match.group("markdown") or match.group("plain")
 
 
 def download_generated_image(image_url: str, provider_request_id: str | None) -> tuple[bytes, str]:
@@ -343,8 +362,11 @@ def request_xg_chat_image(*, prompt: str, reference_paths: list[Path], image_mod
         raise ImageProviderResponseError("图片 Provider 返回 JSON 必须是对象结构")
 
     response_body_request_id = body.get("id") if isinstance(body.get("id"), str) else None
-    image_url = parse_chat_image_url(body)
-    image_content, content_type = download_generated_image(image_url, response_body_request_id or provider_request_id)
+    image_reference = parse_chat_image_reference(body)
+    if image_reference.startswith("data:image/"):
+        image_content, content_type = parse_image_data_url(image_reference)
+    else:
+        image_content, content_type = download_generated_image(image_reference, response_body_request_id or provider_request_id)
     logger.info(
         "XG chat image returned downloadable image content_type=%s bytes=%s provider_request_id=%s response_body_request_id=%s",
         content_type,
