@@ -237,7 +237,9 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
     return response.content, detect_image_content_type(response.content)
 
 
-def request_xg_chat_image(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> tuple[bytes, str, str | None]:
+def request_xg_chat_image(
+    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+) -> tuple[bytes, str, str | None]:
     if not image_model_name.strip():
         raise ImageProviderConfigError("风格未绑定生图模型名")
     if not reference_paths:
@@ -258,6 +260,7 @@ def request_xg_chat_image(*, prompt: str, reference_paths: list[Path], image_mod
 
     payload = {
         "model": image_model_name.strip(),
+        "aspect_ratio": aspect_ratio,
         "messages": [{"role": "user", "content": content}],
     }
     headers = {
@@ -273,9 +276,10 @@ def request_xg_chat_image(*, prompt: str, reference_paths: list[Path], image_mod
         attempt_started_at = monotonic()
         try:
             logger.info(
-                "XG chat image request prepared endpoint=%s model=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s timeout_seconds=%s",
+                "XG chat image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s timeout_seconds=%s",
                 endpoint,
                 image_model_name.strip(),
+                aspect_ratio,
                 attempt,
                 max_attempts,
                 len(reference_paths),
@@ -377,7 +381,9 @@ def request_xg_chat_image(*, prompt: str, reference_paths: list[Path], image_mod
     return image_content, content_type, response_body_request_id or provider_request_id
 
 
-def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> tuple[bytes, str, str | None]:
+def request_xg_image_edit(
+    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+) -> tuple[bytes, str, str | None]:
     if not image_model_name.strip():
         raise ImageProviderConfigError("风格未绑定生图模型名")
     if not reference_paths:
@@ -419,9 +425,10 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
 
             try:
                 logger.info(
-                    "XG image edit request prepared endpoint=%s model=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
+                    "XG image edit request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
                     endpoint,
                     image_model_name.strip(),
+                    aspect_ratio,
                     attempt,
                     max_attempts,
                     len(reference_paths),
@@ -541,17 +548,32 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
     return image_content, content_type, response_body_request_id or provider_request_id
 
 
-def request_xg_image(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> tuple[bytes, str, str | None]:
+def request_xg_image(
+    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+) -> tuple[bytes, str, str | None]:
     if is_xg_chat_image_model(image_model_name):
-        return request_xg_chat_image(prompt=prompt, reference_paths=reference_paths, image_model_name=image_model_name)
-    return request_xg_image_edit(prompt=prompt, reference_paths=reference_paths, image_model_name=image_model_name)
+        return request_xg_chat_image(
+            prompt=prompt,
+            reference_paths=reference_paths,
+            image_model_name=image_model_name,
+            aspect_ratio=aspect_ratio,
+        )
+    return request_xg_image_edit(
+        prompt=prompt,
+        reference_paths=reference_paths,
+        image_model_name=image_model_name,
+        aspect_ratio=aspect_ratio,
+    )
 
 
-def generate_xg_image(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> GeneratedImageFile:
+def generate_xg_image(
+    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+) -> GeneratedImageFile:
     content, content_type, provider_request_id = request_xg_image(
         prompt=prompt,
         reference_paths=reference_paths,
         image_model_name=image_model_name,
+        aspect_ratio=aspect_ratio,
     )
     filename = f"generated-image{mimetypes.guess_extension(content_type) or '.png'}"
     try:
@@ -573,5 +595,12 @@ def generate_xg_image(*, prompt: str, reference_paths: list[Path], image_model_n
     )
 
 
-def generate_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_model_name: str) -> GeneratedImageFile:
-    return generate_xg_image(prompt=prompt, reference_paths=reference_paths, image_model_name=image_model_name)
+def generate_xg_image_edit(
+    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str = "9:16"
+) -> GeneratedImageFile:
+    return generate_xg_image(
+        prompt=prompt,
+        reference_paths=reference_paths,
+        image_model_name=image_model_name,
+        aspect_ratio=aspect_ratio,
+    )

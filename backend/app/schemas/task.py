@@ -69,6 +69,7 @@ class TaskRead(TimestampFields):
     style_id: str
     style_name_snapshot: str
     image_model_name_snapshot: str
+    style_aspect_ratio_snapshot: str
     status: TaskStatus
     progress_current: int
     progress_total: int

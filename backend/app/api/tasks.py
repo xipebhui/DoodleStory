@@ -116,6 +116,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         style_name_snapshot=style.name,
         style_prompt_snapshot=style.style_prompt,
         image_model_name_snapshot=style.image_model_name,
+        style_aspect_ratio_snapshot=style.aspect_ratio,
         status=TaskStatus.queued,
         progress_current=0,
         progress_total=3,
@@ -203,6 +204,7 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     task.style_name_snapshot = style.name
     task.style_prompt_snapshot = style.style_prompt
     task.image_model_name_snapshot = style.image_model_name
+    task.style_aspect_ratio_snapshot = style.aspect_ratio
 
     db.commit()
     await enqueue_task(task.id)

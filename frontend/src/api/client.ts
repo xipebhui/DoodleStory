@@ -11,6 +11,7 @@ export type Style = {
   description: string | null;
   status: "draft" | "active" | "disabled";
   image_model_name: string;
+  aspect_ratio: string;
   style_prompt: string;
   cover_asset: FileAsset | null;
   last_tested_at: string | null;
@@ -43,6 +44,7 @@ export type StyleTest = {
   style_id: string;
   test_text: string;
   composed_prompt: string;
+  aspect_ratio_snapshot: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled" | "retrying";
   output_asset: FileAsset | null;
   error_code: string | null;
@@ -61,6 +63,7 @@ export type Task = {
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
+  style_aspect_ratio_snapshot: string;
   status:
     | "queued"
     | "running"

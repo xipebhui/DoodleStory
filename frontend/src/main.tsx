@@ -33,6 +33,7 @@ import "./styles/app.css";
 
 type View = "tasks" | "styles" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
+const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 
 function LazyAssetImage({
   assetId,
@@ -683,7 +684,11 @@ function TasksView({ user }: { user: User }) {
                 <div className="task-row-side">
                   <div className="task-style-cell">
                     <strong>{task.style_name_snapshot}</strong>
-                    <small>{task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}</small>
+                    <small>
+                      {task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}
+                      {" · "}
+                      {task.style_aspect_ratio_snapshot}
+                    </small>
                   </div>
                   <div className="task-status-cell">
                     <span className={`status-pill ${task.status}`}>{taskStatusLabel(task.status)}</span>
@@ -732,7 +737,7 @@ function TasksView({ user }: { user: User }) {
                   <p>
                         {taskForDetail.style_name_snapshot} · 创建于 {formatDateTime(taskForDetail.created_at)}
                         <br />
-                        模型 {taskForDetail.image_model_name_snapshot}
+                        模型 {taskForDetail.image_model_name_snapshot} · 比例 {taskForDetail.style_aspect_ratio_snapshot}
                   </p>
                 </div>
                 <div className="detail-actions">
@@ -864,7 +869,7 @@ function TasksView({ user }: { user: User }) {
                       </span>
                       <strong>{selectedCreateStyle.name}</strong>
                       <p>{selectedCreateStyle.description || "暂无描述"}</p>
-                      <small>{selectedCreateStyle.reference_images.length} 张参考图 · {selectedCreateStyle.image_model_name}</small>
+                      <small>{selectedCreateStyle.reference_images.length} 张参考图 · 比例 {selectedCreateStyle.aspect_ratio} · {selectedCreateStyle.image_model_name}</small>
                     </div>
                   </div>
                 ) : null}
@@ -886,7 +891,7 @@ function TasksView({ user }: { user: User }) {
                         </div>
                         <div>
                           <strong>{style.name}</strong>
-                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {style.image_model_name}</small>
+                          <small>{style.description || `${style.reference_images.length} 张参考图`} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
                         </div>
                         <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
                       </button>
@@ -1027,6 +1032,7 @@ function StylesView({ user }: { user: User }) {
       name: String(formData.get("name") ?? ""),
       status: String(formData.get("status") ?? "draft") as Style["status"],
       image_model_name: String(formData.get("image_model_name") ?? ""),
+      aspect_ratio: String(formData.get("aspect_ratio") ?? "9:16"),
       style_prompt: String(formData.get("style_prompt") ?? ""),
       description: String(formData.get("description") ?? ""),
     };
@@ -1230,7 +1236,7 @@ function StylesView({ user }: { user: User }) {
                   <span className={`status-pill ${style.status}`}>{style.status}</span>
                 </div>
                 <p>{style.description || "暂无描述"}</p>
-                <small>{style.reference_images.length} 张参考图 · 模型 {style.image_model_name} · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
+                <small>{style.reference_images.length} 张参考图 · 比例 {style.aspect_ratio} · 模型 {style.image_model_name} · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
               </div>
               <div className="style-row-strip">
                 {assets.slice(0, 5).map((asset) => (
@@ -1277,6 +1283,13 @@ function StylesView({ user }: { user: User }) {
             </div>
             <input name="name" placeholder="风格名称" defaultValue={formStyle?.name ?? ""} required />
             <input name="image_model_name" placeholder="生图模型名，例如 gpt-image-2" defaultValue={formStyle?.image_model_name ?? ""} required />
+            <select name="aspect_ratio" defaultValue={formStyle?.aspect_ratio ?? "9:16"} required>
+              {aspectRatioOptions.map((ratio) => (
+                <option key={ratio} value={ratio}>
+                  画面比例 {ratio}
+                </option>
+              ))}
+            </select>
             <select name="status" defaultValue={formStyle?.status ?? "draft"}>
               <option value="draft">草稿</option>
               <option value="active">启用</option>

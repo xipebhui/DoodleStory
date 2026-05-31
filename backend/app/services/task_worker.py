@@ -172,15 +172,16 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
         db.commit()
 
 
-def build_final_prompt(style_prompt: str, panel_prompt: str, panel_text: str) -> str:
+def build_final_prompt(style_prompt: str, aspect_ratio: str, panel_prompt: str, panel_text: str) -> str:
     return "\n\n".join(
         [
             f"风格模板：{style_prompt.strip()}",
+            f"画面比例：{aspect_ratio}",
             "统一文字要求：图片内文字必须使用中文。请把 panel 原文作为图片内可读文字完整呈现，不要删改、翻译、总结或补充文案内容。可以通过字体大小、字重、颜色、位置、换行和留白做视觉强调，但不要把强调理解成 Markdown 或排版符号。",
             "文字禁止项：不要在图片文字里加入 #、##、**、*、-、项目符号、引号包裹、代码块符号、标题标记或任何 panel 原文之外的格式字符。",
             f"画面内容：{panel_prompt.strip()}",
             f"panel 原文：{panel_text.strip()}",
-            "输出要求：图片比例、画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加 panel 原文之外的无关文字。",
+            "输出要求：图片比例以画面比例参数为准，画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加 panel 原文之外的无关文字。",
         ]
     )
 
@@ -348,6 +349,7 @@ def process_task(task_id: str) -> None:
             db.flush()
             final_prompt = build_final_prompt(
                 task.style_prompt_snapshot,
+                task.style_aspect_ratio_snapshot,
                 panel.generated_prompt or "",
                 panel.original_text_segment,
             )
@@ -376,6 +378,7 @@ def process_task(task_id: str) -> None:
                     prompt=final_prompt,
                     reference_paths=reference_paths,
                     image_model_name=task.image_model_name_snapshot,
+                    aspect_ratio=task.style_aspect_ratio_snapshot,
                 )
                 asset = FileAsset(
                     purpose=FileAssetPurpose.generated_image,

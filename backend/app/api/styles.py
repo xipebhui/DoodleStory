@@ -11,7 +11,15 @@ from app.core.database import get_db
 from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, User
 from app.models.enums import FileAssetPurpose, StyleStatus, WorkflowStatus
 from app.schemas.common import ApiData, ApiList
-from app.schemas.style import StyleCreate, StyleRead, StyleReferenceImageRead, StyleTestCreate, StyleTestRead, StyleUpdate
+from app.schemas.style import (
+    STYLE_ASPECT_RATIOS,
+    StyleCreate,
+    StyleRead,
+    StyleReferenceImageRead,
+    StyleTestCreate,
+    StyleTestRead,
+    StyleUpdate,
+)
 from app.services.image_generation import (
     ImageProviderConfigError,
     ImageProviderResponseError,
@@ -39,6 +47,13 @@ def normalize_image_model_name(value: str) -> str:
     cleaned = value.strip()
     if not cleaned:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格必须绑定生图模型名")
+    return cleaned
+
+
+def normalize_aspect_ratio(value: str) -> str:
+    cleaned = value.strip()
+    if cleaned not in STYLE_ASPECT_RATIOS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="画面比例不支持")
     return cleaned
 
 
@@ -74,6 +89,7 @@ def list_styles(
 def create_style(payload: StyleCreate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[StyleRead]:
     data = payload.model_dump()
     data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
+    data["aspect_ratio"] = normalize_aspect_ratio(data["aspect_ratio"])
 
     style = Style(**data)
     db.add(style)
@@ -103,6 +119,8 @@ def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(curre
     data = payload.model_dump(exclude_unset=True)
     if "image_model_name" in data:
         data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
+    if "aspect_ratio" in data:
+        data["aspect_ratio"] = normalize_aspect_ratio(data["aspect_ratio"])
 
     for key, value in data.items():
         setattr(style, key, value)
@@ -226,11 +244,12 @@ def create_style_test(
     composed_prompt = "\n\n".join(
         [
             f"风格模板：{style.style_prompt.strip()}",
+            f"画面比例：{style.aspect_ratio}",
             "统一文字要求：图片内文字必须使用中文。请把测试文案作为图片内可读文字完整呈现，不要删改、翻译、总结或补充文案内容。可以通过字体大小、字重、颜色、位置、换行和留白做视觉强调，但不要把强调理解成 Markdown 或排版符号。",
             "文字禁止项：不要在图片文字里加入 #、##、**、*、-、项目符号、引号包裹、代码块符号、标题标记或任何测试文案之外的格式字符。",
             f"画面内容：{payload.test_text.strip()}",
             f"测试文案：{payload.test_text.strip()}",
-            "输出要求：图片比例、画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加测试文案之外的无关文字。",
+            "输出要求：图片比例以画面比例参数为准，画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加测试文案之外的无关文字。",
         ]
     )
     now = datetime.utcnow()
@@ -239,6 +258,7 @@ def create_style_test(
         test_text=payload.test_text,
         style_prompt_snapshot=style.style_prompt,
         image_model_name_snapshot=style.image_model_name,
+        aspect_ratio_snapshot=style.aspect_ratio,
         composed_prompt=composed_prompt,
         status=WorkflowStatus.running,
         attempts=1,
@@ -262,6 +282,7 @@ def create_style_test(
             prompt=composed_prompt,
             reference_paths=reference_paths,
             image_model_name=style.image_model_name,
+            aspect_ratio=style.aspect_ratio,
         )
         asset = FileAsset(
             purpose=FileAssetPurpose.generated_image,
