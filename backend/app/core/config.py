@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     xg_api_key: str = ""
     xg_api_base_url: str = "https://api.xgapi.top"
     xg_proxy_url: str = ""
+    xg_request_max_attempts: int = 3
+    xg_request_retry_backoff_seconds: float = 2.0
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

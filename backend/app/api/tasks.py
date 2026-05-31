@@ -15,6 +15,8 @@ from app.models.enums import (
     GeneratedImageStatus,
     GenerationStepName,
     ImageCountMode,
+    PromptStatus,
+    StepStatus,
     StyleStatus,
     TaskStatus,
     UserRole,
@@ -152,8 +154,8 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
         .options(*task_options())
     )
     task = ensure_task_access(task, user)
-    if task.status != TaskStatus.failed:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败任务可以重试")
+    if task.status not in {TaskStatus.failed, TaskStatus.partial_succeeded}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败或部分完成的任务可以重试")
     if task.attempts >= task.max_attempts:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务已达到最大重试次数")
 
@@ -166,16 +168,29 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格尚未绑定生图模型名")
 
     for image in list(task.generated_images):
-        db.delete(image)
+        if image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
+            db.delete(image)
     for panel in list(task.panels):
-        db.delete(panel)
-    for step in list(task.steps):
-        db.delete(step)
+        if panel.prompt_status == PromptStatus.failed:
+            panel.prompt_status = PromptStatus.pending
+            panel.generated_prompt = None
+            panel.error_code = None
+            panel.error_message = None
+    for step in task.steps:
+        step.status = StepStatus.queued
+        step.error_code = None
+        step.error_message = None
+        step.started_at = None
+        step.finished_at = None
     db.flush()
 
     task.status = TaskStatus.retrying
     task.current_step = None
-    task.progress_current = 0
+    task.progress_current = (
+        2
+        if task.panels and all(panel.prompt_status == PromptStatus.generated and panel.generated_prompt for panel in task.panels)
+        else 0
+    )
     task.progress_total = 3
     task.attempts += 1
     task.next_run_at = None
@@ -189,18 +204,6 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     task.style_prompt_snapshot = style.style_prompt
     task.image_model_name_snapshot = style.image_model_name
 
-    for step_name in (
-        GenerationStepName.segment_story,
-        GenerationStepName.generate_panel_prompts,
-        GenerationStepName.generate_images,
-    ):
-        db.add(
-            GenerationStep(
-                task_id=task.id,
-                step_name=step_name,
-                idempotency_key=f"{task.id}:{step_name.value}:retry-{task.attempts}",
-            )
-        )
     db.commit()
     await enqueue_task(task.id)
 

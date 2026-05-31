@@ -184,6 +184,20 @@ def build_final_prompt(style_prompt: str, panel_prompt: str, panel_text: str) ->
     )
 
 
+def succeeded_images_by_panel(task: GenerationTask) -> dict[str, GeneratedImage]:
+    return {
+        image.panel_id: image
+        for image in task.generated_images
+        if image.status == GeneratedImageStatus.succeeded and image.asset_id is not None
+    }
+
+
+def delete_non_succeeded_images_for_panel(db: Session, task: GenerationTask, panel: TaskPanel) -> None:
+    for image in list(task.generated_images):
+        if image.panel_id == panel.id and (image.status != GeneratedImageStatus.succeeded or image.asset_id is None):
+            db.delete(image)
+
+
 def should_stop_for_cancel(db: Session, task: GenerationTask) -> bool:
     db.refresh(task)
     if task.status != TaskStatus.cancel_requested:
@@ -216,27 +230,33 @@ def process_task(task_id: str) -> None:
         task.progress_total = 3
         db.commit()
 
-        try:
-            set_step(db, task, GenerationStepName.segment_story, StepStatus.running)
-            segmentation = segment_story(
-                original_text=task.original_text,
-                image_count_mode=task.image_count_mode,
-                requested_image_count=task.requested_image_count,
-            )
-            for panel in segmentation.panels:
-                db.add(
-                    TaskPanel(
-                        task_id=task.id,
-                        panel_order=panel.panel_order,
-                        original_text_segment=panel.text,
-                    )
-                )
-            task.progress_current = 1
+        existing_panels = sorted(task.panels, key=lambda item: item.panel_order)
+        if existing_panels:
+            task.progress_current = max(task.progress_current, 1)
             set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
-            logger.info("task segmentation completed task_id=%s panel_count=%s", task.id, len(segmentation.panels))
-        except LLMProviderError as exc:
-            fail_step_and_task(db, task, GenerationStepName.segment_story, exc)
-            return
+            logger.info("task segmentation skipped task_id=%s existing_panel_count=%s", task.id, len(existing_panels))
+        else:
+            try:
+                set_step(db, task, GenerationStepName.segment_story, StepStatus.running)
+                segmentation = segment_story(
+                    original_text=task.original_text,
+                    image_count_mode=task.image_count_mode,
+                    requested_image_count=task.requested_image_count,
+                )
+                for panel in segmentation.panels:
+                    db.add(
+                        TaskPanel(
+                            task_id=task.id,
+                            panel_order=panel.panel_order,
+                            original_text_segment=panel.text,
+                        )
+                    )
+                task.progress_current = 1
+                set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
+                logger.info("task segmentation completed task_id=%s panel_count=%s", task.id, len(segmentation.panels))
+            except LLMProviderError as exc:
+                fail_step_and_task(db, task, GenerationStepName.segment_story, exc)
+                return
 
         task = load_task(db, task_id)
         if task is None:
@@ -244,32 +264,43 @@ def process_task(task_id: str) -> None:
         if should_stop_for_cancel(db, task):
             return
 
-        try:
-            set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.running)
-            story_segments = [
-                StorySegment(panel_order=panel.panel_order, text=panel.original_text_segment)
-                for panel in sorted(task.panels, key=lambda item: item.panel_order)
-            ]
-            prompt_result = generate_panel_prompts(
-                original_text=task.original_text,
-                style_prompt=task.style_prompt_snapshot,
-                panels=story_segments,
-            )
-            prompts_by_order = {item.panel_order: item.prompt for item in prompt_result.panels}
-            for panel in task.panels:
-                panel.generated_prompt = prompts_by_order[panel.panel_order]
-                panel.prompt_status = PromptStatus.generated
-                panel.prompt_model_snapshot = get_settings().siliconflow_model
-            task.progress_current = 2
+        prompts_ready = bool(task.panels) and all(
+            panel.prompt_status == PromptStatus.generated and bool(panel.generated_prompt)
+            for panel in task.panels
+        )
+        if prompts_ready:
+            task.progress_current = max(task.progress_current, 2)
             set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
-            logger.info("task panel prompts completed task_id=%s panel_count=%s", task.id, len(story_segments))
-        except LLMProviderError as exc:
-            for panel in task.panels:
-                panel.prompt_status = PromptStatus.failed
-                panel.error_code = exc.__class__.__name__
-                panel.error_message = str(exc)
-            fail_step_and_task(db, task, GenerationStepName.generate_panel_prompts, exc)
-            return
+            logger.info("task panel prompts skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))
+        else:
+            try:
+                set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.running)
+                story_segments = [
+                    StorySegment(panel_order=panel.panel_order, text=panel.original_text_segment)
+                    for panel in sorted(task.panels, key=lambda item: item.panel_order)
+                ]
+                prompt_result = generate_panel_prompts(
+                    original_text=task.original_text,
+                    style_prompt=task.style_prompt_snapshot,
+                    panels=story_segments,
+                )
+                prompts_by_order = {item.panel_order: item.prompt for item in prompt_result.panels}
+                for panel in task.panels:
+                    panel.generated_prompt = prompts_by_order[panel.panel_order]
+                    panel.prompt_status = PromptStatus.generated
+                    panel.prompt_model_snapshot = get_settings().siliconflow_model
+                    panel.error_code = None
+                    panel.error_message = None
+                task.progress_current = 2
+                set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
+                logger.info("task panel prompts completed task_id=%s panel_count=%s", task.id, len(story_segments))
+            except LLMProviderError as exc:
+                for panel in task.panels:
+                    panel.prompt_status = PromptStatus.failed
+                    panel.error_code = exc.__class__.__name__
+                    panel.error_message = str(exc)
+                fail_step_and_task(db, task, GenerationStepName.generate_panel_prompts, exc)
+                return
 
         task = load_task(db, task_id)
         if task is None:
@@ -296,9 +327,24 @@ def process_task(task_id: str) -> None:
             task.image_model_name_snapshot,
         )
         success_count = 0
+        skipped_count = 0
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
             if should_stop_for_cancel(db, task):
                 return
+            existing_successes = succeeded_images_by_panel(task)
+            if panel.id in existing_successes:
+                success_count += 1
+                skipped_count += 1
+                logger.info(
+                    "task panel image skipped existing success task_id=%s panel_id=%s panel_order=%s image_id=%s",
+                    task.id,
+                    panel.id,
+                    panel.panel_order,
+                    existing_successes[panel.id].id,
+                )
+                continue
+            delete_non_succeeded_images_for_panel(db, task, panel)
+            db.flush()
             final_prompt = build_final_prompt(
                 task.style_prompt_snapshot,
                 panel.generated_prompt or "",
@@ -371,10 +417,16 @@ def process_task(task_id: str) -> None:
         task = load_task(db, task_id)
         if task is None:
             return
-        set_step(db, task, GenerationStepName.generate_images, StepStatus.succeeded if success_count else StepStatus.failed)
+        panel_count = len(task.panels)
+        set_step(
+            db,
+            task,
+            GenerationStepName.generate_images,
+            StepStatus.succeeded if success_count == panel_count else StepStatus.failed,
+        )
         task.progress_current = 3
         task.finished_at = datetime.utcnow()
-        if success_count == len(task.panels):
+        if success_count == panel_count:
             task.status = TaskStatus.succeeded
         elif success_count > 0:
             task.status = TaskStatus.partial_succeeded
@@ -384,9 +436,10 @@ def process_task(task_id: str) -> None:
             task.error_message = "所有分镜图片生成失败"
         db.commit()
         logger.info(
-            "task finished task_id=%s status=%s success_count=%s panel_count=%s",
+            "task finished task_id=%s status=%s success_count=%s skipped_existing_success_count=%s panel_count=%s",
             task.id,
             task.status.value,
             success_count,
-            len(task.panels),
+            skipped_count,
+            panel_count,
         )

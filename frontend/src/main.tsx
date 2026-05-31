@@ -462,7 +462,7 @@ function TasksView({ user }: { user: User }) {
     try {
       const result = await api.retryTask(selectedTask.id);
       setSelectedTask(result);
-      setMessage("任务已重新进入生成队列");
+      setMessage("失败图片已重新进入生成队列");
       await refresh(result.id);
     } catch (err) {
       await refresh(selectedTask.id);
@@ -507,7 +507,7 @@ function TasksView({ user }: { user: User }) {
   const canDownload = Boolean(
     taskForDetail?.generated_images.some((image) => image.status === "succeeded" && image.asset),
   );
-  const canRetry = taskForDetail?.status === "failed";
+  const canRetry = taskForDetail?.status === "failed" || taskForDetail?.status === "partial_succeeded";
 
   return (
     <section className="page tasks-workspace">

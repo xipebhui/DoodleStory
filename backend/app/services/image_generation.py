@@ -2,7 +2,7 @@ import base64
 import binascii
 import logging
 import mimetypes
-from time import monotonic
+from time import monotonic, sleep
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,6 +62,14 @@ def describe_reference_file(path: Path) -> dict[str, Any]:
     }
 
 
+def retryable_xg_status(status_code: int) -> bool:
+    return status_code in {408, 409, 425, 429} or status_code >= 500
+
+
+def retry_delay_seconds(base_delay: float, attempt: int) -> float:
+    return max(0.0, base_delay) * attempt
+
+
 def parse_image_b64(response_body: dict[str, Any]) -> bytes:
     data = response_body.get("data")
     if not isinstance(data, list) or not data:
@@ -118,50 +126,103 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
     proxy_url = settings.xg_proxy_url.strip()
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     proxy_description = describe_proxy_url(proxy_url)
+    max_attempts = max(1, settings.xg_request_max_attempts)
+    response: requests.Response | None = None
     request_started_at = monotonic()
 
-    with ExitStack() as stack:
-        files = []
-        reference_file_info = []
-        for path in reference_paths:
-            if not path.exists() or not path.is_file():
-                raise ImageProviderConfigError(f"参考图文件不存在：{path}")
-            file_info = describe_reference_file(path)
-            reference_file_info.append(file_info)
-            content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-            files.append(("image[]", (path.name, stack.enter_context(path.open("rb")), content_type)))
+    for attempt in range(1, max_attempts + 1):
+        attempt_started_at = monotonic()
+        with ExitStack() as stack:
+            files = []
+            reference_file_info = []
+            for path in reference_paths:
+                if not path.exists() or not path.is_file():
+                    raise ImageProviderConfigError(f"参考图文件不存在：{path}")
+                file_info = describe_reference_file(path)
+                reference_file_info.append(file_info)
+                content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+                files.append(("image[]", (path.name, stack.enter_context(path.open("rb")), content_type)))
 
-        try:
-            logger.info(
-                "XG image edit request prepared endpoint=%s model=%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
-                endpoint,
-                image_model_name.strip(),
-                len(reference_paths),
-                reference_file_info,
-                len(prompt),
-                bool(proxies),
-                proxy_description,
-                300,
-            )
-            session = requests.Session()
-            session.trust_env = False
-            response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300, proxies=proxies)
-        except requests.RequestException as exc:
-            elapsed_ms = round((monotonic() - request_started_at) * 1000)
-            logger.exception(
-                "XG image edit request exception model=%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s",
-                image_model_name.strip(),
-                bool(proxies),
-                proxy_description,
-                elapsed_ms,
-                exc.__class__.__name__,
-            )
-            raise ImageProviderResponseError(f"图片 Provider 请求异常：{exc}") from exc
+            try:
+                logger.info(
+                    "XG image edit request prepared endpoint=%s model=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
+                    endpoint,
+                    image_model_name.strip(),
+                    attempt,
+                    max_attempts,
+                    len(reference_paths),
+                    reference_file_info,
+                    len(prompt),
+                    bool(proxies),
+                    proxy_description,
+                    300,
+                )
+                session = requests.Session()
+                session.trust_env = False
+                response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300, proxies=proxies)
+            except requests.RequestException as exc:
+                elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
+                if attempt < max_attempts:
+                    delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
+                    logger.warning(
+                        "XG image edit request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                        image_model_name.strip(),
+                        attempt,
+                        max_attempts,
+                        bool(proxies),
+                        proxy_description,
+                        elapsed_ms,
+                        exc.__class__.__name__,
+                        delay,
+                        exc,
+                    )
+                    sleep(delay)
+                    continue
+                logger.exception(
+                    "XG image edit request exception model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s",
+                    image_model_name.strip(),
+                    attempt,
+                    max_attempts,
+                    bool(proxies),
+                    proxy_description,
+                    elapsed_ms,
+                    exc.__class__.__name__,
+                )
+                raise ImageProviderResponseError(f"图片 Provider 请求异常：{exc}") from exc
+
+        elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
+        provider_request_id = response.headers.get("x-oneapi-request-id") or response.headers.get("x-request-id")
+        logger.info(
+            "XG image edit response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+            response.status_code,
+            attempt,
+            max_attempts,
+            elapsed_ms,
+            len(response.content),
+            response.headers.get("content-type"),
+            provider_request_id,
+        )
+        if response.status_code < 400 or not retryable_xg_status(response.status_code) or attempt == max_attempts:
+            break
+        delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
+        logger.warning(
+            "XG image edit retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s retry_delay_seconds=%s response_preview=%s",
+            response.status_code,
+            attempt,
+            max_attempts,
+            provider_request_id,
+            delay,
+            response.text[:500],
+        )
+        sleep(delay)
+
+    if response is None:
+        raise ImageProviderResponseError("图片 Provider 请求未执行")
 
     elapsed_ms = round((monotonic() - request_started_at) * 1000)
     provider_request_id = response.headers.get("x-oneapi-request-id") or response.headers.get("x-request-id")
     logger.info(
-        "XG image edit response received status_code=%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+        "XG image edit final response status_code=%s total_elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
         response.status_code,
         elapsed_ms,
         len(response.content),
