@@ -12,6 +12,10 @@ from app.schemas.style import FileAssetRead
 from app.services.storage import resolve_storage_key
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+ASSET_CACHE_HEADERS = {
+    "Cache-Control": "private, max-age=31536000, immutable",
+    "Vary": "Cookie",
+}
 
 
 def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
@@ -60,4 +64,4 @@ def get_asset_content(asset_id: str, user: User = Depends(current_user), db: Ses
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="本地文件不存在")
 
-    return FileResponse(path, media_type=asset.content_type, filename=asset.original_filename)
+    return FileResponse(path, media_type=asset.content_type, filename=asset.original_filename, headers=ASSET_CACHE_HEADERS)

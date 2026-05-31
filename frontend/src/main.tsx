@@ -32,6 +32,60 @@ import { API_BASE_URL, api, type Style, type StyleTest, type Task, type User } f
 import "./styles/app.css";
 
 type View = "tasks" | "styles" | "settings";
+const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
+
+function LazyAssetImage({
+  assetId,
+  alt,
+  className,
+  eager = false,
+}: {
+  assetId: string;
+  alt: string;
+  className?: string;
+  eager?: boolean;
+}) {
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(eager);
+
+  useEffect(() => {
+    if (eager) {
+      setShouldLoad(true);
+      return;
+    }
+
+    setShouldLoad(false);
+    const image = imageRef.current;
+    if (!image) return;
+    if (!("IntersectionObserver" in window)) {
+      setShouldLoad(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "640px 0px" },
+    );
+    observer.observe(image);
+    return () => observer.disconnect();
+  }, [assetId, eager]);
+
+  return (
+    <img
+      ref={imageRef}
+      className={["lazy-asset-image", className].filter(Boolean).join(" ")}
+      src={shouldLoad ? api.assetContentUrl(assetId) : undefined}
+      alt={alt}
+      loading={eager ? "eager" : "lazy"}
+      decoding="async"
+    />
+  );
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -616,13 +670,15 @@ function TasksView({ user }: { user: User }) {
                   </div>
                 </div>
                 <div className="thumb-strip">
-                  {rowImages.slice(0, 7).map((image) =>
+                  {rowImages.slice(0, TASK_ROW_IMAGE_PREVIEW_LIMIT).map((image) =>
                     image.asset ? (
-                      <img key={image.id} src={api.assetContentUrl(image.asset.id)} alt={task.display_title} />
+                      <LazyAssetImage key={image.id} assetId={image.asset.id} alt={task.display_title} />
                     ) : null,
                   )}
                   {rowImages.length === 0 ? <span className="thumb-empty">等待图片</span> : null}
-                  {rowImages.length > 7 ? <span className="thumb-more">+{rowImages.length - 7}</span> : null}
+                  {rowImages.length > TASK_ROW_IMAGE_PREVIEW_LIMIT ? (
+                    <span className="thumb-more">+{rowImages.length - TASK_ROW_IMAGE_PREVIEW_LIMIT}</span>
+                  ) : null}
                 </div>
                 <div className="task-row-side">
                   <div className="task-style-cell">
@@ -746,7 +802,7 @@ function TasksView({ user }: { user: User }) {
                               className="image-button"
                               onClick={() => setPreviewImageId(image.id)}
                             >
-                              <img src={api.assetContentUrl(image.asset.id)} alt={`分镜 ${panel.panel_order}`} />
+                              <LazyAssetImage assetId={image.asset.id} alt={`分镜 ${panel.panel_order}`} />
                               <Eye size={18} />
                             </button>
                           ) : (
@@ -794,7 +850,10 @@ function TasksView({ user }: { user: User }) {
                   <div className="selected-style-preview">
                     <div className="selected-style-poster">
                       {styleCover(selectedCreateStyle) ? (
-                        <img src={api.assetContentUrl(styleCover(selectedCreateStyle)!.id)} alt={selectedCreateStyle.name} />
+                        <LazyAssetImage
+                          assetId={styleCover(selectedCreateStyle)!.id}
+                          alt={selectedCreateStyle.name}
+                        />
                       ) : (
                         <span>9:16</span>
                       )}
@@ -821,7 +880,7 @@ function TasksView({ user }: { user: User }) {
                       >
                         <div className="style-pick-images">
                           {assets.slice(0, 4).map((asset) => (
-                            <img key={asset.id} src={api.assetContentUrl(asset.id)} alt={style.name} />
+                            <LazyAssetImage key={asset.id} assetId={asset.id} alt={style.name} />
                           ))}
                           {assets.length === 0 ? <span>9:16</span> : null}
                         </div>
@@ -873,7 +932,7 @@ function TasksView({ user }: { user: User }) {
             <ChevronLeft size={22} />
           </button>
           <figure className="image-preview-frame" onClick={(event) => event.stopPropagation()}>
-            <img src={api.assetContentUrl(previewImage.asset.id)} alt="生成图预览" />
+            <LazyAssetImage assetId={previewImage.asset.id} alt="生成图预览" eager />
             <figcaption>
               <div>
                 <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
@@ -1086,7 +1145,7 @@ function StylesView({ user }: { user: User }) {
                 {stylePreviewAssets(testingStyle)
                   .slice(0, 6)
                   .map((asset) => (
-                    <img key={asset.id} src={api.assetContentUrl(asset.id)} alt={testingStyle.name} />
+                    <LazyAssetImage key={asset.id} assetId={asset.id} alt={testingStyle.name} />
                   ))}
                 {testingStyle.reference_images.length === 0 ? <span>暂无参考图</span> : null}
               </div>
@@ -1113,7 +1172,7 @@ function StylesView({ user }: { user: User }) {
                   正在生成测试图
                 </div>
               ) : styleTest?.output_asset ? (
-                <img src={api.assetContentUrl(styleTest.output_asset.id)} alt="风格测试结果" />
+                <LazyAssetImage assetId={styleTest.output_asset.id} alt="风格测试结果" eager />
               ) : (
                 <div className="empty mini">{styleTest?.error_message || "还没有测试结果"}</div>
               )}
@@ -1163,7 +1222,7 @@ function StylesView({ user }: { user: User }) {
           return (
             <article className="style-card" key={style.id}>
               <div className="poster">
-                {cover ? <img src={api.assetContentUrl(cover.id)} alt={style.name} /> : <span>9:16</span>}
+                {cover ? <LazyAssetImage assetId={cover.id} alt={style.name} /> : <span>9:16</span>}
               </div>
               <div className="style-card-copy">
                 <div className="style-row-title">
@@ -1175,7 +1234,7 @@ function StylesView({ user }: { user: User }) {
               </div>
               <div className="style-row-strip">
                 {assets.slice(0, 5).map((asset) => (
-                  <img key={asset.id} src={api.assetContentUrl(asset.id)} alt={style.name} />
+                  <LazyAssetImage key={asset.id} assetId={asset.id} alt={style.name} />
                 ))}
                 {assets.length === 0 ? <span>无参考图</span> : null}
               </div>
@@ -1249,7 +1308,7 @@ function StylesView({ user }: { user: User }) {
                 {formStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
                 {formStyle.reference_images.map((reference) => (
                   <figure key={reference.id} className="reference-item">
-                    <img src={api.assetContentUrl(reference.asset.id)} alt={reference.asset.original_filename ?? "参考图"} />
+                    <LazyAssetImage assetId={reference.asset.id} alt={reference.asset.original_filename ?? "参考图"} />
                     <button type="button" onClick={() => deleteReference(reference.id)}>
                       <Trash2 size={14} />
                     </button>
