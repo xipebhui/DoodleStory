@@ -911,6 +911,7 @@ function StylesView({ user }: { user: User }) {
   const [stylePage, setStylePage] = useState<"library" | "test">("library");
   const [testingStyleId, setTestingStyleId] = useState("");
   const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
+  const [styleTestRunning, setStyleTestRunning] = useState(false);
   const activeCount = useMemo(() => styles.filter((style) => style.status === "active").length, [styles]);
   const editingStyle = useMemo(() => styles.find((style) => style.id === editingStyleId) ?? null, [editingStyleId, styles]);
   const testingStyle = useMemo(
@@ -955,6 +956,7 @@ function StylesView({ user }: { user: User }) {
   function openStyleTest(style: Style) {
     setTestingStyleId(style.id);
     setStyleTest(null);
+    setStyleTestRunning(false);
     setMessage("");
     setStylePage("test");
   }
@@ -1034,8 +1036,11 @@ function StylesView({ user }: { user: User }) {
 
   async function runStyleTest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!testingStyle) return;
+    if (!testingStyle || styleTestRunning) return;
     const formData = new FormData(event.currentTarget);
+    setStyleTestRunning(true);
+    setStyleTest(null);
+    setMessage("测试图正在生成，请稍候...");
     try {
       const result = await api.createStyleTest(testingStyle.id, {
         test_text: String(formData.get("test_text") ?? ""),
@@ -1044,6 +1049,8 @@ function StylesView({ user }: { user: User }) {
       setMessage(result.status === "succeeded" ? "风格测试已完成" : result.error_message ?? "风格测试未成功");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "风格测试失败");
+    } finally {
+      setStyleTestRunning(false);
     }
   }
 
@@ -1084,10 +1091,10 @@ function StylesView({ user }: { user: User }) {
                 {testingStyle.reference_images.length === 0 ? <span>暂无参考图</span> : null}
               </div>
               <form className="test-form" onSubmit={runStyleTest}>
-                <textarea name="test_text" placeholder="输入要测试的画面文本" required />
-                <button type="submit">
-                  <Sparkles size={16} />
-                  生成测试图
+                <textarea name="test_text" placeholder="输入要测试的画面文本" required disabled={styleTestRunning} />
+                <button type="submit" disabled={styleTestRunning}>
+                  {styleTestRunning ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                  {styleTestRunning ? "生成中..." : "生成测试图"}
                 </button>
               </form>
             </section>
@@ -1100,7 +1107,12 @@ function StylesView({ user }: { user: User }) {
                 </div>
                 {styleTest ? <span className={`status-pill ${styleTest.status}`}>{styleTest.status}</span> : null}
               </div>
-              {styleTest?.output_asset ? (
+              {styleTestRunning ? (
+                <div className="empty mini">
+                  <Loader2 size={20} className="spin" />
+                  正在生成测试图
+                </div>
+              ) : styleTest?.output_asset ? (
                 <img src={api.assetContentUrl(styleTest.output_asset.id)} alt="风格测试结果" />
               ) : (
                 <div className="empty mini">{styleTest?.error_message || "还没有测试结果"}</div>

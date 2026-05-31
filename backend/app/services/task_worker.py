@@ -24,7 +24,7 @@ from app.models.enums import (
     StepStatus,
     TaskStatus,
 )
-from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image_edit
+from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
 from app.services.llm import LLMProviderError, StorySegment, generate_panel_prompts, segment_story
 from app.services.storage import resolve_storage_key
 
@@ -371,7 +371,7 @@ def process_task(task_id: str) -> None:
                     image.id,
                     len(final_prompt),
                 )
-                generated = generate_xg_image_edit(
+                generated = generate_xg_image(
                     prompt=final_prompt,
                     reference_paths=reference_paths,
                     image_model_name=task.image_model_name_snapshot,

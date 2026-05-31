@@ -15,7 +15,7 @@ from app.schemas.style import StyleCreate, StyleRead, StyleReferenceImageRead, S
 from app.services.image_generation import (
     ImageProviderConfigError,
     ImageProviderResponseError,
-    generate_xg_image_edit,
+    generate_xg_image,
 )
 from app.services.storage import save_upload_file
 from app.services.storage import resolve_storage_key
@@ -227,7 +227,8 @@ def create_style_test(
         [
             style.style_prompt.strip(),
             f"画面内容：{payload.test_text.strip()}",
-            "输出要求：9:16 竖图，无文字、无水印、无 Logo。",
+            "画面文字：请把测试文案作为图片内可读文字呈现，可以自行决定换行、字号层级和排版位置，但不要删改文案内容。",
+            "输出要求：9:16 竖图，无水印、无 Logo，不添加测试文案之外的无关文字。",
         ]
     )
     now = datetime.utcnow()
@@ -255,7 +256,7 @@ def create_style_test(
 
     try:
         reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
-        generated = generate_xg_image_edit(
+        generated = generate_xg_image(
             prompt=composed_prompt,
             reference_paths=reference_paths,
             image_model_name=style.image_model_name,
