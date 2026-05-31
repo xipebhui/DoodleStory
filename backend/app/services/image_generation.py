@@ -92,6 +92,8 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
         "Authorization": f"Bearer {settings.xg_api_key}",
         "Accept": "application/json",
     }
+    proxy_url = settings.xg_proxy_url.strip()
+    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
 
     with ExitStack() as stack:
         files = []
@@ -103,13 +105,16 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
 
         try:
             logger.info(
-                "requesting XG image edit endpoint=%s model=%s reference_count=%s prompt_chars=%s",
+                "requesting XG image edit endpoint=%s model=%s reference_count=%s prompt_chars=%s proxy_enabled=%s",
                 endpoint,
                 image_model_name.strip(),
                 len(reference_paths),
                 len(prompt),
+                bool(proxies),
             )
-            response = requests.post(endpoint, headers=headers, data=data, files=files, timeout=300)
+            session = requests.Session()
+            session.trust_env = False
+            response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300, proxies=proxies)
         except requests.RequestException as exc:
             logger.exception("XG image edit request exception model=%s", image_model_name.strip())
             raise ImageProviderResponseError(f"图片 Provider 请求异常：{exc}") from exc

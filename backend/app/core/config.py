@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     siliconflow_model: str = ""
     xg_api_key: str = ""
     xg_api_base_url: str = "https://api.xgapi.top"
+    xg_proxy_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),
