@@ -786,7 +786,7 @@ function TasksView({ user }: { user: User }) {
                 <div className="editor-title">
                   <div>
                     <h2>分镜与图片</h2>
-                    <p>每个 panel 对应一张 9:16 图片。</p>
+                    <p>每个 panel 对应一张图片，比例由风格模板控制。</p>
                   </div>
                 </div>
                 <div className="task-image-grid">
@@ -855,7 +855,7 @@ function TasksView({ user }: { user: User }) {
                           alt={selectedCreateStyle.name}
                         />
                       ) : (
-                        <span>9:16</span>
+                        <span>比例由模板控制</span>
                       )}
                     </div>
                     <div>
@@ -882,7 +882,7 @@ function TasksView({ user }: { user: User }) {
                           {assets.slice(0, 4).map((asset) => (
                             <LazyAssetImage key={asset.id} assetId={asset.id} alt={style.name} />
                           ))}
-                          {assets.length === 0 ? <span>9:16</span> : null}
+                          {assets.length === 0 ? <span>模板比例</span> : null}
                         </div>
                         <div>
                           <strong>{style.name}</strong>
@@ -1125,7 +1125,7 @@ function StylesView({ user }: { user: User }) {
               返回风格库
             </button>
             <h1>测试风格</h1>
-            <p>{testingStyle ? `使用「${testingStyle.name}」生成一张 9:16 测试图。` : "请选择一个风格后再测试。"}</p>
+            <p>{testingStyle ? `使用「${testingStyle.name}」生成一张测试图，比例由风格模板控制。` : "请选择一个风格后再测试。"}</p>
           </div>
         </header>
 
@@ -1190,7 +1190,7 @@ function StylesView({ user }: { user: User }) {
       <header className="page-header">
         <div>
           <h1>风格</h1>
-          <p>共 {styles.length} 个风格，{activeCount} 个启用。参考图会作为后续 9:16 生图的视觉锚点。</p>
+          <p>共 {styles.length} 个风格，{activeCount} 个启用。参考图会作为后续生图的视觉锚点，比例由风格模板控制。</p>
         </div>
         <button onClick={startCreate}>
           <Plus size={18} />
@@ -1222,7 +1222,7 @@ function StylesView({ user }: { user: User }) {
           return (
             <article className="style-card" key={style.id}>
               <div className="poster">
-                {cover ? <LazyAssetImage assetId={cover.id} alt={style.name} /> : <span>9:16</span>}
+                {cover ? <LazyAssetImage assetId={cover.id} alt={style.name} /> : <span>模板比例</span>}
               </div>
               <div className="style-card-copy">
                 <div className="style-row-title">
@@ -1296,7 +1296,7 @@ function StylesView({ user }: { user: User }) {
               <div className="editor-title">
                 <div>
                   <h2>参考图</h2>
-                  <p>图片按 9:16 容器展示，后续会作为图生图参考。</p>
+                  <p>参考图会作为图生图参考，生成比例由风格模板控制。</p>
                 </div>
                 <label className="upload-button">
                   <Upload size={16} />

@@ -180,7 +180,7 @@ def build_final_prompt(style_prompt: str, panel_prompt: str, panel_text: str) ->
             "文字禁止项：不要在图片文字里加入 #、##、**、*、-、项目符号、引号包裹、代码块符号、标题标记或任何 panel 原文之外的格式字符。",
             f"画面内容：{panel_prompt.strip()}",
             f"panel 原文：{panel_text.strip()}",
-            "输出要求：最终画布必须是 9:16 竖图；如果风格模板里出现 3:4、方图、横图等比例描述，只作为分格或构图参考，不能改变 9:16 画布比例。无水印、无 Logo，不添加 panel 原文之外的无关文字。",
+            "输出要求：图片比例、画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加 panel 原文之外的无关文字。",
         ]
     )
 

@@ -391,7 +391,6 @@ def request_xg_image_edit(*, prompt: str, reference_paths: list[Path], image_mod
     data = {
         "model": image_model_name.strip(),
         "prompt": prompt,
-        "aspect_ratio": "9:16",
         "response_format": "b64_json",
     }
     headers = {
