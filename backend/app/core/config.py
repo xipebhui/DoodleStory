@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     xg_proxy_url: str = ""
     xg_request_max_attempts: int = 3
     xg_request_retry_backoff_seconds: float = 2.0
+    image_provider_debug_log_raw_io: bool = False
+    image_provider_debug_log_raw_max_chars: int = 20000
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

@@ -1,5 +1,7 @@
 import base64
 import binascii
+import copy
+import json
 import logging
 import mimetypes
 import re
@@ -66,6 +68,59 @@ def describe_reference_file(path: Path) -> dict[str, Any]:
         "bytes": stat.st_size,
         "content_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
     }
+
+
+def truncate_raw_log_text(value: str, max_chars: int) -> str:
+    if max_chars <= 0 or len(value) <= max_chars:
+        return value
+    return f"{value[:max_chars]}...[truncated {len(value) - max_chars} chars]"
+
+
+def sanitize_provider_payload_for_log(payload: dict[str, Any]) -> dict[str, Any]:
+    sanitized = copy.deepcopy(payload)
+    messages = sanitized.get("messages")
+    if not isinstance(messages, list):
+        return sanitized
+
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            image_url = item.get("image_url")
+            if not isinstance(image_url, dict):
+                continue
+            url = image_url.get("url")
+            if isinstance(url, str) and url.startswith("data:image/"):
+                header, _, encoded = url.partition(",")
+                image_url["url"] = f"{header},<base64 omitted chars={len(encoded)}>"
+    return sanitized
+
+
+def log_provider_raw_io(
+    *,
+    provider_name: str,
+    direction: str,
+    payload: dict[str, Any] | str,
+    max_chars: int,
+    sanitize_request: bool,
+) -> None:
+    if isinstance(payload, str):
+        body = payload
+    else:
+        log_payload = sanitize_provider_payload_for_log(payload) if sanitize_request else payload
+        body = json.dumps(log_payload, ensure_ascii=False, separators=(",", ":"))
+    logger.info(
+        "%s raw %s body_chars=%s body=%s",
+        provider_name,
+        direction,
+        len(body),
+        truncate_raw_log_text(body, max_chars),
+    )
 
 
 def retryable_xg_status(status_code: int) -> bool:
@@ -299,6 +354,14 @@ def request_apexerapi_chat_image(
                 proxy_description,
                 300,
             )
+            if settings.image_provider_debug_log_raw_io:
+                log_provider_raw_io(
+                    provider_name="ApexerAPI chat image",
+                    direction="request",
+                    payload=payload,
+                    max_chars=settings.image_provider_debug_log_raw_max_chars,
+                    sanitize_request=True,
+                )
             session = requests.Session()
             session.trust_env = False
             response = session.post(endpoint, headers=headers, json=payload, timeout=300, proxies=proxies)
@@ -334,6 +397,14 @@ def request_apexerapi_chat_image(
             response.headers.get("content-type"),
             provider_request_id,
         )
+        if settings.image_provider_debug_log_raw_io:
+            log_provider_raw_io(
+                provider_name="ApexerAPI chat image",
+                direction="response",
+                payload=response.text,
+                max_chars=settings.image_provider_debug_log_raw_max_chars,
+                sanitize_request=False,
+            )
         if response.status_code < 400 or not retryable_xg_status(response.status_code) or attempt == max_attempts:
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
