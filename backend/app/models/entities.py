@@ -155,6 +155,7 @@ class GenerationTask(Base, TimestampMixin):
     original_text: Mapped[str] = mapped_column(Text)
     image_count_mode: Mapped[ImageCountMode] = mapped_column(Enum(ImageCountMode))
     requested_image_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    use_character_references: Mapped[bool] = mapped_column(Boolean, default=False)
     style_id: Mapped[str] = mapped_column(ForeignKey("styles.id", ondelete="RESTRICT"), index=True)
     style_name_snapshot: Mapped[str] = mapped_column(String(80))
     style_prompt_snapshot: Mapped[str] = mapped_column(Text)
@@ -178,8 +179,25 @@ class GenerationTask(Base, TimestampMixin):
     style: Mapped[Style] = relationship(back_populates="tasks")
     steps: Mapped[list["GenerationStep"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     panels: Mapped[list["TaskPanel"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    characters: Mapped[list["TaskCharacter"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     generated_images: Mapped[list["GeneratedImage"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     downloads: Mapped[list["TaskDownload"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+
+    @property
+    def character_references(self) -> list[dict[str, object]]:
+        references: list[dict[str, object]] = []
+        for character in sorted(self.characters, key=lambda item: item.character_key):
+            for appearance in sorted(character.appearances, key=lambda item: item.appearance_key):
+                if appearance.status == WorkflowStatus.succeeded and appearance.reference_image is not None:
+                    references.append(
+                        {
+                            "id": appearance.id,
+                            "name": character.name,
+                            "age_stage": appearance.age_stage,
+                            "asset": appearance.reference_image,
+                        }
+                    )
+        return references
 
 
 class GenerationStep(Base, TimestampMixin):
@@ -220,6 +238,62 @@ class TaskPanel(Base, TimestampMixin):
 
     task: Mapped[GenerationTask] = relationship(back_populates="panels")
     generated_images: Mapped[list["GeneratedImage"]] = relationship(back_populates="panel", cascade="all, delete-orphan")
+    character_appearances: Mapped[list["TaskPanelCharacterAppearance"]] = relationship(back_populates="panel", cascade="all, delete-orphan")
+
+
+class TaskCharacter(Base, TimestampMixin):
+    __tablename__ = "task_characters"
+    __table_args__ = (UniqueConstraint("task_id", "character_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
+    character_key: Mapped[str] = mapped_column(String(80))
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    importance: Mapped[str] = mapped_column(String(40), default="primary")
+
+    task: Mapped[GenerationTask] = relationship(back_populates="characters")
+    appearances: Mapped[list["TaskCharacterAppearance"]] = relationship(back_populates="character", cascade="all, delete-orphan")
+
+
+class TaskCharacterAppearance(Base, TimestampMixin):
+    __tablename__ = "task_character_appearances"
+    __table_args__ = (UniqueConstraint("task_character_id", "appearance_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_character_id: Mapped[str] = mapped_column(ForeignKey("task_characters.id", ondelete="CASCADE"), index=True)
+    appearance_key: Mapped[str] = mapped_column(String(100))
+    age_stage: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    visual_prompt: Mapped[str] = mapped_column(Text)
+    reference_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_image_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[WorkflowStatus] = mapped_column(Enum(WorkflowStatus), default=WorkflowStatus.queued, index=True)
+    provider_request_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    character: Mapped[TaskCharacter] = relationship(back_populates="appearances")
+    reference_image: Mapped[Optional[FileAsset]] = relationship()
+    panel_links: Mapped[list["TaskPanelCharacterAppearance"]] = relationship(back_populates="appearance", cascade="all, delete-orphan")
+
+
+class TaskPanelCharacterAppearance(Base):
+    __tablename__ = "task_panel_character_appearances"
+    __table_args__ = (
+        UniqueConstraint("panel_id", "task_character_appearance_id"),
+        UniqueConstraint("panel_id", "reference_order"),
+        CheckConstraint("reference_order > 0", name="ck_task_panel_character_appearances_reference_order_positive"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    panel_id: Mapped[str] = mapped_column(ForeignKey("task_panels.id", ondelete="CASCADE"), index=True)
+    task_character_appearance_id: Mapped[str] = mapped_column(ForeignKey("task_character_appearances.id", ondelete="CASCADE"), index=True)
+    reference_order: Mapped[int] = mapped_column(Integer)
+    usage_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    panel: Mapped[TaskPanel] = relationship(back_populates="character_appearances")
+    appearance: Mapped[TaskCharacterAppearance] = relationship(back_populates="panel_links")
 
 
 class GeneratedImage(Base, TimestampMixin):

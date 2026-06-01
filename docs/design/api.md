@@ -304,6 +304,7 @@ GET /api/v1/tasks?query=&status=&style_id=&user_id=&limit=20&cursor=...
   },
   "requested_image_count": null,
   "image_count_mode": "auto",
+  "use_character_references": true,
   "generated_image_count": 2,
   "created_at": "2026-05-29T15:00:00Z",
   "updated_at": "2026-05-29T15:00:00Z"
@@ -323,7 +324,8 @@ POST /api/v1/tasks
   "original_text": "用户输入的原始故事文本，必须原样保存。",
   "image_count_mode": "auto",
   "requested_image_count": null,
-  "style_id": "style_..."
+  "style_id": "style_...",
+  "use_character_references": false
 }
 ```
 
@@ -334,7 +336,8 @@ POST /api/v1/tasks
   "original_text": "用户输入的原始故事文本，必须原样保存。",
   "image_count_mode": "fixed",
   "requested_image_count": 6,
-  "style_id": "style_..."
+  "style_id": "style_...",
+  "use_character_references": true
 }
 ```
 
@@ -343,6 +346,7 @@ POST /api/v1/tasks
 - 按收到的内容原样保存 `original_text`。
 - 将当前登录用户保存为任务 owner。
 - 将选中风格的提示词和生图模型名快照保存到任务。
+- 当 `use_character_references = true` 时，任务步骤增加 `extract_characters` 和 `generate_character_references`。
 - 创建状态为 `queued` 的任务。
 - 将任务 ID 放入进程内队列。
 - 返回 `202 Accepted` 和任务详情。
@@ -354,6 +358,7 @@ POST /api/v1/tasks
 - 必须是登录用户。
 - 固定数量模式必须提供有效正整数 `requested_image_count`。
 - 自动模式要求 `requested_image_count` 为 `null`。
+- `use_character_references` 默认为 `false`。开启后如果 LLM 未识别到主要人物，任务失败并返回用户可读错误，不静默降级为普通生图。
 
 ### 获取任务详情
 
@@ -369,6 +374,7 @@ GET /api/v1/tasks/{task_id}
 - 任务状态和进度
 - 有序 panels
 - 生成 prompts
+- 人物参考摘要：仅在任务开启人物参考时返回成功的人物参考图、人物姓名和年龄/外形阶段
 - 生成图片
 - 步骤活动记录
 - 用户可读错误状态
@@ -480,6 +486,27 @@ POST /api/v1/tasks/{task_id}/downloads
 }
 ```
 
+### 任务人物参考摘要
+
+任务详情中的 `character_references` 字段只返回可给用户查看的最小信息：
+
+```json
+[
+  {
+    "id": "appearance_...",
+    "name": "小鹿同学",
+    "age_stage": "成年",
+    "asset": {
+      "id": "asset_...",
+      "content_type": "image/png",
+      "byte_size": 123456
+    }
+  }
+]
+```
+
+不返回内部人物分析、`visual_prompt`、`reference_prompt`、panel 引用 notes 或完整 provider 响应。
+
 ## 资产
 
 资产表示上传参考图、生成图片和生成压缩包。
@@ -502,7 +529,7 @@ Content-Type: multipart/form-data
 
 - `style_reference`
 
-生成图片和下载压缩包由工作流创建，不通过直接上传创建。
+人物参考图、生成图片和下载压缩包由工作流创建，不通过直接上传创建。
 
 ### 获取资产元数据
 
@@ -532,6 +559,8 @@ GET /api/v1/assets/{asset_id}/content
 任务步骤：
 
 - `segment_story`
+- `extract_characters`
+- `generate_character_references`
 - `generate_panel_prompts`
 - `generate_images`
 - `package_download`

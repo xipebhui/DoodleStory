@@ -255,6 +255,8 @@ const taskStatusOptions: Array<{ value: Task["status"] | "all"; label: string }>
 
 const stepLabels: Record<string, string> = {
   segment_story: "故事切分",
+  extract_characters: "人物识别",
+  generate_character_references: "人物参考图",
   generate_panel_prompts: "画面提示词",
   generate_images: "图片生成",
   package_download: "下载打包",
@@ -555,6 +557,7 @@ function TasksView({ user }: { user: User }) {
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
+        use_character_references: formData.get("use_character_references") === "on",
       });
       form.reset();
       setCountMode("auto");
@@ -893,6 +896,32 @@ function TasksView({ user }: { user: User }) {
                 </section>
               ) : null}
 
+              {taskForDetail.use_character_references ? (
+                <section className="character-reference-panel">
+                  <div className="editor-title">
+                    <div>
+                      <h2>人物参考</h2>
+                      <p>任务会优先使用这些人物参考图保持主要人物一致。</p>
+                    </div>
+                  </div>
+                  {taskForDetail.character_references.length > 0 ? (
+                    <div className="character-reference-grid">
+                      {taskForDetail.character_references.map((reference) => (
+                        <figure key={reference.id} className="character-reference-card">
+                          <LazyAssetImage assetId={reference.asset.id} alt={reference.name} />
+                          <figcaption>
+                            <strong>{reference.name}</strong>
+                            {reference.age_stage ? <span>{reference.age_stage}</span> : null}
+                          </figcaption>
+                        </figure>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty mini">人物参考图生成中</div>
+                  )}
+                </section>
+              ) : null}
+
               <section className="story-panel">
                 <h2>原始文本</h2>
                 <p>{taskForDetail.original_text}</p>
@@ -1063,6 +1092,13 @@ function TasksView({ user }: { user: User }) {
                   <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
                 </label>
               ) : null}
+              <label className="character-reference-toggle">
+                <input name="use_character_references" type="checkbox" />
+                <span>
+                  <strong>使用参考人物</strong>
+                  <small>开启后会先识别主要人物并生成人物参考图，再用于后续分镜生图。</small>
+                </span>
+              </label>
               {message ? <p className="form-message">{message}</p> : null}
               <div className="drawer-actions">
                 <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>

@@ -14,6 +14,7 @@ class StyleStatus(StrEnum):
 
 class FileAssetPurpose(StrEnum):
     style_reference = "style_reference"
+    character_reference = "character_reference"
     generated_image = "generated_image"
     download_archive = "download_archive"
 
@@ -41,6 +42,8 @@ class TaskStatus(StrEnum):
 
 class GenerationStepName(StrEnum):
     segment_story = "segment_story"
+    extract_characters = "extract_characters"
+    generate_character_references = "generate_character_references"
     generate_panel_prompts = "generate_panel_prompts"
     generate_images = "generate_images"
     package_download = "package_download"

@@ -22,6 +22,7 @@ class TaskCreate(BaseModel):
     image_count_mode: ImageCountMode
     requested_image_count: int | None = Field(default=None, ge=1, le=80)
     style_id: str = Field(min_length=1)
+    use_character_references: bool = False
 
 
 class TaskPanelRead(TimestampFields):
@@ -63,6 +64,13 @@ class PanelEditCreate(BaseModel):
     user_instruction: str = Field(min_length=1, max_length=2000)
 
 
+class TaskCharacterReferenceRead(BaseModel):
+    id: str
+    name: str
+    age_stage: str | None
+    asset: FileAssetRead
+
+
 class TaskDownloadRead(TimestampFields):
     id: str
     status: DownloadStatus
@@ -80,6 +88,7 @@ class TaskRead(TimestampFields):
     original_text: str
     image_count_mode: ImageCountMode
     requested_image_count: int | None
+    use_character_references: bool
     style_id: str
     style_name_snapshot: str
     image_model_name_snapshot: str
@@ -93,4 +102,5 @@ class TaskRead(TimestampFields):
     panels: list[TaskPanelRead] = []
     steps: list[GenerationStepRead] = []
     generated_images: list[GeneratedImageRead] = []
+    character_references: list[TaskCharacterReferenceRead] = []
     downloads: list[TaskDownloadRead] = []

@@ -8,7 +8,17 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
-from app.models.entities import FileAsset, GeneratedImage, GenerationStep, GenerationTask, Style, TaskDownload, User
+from app.models.entities import (
+    FileAsset,
+    GeneratedImage,
+    GenerationStep,
+    GenerationTask,
+    Style,
+    TaskCharacter,
+    TaskCharacterAppearance,
+    TaskDownload,
+    User,
+)
 from app.models.enums import (
     DownloadStatus,
     FileAssetPurpose,
@@ -42,6 +52,9 @@ def task_options():
         selectinload(GenerationTask.panels),
         selectinload(GenerationTask.steps),
         selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
+        selectinload(GenerationTask.characters)
+        .selectinload(TaskCharacter.appearances)
+        .selectinload(TaskCharacterAppearance.reference_image),
         selectinload(GenerationTask.downloads).selectinload(TaskDownload.asset),
     )
 
@@ -125,6 +138,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         original_text=payload.original_text,
         image_count_mode=payload.image_count_mode,
         requested_image_count=payload.requested_image_count,
+        use_character_references=payload.use_character_references,
         style_id=style.id,
         style_name_snapshot=style.name,
         style_prompt_snapshot=style.style_prompt,
@@ -132,15 +146,15 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         style_aspect_ratio_snapshot=style.aspect_ratio,
         status=TaskStatus.queued,
         progress_current=0,
-        progress_total=3,
+        progress_total=5 if payload.use_character_references else 3,
     )
     db.add(task)
     db.flush()
-    for step_name in (
-        GenerationStepName.segment_story,
-        GenerationStepName.generate_panel_prompts,
-        GenerationStepName.generate_images,
-    ):
+    step_names = [GenerationStepName.segment_story]
+    if payload.use_character_references:
+        step_names.extend([GenerationStepName.extract_characters, GenerationStepName.generate_character_references])
+    step_names.extend([GenerationStepName.generate_panel_prompts, GenerationStepName.generate_images])
+    for step_name in step_names:
         db.add(
             GenerationStep(
                 task_id=task.id,
@@ -200,12 +214,11 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
 
     task.status = TaskStatus.retrying
     task.current_step = None
-    task.progress_current = (
-        2
-        if task.panels and all(panel.prompt_status == PromptStatus.generated and panel.generated_prompt for panel in task.panels)
-        else 0
+    task.progress_total = 5 if task.use_character_references else 3
+    prompts_ready = bool(task.panels) and all(
+        panel.prompt_status == PromptStatus.generated and panel.generated_prompt for panel in task.panels
     )
-    task.progress_total = 3
+    task.progress_current = (4 if task.use_character_references else 2) if prompts_ready else 0
     task.attempts += 1
     task.next_run_at = None
     task.cancel_requested_at = None

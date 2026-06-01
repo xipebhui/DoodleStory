@@ -697,6 +697,51 @@ textarea {
   color: #ff8b8b;
 }
 
+.character-reference-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.character-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 12px;
+}
+
+.character-reference-card {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.character-reference-card img {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #151820;
+  object-fit: cover;
+}
+
+.character-reference-card figcaption {
+  display: grid;
+  gap: 2px;
+}
+
+.character-reference-card strong {
+  overflow: hidden;
+  color: #eef2f7;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-reference-card span {
+  color: #8d96a6;
+  font-size: 12px;
+}
+
 .image-button {
   position: relative;
   width: 100%;
@@ -1456,6 +1501,34 @@ textarea {
 
 .task-detail-drawer .task-image-grid {
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+
+.character-reference-toggle {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 14px;
+}
+
+.character-reference-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.character-reference-toggle span {
+  display: grid;
+  gap: 4px;
+}
+
+.character-reference-toggle small {
+  color: #8d96a6;
+  line-height: 1.45;
 }
 
 .drawer-head {

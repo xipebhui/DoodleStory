@@ -14,7 +14,10 @@ from app.models.entities import (
     GenerationTask,
     Style,
     StyleReferenceImage,
+    TaskCharacter,
+    TaskCharacterAppearance,
     TaskPanel,
+    TaskPanelCharacterAppearance,
 )
 from app.models.enums import (
     FileAssetPurpose,
@@ -26,8 +29,26 @@ from app.models.enums import (
     StepStatus,
     TaskStatus,
 )
+from app.services.character_references import (
+    build_panel_reference_pack,
+    characters_to_plans,
+    clear_panel_character_links,
+    ensure_character_reference_images,
+    load_task_characters,
+    persist_character_plans,
+    save_panel_character_links,
+)
 from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
-from app.services.llm import LLMProviderError, StorySegment, generate_panel_prompts, revise_panel_prompt, segment_story
+from app.services.llm import (
+    LLMProviderError,
+    LLMResponseError,
+    StorySegment,
+    extract_task_characters,
+    generate_panel_prompts,
+    generate_panel_prompts_with_characters,
+    revise_panel_prompt,
+    segment_story,
+)
 from app.services.storage import resolve_storage_key
 
 _queue: asyncio.Queue[str] | None = None
@@ -117,7 +138,18 @@ def load_task(db: Session, task_id: str) -> GenerationTask | None:
         .where(GenerationTask.id == task_id)
         .options(
             selectinload(GenerationTask.panels),
+            selectinload(GenerationTask.panels)
+            .selectinload(TaskPanel.character_appearances)
+            .selectinload(TaskPanelCharacterAppearance.appearance)
+            .selectinload(TaskCharacterAppearance.character),
+            selectinload(GenerationTask.panels)
+            .selectinload(TaskPanel.character_appearances)
+            .selectinload(TaskPanelCharacterAppearance.appearance)
+            .selectinload(TaskCharacterAppearance.reference_image),
             selectinload(GenerationTask.steps),
+            selectinload(GenerationTask.characters)
+            .selectinload(TaskCharacter.appearances)
+            .selectinload(TaskCharacterAppearance.reference_image),
             selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
         )
     )
@@ -179,11 +211,21 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
         db.commit()
 
 
-def build_final_prompt(style_prompt: str, aspect_ratio: str, panel_prompt: str, panel_text: str) -> str:
-    return "\n\n".join(
+def build_final_prompt(
+    style_prompt: str,
+    aspect_ratio: str,
+    panel_prompt: str,
+    panel_text: str,
+    reference_notes: list[str] | None = None,
+) -> str:
+    blocks = [
+        f"风格模板：{style_prompt.strip()}",
+        f"画面比例：{aspect_ratio}",
+    ]
+    if reference_notes:
+        blocks.append("参考图顺序说明：\n" + "\n".join(reference_notes))
+    blocks.extend(
         [
-            f"风格模板：{style_prompt.strip()}",
-            f"画面比例：{aspect_ratio}",
             "统一文字要求：图片内文字必须使用中文。请把 panel 原文作为图片内可读文字完整呈现，不要删改、翻译、总结或补充文案内容。可以通过字体大小、字重、颜色、位置、换行和留白做视觉强调，但不要把强调理解成 Markdown 或排版符号。",
             "文字禁止项：不要在图片文字里加入 #、##、**、*、-、项目符号、引号包裹、代码块符号、标题标记或任何 panel 原文之外的格式字符。",
             f"画面内容：{panel_prompt.strip()}",
@@ -191,6 +233,7 @@ def build_final_prompt(style_prompt: str, aspect_ratio: str, panel_prompt: str, 
             "输出要求：图片比例以画面比例参数为准，画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加 panel 原文之外的无关文字。",
         ]
     )
+    return "\n\n".join(blocks)
 
 
 def current_succeeded_images_by_panel(task: GenerationTask) -> dict[str, GeneratedImage]:
@@ -240,7 +283,7 @@ def process_task(task_id: str) -> None:
         task.status = TaskStatus.running
         task.started_at = task.started_at or datetime.utcnow()
         task.progress_current = 0
-        task.progress_total = 3
+        task.progress_total = 5 if task.use_character_references else 3
         db.commit()
 
         existing_panels = sorted(task.panels, key=lambda item: item.panel_order)
@@ -277,34 +320,124 @@ def process_task(task_id: str) -> None:
         if should_stop_for_cancel(db, task):
             return
 
+        style = db.scalar(
+            select(Style)
+            .where(Style.id == task.style_id)
+            .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+        )
+        if style is None or not style.reference_images:
+            fail_step_and_task(
+                db,
+                task,
+                GenerationStepName.generate_character_references
+                if task.use_character_references
+                else GenerationStepName.generate_images,
+                ImageProviderConfigError("风格至少需要一张参考图"),
+            )
+            return
+
+        style_reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        story_segments = [
+            StorySegment(panel_order=panel.panel_order, text=panel.original_text_segment)
+            for panel in sorted(task.panels, key=lambda item: item.panel_order)
+        ]
+
+        if task.use_character_references:
+            characters = load_task_characters(db, task.id)
+            if characters:
+                task.progress_current = max(task.progress_current, 2)
+                set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
+                logger.info("task character extraction skipped task_id=%s character_count=%s", task.id, len(characters))
+            else:
+                try:
+                    set_step(db, task, GenerationStepName.extract_characters, StepStatus.running)
+                    character_result = extract_task_characters(
+                        original_text=task.original_text,
+                        style_prompt=task.style_prompt_snapshot,
+                        panels=story_segments,
+                    )
+                    if not character_result.characters:
+                        raise LLMResponseError("未识别到可用于参考图的主要人物")
+                    persist_character_plans(db, task, character_result.characters)
+                    task.progress_current = 2
+                    set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
+                    logger.info(
+                        "task character extraction completed task_id=%s character_count=%s",
+                        task.id,
+                        len(character_result.characters),
+                    )
+                except LLMProviderError as exc:
+                    fail_step_and_task(db, task, GenerationStepName.extract_characters, exc)
+                    return
+
+            task = load_task(db, task_id)
+            if task is None:
+                return
+            if should_stop_for_cancel(db, task):
+                return
+            try:
+                set_step(db, task, GenerationStepName.generate_character_references, StepStatus.running)
+                ensure_character_reference_images(
+                    db=db,
+                    task=task,
+                    style_reference_paths=style_reference_paths,
+                )
+                task.progress_current = 3
+                set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
+                logger.info("task character reference images completed task_id=%s", task.id)
+            except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+                fail_step_and_task(db, task, GenerationStepName.generate_character_references, exc)
+                return
+
+        task = load_task(db, task_id)
+        if task is None:
+            return
+        if should_stop_for_cancel(db, task):
+            return
+
         prompts_ready = bool(task.panels) and all(
             panel.prompt_status == PromptStatus.generated and bool(panel.generated_prompt)
             for panel in task.panels
         )
         if prompts_ready:
-            task.progress_current = max(task.progress_current, 2)
+            task.progress_current = max(task.progress_current, 4 if task.use_character_references else 2)
             set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
             logger.info("task panel prompts skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))
         else:
             try:
                 set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.running)
-                story_segments = [
-                    StorySegment(panel_order=panel.panel_order, text=panel.original_text_segment)
-                    for panel in sorted(task.panels, key=lambda item: item.panel_order)
-                ]
-                prompt_result = generate_panel_prompts(
-                    original_text=task.original_text,
-                    style_prompt=task.style_prompt_snapshot,
-                    panels=story_segments,
-                )
+                if task.use_character_references:
+                    character_plans = characters_to_plans(load_task_characters(db, task.id))
+                    prompt_result = generate_panel_prompts_with_characters(
+                        original_text=task.original_text,
+                        style_prompt=task.style_prompt_snapshot,
+                        panels=story_segments,
+                        characters=character_plans,
+                    )
+                    clear_panel_character_links(db, task)
+                else:
+                    prompt_result = generate_panel_prompts(
+                        original_text=task.original_text,
+                        style_prompt=task.style_prompt_snapshot,
+                        panels=story_segments,
+                    )
                 prompts_by_order = {item.panel_order: item.prompt for item in prompt_result.panels}
                 for panel in task.panels:
+                    prompt_item = next(item for item in prompt_result.panels if item.panel_order == panel.panel_order)
                     panel.generated_prompt = prompts_by_order[panel.panel_order]
                     panel.prompt_status = PromptStatus.generated
                     panel.prompt_model_snapshot = get_settings().siliconflow_model
                     panel.error_code = None
                     panel.error_message = None
-                task.progress_current = 2
+                    if task.use_character_references:
+                        save_panel_character_links(
+                            db=db,
+                            task=task,
+                            panel=panel,
+                            appearance_keys=getattr(prompt_item, "appearance_keys", []),
+                            usage_notes=getattr(prompt_item, "usage_notes", {}),
+                        )
+                task.progress_current = 4 if task.use_character_references else 2
                 set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
                 logger.info("task panel prompts completed task_id=%s panel_count=%s", task.id, len(story_segments))
             except LLMProviderError as exc:
@@ -356,12 +489,26 @@ def process_task(task_id: str) -> None:
                     existing_successes[panel.id].id,
                 )
                 continue
-            final_prompt = build_final_prompt(
-                task.style_prompt_snapshot,
-                task.style_aspect_ratio_snapshot,
-                panel.generated_prompt or "",
-                panel.original_text_segment,
-            )
+            try:
+                if task.use_character_references:
+                    reference_pack = build_panel_reference_pack(panel=panel, style_reference_paths=reference_paths)
+                    panel_reference_paths = reference_pack.paths
+                    reference_notes = reference_pack.notes
+                    character_reference_count = reference_pack.character_count
+                else:
+                    panel_reference_paths = reference_paths
+                    reference_notes = []
+                    character_reference_count = 0
+                final_prompt = build_final_prompt(
+                    task.style_prompt_snapshot,
+                    task.style_aspect_ratio_snapshot,
+                    panel.generated_prompt or "",
+                    panel.original_text_segment,
+                    reference_notes=reference_notes,
+                )
+            except ImageProviderConfigError as exc:
+                fail_step_and_task(db, task, GenerationStepName.generate_images, exc)
+                return
             image = GeneratedImage(
                 task_id=task.id,
                 panel_id=panel.id,
@@ -381,16 +528,18 @@ def process_task(task_id: str) -> None:
 
             try:
                 logger.info(
-                    "task panel image request task_id=%s panel_id=%s panel_order=%s image_id=%s prompt_chars=%s",
+                    "task panel image request task_id=%s panel_id=%s panel_order=%s image_id=%s prompt_chars=%s reference_count=%s character_reference_count=%s",
                     task.id,
                     panel.id,
                     panel.panel_order,
                     image.id,
                     len(final_prompt),
+                    len(panel_reference_paths),
+                    character_reference_count,
                 )
                 generated = generate_xg_image(
                     prompt=final_prompt,
-                    reference_paths=reference_paths,
+                    reference_paths=panel_reference_paths,
                     image_model_name=task.image_model_name_snapshot,
                     aspect_ratio=task.style_aspect_ratio_snapshot,
                 )
@@ -443,7 +592,7 @@ def process_task(task_id: str) -> None:
             GenerationStepName.generate_images,
             StepStatus.succeeded if success_count == panel_count else StepStatus.failed,
         )
-        task.progress_current = 3
+        task.progress_current = task.progress_total
         task.finished_at = datetime.utcnow()
         if success_count == panel_count:
             task.status = TaskStatus.succeeded
@@ -470,7 +619,14 @@ def load_generated_image(db: Session, generated_image_id: str) -> GeneratedImage
         .where(GeneratedImage.id == generated_image_id)
         .options(
             selectinload(GeneratedImage.task),
-            selectinload(GeneratedImage.panel),
+            selectinload(GeneratedImage.panel)
+            .selectinload(TaskPanel.character_appearances)
+            .selectinload(TaskPanelCharacterAppearance.appearance)
+            .selectinload(TaskCharacterAppearance.character),
+            selectinload(GeneratedImage.panel)
+            .selectinload(TaskPanel.character_appearances)
+            .selectinload(TaskPanelCharacterAppearance.appearance)
+            .selectinload(TaskCharacterAppearance.reference_image),
             selectinload(GeneratedImage.asset),
         )
     )
@@ -552,7 +708,29 @@ def process_panel_edit(generated_image_id: str) -> None:
             db.commit()
             return
 
-        reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        style_reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        if task.use_character_references:
+            try:
+                reference_pack = build_panel_reference_pack(panel=panel, style_reference_paths=style_reference_paths)
+            except ImageProviderConfigError as exc:
+                image.status = GeneratedImageStatus.failed
+                image.error_code = exc.__class__.__name__
+                image.error_message = str(exc)
+                image.finished_at = datetime.utcnow()
+                db.commit()
+                return
+            reference_paths = reference_pack.paths
+            reference_notes = reference_pack.notes
+            image.final_prompt = build_final_prompt(
+                task.style_prompt_snapshot,
+                task.style_aspect_ratio_snapshot,
+                image.image_prompt or "",
+                panel.original_text_segment,
+                reference_notes=reference_notes,
+            )
+            db.commit()
+        else:
+            reference_paths = style_reference_paths
         try:
             logger.info(
                 "panel edit image request generated_image_id=%s task_id=%s panel_id=%s prompt_chars=%s reference_count=%s",

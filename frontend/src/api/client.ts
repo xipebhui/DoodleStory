@@ -60,6 +60,7 @@ export type Task = {
   original_text: string;
   image_count_mode: "auto" | "fixed";
   requested_image_count: number | null;
+  use_character_references: boolean;
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
@@ -81,9 +82,17 @@ export type Task = {
   panels: TaskPanel[];
   steps: GenerationStep[];
   generated_images: GeneratedImage[];
+  character_references: TaskCharacterReference[];
   downloads: TaskDownload[];
   created_at: string;
   updated_at: string;
+};
+
+export type TaskCharacterReference = {
+  id: string;
+  name: string;
+  age_stage: string | null;
+  asset: FileAsset;
 };
 
 export type TaskPanel = {
@@ -279,6 +288,7 @@ export const api = {
     image_count_mode: "auto" | "fixed";
     requested_image_count?: number | null;
     style_id: string;
+    use_character_references?: boolean;
   }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
   cancelTask: (id: string) =>
     request<ApiData<Task>>(`/tasks/${id}/cancel`, { method: "POST" }).then((result) => result.data),

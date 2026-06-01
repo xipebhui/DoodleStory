@@ -16,7 +16,10 @@ styles 1--N generation_tasks
 generation_tasks 1--N task_panels
 task_panels 1--N generated_images
 generation_tasks 1--N generation_steps
+generation_tasks 1--N task_characters 1--N task_character_appearances
+task_panels 1--N task_panel_character_appearances N--1 task_character_appearances
 file_assets 1--N generated_images
+file_assets 1--N task_character_appearances
 file_assets 1--N task_downloads
 ```
 
@@ -102,7 +105,7 @@ file_assets 1--N task_downloads
 字段：
 
 - `id` 主键
-- `purpose` text not null，取值 `style_reference`、`generated_image`、`download_archive`
+- `purpose` text not null，取值 `style_reference`、`character_reference`、`generated_image`、`download_archive`
 - `storage_key` text not null
 - `original_filename` text null
 - `content_type` text not null
@@ -190,12 +193,13 @@ file_assets 1--N task_downloads
 - `original_text` text not null
 - `image_count_mode` text not null，取值 `auto`、`fixed`
 - `requested_image_count` integer null
+- `use_character_references` boolean not null，默认 `false`
 - `style_id` 外键到 `styles.id`，not null
 - `style_name_snapshot` text not null
 - `style_prompt_snapshot` text not null
 - `image_model_name_snapshot` text not null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`partial_succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
-- `current_step` text null，取值 `segment_story`、`generate_panel_prompts`、`generate_images`、`package_download`
+- `current_step` text null，取值 `segment_story`、`extract_characters`、`generate_character_references`、`generate_panel_prompts`、`generate_images`、`package_download`
 - `progress_current` integer not null，默认 `0`
 - `progress_total` integer not null，默认 `0`
 - `attempts` integer not null，默认 `0`
@@ -233,7 +237,7 @@ file_assets 1--N task_downloads
 
 - `id` 主键
 - `task_id` 外键到 `generation_tasks.id`，not null
-- `step_name` text not null，取值 `segment_story`、`generate_panel_prompts`、`generate_images`、`package_download`
+- `step_name` text not null，取值 `segment_story`、`extract_characters`、`generate_character_references`、`generate_panel_prompts`、`generate_images`、`package_download`
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`、`retrying`
 - `attempts` integer not null，默认 `0`
 - `idempotency_key` text not null
@@ -283,6 +287,83 @@ file_assets 1--N task_downloads
 索引：
 
 - `idx_task_panels_task_order`：`task_id`, `panel_order`，用于任务详情。
+
+### `task_characters`
+
+保存任务级主要人物。仅当任务开启 `use_character_references` 时创建。
+
+字段：
+
+- `id` 主键
+- `task_id` 外键到 `generation_tasks.id`，not null
+- `character_key` text not null，LLM 返回的稳定人物 key，例如 `character_1`
+- `name` text not null，用户可见的人物称呼
+- `description` text null，内部人物身份说明
+- `importance` text not null，第一版固定为 `primary`
+- `created_at` timestamptz not null
+- `updated_at` timestamptz not null
+
+约束：
+
+- `task_id` + `character_key` 唯一。
+
+索引：
+
+- `idx_task_characters_task_id`：`task_id`，用于任务详情加载人物参考。
+
+### `task_character_appearances`
+
+保存同一人物的年龄阶段或外形阶段，以及该阶段对应的人物参考图。
+
+字段：
+
+- `id` 主键
+- `task_character_id` 外键到 `task_characters.id`，not null
+- `appearance_key` text not null，必须以所属 `character_key` 开头
+- `age_stage` text null，例如 `童年`、`成年`、`受伤后`
+- `visual_prompt` text not null，人物外形设定
+- `reference_prompt` text null，生成人物参考图时使用的最终 prompt
+- `reference_image_id` 外键到 `file_assets.id`，null
+- `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
+- `provider_request_id` text null
+- `error_code` text null
+- `error_message` text null
+- `created_at` timestamptz not null
+- `updated_at` timestamptz not null
+
+约束：
+
+- `task_character_id` + `appearance_key` 唯一。
+- 当 `status = 'succeeded'` 时，应用层要求 `reference_image_id` 非空。
+
+索引：
+
+- `idx_task_character_appearances_task_character_id`：`task_character_id`，用于加载人物阶段。
+- `idx_task_character_appearances_status`：`status`，用于排查人物参考图生成状态。
+
+### `task_panel_character_appearances`
+
+保存 panel 与人物外形阶段的引用关系，并确定传给生图模型时的人物参考图顺序。
+
+字段：
+
+- `id` 主键
+- `panel_id` 外键到 `task_panels.id`，not null
+- `task_character_appearance_id` 外键到 `task_character_appearances.id`，not null
+- `reference_order` integer not null，从 `1` 开始，对应最终 prompt 中的 `参考图1`、`参考图2`
+- `usage_note` text null，描述该人物在当前 panel 里的位置或作用
+- `created_at` timestamptz not null
+
+约束：
+
+- `panel_id` + `task_character_appearance_id` 唯一。
+- `panel_id` + `reference_order` 唯一。
+- `reference_order` 必须大于 `0`。
+
+索引：
+
+- `idx_task_panel_character_appearances_panel_id`：`panel_id`，用于构建 panel 生图请求。
+- `idx_task_panel_character_appearances_task_character_appearance_id`：`task_character_appearance_id`，用于追踪人物阶段引用。
 
 ### `generated_images`
 
@@ -368,10 +449,11 @@ Worker 执行：
 2. 如果任务已终态或已取消，不产生副作用。
 3. 在步骤边界更新 `current_step`、`progress_current`、`progress_total`。
 4. 将切分结果写入 `task_panels`。
-5. 将 prompt 结果写入 `task_panels.generated_prompt`。
-6. 将图片生成元数据写入 `generated_images`。
-7. 将文件元数据写入 `file_assets`。
-8. 最终将任务标记为 `succeeded`、`partial_succeeded`、`failed` 或 `cancelled`。
+5. 如果任务开启人物参考，写入 `task_characters` 和 `task_character_appearances`，再生成每个人物阶段的参考图并写入 `file_assets`。
+6. 将 prompt 结果写入 `task_panels.generated_prompt`；开启人物参考时，同时写入 `task_panel_character_appearances`，记录 panel 使用哪些人物参考图及顺序。
+7. 将图片生成元数据写入 `generated_images`。
+8. 将文件元数据写入 `file_assets`。
+9. 最终将任务标记为 `succeeded`、`partial_succeeded`、`failed` 或 `cancelled`。
 
 启动恢复：
 
@@ -391,6 +473,9 @@ Worker 执行：
 - 任务和风格测试保存风格 prompt 与 `image_model_name` 快照，保证风格后续编辑不影响历史审计。
 - 支持用户提交单 panel 画面修改方向；系统调用 LLM 生成新的 `image_prompt`，再为该 panel 生成新的图片版本。
 - 任务级重试和单 panel 修改都会保留历史图片版本，当前展示和下载只使用当前成功版本。
+- 开启人物参考时，人物阶段参考图独立保存在 `task_character_appearances.reference_image_id`，panel 生图只引用当前 panel 绑定的人物阶段。
+- 人物参考图顺序由 `task_panel_character_appearances.reference_order` 决定；panel 生图请求必须先传人物图，再传风格参考图。
+- 如果开启人物参考但没有识别到主要人物，任务失败并记录明确错误，不静默降级。
 - `error_message` 保存用户可读错误；`internal_error_ref` 保存内部细节引用。
 - 大型 provider 响应和原始日志不放入主工作流表。
 - 被任务引用的风格不应被硬删除。
