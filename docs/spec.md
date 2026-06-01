@@ -72,7 +72,7 @@
 - 前端：具体框架未选择。产品 UI 设计见 `docs/design/ui.md`。
 - 后端：具体框架未选择。初始 REST API 设计见 `docs/design/api.md`。
 - 存储：关系型 OLTP 数据库设计见 `docs/design/database.md`。
-- 外部集成：LLM 固定使用 SiliconFlow 配置；生图 API key 和 base url 从 env 读取。`/v1/images/edits` 类模型继续使用 XG 配置，Google/Gemini 图片模型和 `nano-banana`/`nana-banana` 类 Chat 生图模型使用 ApexerAPI 的 `/v1/chat/completions`。
+- 外部集成：LLM 固定使用 SiliconFlow 配置；生图 API key、base url 和代理地址从 env 读取。`/v1/images/edits` 类模型继续使用 XG 配置，Google/Gemini 图片模型和 `nano-banana`/`nana-banana` 类 Chat 生图模型使用 ApexerAPI 的 `/v1/chat/completions`，ApexerAPI 请求可通过 `APEXERAPI_PROXY_URL` 单独配置代理。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
 - 文件存储：第一版使用本地磁盘。存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`。

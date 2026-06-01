@@ -275,6 +275,9 @@ def request_apexerapi_chat_image(
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
+    proxy_url = settings.apexerapi_proxy_url.strip()
+    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
+    proxy_description = describe_proxy_url(proxy_url)
     max_attempts = max(1, settings.xg_request_max_attempts)
     response: requests.Response | None = None
     request_started_at = monotonic()
@@ -283,7 +286,7 @@ def request_apexerapi_chat_image(
         attempt_started_at = monotonic()
         try:
             logger.info(
-                "ApexerAPI chat image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s timeout_seconds=%s",
+                "ApexerAPI chat image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
                 endpoint,
                 image_model_name.strip(),
                 aspect_ratio,
@@ -292,21 +295,24 @@ def request_apexerapi_chat_image(
                 len(reference_paths),
                 reference_file_info,
                 len(prompt),
-                False,
+                bool(proxies),
+                proxy_description,
                 300,
             )
             session = requests.Session()
             session.trust_env = False
-            response = session.post(endpoint, headers=headers, json=payload, timeout=300)
+            response = session.post(endpoint, headers=headers, json=payload, timeout=300, proxies=proxies)
         except requests.RequestException as exc:
             elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
             if attempt < max_attempts:
                 delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                 logger.warning(
-                    "ApexerAPI chat image request exception will retry model=%s attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    "ApexerAPI chat image request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
                     image_model_name.strip(),
                     attempt,
                     max_attempts,
+                    bool(proxies),
+                    proxy_description,
                     elapsed_ms,
                     exc.__class__.__name__,
                     delay,
