@@ -402,6 +402,19 @@ function TasksView({ user }: { user: User }) {
   const previewImage = previewIndex >= 0 ? previewItems[previewIndex] : null;
   const previewPanel = previewImage ? taskForDetail?.panels.find((panel) => panel.id === previewImage.panel_id) : null;
   const activeTaskSignature = tasks.map((task) => `${task.id}:${task.status}:${task.updated_at}`).join("|");
+  const selectedImageSignature =
+    selectedTask?.generated_images
+      .map((image) =>
+        [
+          image.id,
+          image.status,
+          image.workflow_step ?? "",
+          image.is_current ? "1" : "0",
+          image.generation_number,
+          image.updated_at,
+        ].join(":"),
+      )
+      .join("|") ?? "";
   const selectedCreateStyle = styles.find((style) => style.id === createStyleId) ?? styles[0] ?? null;
 
   useEffect(() => {
@@ -412,7 +425,7 @@ function TasksView({ user }: { user: User }) {
     if (!isActiveTask(selectedTask) && !hasActivePanelEdit(selectedTask) && !tasks.some(isActiveTask)) return;
     const timer = window.setInterval(() => refresh(selectedId, { quiet: true }), 6000);
     return () => window.clearInterval(timer);
-  }, [activeTaskSignature, selectedId, selectedTask?.status, selectedTask?.updated_at]);
+  }, [activeTaskSignature, selectedId, selectedTask?.status, selectedTask?.updated_at, selectedImageSignature]);
 
   useEffect(() => {
     if (!previewImageId) return;
