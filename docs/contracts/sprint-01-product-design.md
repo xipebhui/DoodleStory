@@ -61,7 +61,7 @@
 
 ## 风险 / 备注
 
-- 具体 provider 的字段需要在选择第一版 LLM 和图片生成 provider 后调整。
+- 具体 provider 的字段需要在选择第一版 LLM 和图片生成 provider 后调整；当前实现中，LLM 使用 SiliconFlow，XG `/v1/images/edits` 保留给 image edit 类生图模型，Google/Gemini 与 `nano-banana`/`nana-banana` 类 Chat 生图模型使用 ApexerAPI `/v1/chat/completions`。
 - 认证模块需要随最终技术栈选择；当前只定义邮箱/密码注册登录和角色需求。
 
 ## 交接

@@ -48,6 +48,7 @@
 - 完成任务队列基础链路：任务创建会原样保存用户文本并入进程内队列，worker 顺序执行故事切分、panel prompt 和图片生成 steps，失败会写回任务与 step 错误。
 - 完成下载和预览基础闭环：成功图片可批量打包为 zip，下载包写入 `task_downloads` 与 `file_assets`，前端任务详情支持 9:16 图片墙、放大预览和下载。
 - 完成 Runway / Creative AI Studio 风格基础重做：任务页和风格页统一为深色影像工作台，强化 9:16 图片容器、状态标识、右侧详情面板和专业工具感。
+- 将 Google/Gemini 图片模型和 `nano-banana`/`nana-banana` 类 Chat 生图模型切换到 ApexerAPI：从 `APEXERAPI_BASE` 和 `APEXERAPI_API_KEY` 读取配置，XG `/v1/images/edits` 路径继续保留给 image edit 类模型。
 
 ## 验证记录
 
@@ -65,7 +66,7 @@
 - LLM 客户端和 prompts 已实现，但尚未接入任务 worker 流程。
 - 任务 worker 已接入 LLM 和 XG 客户端，基础任务详情、批量下载和预览已完成；更精细的运行中恢复策略、单图下载入口和更系统的组件拆分仍可继续完善。
 - 对象存储第一版继续本地磁盘，七牛作为可选 `StorageBackend` 尚未实现。
-- 旧的多 profile registry 已移除；SiliconFlow 与 XG 客户端按固定平台配置接入。
+- 旧的多 profile registry 已移除；SiliconFlow、XG 图片编辑接口与 ApexerAPI Chat 生图接口按固定平台配置接入。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
 
 ## 建议下一步

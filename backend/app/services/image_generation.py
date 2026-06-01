@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 CHAT_IMAGE_REFERENCE_PATTERN = re.compile(
     r"!\[[^\]]*\]\((?P<markdown>(?:https?://|data:image/)[^)\s]+)\)|(?P<plain>(?:https?://|data:image/)[^\s)]+)"
 )
-CHAT_IMAGE_MODEL_PREFIXES = ("nano-banana",)
+APEXERAPI_CHAT_IMAGE_MODEL_PREFIXES = ("nano-banana", "nana-banana")
 
 
 class ImageProviderError(Exception):
@@ -76,11 +76,11 @@ def retry_delay_seconds(base_delay: float, attempt: int) -> float:
     return max(0.0, base_delay) * attempt
 
 
-def is_xg_chat_image_model(image_model_name: str) -> bool:
-    normalized = image_model_name.strip().lower()
+def is_apexerapi_chat_image_model(image_model_name: str) -> bool:
+    normalized = image_model_name.strip().lower().replace("_", "-")
     if normalized.startswith("gemini-") and "image" in normalized:
         return True
-    return any(normalized.startswith(prefix) for prefix in CHAT_IMAGE_MODEL_PREFIXES)
+    return any(normalized.startswith(prefix) for prefix in APEXERAPI_CHAT_IMAGE_MODEL_PREFIXES)
 
 
 def parse_image_b64(response_body: dict[str, Any]) -> bytes:
@@ -182,7 +182,7 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
             session = requests.Session()
             session.trust_env = False
             logger.info(
-                "XG chat image download prepared url_host=%s attempt=%s/%s provider_request_id=%s timeout_seconds=%s",
+                "ApexerAPI chat image download prepared url_host=%s attempt=%s/%s provider_request_id=%s timeout_seconds=%s",
                 urlparse(image_url).hostname,
                 attempt,
                 max_attempts,
@@ -195,7 +195,7 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
             if attempt < max_attempts:
                 delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                 logger.warning(
-                    "XG chat image download exception will retry attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    "ApexerAPI chat image download exception will retry attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
                     attempt,
                     max_attempts,
                     elapsed_ms,
@@ -209,7 +209,7 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
 
         elapsed_ms = round((monotonic() - started_at) * 1000)
         logger.info(
-            "XG chat image download response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+            "ApexerAPI chat image download response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
             response.status_code,
             attempt,
             max_attempts,
@@ -222,7 +222,7 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
         logger.warning(
-            "XG chat image download retryable response will retry status_code=%s attempt=%s/%s retry_delay_seconds=%s provider_request_id=%s",
+            "ApexerAPI chat image download retryable response will retry status_code=%s attempt=%s/%s retry_delay_seconds=%s provider_request_id=%s",
             response.status_code,
             attempt,
             max_attempts,
@@ -240,19 +240,23 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
     return response.content, detect_image_content_type(response.content)
 
 
-def request_xg_chat_image(
+def request_apexerapi_chat_image(
     *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
     if not image_model_name.strip():
         raise ImageProviderConfigError("风格未绑定生图模型名")
     if not reference_paths:
-        raise ImageProviderConfigError("XG Chat 图片模型至少需要一张参考图")
+        raise ImageProviderConfigError("ApexerAPI Chat 图片模型至少需要一张参考图")
 
     settings = get_settings()
-    if not settings.xg_api_key.strip():
-        raise ImageProviderConfigError("XG_API_KEY 未配置")
+    api_key = settings.apexerapi_api_key.strip()
+    base_url = settings.apexerapi_base.strip()
+    if not api_key:
+        raise ImageProviderConfigError("APEXERAPI_API_KEY 未配置")
+    if not base_url:
+        raise ImageProviderConfigError("APEXERAPI_BASE 未配置")
 
-    endpoint = f"{settings.xg_api_base_url.rstrip('/')}/v1/chat/completions"
+    endpoint = f"{base_url.rstrip('/')}/v1/chat/completions"
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     reference_file_info = []
     for path in reference_paths:
@@ -267,7 +271,7 @@ def request_xg_chat_image(
         "messages": [{"role": "user", "content": content}],
     }
     headers = {
-        "Authorization": f"Bearer {settings.xg_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
@@ -279,7 +283,7 @@ def request_xg_chat_image(
         attempt_started_at = monotonic()
         try:
             logger.info(
-                "XG chat image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s timeout_seconds=%s",
+                "ApexerAPI chat image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s proxy_enabled=%s timeout_seconds=%s",
                 endpoint,
                 image_model_name.strip(),
                 aspect_ratio,
@@ -299,7 +303,7 @@ def request_xg_chat_image(
             if attempt < max_attempts:
                 delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                 logger.warning(
-                    "XG chat image request exception will retry model=%s attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    "ApexerAPI chat image request exception will retry model=%s attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
                     image_model_name.strip(),
                     attempt,
                     max_attempts,
@@ -315,7 +319,7 @@ def request_xg_chat_image(
         elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
         provider_request_id = response.headers.get("x-oneapi-request-id") or response.headers.get("x-request-id")
         logger.info(
-            "XG chat image response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+            "ApexerAPI chat image response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
             response.status_code,
             attempt,
             max_attempts,
@@ -328,7 +332,7 @@ def request_xg_chat_image(
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
         logger.warning(
-            "XG chat image retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s retry_delay_seconds=%s response_preview=%s",
+            "ApexerAPI chat image retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s retry_delay_seconds=%s response_preview=%s",
             response.status_code,
             attempt,
             max_attempts,
@@ -344,7 +348,7 @@ def request_xg_chat_image(
     elapsed_ms = round((monotonic() - request_started_at) * 1000)
     provider_request_id = response.headers.get("x-oneapi-request-id") or response.headers.get("x-request-id")
     logger.info(
-        "XG chat image final response status_code=%s total_elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+        "ApexerAPI chat image final response status_code=%s total_elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
         response.status_code,
         elapsed_ms,
         len(response.content),
@@ -353,7 +357,7 @@ def request_xg_chat_image(
     )
     if response.status_code >= 400:
         logger.warning(
-            "XG chat image failed status_code=%s response_chars=%s provider_request_id=%s response_preview=%s",
+            "ApexerAPI chat image failed status_code=%s response_chars=%s provider_request_id=%s response_preview=%s",
             response.status_code,
             len(response.text),
             provider_request_id,
@@ -375,7 +379,7 @@ def request_xg_chat_image(
     else:
         image_content, content_type = download_generated_image(image_reference, response_body_request_id or provider_request_id)
     logger.info(
-        "XG chat image returned downloadable image content_type=%s bytes=%s provider_request_id=%s response_body_request_id=%s",
+        "ApexerAPI chat image returned downloadable image content_type=%s bytes=%s provider_request_id=%s response_body_request_id=%s",
         content_type,
         len(image_content),
         provider_request_id,
@@ -554,8 +558,8 @@ def request_xg_image_edit(
 def request_xg_image(
     *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
-    if is_xg_chat_image_model(image_model_name):
-        return request_xg_chat_image(
+    if is_apexerapi_chat_image_model(image_model_name):
+        return request_apexerapi_chat_image(
             prompt=prompt,
             reference_paths=reference_paths,
             image_model_name=image_model_name,

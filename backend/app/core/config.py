@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     siliconflow_model: str = ""
     xg_api_key: str = ""
     xg_api_base_url: str = "https://api.xgapi.top"
+    apexerapi_api_key: str = ""
+    apexerapi_base: str = ""
     xg_proxy_url: str = ""
     xg_request_max_attempts: int = 3
     xg_request_retry_backoff_seconds: float = 2.0
