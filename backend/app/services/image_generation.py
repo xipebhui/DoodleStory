@@ -211,12 +211,21 @@ def parse_chat_image_reference(response_body: dict[str, Any]) -> str:
         text = content
     elif isinstance(content, list):
         text_parts = []
+        direct_image_reference = None
         for item in content:
             if isinstance(item, dict) and isinstance(item.get("text"), str):
                 text_parts.append(item["text"])
+            elif isinstance(item, dict) and isinstance(item.get("image_url"), dict):
+                image_url = item["image_url"].get("url")
+                if isinstance(image_url, str) and (
+                    image_url.startswith("data:image/") or image_url.startswith(("http://", "https://"))
+                ):
+                    direct_image_reference = image_url
             elif isinstance(item, str):
                 text_parts.append(item)
         text = "\n".join(text_parts)
+        if direct_image_reference:
+            return direct_image_reference
     else:
         raise ImageProviderResponseError("图片 Provider 返回 message.content 必须是字符串或文本数组")
 
