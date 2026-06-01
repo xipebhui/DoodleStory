@@ -76,29 +76,21 @@ def truncate_raw_log_text(value: str, max_chars: int) -> str:
     return f"{value[:max_chars]}...[truncated {len(value) - max_chars} chars]"
 
 
-def sanitize_provider_payload_for_log(payload: dict[str, Any]) -> dict[str, Any]:
-    sanitized = copy.deepcopy(payload)
-    messages = sanitized.get("messages")
-    if not isinstance(messages, list):
-        return sanitized
+def sanitize_provider_log_value(value: Any) -> Any:
+    if isinstance(value, str) and value.startswith("data:image/"):
+        header, separator, encoded = value.partition(",")
+        if separator == ",":
+            return f"{header},<base64 omitted chars={len(encoded)}>"
+        return "<data image omitted>"
+    if isinstance(value, dict):
+        return {key: sanitize_provider_log_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [sanitize_provider_log_value(item) for item in value]
+    return value
 
-    for message in messages:
-        if not isinstance(message, dict):
-            continue
-        content = message.get("content")
-        if not isinstance(content, list):
-            continue
-        for item in content:
-            if not isinstance(item, dict):
-                continue
-            image_url = item.get("image_url")
-            if not isinstance(image_url, dict):
-                continue
-            url = image_url.get("url")
-            if isinstance(url, str) and url.startswith("data:image/"):
-                header, _, encoded = url.partition(",")
-                image_url["url"] = f"{header},<base64 omitted chars={len(encoded)}>"
-    return sanitized
+
+def sanitize_provider_payload_for_log(payload: dict[str, Any]) -> dict[str, Any]:
+    return sanitize_provider_log_value(copy.deepcopy(payload))
 
 
 def log_provider_raw_io(
@@ -110,9 +102,18 @@ def log_provider_raw_io(
     sanitize_request: bool,
 ) -> None:
     if isinstance(payload, str):
-        body = payload
+        if sanitize_request:
+            body = payload
+        else:
+            try:
+                parsed = json.loads(payload)
+            except ValueError:
+                body = payload
+            else:
+                sanitized = sanitize_provider_log_value(parsed)
+                body = json.dumps(sanitized, ensure_ascii=False, separators=(",", ":"))
     else:
-        log_payload = sanitize_provider_payload_for_log(payload) if sanitize_request else payload
+        log_payload = sanitize_provider_payload_for_log(payload)
         body = json.dumps(log_payload, ensure_ascii=False, separators=(",", ":"))
     logger.info(
         "%s raw %s body_chars=%s body=%s",
