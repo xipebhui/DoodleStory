@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 CHAT_IMAGE_REFERENCE_PATTERN = re.compile(
     r"!\[[^\]]*\]\((?P<markdown>(?:https?://|data:image/)[^)\s]+)\)|(?P<plain>(?:https?://|data:image/)[^\s)]+)"
 )
+CHAT_IMAGE_MODEL_PREFIXES = ("nano-banana",)
 
 
 class ImageProviderError(Exception):
@@ -77,7 +78,9 @@ def retry_delay_seconds(base_delay: float, attempt: int) -> float:
 
 def is_xg_chat_image_model(image_model_name: str) -> bool:
     normalized = image_model_name.strip().lower()
-    return normalized.startswith("gemini-") and "image" in normalized
+    if normalized.startswith("gemini-") and "image" in normalized:
+        return True
+    return any(normalized.startswith(prefix) for prefix in CHAT_IMAGE_MODEL_PREFIXES)
 
 
 def parse_image_b64(response_body: dict[str, Any]) -> bytes:
