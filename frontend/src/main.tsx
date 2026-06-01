@@ -390,6 +390,7 @@ function TasksView({ user }: { user: User }) {
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
   const [panelEditInputs, setPanelEditInputs] = useState<Record<string, string>>({});
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
@@ -446,6 +447,17 @@ function TasksView({ user }: { user: User }) {
   }, [previewImageId, previewItems]);
 
   useEffect(() => {
+    if (!detailOpen) return;
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !previewImageId) {
+        setDetailOpen(false);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [detailOpen, previewImageId]);
+
+  useEffect(() => {
     if (createOpen && !createStyleId && styles[0]) {
       setCreateStyleId(styles[0].id);
     }
@@ -492,6 +504,7 @@ function TasksView({ user }: { user: User }) {
   async function selectTask(taskId: string) {
     setSelectedId(taskId);
     setSelectedTask(await api.task(taskId));
+    setDetailOpen(true);
     setPreviewImageId(null);
   }
 
@@ -738,6 +751,8 @@ function TasksView({ user }: { user: User }) {
                 type="button"
                 className={`task-project-row ${taskForDetail?.id === task.id ? "selected" : ""}`}
                 key={task.id}
+                aria-haspopup="dialog"
+                aria-expanded={detailOpen && taskForDetail?.id === task.id}
                 onClick={() => selectTask(task.id)}
               >
                 <div className="task-story-cell">
@@ -805,13 +820,31 @@ function TasksView({ user }: { user: User }) {
           </div>
         </section>
 
-        <aside className="task-inspector">
-          {taskForDetail ? (
-            <>
+      </div>
+
+      {detailOpen && taskForDetail ? (
+        <div className="task-detail-backdrop" onClick={() => setDetailOpen(false)}>
+          <aside
+            className="task-detail-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-detail-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="detail-drawer-head">
+              <div>
+                <span>任务详情</span>
+                <strong>{taskForDetail.display_title}</strong>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭任务详情" onClick={() => setDetailOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="task-inspector">
               <section className="detail-head">
                 <div>
                   <span className={`status-pill ${taskForDetail.status}`}>{taskStatusLabel(taskForDetail.status)}</span>
-                  <h2>{taskForDetail.display_title}</h2>
+                  <h2 id="task-detail-title">{taskForDetail.display_title}</h2>
                   <p>
                         {taskForDetail.style_name_snapshot} · 创建于 {formatDateTime(taskForDetail.created_at)}
                         <br />
@@ -942,12 +975,10 @@ function TasksView({ user }: { user: User }) {
                   })}
                 </div>
               </section>
-            </>
-          ) : (
-            <div className="empty">选择一个任务查看详情。</div>
-          )}
-        </aside>
-      </div>
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       {createOpen ? (
         <div className="drawer-backdrop" onClick={() => setCreateOpen(false)}>
