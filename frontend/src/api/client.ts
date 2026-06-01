@@ -156,6 +156,9 @@ function isLoopbackHost(hostname: string): boolean {
 
 function resolveApiBaseUrl(): string {
   const configured = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  if (configured === "/" || configured === ".") {
+    return "";
+  }
   if (typeof window === "undefined") {
     return configured ? trimTrailingSlash(configured) : "http://127.0.0.1:8000";
   }
