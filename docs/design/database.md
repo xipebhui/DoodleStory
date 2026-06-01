@@ -191,6 +191,10 @@ file_assets 1--N task_downloads
 - `owner_user_id` 外键到 `users.id`，not null
 - `display_title` text not null
 - `original_text` text not null
+- `story_input_mode` text not null，取值 `original`、`adapted`
+- `adapted_story_title` text null
+- `adapted_story_hook` text null
+- `adapted_story_text` text null
 - `image_count_mode` text not null，取值 `auto`、`fixed`
 - `requested_image_count` integer null
 - `use_character_references` boolean not null，默认 `false`
@@ -199,7 +203,7 @@ file_assets 1--N task_downloads
 - `style_prompt_snapshot` text not null
 - `image_model_name_snapshot` text not null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`partial_succeeded`、`failed`、`cancel_requested`、`cancelled`、`retrying`
-- `current_step` text null，取值 `segment_story`、`extract_characters`、`generate_character_references`、`generate_panel_prompts`、`generate_images`、`package_download`
+- `current_step` text null，取值 `adapt_story`、`segment_story`、`extract_characters`、`generate_character_references`、`generate_panel_prompts`、`generate_images`、`package_download`
 - `progress_current` integer not null，默认 `0`
 - `progress_total` integer not null，默认 `0`
 - `attempts` integer not null，默认 `0`
@@ -220,6 +224,7 @@ file_assets 1--N task_downloads
 - 当 `image_count_mode = 'auto'` 时，`requested_image_count` 必须为 null。
 - 当 `image_count_mode = 'fixed'` 时，`requested_image_count` 必须大于 `0`。
 - `style_prompt_snapshot` 不能为空字符串。
+- `original_text` 始终保存用户输入；`adapted_story_text` 只在故事方案模式下由 LLM 生成。
 
 索引：
 
@@ -237,7 +242,7 @@ file_assets 1--N task_downloads
 
 - `id` 主键
 - `task_id` 外键到 `generation_tasks.id`，not null
-- `step_name` text not null，取值 `segment_story`、`extract_characters`、`generate_character_references`、`generate_panel_prompts`、`generate_images`、`package_download`
+- `step_name` text not null，取值 `adapt_story`、`segment_story`、`extract_characters`、`generate_character_references`、`generate_panel_prompts`、`generate_images`、`package_download`
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`、`retrying`
 - `attempts` integer not null，默认 `0`
 - `idempotency_key` text not null
@@ -268,7 +273,10 @@ file_assets 1--N task_downloads
 - `id` 主键
 - `task_id` 外键到 `generation_tasks.id`，not null
 - `panel_order` integer not null
+- `panel_type` text not null，取值 `cover`、`scene`
 - `original_text_segment` text not null
+- `narration_text` text null
+- `dialogue_text` text null
 - `prompt_status` text not null，取值 `pending`、`generated`、`failed`
 - `generated_prompt` text null
 - `prompt_model_snapshot` jsonb null
@@ -283,6 +291,7 @@ file_assets 1--N task_downloads
 - `panel_order` 必须大于 `0`。
 - `original_text_segment` 不能为空字符串。
 - 当 `prompt_status = 'generated'` 时，`generated_prompt` 不能为空。
+- 故事方案模式下，第一个 panel 必须由应用层保证为 `cover`，后续为 `scene`。
 
 索引：
 
@@ -448,12 +457,13 @@ Worker 执行：
 1. 从 `generation_tasks` 读取当前任务状态。
 2. 如果任务已终态或已取消，不产生副作用。
 3. 在步骤边界更新 `current_step`、`progress_current`、`progress_total`。
-4. 将切分结果写入 `task_panels`。
-5. 如果任务开启人物参考，写入 `task_characters` 和 `task_character_appearances`，再生成每个人物阶段的参考图并写入 `file_assets`。
-6. 将 prompt 结果写入 `task_panels.generated_prompt`；开启人物参考时，同时写入 `task_panel_character_appearances`，记录 panel 使用哪些人物参考图及顺序。
-7. 将图片生成元数据写入 `generated_images`。
-8. 将文件元数据写入 `file_assets`。
-9. 最终将任务标记为 `succeeded`、`partial_succeeded`、`failed` 或 `cancelled`。
+4. 如果是故事方案模式，先写入 `adapted_story_title`、`adapted_story_hook` 和 `adapted_story_text`。
+5. 将切分或规划结果写入 `task_panels`；故事方案模式第一个 panel 是封面，并保存旁白/对白。
+6. 如果任务开启人物参考，写入 `task_characters` 和 `task_character_appearances`，再生成每个人物阶段的参考图并写入 `file_assets`。
+7. 将 prompt 结果写入 `task_panels.generated_prompt`；开启人物参考时，同时写入 `task_panel_character_appearances`，记录 panel 使用哪些人物参考图及顺序。
+8. 将图片生成元数据写入 `generated_images`。
+9. 将文件元数据写入 `file_assets`。
+10. 最终将任务标记为 `succeeded`、`partial_succeeded`、`failed` 或 `cancelled`。
 
 启动恢复：
 
@@ -470,6 +480,8 @@ Worker 执行：
 ## 数据完整性说明
 
 - `generation_tasks.original_text` 必须原样保存。
+- 故事方案模式下，LLM 改写结果必须独立保存在 `adapted_story_*` 字段，不能覆盖 `original_text`。
+- `task_panels.narration_text` 和 `task_panels.dialogue_text` 用于最终生图 prompt 区分旁白字幕和人物对白。
 - 任务和风格测试保存风格 prompt 与 `image_model_name` 快照，保证风格后续编辑不影响历史审计。
 - 支持用户提交单 panel 画面修改方向；系统调用 LLM 生成新的 `image_prompt`，再为该 panel 生成新的图片版本。
 - 任务级重试和单 panel 修改都会保留历史图片版本，当前展示和下载只使用当前成功版本。

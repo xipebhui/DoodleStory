@@ -322,6 +322,7 @@ POST /api/v1/tasks
 ```json
 {
   "original_text": "用户输入的原始故事文本，必须原样保存。",
+  "story_input_mode": "original",
   "image_count_mode": "auto",
   "requested_image_count": null,
   "style_id": "style_...",
@@ -334,6 +335,7 @@ POST /api/v1/tasks
 ```json
 {
   "original_text": "用户输入的原始故事文本，必须原样保存。",
+  "story_input_mode": "adapted",
   "image_count_mode": "fixed",
   "requested_image_count": 6,
   "style_id": "style_...",
@@ -344,8 +346,10 @@ POST /api/v1/tasks
 行为：
 
 - 按收到的内容原样保存 `original_text`。
+- 当 `story_input_mode = adapted` 时，先调用 LLM 生成 `adapted_story_title`、`adapted_story_hook` 和 `adapted_story_text`，再基于增强故事规划封面和分镜。
 - 将当前登录用户保存为任务 owner。
 - 将选中风格的提示词和生图模型名快照保存到任务。
+- 当 `story_input_mode = adapted` 时，任务步骤增加 `adapt_story`。
 - 当 `use_character_references = true` 时，任务步骤增加 `extract_characters` 和 `generate_character_references`。
 - 创建状态为 `queued` 的任务。
 - 将任务 ID 放入进程内队列。
@@ -358,6 +362,7 @@ POST /api/v1/tasks
 - 必须是登录用户。
 - 固定数量模式必须提供有效正整数 `requested_image_count`。
 - 自动模式要求 `requested_image_count` 为 `null`。
+- `story_input_mode` 默认为 `original`。`adapted` 模式固定图片数量包含封面。
 - `use_character_references` 默认为 `false`。开启后如果 LLM 未识别到主要人物，任务失败并返回用户可读错误，不静默降级为普通生图。
 
 ### 获取任务详情
@@ -369,10 +374,12 @@ GET /api/v1/tasks/{task_id}
 详情包含：
 
 - 精确原始文本
+- 故事方案模式下的增强标题、钩子和完整增强故事
 - 任务 owner，Admin 可见
 - 风格快照
 - 任务状态和进度
 - 有序 panels
+- panels 中包含 `panel_type`、`narration_text` 和 `dialogue_text`
 - 生成 prompts
 - 人物参考摘要：仅在任务开启人物参考时返回成功的人物参考图、人物姓名和年龄/外形阶段
 - 生成图片
@@ -558,6 +565,7 @@ GET /api/v1/assets/{asset_id}/content
 
 任务步骤：
 
+- `adapt_story`
 - `segment_story`
 - `extract_characters`
 - `generate_character_references`

@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import get_settings
-from app.models.enums import ImageCountMode
+from app.models.enums import ImageCountMode, PanelType
 
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 logger = logging.getLogger(__name__)
@@ -26,11 +26,20 @@ class LLMResponseError(LLMProviderError):
 
 class StorySegment(BaseModel):
     panel_order: int = Field(ge=1)
+    panel_type: PanelType = PanelType.scene
     text: str = Field(min_length=1)
+    narration_text: str | None = None
+    dialogue_text: str | None = None
 
 
 class StorySegmentationResult(BaseModel):
     panels: list[StorySegment] = Field(min_length=1)
+
+
+class AdaptedStoryResult(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+    hook: str = Field(min_length=1, max_length=160)
+    adapted_story: str = Field(min_length=1)
 
 
 class PanelPrompt(BaseModel):
@@ -177,6 +186,71 @@ def segment_story(
     return result
 
 
+def adapt_story_for_douyin(*, original_text: str) -> AdaptedStoryResult:
+    system_prompt = read_prompt("adapt_story_for_douyin_v1.md")
+    user_prompt = json.dumps({"original_text": original_text}, ensure_ascii=False)
+    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    try:
+        result = AdaptedStoryResult.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMResponseError("LLM 故事增强 JSON 结构不符合要求") from exc
+    logger.info(
+        "story adaptation succeeded title_chars=%s hook_chars=%s story_chars=%s",
+        len(result.title),
+        len(result.hook),
+        len(result.adapted_story),
+    )
+    return result
+
+
+def plan_adapted_story_panels(
+    *,
+    title: str,
+    hook: str,
+    adapted_story: str,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+) -> StorySegmentationResult:
+    if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
+        raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
+
+    system_prompt = read_prompt("plan_adapted_story_panels_v1.md")
+    count_instruction = (
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，且第 1 个是封面。"
+        if image_count_mode == ImageCountMode.fixed
+        else "图片数量：自动判断。必须先输出 1 个封面，再按剧情自然规划分镜。"
+    )
+    user_prompt = json.dumps(
+        {
+            "count_instruction": count_instruction,
+            "title": title,
+            "hook": hook,
+            "adapted_story": adapted_story,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    try:
+        result = StorySegmentationResult.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMResponseError("LLM 增强故事分镜 JSON 结构不符合要求") from exc
+
+    ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
+    if result.panels[0].panel_type != PanelType.cover:
+        raise LLMResponseError("增强故事分镜的第一个 panel 必须是封面")
+    if any(panel.panel_type == PanelType.cover for panel in result.panels[1:]):
+        raise LLMResponseError("增强故事分镜只能第一个 panel 是封面")
+    if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
+        raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
+    logger.info(
+        "adapted story panel planning succeeded image_count_mode=%s requested_image_count=%s panel_count=%s",
+        image_count_mode.value,
+        requested_image_count,
+        len(result.panels),
+    )
+    return result
+
+
 def generate_panel_prompts(
     *,
     original_text: str,
@@ -184,7 +258,16 @@ def generate_panel_prompts(
     panels: list[StorySegment],
 ) -> PanelPromptResult:
     system_prompt = read_prompt("generate_panel_prompt_v1.md")
-    input_panels = [{"panel_order": panel.panel_order, "text": panel.text} for panel in panels]
+    input_panels = [
+        {
+            "panel_order": panel.panel_order,
+            "panel_type": panel.panel_type.value,
+            "text": panel.text,
+            "narration_text": panel.narration_text,
+            "dialogue_text": panel.dialogue_text,
+        }
+        for panel in panels
+    ]
     user_prompt = json.dumps(
         {
             "original_text": original_text,
@@ -214,7 +297,16 @@ def extract_task_characters(
     panels: list[StorySegment],
 ) -> TaskCharacterExtractionResult:
     system_prompt = read_prompt("extract_task_characters_v1.md")
-    input_panels = [{"panel_order": panel.panel_order, "text": panel.text} for panel in panels]
+    input_panels = [
+        {
+            "panel_order": panel.panel_order,
+            "panel_type": panel.panel_type.value,
+            "text": panel.text,
+            "narration_text": panel.narration_text,
+            "dialogue_text": panel.dialogue_text,
+        }
+        for panel in panels
+    ]
     user_prompt = json.dumps(
         {
             "original_text": original_text,
@@ -261,7 +353,16 @@ def generate_panel_prompts_with_characters(
     characters: list[TaskCharacterPlan],
 ) -> PanelPromptWithCharactersResult:
     system_prompt = read_prompt("generate_panel_prompt_with_characters_v1.md")
-    input_panels = [{"panel_order": panel.panel_order, "text": panel.text} for panel in panels]
+    input_panels = [
+        {
+            "panel_order": panel.panel_order,
+            "panel_type": panel.panel_type.value,
+            "text": panel.text,
+            "narration_text": panel.narration_text,
+            "dialogue_text": panel.dialogue_text,
+        }
+        for panel in panels
+    ]
     character_payload = [character.model_dump() for character in characters]
     valid_appearance_keys = {
         appearance.appearance_key

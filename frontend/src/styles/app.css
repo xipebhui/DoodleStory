@@ -601,6 +601,16 @@ textarea {
   white-space: pre-wrap;
 }
 
+.adapted-story-panel strong,
+.adapted-story-panel small {
+  display: block;
+  margin-top: 8px;
+}
+
+.adapted-story-panel small {
+  color: #e0b15d;
+}
+
 .panel-wall {
   display: grid;
   gap: 14px;
@@ -627,6 +637,14 @@ textarea {
 
 .panel-card .process-note {
   color: #e0b15d;
+}
+
+.task-create-form label small {
+  display: block;
+  margin-top: 6px;
+  color: #8d96a6;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .panel-edit-box {

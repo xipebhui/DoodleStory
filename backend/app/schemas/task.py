@@ -9,8 +9,10 @@ from app.models.enums import (
     GeneratedImageWorkflowStep,
     GenerationStepName,
     ImageCountMode,
+    PanelType,
     PromptStatus,
     StepStatus,
+    StoryInputMode,
     TaskStatus,
 )
 from app.schemas.common import TimestampFields
@@ -19,6 +21,7 @@ from app.schemas.style import FileAssetRead
 
 class TaskCreate(BaseModel):
     original_text: str = Field(min_length=1, max_length=20000)
+    story_input_mode: StoryInputMode = StoryInputMode.original
     image_count_mode: ImageCountMode
     requested_image_count: int | None = Field(default=None, ge=1, le=80)
     style_id: str = Field(min_length=1)
@@ -28,7 +31,10 @@ class TaskCreate(BaseModel):
 class TaskPanelRead(TimestampFields):
     id: str
     panel_order: int
+    panel_type: PanelType
     original_text_segment: str
+    narration_text: str | None
+    dialogue_text: str | None
     prompt_status: PromptStatus
     generated_prompt: str | None
 
@@ -86,6 +92,10 @@ class TaskRead(TimestampFields):
     owner_user_id: str
     display_title: str
     original_text: str
+    story_input_mode: StoryInputMode
+    adapted_story_title: str | None
+    adapted_story_hook: str | None
+    adapted_story_text: str | None
     image_count_mode: ImageCountMode
     requested_image_count: int | None
     use_character_references: bool

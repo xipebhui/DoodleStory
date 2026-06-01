@@ -29,6 +29,16 @@ class ImageCountMode(StrEnum):
     fixed = "fixed"
 
 
+class StoryInputMode(StrEnum):
+    original = "original"
+    adapted = "adapted"
+
+
+class PanelType(StrEnum):
+    cover = "cover"
+    scene = "scene"
+
+
 class TaskStatus(StrEnum):
     queued = "queued"
     running = "running"
@@ -41,6 +51,7 @@ class TaskStatus(StrEnum):
 
 
 class GenerationStepName(StrEnum):
+    adapt_story = "adapt_story"
     segment_story = "segment_story"
     extract_characters = "extract_characters"
     generate_character_references = "generate_character_references"

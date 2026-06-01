@@ -58,6 +58,10 @@ export type Task = {
   owner_user_id: string;
   display_title: string;
   original_text: string;
+  story_input_mode: "original" | "adapted";
+  adapted_story_title: string | null;
+  adapted_story_hook: string | null;
+  adapted_story_text: string | null;
   image_count_mode: "auto" | "fixed";
   requested_image_count: number | null;
   use_character_references: boolean;
@@ -98,7 +102,10 @@ export type TaskCharacterReference = {
 export type TaskPanel = {
   id: string;
   panel_order: number;
+  panel_type: "cover" | "scene";
   original_text_segment: string;
+  narration_text: string | null;
+  dialogue_text: string | null;
   prompt_status: "pending" | "generated" | "failed";
   generated_prompt: string | null;
   created_at: string;
@@ -285,6 +292,7 @@ export const api = {
   task: (id: string) => request<ApiData<Task>>(`/tasks/${id}`).then((result) => result.data),
   createTask: (payload: {
     original_text: string;
+    story_input_mode?: "original" | "adapted";
     image_count_mode: "auto" | "fixed";
     requested_image_count?: number | null;
     style_id: string;

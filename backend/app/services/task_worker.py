@@ -25,8 +25,10 @@ from app.models.enums import (
     GeneratedImageSourceType,
     GeneratedImageWorkflowStep,
     GenerationStepName,
+    PanelType,
     PromptStatus,
     StepStatus,
+    StoryInputMode,
     TaskStatus,
 )
 from app.services.character_references import (
@@ -43,9 +45,11 @@ from app.services.llm import (
     LLMProviderError,
     LLMResponseError,
     StorySegment,
+    adapt_story_for_douyin,
     extract_task_characters,
     generate_panel_prompts,
     generate_panel_prompts_with_characters,
+    plan_adapted_story_panels,
     revise_panel_prompt,
     segment_story,
 )
@@ -211,11 +215,42 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
         db.commit()
 
 
+def task_progress_total(task: GenerationTask) -> int:
+    total = 3
+    if task.story_input_mode == StoryInputMode.adapted:
+        total += 1
+    if task.use_character_references:
+        total += 2
+    return total
+
+
+def panel_story_segments(task: GenerationTask) -> list[StorySegment]:
+    return [
+        StorySegment(
+            panel_order=panel.panel_order,
+            panel_type=panel.panel_type,
+            text=panel.original_text_segment,
+            narration_text=panel.narration_text,
+            dialogue_text=panel.dialogue_text,
+        )
+        for panel in sorted(task.panels, key=lambda item: item.panel_order)
+    ]
+
+
+def story_text_for_generation(task: GenerationTask) -> str:
+    if task.story_input_mode == StoryInputMode.adapted and task.adapted_story_text:
+        return task.adapted_story_text
+    return task.original_text
+
+
 def build_final_prompt(
     style_prompt: str,
     aspect_ratio: str,
     panel_prompt: str,
     panel_text: str,
+    panel_type: PanelType = PanelType.scene,
+    narration_text: str | None = None,
+    dialogue_text: str | None = None,
     reference_notes: list[str] | None = None,
 ) -> str:
     blocks = [
@@ -224,12 +259,31 @@ def build_final_prompt(
     ]
     if reference_notes:
         blocks.append("参考图顺序说明：\n" + "\n".join(reference_notes))
+    if panel_type == PanelType.cover:
+        blocks.extend(
+            [
+                "页面类型：封面图。",
+                "封面文字要求：图片内必须完整呈现标题和钩子文字。标题应比钩子更醒目，文字层级清楚，可自行决定换行、字号、字重、颜色和位置。",
+                f"封面文字：{panel_text.strip()}",
+            ]
+        )
+    else:
+        text_blocks = [
+            "页面类型：剧情分镜。",
+            "统一文字要求：图片内文字必须使用中文。请把下面的旁白和人物对白作为图片内可读文字完整呈现，不要删改、翻译、总结或补充文案内容。可以通过字体大小、字重、颜色、位置、换行和留白做视觉强调，但不要把强调理解成 Markdown 或排版符号。",
+        ]
+        if narration_text:
+            text_blocks.append(f"旁白文字：{narration_text.strip()}")
+        else:
+            text_blocks.append(f"旁白文字：{panel_text.strip()}")
+        if dialogue_text:
+            text_blocks.append(f"人物对白：{dialogue_text.strip()}")
+            text_blocks.append("对白呈现：人物对白应放在对应人物附近的对话气泡或对白框中；旁白应放在独立字幕区或旁白区，不要混在同一个文字框。")
+        blocks.extend(text_blocks)
     blocks.extend(
         [
-            "统一文字要求：图片内文字必须使用中文。请把 panel 原文作为图片内可读文字完整呈现，不要删改、翻译、总结或补充文案内容。可以通过字体大小、字重、颜色、位置、换行和留白做视觉强调，但不要把强调理解成 Markdown 或排版符号。",
             "文字禁止项：不要在图片文字里加入 #、##、**、*、-、项目符号、引号包裹、代码块符号、标题标记或任何 panel 原文之外的格式字符。",
             f"画面内容：{panel_prompt.strip()}",
-            f"panel 原文：{panel_text.strip()}",
             "输出要求：图片比例以画面比例参数为准，画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加 panel 原文之外的无关文字。",
         ]
     )
@@ -283,31 +337,71 @@ def process_task(task_id: str) -> None:
         task.status = TaskStatus.running
         task.started_at = task.started_at or datetime.utcnow()
         task.progress_current = 0
-        task.progress_total = 5 if task.use_character_references else 3
+        task.progress_total = task_progress_total(task)
         db.commit()
+
+        if task.story_input_mode == StoryInputMode.adapted:
+            if task.adapted_story_text:
+                task.progress_current = max(task.progress_current, 1)
+                set_step(db, task, GenerationStepName.adapt_story, StepStatus.succeeded)
+                logger.info("task story adaptation skipped task_id=%s", task.id)
+            else:
+                try:
+                    set_step(db, task, GenerationStepName.adapt_story, StepStatus.running)
+                    adapted = adapt_story_for_douyin(original_text=task.original_text)
+                    task.adapted_story_title = adapted.title
+                    task.adapted_story_hook = adapted.hook
+                    task.adapted_story_text = adapted.adapted_story
+                    task.display_title = adapted.title[:120]
+                    task.progress_current = 1
+                    set_step(db, task, GenerationStepName.adapt_story, StepStatus.succeeded)
+                    logger.info("task story adaptation completed task_id=%s title=%s", task.id, adapted.title)
+                except LLMProviderError as exc:
+                    fail_step_and_task(db, task, GenerationStepName.adapt_story, exc)
+                    return
+
+        task = load_task(db, task_id)
+        if task is None:
+            return
+        if should_stop_for_cancel(db, task):
+            return
 
         existing_panels = sorted(task.panels, key=lambda item: item.panel_order)
         if existing_panels:
-            task.progress_current = max(task.progress_current, 1)
+            task.progress_current = max(task.progress_current, 2 if task.story_input_mode == StoryInputMode.adapted else 1)
             set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
             logger.info("task segmentation skipped task_id=%s existing_panel_count=%s", task.id, len(existing_panels))
         else:
             try:
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.running)
-                segmentation = segment_story(
-                    original_text=task.original_text,
-                    image_count_mode=task.image_count_mode,
-                    requested_image_count=task.requested_image_count,
-                )
+                if task.story_input_mode == StoryInputMode.adapted:
+                    if not task.adapted_story_title or not task.adapted_story_hook or not task.adapted_story_text:
+                        raise LLMResponseError("故事增强结果缺失，无法规划分镜")
+                    segmentation = plan_adapted_story_panels(
+                        title=task.adapted_story_title,
+                        hook=task.adapted_story_hook,
+                        adapted_story=task.adapted_story_text,
+                        image_count_mode=task.image_count_mode,
+                        requested_image_count=task.requested_image_count,
+                    )
+                else:
+                    segmentation = segment_story(
+                        original_text=task.original_text,
+                        image_count_mode=task.image_count_mode,
+                        requested_image_count=task.requested_image_count,
+                    )
                 for panel in segmentation.panels:
                     db.add(
                         TaskPanel(
                             task_id=task.id,
                             panel_order=panel.panel_order,
+                            panel_type=panel.panel_type,
                             original_text_segment=panel.text,
+                            narration_text=panel.narration_text or panel.text,
+                            dialogue_text=panel.dialogue_text,
                         )
                     )
-                task.progress_current = 1
+                task.progress_current = 2 if task.story_input_mode == StoryInputMode.adapted else 1
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
                 logger.info("task segmentation completed task_id=%s panel_count=%s", task.id, len(segmentation.panels))
             except LLMProviderError as exc:
@@ -337,29 +431,26 @@ def process_task(task_id: str) -> None:
             return
 
         style_reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
-        story_segments = [
-            StorySegment(panel_order=panel.panel_order, text=panel.original_text_segment)
-            for panel in sorted(task.panels, key=lambda item: item.panel_order)
-        ]
+        story_segments = panel_story_segments(task)
 
         if task.use_character_references:
             characters = load_task_characters(db, task.id)
             if characters:
-                task.progress_current = max(task.progress_current, 2)
+                task.progress_current = max(task.progress_current, 3 if task.story_input_mode == StoryInputMode.adapted else 2)
                 set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                 logger.info("task character extraction skipped task_id=%s character_count=%s", task.id, len(characters))
             else:
                 try:
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.running)
                     character_result = extract_task_characters(
-                        original_text=task.original_text,
+                        original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
                         panels=story_segments,
                     )
                     if not character_result.characters:
                         raise LLMResponseError("未识别到可用于参考图的主要人物")
                     persist_character_plans(db, task, character_result.characters)
-                    task.progress_current = 2
+                    task.progress_current = 3 if task.story_input_mode == StoryInputMode.adapted else 2
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                     logger.info(
                         "task character extraction completed task_id=%s character_count=%s",
@@ -383,6 +474,8 @@ def process_task(task_id: str) -> None:
                     style_reference_paths=style_reference_paths,
                 )
                 task.progress_current = 3
+                if task.story_input_mode == StoryInputMode.adapted:
+                    task.progress_current = 4
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
                 logger.info("task character reference images completed task_id=%s", task.id)
             except (ImageProviderConfigError, ImageProviderResponseError) as exc:
@@ -399,8 +492,9 @@ def process_task(task_id: str) -> None:
             panel.prompt_status == PromptStatus.generated and bool(panel.generated_prompt)
             for panel in task.panels
         )
+        prompts_progress = task.progress_total - 1
         if prompts_ready:
-            task.progress_current = max(task.progress_current, 4 if task.use_character_references else 2)
+            task.progress_current = max(task.progress_current, prompts_progress)
             set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
             logger.info("task panel prompts skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))
         else:
@@ -409,7 +503,7 @@ def process_task(task_id: str) -> None:
                 if task.use_character_references:
                     character_plans = characters_to_plans(load_task_characters(db, task.id))
                     prompt_result = generate_panel_prompts_with_characters(
-                        original_text=task.original_text,
+                        original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
                         panels=story_segments,
                         characters=character_plans,
@@ -417,7 +511,7 @@ def process_task(task_id: str) -> None:
                     clear_panel_character_links(db, task)
                 else:
                     prompt_result = generate_panel_prompts(
-                        original_text=task.original_text,
+                        original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
                         panels=story_segments,
                     )
@@ -437,7 +531,7 @@ def process_task(task_id: str) -> None:
                             appearance_keys=getattr(prompt_item, "appearance_keys", []),
                             usage_notes=getattr(prompt_item, "usage_notes", {}),
                         )
-                task.progress_current = 4 if task.use_character_references else 2
+                task.progress_current = prompts_progress
                 set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
                 logger.info("task panel prompts completed task_id=%s panel_count=%s", task.id, len(story_segments))
             except LLMProviderError as exc:
@@ -504,6 +598,9 @@ def process_task(task_id: str) -> None:
                     task.style_aspect_ratio_snapshot,
                     panel.generated_prompt or "",
                     panel.original_text_segment,
+                    panel_type=panel.panel_type,
+                    narration_text=panel.narration_text,
+                    dialogue_text=panel.dialogue_text,
                     reference_notes=reference_notes,
                 )
             except ImageProviderConfigError as exc:
@@ -657,7 +754,7 @@ def process_panel_edit(generated_image_id: str) -> None:
 
         try:
             revision = revise_panel_prompt(
-                original_text=task.original_text,
+                original_text=story_text_for_generation(task),
                 style_prompt=task.style_prompt_snapshot,
                 panel_text=panel.original_text_segment,
                 current_prompt=image.previous_prompt or panel.generated_prompt or "",
@@ -671,6 +768,9 @@ def process_panel_edit(generated_image_id: str) -> None:
                 task.style_aspect_ratio_snapshot,
                 revision.prompt,
                 panel.original_text_segment,
+                panel_type=panel.panel_type,
+                narration_text=panel.narration_text,
+                dialogue_text=panel.dialogue_text,
             )
             image.workflow_step = GeneratedImageWorkflowStep.generate_image
             db.commit()
@@ -726,6 +826,9 @@ def process_panel_edit(generated_image_id: str) -> None:
                 task.style_aspect_ratio_snapshot,
                 image.image_prompt or "",
                 panel.original_text_segment,
+                panel_type=panel.panel_type,
+                narration_text=panel.narration_text,
+                dialogue_text=panel.dialogue_text,
                 reference_notes=reference_notes,
             )
             db.commit()

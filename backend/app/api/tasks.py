@@ -29,13 +29,14 @@ from app.models.enums import (
     ImageCountMode,
     PromptStatus,
     StepStatus,
+    StoryInputMode,
     StyleStatus,
     TaskStatus,
     UserRole,
 )
 from app.schemas.common import ApiData, ApiList
 from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskRead
-from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number
+from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
 from app.services.storage import resolve_storage_key, save_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -136,6 +137,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         owner_user_id=user.id,
         display_title=display_title,
         original_text=payload.original_text,
+        story_input_mode=payload.story_input_mode,
         image_count_mode=payload.image_count_mode,
         requested_image_count=payload.requested_image_count,
         use_character_references=payload.use_character_references,
@@ -146,11 +148,14 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         style_aspect_ratio_snapshot=style.aspect_ratio,
         status=TaskStatus.queued,
         progress_current=0,
-        progress_total=5 if payload.use_character_references else 3,
     )
+    task.progress_total = task_progress_total(task)
     db.add(task)
     db.flush()
-    step_names = [GenerationStepName.segment_story]
+    step_names = []
+    if payload.story_input_mode == StoryInputMode.adapted:
+        step_names.append(GenerationStepName.adapt_story)
+    step_names.append(GenerationStepName.segment_story)
     if payload.use_character_references:
         step_names.extend([GenerationStepName.extract_characters, GenerationStepName.generate_character_references])
     step_names.extend([GenerationStepName.generate_panel_prompts, GenerationStepName.generate_images])
@@ -214,11 +219,11 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
 
     task.status = TaskStatus.retrying
     task.current_step = None
-    task.progress_total = 5 if task.use_character_references else 3
+    task.progress_total = task_progress_total(task)
     prompts_ready = bool(task.panels) and all(
         panel.prompt_status == PromptStatus.generated and panel.generated_prompt for panel in task.panels
     )
-    task.progress_current = (4 if task.use_character_references else 2) if prompts_ready else 0
+    task.progress_current = (task.progress_total - 1) if prompts_ready else 0
     task.attempts += 1
     task.next_run_at = None
     task.cancel_requested_at = None

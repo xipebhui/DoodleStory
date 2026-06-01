@@ -254,6 +254,7 @@ const taskStatusOptions: Array<{ value: Task["status"] | "all"; label: string }>
 ];
 
 const stepLabels: Record<string, string> = {
+  adapt_story: "故事增强",
   segment_story: "故事切分",
   extract_characters: "人物识别",
   generate_character_references: "人物参考图",
@@ -390,6 +391,7 @@ function TasksView({ user }: { user: User }) {
   const [creating, setCreating] = useState(false);
   const [createStyleId, setCreateStyleId] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
+  const [storyInputMode, setStoryInputMode] = useState<"original" | "adapted">("original");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -554,6 +556,7 @@ function TasksView({ user }: { user: User }) {
       setCreating(true);
       const task = await api.createTask({
         original_text: String(formData.get("original_text") ?? ""),
+        story_input_mode: storyInputMode,
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
@@ -561,6 +564,7 @@ function TasksView({ user }: { user: User }) {
       });
       form.reset();
       setCountMode("auto");
+      setStoryInputMode("original");
       setCreateStyleId(styles[0]?.id ?? "");
       setCreateOpen(false);
       setMessage("任务已进入队列");
@@ -781,6 +785,8 @@ function TasksView({ user }: { user: User }) {
                   <div className="task-style-cell">
                     <strong>{task.style_name_snapshot}</strong>
                     <small>
+                      {task.story_input_mode === "adapted" ? "故事增强" : "完整故事"}
+                      {" · "}
                       {task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}
                       {" · "}
                       {task.style_aspect_ratio_snapshot}
@@ -927,6 +933,15 @@ function TasksView({ user }: { user: User }) {
                 <p>{taskForDetail.original_text}</p>
               </section>
 
+              {taskForDetail.story_input_mode === "adapted" ? (
+                <section className="story-panel adapted-story-panel">
+                  <h2>增强故事</h2>
+                  {taskForDetail.adapted_story_title ? <strong>{taskForDetail.adapted_story_title}</strong> : null}
+                  {taskForDetail.adapted_story_hook ? <small>{taskForDetail.adapted_story_hook}</small> : null}
+                  <p>{taskForDetail.adapted_story_text ?? "等待 LLM 故事增强"}</p>
+                </section>
+              ) : null}
+
               <section className="panel-wall">
                 <div className="editor-title">
                   <div>
@@ -957,8 +972,10 @@ function TasksView({ user }: { user: User }) {
                             <span>{imageStatusLabel(image?.status ?? panel.prompt_status)}</span>
                           )}
                         </div>
-                        <strong>Panel {panel.panel_order}</strong>
+                        <strong>{panel.panel_type === "cover" ? "封面" : `Panel ${panel.panel_order}`}</strong>
                         <p>{panel.original_text_segment}</p>
+                        {panel.narration_text ? <small>旁白：{panel.narration_text}</small> : null}
+                        {panel.dialogue_text ? <small>对白：{panel.dialogue_text}</small> : null}
                         {image?.workflow_step && image.status !== "succeeded" ? (
                           <small className="process-note">
                             {imageWorkflowLabel(image.workflow_step)} · {imageStatusLabel(image.status)}
@@ -1022,9 +1039,37 @@ function TasksView({ user }: { user: User }) {
               </button>
             </div>
             <form className="task-create-form" onSubmit={createTask}>
+              <div className="segmented-control">
+                <button
+                  type="button"
+                  className={storyInputMode === "original" ? "active" : ""}
+                  onClick={() => setStoryInputMode("original")}
+                >
+                  完整故事
+                </button>
+                <button
+                  type="button"
+                  className={storyInputMode === "adapted" ? "active" : ""}
+                  onClick={() => setStoryInputMode("adapted")}
+                >
+                  故事方案
+                </button>
+              </div>
               <label>
-                原始文本
-                <textarea name="original_text" placeholder="输入原始故事文本，系统会原样保存" required autoFocus />
+                {storyInputMode === "adapted" ? "故事方案或简化故事" : "原始文本"}
+                <textarea
+                  name="original_text"
+                  placeholder={
+                    storyInputMode === "adapted"
+                      ? "输入故事设定、简短梗概或想法，系统会先整理成更抓人的故事"
+                      : "输入原始故事文本，系统会原样保存"
+                  }
+                  required
+                  autoFocus
+                />
+                {storyInputMode === "adapted" ? (
+                  <small>原始输入会保留，生成前会新增一步 LLM 故事增强，并自动生成封面。</small>
+                ) : null}
               </label>
               <fieldset className="style-picker">
                 <legend>选择风格</legend>
@@ -1090,6 +1135,7 @@ function TasksView({ user }: { user: User }) {
                 <label>
                   图片数量
                   <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
+                  {storyInputMode === "adapted" ? <small>固定数量包含封面，例如 8 张 = 1 张封面 + 7 张剧情图。</small> : null}
                 </label>
               ) : null}
               <label className="character-reference-toggle">

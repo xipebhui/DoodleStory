@@ -15,9 +15,11 @@ from app.models.enums import (
     GeneratedImageSourceType,
     GeneratedImageWorkflowStep,
     ImageCountMode,
+    PanelType,
     PromptStatus,
     StepStatus,
     StorageBackend,
+    StoryInputMode,
     StyleStatus,
     TaskStatus,
     UserRole,
@@ -153,6 +155,10 @@ class GenerationTask(Base, TimestampMixin):
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
     display_title: Mapped[str] = mapped_column(String(120))
     original_text: Mapped[str] = mapped_column(Text)
+    story_input_mode: Mapped[StoryInputMode] = mapped_column(Enum(StoryInputMode), default=StoryInputMode.original)
+    adapted_story_title: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    adapted_story_hook: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    adapted_story_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image_count_mode: Mapped[ImageCountMode] = mapped_column(Enum(ImageCountMode))
     requested_image_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     use_character_references: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -229,7 +235,10 @@ class TaskPanel(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
     panel_order: Mapped[int] = mapped_column(Integer)
+    panel_type: Mapped[PanelType] = mapped_column(Enum(PanelType), default=PanelType.scene, index=True)
     original_text_segment: Mapped[str] = mapped_column(Text)
+    narration_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    dialogue_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_status: Mapped[PromptStatus] = mapped_column(Enum(PromptStatus), default=PromptStatus.pending)
     generated_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_model_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
