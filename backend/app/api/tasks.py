@@ -12,7 +12,9 @@ from app.models.entities import FileAsset, GeneratedImage, GenerationStep, Gener
 from app.models.enums import (
     DownloadStatus,
     FileAssetPurpose,
+    GeneratedImageSourceType,
     GeneratedImageStatus,
+    GeneratedImageWorkflowStep,
     GenerationStepName,
     ImageCountMode,
     PromptStatus,
@@ -22,8 +24,8 @@ from app.models.enums import (
     UserRole,
 )
 from app.schemas.common import ApiData, ApiList
-from app.schemas.task import TaskCreate, TaskDownloadRead, TaskRead
-from app.services.task_worker import enqueue_task
+from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskRead
+from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number
 from app.services.storage import resolve_storage_key, save_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -50,6 +52,17 @@ def ensure_task_access(task: GenerationTask | None, user: User) -> GenerationTas
     if user.role != UserRole.admin and task.owner_user_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="没有权限访问该任务")
     return task
+
+
+def current_or_latest_image_for_panel(task: GenerationTask, panel_id: str) -> GeneratedImage | None:
+    panel_images = [image for image in task.generated_images if image.panel_id == panel_id]
+    current = [image for image in panel_images if image.is_current]
+    if current:
+        return sorted(current, key=lambda image: image.generation_number, reverse=True)[0]
+    succeeded = [image for image in panel_images if image.status == GeneratedImageStatus.succeeded and image.asset_id]
+    if succeeded:
+        return sorted(succeeded, key=lambda image: image.generation_number, reverse=True)[0]
+    return sorted(panel_images, key=lambda image: image.generation_number, reverse=True)[0] if panel_images else None
 
 
 @router.get("", response_model=ApiList[TaskRead])
@@ -170,7 +183,7 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
 
     for image in list(task.generated_images):
         if image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
-            db.delete(image)
+            image.is_current = False
     for panel in list(task.panels):
         if panel.prompt_status == PromptStatus.failed:
             panel.prompt_status = PromptStatus.pending
@@ -246,6 +259,66 @@ def cancel_task(task_id: str, user: User = Depends(current_user), db: Session = 
     return ApiData(data=TaskRead.model_validate(task))
 
 
+@router.post("/{task_id}/panels/{panel_id}/edits", response_model=ApiData[TaskRead], status_code=status.HTTP_202_ACCEPTED)
+async def edit_panel_image(
+    task_id: str,
+    panel_id: str,
+    payload: PanelEditCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[TaskRead]:
+    task = db.scalar(
+        select(GenerationTask)
+        .where(GenerationTask.id == task_id)
+        .options(*task_options())
+    )
+    task = ensure_task_access(task, user)
+    if task.status in {TaskStatus.queued, TaskStatus.running, TaskStatus.retrying, TaskStatus.cancel_requested}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务生成中，暂不能修改单个分镜")
+
+    panel = next((item for item in task.panels if item.id == panel_id), None)
+    if panel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分镜不存在")
+    if panel.prompt_status != PromptStatus.generated or not panel.generated_prompt:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="分镜提示词尚未生成，不能修改画面")
+
+    running_image = next(
+        (
+            image
+            for image in task.generated_images
+            if image.panel_id == panel_id and image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running}
+        ),
+        None,
+    )
+    if running_image:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该分镜已有修改或生成正在进行")
+
+    current_image = current_or_latest_image_for_panel(task, panel_id)
+    previous_prompt = (current_image.image_prompt if current_image and current_image.image_prompt else panel.generated_prompt) or ""
+    image = GeneratedImage(
+        task_id=task.id,
+        panel_id=panel.id,
+        status=GeneratedImageStatus.queued,
+        generation_number=next_generation_number(db, panel.id),
+        is_current=False,
+        source_type=GeneratedImageSourceType.user_edit,
+        workflow_step=GeneratedImageWorkflowStep.rewrite_prompt,
+        user_instruction=payload.user_instruction.strip(),
+        previous_prompt=previous_prompt,
+        image_model_name_snapshot=task.image_model_name_snapshot,
+    )
+    db.add(image)
+    db.commit()
+    await enqueue_panel_edit(image.id)
+
+    task = db.scalar(
+        select(GenerationTask)
+        .where(GenerationTask.id == task.id)
+        .options(*task_options())
+    )
+    return ApiData(data=TaskRead.model_validate(task))
+
+
 @router.post("/{task_id}/downloads", response_model=ApiData[TaskDownloadRead])
 def create_task_download(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskDownloadRead]:
     task = db.scalar(
@@ -258,7 +331,7 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
     images = [
         image
         for image in sorted(task.generated_images, key=lambda item: item.panel.panel_order if item.panel else 0)
-        if image.status == GeneratedImageStatus.succeeded and image.asset is not None
+        if image.is_current and image.status == GeneratedImageStatus.succeeded and image.asset is not None
     ]
     if not images:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务暂无可下载的成功图片")

@@ -42,6 +42,11 @@ class PanelPromptResult(BaseModel):
     panels: list[PanelPrompt] = Field(min_length=1)
 
 
+class RevisedPanelPrompt(BaseModel):
+    prompt: str = Field(min_length=1)
+    change_summary: str = Field(min_length=1)
+
+
 def read_prompt(name: str) -> str:
     return (PROMPT_ROOT / name).read_text(encoding="utf-8")
 
@@ -170,4 +175,36 @@ def generate_panel_prompts(
     if returned_orders != expected_orders:
         raise LLMResponseError("LLM 返回的提示词分镜顺序与输入 panels 不一致")
     logger.info("panel prompt generation succeeded panel_count=%s", len(result.panels))
+    return result
+
+
+def revise_panel_prompt(
+    *,
+    original_text: str,
+    style_prompt: str,
+    panel_text: str,
+    current_prompt: str,
+    user_instruction: str,
+) -> RevisedPanelPrompt:
+    system_prompt = read_prompt("revise_panel_prompt_v1.md")
+    user_prompt = json.dumps(
+        {
+            "original_text": original_text,
+            "style_prompt": style_prompt,
+            "panel_text": panel_text,
+            "current_prompt": current_prompt,
+            "user_instruction": user_instruction,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    try:
+        result = RevisedPanelPrompt.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMResponseError("LLM 单分镜提示词修改 JSON 结构不符合要求") from exc
+    logger.info(
+        "panel prompt revision succeeded prompt_chars=%s change_summary_chars=%s",
+        len(result.prompt),
+        len(result.change_summary),
+    )
     return result

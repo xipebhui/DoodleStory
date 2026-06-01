@@ -69,6 +69,17 @@ class GeneratedImageStatus(StrEnum):
     cancelled = "cancelled"
 
 
+class GeneratedImageSourceType(StrEnum):
+    initial = "initial"
+    user_edit = "user_edit"
+    retry = "retry"
+
+
+class GeneratedImageWorkflowStep(StrEnum):
+    rewrite_prompt = "rewrite_prompt"
+    generate_image = "generate_image"
+
+
 class WorkflowStatus(StrEnum):
     queued = "queued"
     running = "running"

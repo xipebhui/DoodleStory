@@ -625,6 +625,78 @@ textarea {
   line-height: 1.5;
 }
 
+.panel-card .process-note {
+  color: #e0b15d;
+}
+
+.panel-edit-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.panel-edit-box textarea {
+  min-height: 76px;
+  resize: vertical;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.panel-edit-box button {
+  justify-self: start;
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 13px;
+}
+
+.panel-version-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.panel-version-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.panel-version-item span {
+  color: #e0b15d;
+  font-size: 12px;
+}
+
+.panel-version-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #dfe5ef;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-version-item em,
+.panel-version-item small {
+  grid-column: 2;
+  color: #7f8998;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.panel-version-item.running em,
+.panel-version-item.queued em {
+  color: #75b8ff;
+}
+
+.panel-version-item.failed small {
+  color: #ff8b8b;
+}
+
 .image-button {
   position: relative;
   width: 100%;

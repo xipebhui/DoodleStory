@@ -111,7 +111,15 @@ export type GeneratedImage = {
   id: string;
   panel_id: string;
   status: string;
-  final_prompt: string;
+  generation_number: number;
+  is_current: boolean;
+  source_type: "initial" | "user_edit" | "retry";
+  workflow_step: "rewrite_prompt" | "generate_image" | null;
+  user_instruction: string | null;
+  previous_prompt: string | null;
+  image_prompt: string | null;
+  prompt_change_summary: string | null;
+  final_prompt: string | null;
   asset: FileAsset | null;
   error_code: string | null;
   error_message: string | null;
@@ -276,6 +284,11 @@ export const api = {
     request<ApiData<Task>>(`/tasks/${id}/cancel`, { method: "POST" }).then((result) => result.data),
   retryTask: (id: string) =>
     request<ApiData<Task>>(`/tasks/${id}/retry`, { method: "POST" }).then((result) => result.data),
+  editPanelImage: (taskId: string, panelId: string, payload: { user_instruction: string }) =>
+    request<ApiData<Task>>(`/tasks/${taskId}/panels/${panelId}/edits`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
   createTaskDownload: (id: string) =>
     request<ApiData<TaskDownload>>(`/tasks/${id}/downloads`, { method: "POST" }).then((result) => result.data),
 };

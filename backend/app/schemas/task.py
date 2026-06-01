@@ -4,7 +4,9 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import (
     DownloadStatus,
+    GeneratedImageSourceType,
     GeneratedImageStatus,
+    GeneratedImageWorkflowStep,
     GenerationStepName,
     ImageCountMode,
     PromptStatus,
@@ -43,10 +45,22 @@ class GeneratedImageRead(TimestampFields):
     id: str
     panel_id: str
     status: GeneratedImageStatus
-    final_prompt: str
+    generation_number: int
+    is_current: bool
+    source_type: GeneratedImageSourceType
+    workflow_step: GeneratedImageWorkflowStep | None
+    user_instruction: str | None
+    previous_prompt: str | None
+    image_prompt: str | None
+    prompt_change_summary: str | None
+    final_prompt: str | None
     asset: FileAssetRead | None = None
     error_code: str | None
     error_message: str | None
+
+
+class PanelEditCreate(BaseModel):
+    user_instruction: str = Field(min_length=1, max_length=2000)
 
 
 class TaskDownloadRead(TimestampFields):

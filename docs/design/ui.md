@@ -155,7 +155,7 @@ DoodleStory 是一个创作型生产工具，第一屏应直接进入任务工�
 - `prompting`：展示正在生成生图 prompt。
 - `generating images`：展示按 panel 生成图片的进度。
 - `succeeded`：展示全部图片和下载操作。
-- `partial_succeeded`：展示成功图片和失败 panel，不提供单图重试。
+- `partial_succeeded`：展示成功图片和失败 panel，允许任务级重试。
 - `failed`：展示用户可读错误和是否可重试。
 - `cancel_requested`：展示取消请求已提交。
 - `cancelled`：保留已完成输出，不自动重试。
@@ -167,8 +167,8 @@ DoodleStory 是一个创作型生产工具，第一屏应直接进入任务工�
 - Admin 可以查看所有任务详情。
 - 失败 panel 不隐藏。
 - 不用 panel 文本或生成 prompt 覆盖原始故事。
-- 第一版中生成 prompt 可查看但不可编辑。
-- 第一版不支持单图片重试，每个 panel 只生成一张图。
+- 生成 prompt 可查看；单 panel 画面修改通过“用户修改方向 -> LLM 改写 image prompt -> 重新生图”的流程完成，不直接手动编辑最终 prompt。
+- 每个 panel 可保留多个图片版本，当前展示和下载使用当前成功版本。
 
 ## 图片预览弹窗
 

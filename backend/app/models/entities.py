@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -12,6 +12,8 @@ from app.models.enums import (
     FileAssetPurpose,
     GenerationStepName,
     GeneratedImageStatus,
+    GeneratedImageSourceType,
+    GeneratedImageWorkflowStep,
     ImageCountMode,
     PromptStatus,
     StepStatus,
@@ -217,20 +219,31 @@ class TaskPanel(Base, TimestampMixin):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     task: Mapped[GenerationTask] = relationship(back_populates="panels")
-    generated_image: Mapped[Optional["GeneratedImage"]] = relationship(back_populates="panel")
+    generated_images: Mapped[list["GeneratedImage"]] = relationship(back_populates="panel", cascade="all, delete-orphan")
 
 
 class GeneratedImage(Base, TimestampMixin):
     __tablename__ = "generated_images"
     __table_args__ = (
         CheckConstraint("status != 'succeeded' OR asset_id IS NOT NULL", name="ck_generated_images_succeeded_asset"),
+        CheckConstraint("generation_number > 0", name="ck_generated_images_generation_number_positive"),
+        UniqueConstraint("panel_id", "generation_number"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
-    panel_id: Mapped[str] = mapped_column(ForeignKey("task_panels.id", ondelete="CASCADE"), unique=True)
+    panel_id: Mapped[str] = mapped_column(ForeignKey("task_panels.id", ondelete="CASCADE"), index=True)
     status: Mapped[GeneratedImageStatus] = mapped_column(Enum(GeneratedImageStatus), default=GeneratedImageStatus.queued)
-    final_prompt: Mapped[str] = mapped_column(Text)
+    generation_number: Mapped[int] = mapped_column(Integer, default=1)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    source_type: Mapped[GeneratedImageSourceType] = mapped_column(Enum(GeneratedImageSourceType), default=GeneratedImageSourceType.initial, index=True)
+    workflow_step: Mapped[Optional[GeneratedImageWorkflowStep]] = mapped_column(Enum(GeneratedImageWorkflowStep), nullable=True)
+    user_instruction: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    previous_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt_change_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    llm_model_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    final_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image_model_name_snapshot: Mapped[str] = mapped_column(String(120))
     asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
     provider_request_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -241,7 +254,7 @@ class GeneratedImage(Base, TimestampMixin):
     internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     task: Mapped[GenerationTask] = relationship(back_populates="generated_images")
-    panel: Mapped[TaskPanel] = relationship(back_populates="generated_image")
+    panel: Mapped[TaskPanel] = relationship(back_populates="generated_images")
     asset: Mapped[Optional[FileAsset]] = relationship()
 
 

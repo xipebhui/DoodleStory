@@ -286,7 +286,7 @@ file_assets 1--N task_downloads
 
 ### `generated_images`
 
-保存 panel 的图片生成结果。
+保存 panel 的图片生成结果。该表同时承担 panel 图片版本记录，每个 panel 可以有多条生成版本，当前展示和下载使用 `is_current = true` 的成功版本。
 
 字段：
 
@@ -294,7 +294,16 @@ file_assets 1--N task_downloads
 - `task_id` 外键到 `generation_tasks.id`，not null
 - `panel_id` 外键到 `task_panels.id`，not null
 - `status` text not null，取值 `queued`、`running`、`succeeded`、`failed`、`cancelled`
-- `final_prompt` text not null
+- `generation_number` integer not null
+- `is_current` boolean not null，默认 `false`
+- `source_type` text not null，取值 `initial`、`user_edit`、`retry`
+- `workflow_step` text null，取值 `rewrite_prompt`、`generate_image`
+- `user_instruction` text null，用户对单 panel 的修改方向
+- `previous_prompt` text null，修改前的 panel image prompt 快照
+- `image_prompt` text null，LLM 生成或修改后的画面提示词
+- `prompt_change_summary` text null，LLM 对本次修改的摘要
+- `llm_model_snapshot` text null
+- `final_prompt` text null
 - `image_model_name_snapshot` text not null
 - `asset_id` 外键到 `file_assets.id`，null
 - `provider_request_id` text null
@@ -308,8 +317,10 @@ file_assets 1--N task_downloads
 
 约束：
 
-- `panel_id` 唯一。第一版每个 panel 只生成一张图片。
+- `panel_id` + `generation_number` 唯一。
+- `generation_number` 必须大于 `0`。
 - 当 `status = 'succeeded'` 时，`asset_id` 不能为空。
+- 当前阶段由应用层保证每个 panel 只有一个当前成功版本。
 
 索引：
 
@@ -378,8 +389,8 @@ Worker 执行：
 
 - `generation_tasks.original_text` 必须原样保存。
 - 任务和风格测试保存风格 prompt 与 `image_model_name` 快照，保证风格后续编辑不影响历史审计。
-- 第一版不支持用户编辑生成 prompt。
-- 第一版支持失败任务的任务级重试，不支持单图片重试；每个 panel 只生成一张图片。
+- 支持用户提交单 panel 画面修改方向；系统调用 LLM 生成新的 `image_prompt`，再为该 panel 生成新的图片版本。
+- 任务级重试和单 panel 修改都会保留历史图片版本，当前展示和下载只使用当前成功版本。
 - `error_message` 保存用户可读错误；`internal_error_ref` 保存内部细节引用。
 - 大型 provider 响应和原始日志不放入主工作流表。
 - 被任务引用的风格不应被硬删除。

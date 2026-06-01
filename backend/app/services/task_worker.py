@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
@@ -19,13 +19,15 @@ from app.models.entities import (
 from app.models.enums import (
     FileAssetPurpose,
     GeneratedImageStatus,
+    GeneratedImageSourceType,
+    GeneratedImageWorkflowStep,
     GenerationStepName,
     PromptStatus,
     StepStatus,
     TaskStatus,
 )
 from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
-from app.services.llm import LLMProviderError, StorySegment, generate_panel_prompts, segment_story
+from app.services.llm import LLMProviderError, StorySegment, generate_panel_prompts, revise_panel_prompt, segment_story
 from app.services.storage import resolve_storage_key
 
 _queue: asyncio.Queue[str] | None = None
@@ -58,6 +60,11 @@ async def enqueue_task(task_id: str) -> None:
         raise RuntimeError("任务队列尚未初始化")
     await _queue.put(task_id)
     logger.info("task enqueued task_id=%s queue_size=%s", task_id, _queue.qsize())
+
+
+async def enqueue_panel_edit(generated_image_id: str) -> None:
+    asyncio.create_task(asyncio.to_thread(process_panel_edit, generated_image_id))
+    logger.info("panel edit enqueued generated_image_id=%s", generated_image_id)
 
 
 async def recover_queued_tasks() -> None:
@@ -186,18 +193,22 @@ def build_final_prompt(style_prompt: str, aspect_ratio: str, panel_prompt: str, 
     )
 
 
-def succeeded_images_by_panel(task: GenerationTask) -> dict[str, GeneratedImage]:
+def current_succeeded_images_by_panel(task: GenerationTask) -> dict[str, GeneratedImage]:
     return {
         image.panel_id: image
         for image in task.generated_images
-        if image.status == GeneratedImageStatus.succeeded and image.asset_id is not None
+        if image.is_current and image.status == GeneratedImageStatus.succeeded and image.asset_id is not None
     }
 
 
-def delete_non_succeeded_images_for_panel(db: Session, task: GenerationTask, panel: TaskPanel) -> None:
-    for image in list(task.generated_images):
-        if image.panel_id == panel.id and (image.status != GeneratedImageStatus.succeeded or image.asset_id is None):
-            db.delete(image)
+def next_generation_number(db: Session, panel_id: str) -> int:
+    current_max = db.scalar(select(func.max(GeneratedImage.generation_number)).where(GeneratedImage.panel_id == panel_id))
+    return (current_max or 0) + 1
+
+
+def mark_image_current(db: Session, image: GeneratedImage) -> None:
+    for existing in db.scalars(select(GeneratedImage).where(GeneratedImage.panel_id == image.panel_id)).all():
+        existing.is_current = existing.id == image.id
 
 
 def should_stop_for_cancel(db: Session, task: GenerationTask) -> bool:
@@ -333,7 +344,7 @@ def process_task(task_id: str) -> None:
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
             if should_stop_for_cancel(db, task):
                 return
-            existing_successes = succeeded_images_by_panel(task)
+            existing_successes = current_succeeded_images_by_panel(task)
             if panel.id in existing_successes:
                 success_count += 1
                 skipped_count += 1
@@ -345,8 +356,6 @@ def process_task(task_id: str) -> None:
                     existing_successes[panel.id].id,
                 )
                 continue
-            delete_non_succeeded_images_for_panel(db, task, panel)
-            db.flush()
             final_prompt = build_final_prompt(
                 task.style_prompt_snapshot,
                 task.style_aspect_ratio_snapshot,
@@ -357,6 +366,11 @@ def process_task(task_id: str) -> None:
                 task_id=task.id,
                 panel_id=panel.id,
                 status=GeneratedImageStatus.running,
+                generation_number=next_generation_number(db, panel.id),
+                is_current=False,
+                source_type=GeneratedImageSourceType.retry if task.attempts > 0 else GeneratedImageSourceType.initial,
+                workflow_step=GeneratedImageWorkflowStep.generate_image,
+                image_prompt=panel.generated_prompt,
                 final_prompt=final_prompt,
                 image_model_name_snapshot=task.image_model_name_snapshot,
                 started_at=datetime.utcnow(),
@@ -393,6 +407,7 @@ def process_task(task_id: str) -> None:
                 image.asset_id = asset.id
                 image.provider_request_id = generated.provider_request_id
                 image.status = GeneratedImageStatus.succeeded
+                mark_image_current(db, image)
                 image.finished_at = datetime.utcnow()
                 success_count += 1
                 logger.info(
@@ -447,3 +462,151 @@ def process_task(task_id: str) -> None:
             skipped_count,
             panel_count,
         )
+
+
+def load_generated_image(db: Session, generated_image_id: str) -> GeneratedImage | None:
+    return db.scalar(
+        select(GeneratedImage)
+        .where(GeneratedImage.id == generated_image_id)
+        .options(
+            selectinload(GeneratedImage.task),
+            selectinload(GeneratedImage.panel),
+            selectinload(GeneratedImage.asset),
+        )
+    )
+
+
+def process_panel_edit(generated_image_id: str) -> None:
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is None:
+            logger.warning("panel edit skipped missing generated_image_id=%s", generated_image_id)
+            return
+        task = image.task
+        panel = image.panel
+        logger.info(
+            "panel edit started generated_image_id=%s task_id=%s panel_id=%s generation_number=%s",
+            image.id,
+            task.id,
+            panel.id,
+            image.generation_number,
+        )
+
+        image.status = GeneratedImageStatus.running
+        image.workflow_step = GeneratedImageWorkflowStep.rewrite_prompt
+        image.started_at = image.started_at or datetime.utcnow()
+        image.error_code = None
+        image.error_message = None
+        db.commit()
+
+        try:
+            revision = revise_panel_prompt(
+                original_text=task.original_text,
+                style_prompt=task.style_prompt_snapshot,
+                panel_text=panel.original_text_segment,
+                current_prompt=image.previous_prompt or panel.generated_prompt or "",
+                user_instruction=image.user_instruction or "",
+            )
+            image.image_prompt = revision.prompt
+            image.prompt_change_summary = revision.change_summary
+            image.llm_model_snapshot = get_settings().siliconflow_model
+            image.final_prompt = build_final_prompt(
+                task.style_prompt_snapshot,
+                task.style_aspect_ratio_snapshot,
+                revision.prompt,
+                panel.original_text_segment,
+            )
+            image.workflow_step = GeneratedImageWorkflowStep.generate_image
+            db.commit()
+            logger.info(
+                "panel edit prompt revised generated_image_id=%s prompt_chars=%s change_summary=%s",
+                image.id,
+                len(revision.prompt),
+                revision.change_summary,
+            )
+        except LLMProviderError as exc:
+            logger.warning(
+                "panel edit prompt revision failed generated_image_id=%s error_type=%s error=%s",
+                image.id,
+                exc.__class__.__name__,
+                exc,
+            )
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            db.commit()
+            return
+
+        style = db.scalar(
+            select(Style)
+            .where(Style.id == task.style_id)
+            .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+        )
+        if style is None or not style.reference_images:
+            exc = ImageProviderConfigError("风格至少需要一张参考图")
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            db.commit()
+            return
+
+        reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        try:
+            logger.info(
+                "panel edit image request generated_image_id=%s task_id=%s panel_id=%s prompt_chars=%s reference_count=%s",
+                image.id,
+                task.id,
+                panel.id,
+                len(image.final_prompt or ""),
+                len(reference_paths),
+            )
+            generated = generate_xg_image(
+                prompt=image.final_prompt or "",
+                reference_paths=reference_paths,
+                image_model_name=image.image_model_name_snapshot,
+                aspect_ratio=task.style_aspect_ratio_snapshot,
+            )
+            asset = FileAsset(
+                purpose=FileAssetPurpose.generated_image,
+                storage_key=generated.storage_key,
+                original_filename=generated.original_filename,
+                content_type=generated.content_type,
+                byte_size=generated.byte_size,
+                checksum_sha256=generated.checksum_sha256,
+            )
+            db.add(asset)
+            db.flush()
+            image.asset_id = asset.id
+            image.provider_request_id = generated.provider_request_id
+            image.status = GeneratedImageStatus.succeeded
+            image.finished_at = datetime.utcnow()
+            panel.generated_prompt = image.image_prompt
+            panel.prompt_status = PromptStatus.generated
+            panel.prompt_model_snapshot = image.llm_model_snapshot
+            panel.error_code = None
+            panel.error_message = None
+            mark_image_current(db, image)
+            logger.info(
+                "panel edit image succeeded generated_image_id=%s task_id=%s panel_id=%s asset_storage_key=%s bytes=%s",
+                image.id,
+                task.id,
+                panel.id,
+                generated.storage_key,
+                generated.byte_size,
+            )
+        except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+            logger.warning(
+                "panel edit image failed generated_image_id=%s task_id=%s panel_id=%s error_type=%s error=%s",
+                image.id,
+                task.id,
+                panel.id,
+                exc.__class__.__name__,
+                exc,
+            )
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+        db.commit()

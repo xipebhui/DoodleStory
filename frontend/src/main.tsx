@@ -275,6 +275,23 @@ function imageStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
+function imageSourceLabel(source: string) {
+  const labels: Record<string, string> = {
+    initial: "初始生成",
+    user_edit: "用户修改",
+    retry: "任务重试",
+  };
+  return labels[source] ?? source;
+}
+
+function imageWorkflowLabel(step: string | null) {
+  const labels: Record<string, string> = {
+    rewrite_prompt: "LLM 改写提示词",
+    generate_image: "图片生成",
+  };
+  return step ? labels[step] ?? step : "等待处理";
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "暂无";
   return new Intl.DateTimeFormat("zh-CN", {
@@ -289,6 +306,10 @@ function isActiveTask(task: Task | null | undefined) {
   return Boolean(task && ["queued", "running", "retrying", "cancel_requested"].includes(task.status));
 }
 
+function hasActivePanelEdit(task: Task | null | undefined) {
+  return Boolean(task?.generated_images.some((image) => image.status === "queued" || image.status === "running"));
+}
+
 function taskProgress(task: Task) {
   if (task.progress_total <= 0) return 0;
   return Math.min(100, Math.round((task.progress_current / task.progress_total) * 100));
@@ -300,15 +321,36 @@ function sortedPanels(task: Task | null | undefined) {
 
 function imagesByPanel(task: Task | null | undefined) {
   const map = new Map<string, Task["generated_images"][number]>();
-  task?.generated_images.forEach((image) => map.set(image.panel_id, image));
+  const groups = new Map<string, Task["generated_images"]>();
+  task?.generated_images.forEach((image) => {
+    groups.set(image.panel_id, [...(groups.get(image.panel_id) ?? []), image]);
+  });
+  groups.forEach((images, panelId) => {
+    const active = images
+      .filter((image) => image.status === "queued" || image.status === "running")
+      .sort((a, b) => b.generation_number - a.generation_number)[0];
+    const current = images
+      .filter((image) => image.is_current)
+      .sort((a, b) => b.generation_number - a.generation_number)[0];
+    const latest = [...images].sort((a, b) => b.generation_number - a.generation_number)[0];
+    if (active || current || latest) {
+      map.set(panelId, active ?? current ?? latest);
+    }
+  });
   return map;
 }
 
 function succeededImages(task: Task | null | undefined) {
   const panelMap = new Map(sortedPanels(task).map((panel) => [panel.id, panel.panel_order]));
   return [...(task?.generated_images ?? [])]
-    .filter((image) => image.status === "succeeded" && image.asset)
+    .filter((image) => image.is_current && image.status === "succeeded" && image.asset)
     .sort((a, b) => (panelMap.get(a.panel_id) ?? 0) - (panelMap.get(b.panel_id) ?? 0));
+}
+
+function panelImageVersions(task: Task | null | undefined, panelId: string) {
+  return [...(task?.generated_images ?? [])]
+    .filter((image) => image.panel_id === panelId)
+    .sort((a, b) => b.generation_number - a.generation_number);
 }
 
 function shortId(value: string) {
@@ -349,6 +391,8 @@ function TasksView({ user }: { user: User }) {
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
+  const [panelEditInputs, setPanelEditInputs] = useState<Record<string, string>>({});
+  const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
 
   const taskForDetail = selectedTask ?? tasks.find((task) => task.id === selectedId) ?? tasks[0] ?? null;
@@ -365,10 +409,10 @@ function TasksView({ user }: { user: User }) {
   }, [query, statusFilter, styleFilter, cursor]);
 
   useEffect(() => {
-    if (!isActiveTask(selectedTask) && !tasks.some(isActiveTask)) return;
+    if (!isActiveTask(selectedTask) && !hasActivePanelEdit(selectedTask) && !tasks.some(isActiveTask)) return;
     const timer = window.setInterval(() => refresh(selectedId, { quiet: true }), 6000);
     return () => window.clearInterval(timer);
-  }, [activeTaskSignature, selectedId, selectedTask?.status]);
+  }, [activeTaskSignature, selectedId, selectedTask?.status, selectedTask?.updated_at]);
 
   useEffect(() => {
     if (!previewImageId) return;
@@ -525,6 +569,27 @@ function TasksView({ user }: { user: User }) {
     }
   }
 
+  async function editPanelImage(panelId: string) {
+    if (!taskForDetail) return;
+    const userInstruction = (panelEditInputs[panelId] ?? "").trim();
+    if (!userInstruction) {
+      setMessage("请输入这次要修改的画面方向");
+      return;
+    }
+    try {
+      setEditingPanelId(panelId);
+      const result = await api.editPanelImage(taskForDetail.id, panelId, { user_instruction: userInstruction });
+      setSelectedTask(result);
+      setPanelEditInputs((items) => ({ ...items, [panelId]: "" }));
+      setMessage("单分镜修改已进入队列");
+      await refresh(result.id, { quiet: true });
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "提交修改失败");
+    } finally {
+      setEditingPanelId(null);
+    }
+  }
+
   function showPreviewOffset(offset: number) {
     if (!previewItems.length) return;
     const current = Math.max(0, previewIndex);
@@ -560,7 +625,7 @@ function TasksView({ user }: { user: User }) {
   const canCancel =
     taskForDetail?.status === "queued" || taskForDetail?.status === "running" || taskForDetail?.status === "retrying";
   const canDownload = Boolean(
-    taskForDetail?.generated_images.some((image) => image.status === "succeeded" && image.asset),
+    succeededImages(taskForDetail).length,
   );
   const canRetry = taskForDetail?.status === "failed" || taskForDetail?.status === "partial_succeeded";
 
@@ -654,7 +719,7 @@ function TasksView({ user }: { user: User }) {
           ) : null}
           {tasks.map((task) => {
             const rowImages = succeededImages(task);
-            const imageCount = task.generated_images.filter((image) => image.status === "succeeded").length;
+            const imageCount = rowImages.length;
             return (
               <button
                 type="button"
@@ -703,7 +768,7 @@ function TasksView({ user }: { user: User }) {
                     <span>{imageCount} 张</span>
                     <span>{formatDateTime(task.created_at)}</span>
                     <span className="row-actions">
-                      {task.generated_images.some((image) => image.asset) ? (
+                      {rowImages.some((image) => image.asset) ? (
                         <span className="mini-action">
                           <Download size={15} />
                         </span>
@@ -798,6 +863,9 @@ function TasksView({ user }: { user: User }) {
                   {taskForDetail.panels.length === 0 ? <div className="empty mini">等待故事切分</div> : null}
                   {sortedPanels(taskForDetail).map((panel) => {
                     const image = panelImageMap.get(panel.id);
+                    const versions = panelImageVersions(taskForDetail, panel.id);
+                    const activeVersion = versions.find((item) => item.status === "queued" || item.status === "running");
+                    const canEditPanel = Boolean(panel.generated_prompt) && !activeVersion;
                     return (
                       <article key={panel.id} className="panel-card">
                         <div className="poster">
@@ -816,8 +884,46 @@ function TasksView({ user }: { user: User }) {
                         </div>
                         <strong>Panel {panel.panel_order}</strong>
                         <p>{panel.original_text_segment}</p>
-                        {panel.generated_prompt ? <small>{panel.generated_prompt}</small> : null}
+                        {image?.workflow_step && image.status !== "succeeded" ? (
+                          <small className="process-note">
+                            {imageWorkflowLabel(image.workflow_step)} · {imageStatusLabel(image.status)}
+                          </small>
+                        ) : null}
+                        {image?.image_prompt || panel.generated_prompt ? <small>{image?.image_prompt ?? panel.generated_prompt}</small> : null}
+                        {image?.user_instruction ? <small>修改方向：{image.user_instruction}</small> : null}
+                        {image?.prompt_change_summary ? <small>修改摘要：{image.prompt_change_summary}</small> : null}
                         {image?.error_message ? <small className="error">{image.error_message}</small> : null}
+                        <div className="panel-edit-box">
+                          <textarea
+                            value={panelEditInputs[panel.id] ?? ""}
+                            onChange={(event) =>
+                              setPanelEditInputs((items) => ({ ...items, [panel.id]: event.target.value }))
+                            }
+                            placeholder="描述要调整的画面方向，例如：人物更紧张，背景改成雨夜街头"
+                            disabled={!canEditPanel || editingPanelId === panel.id}
+                          />
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={!canEditPanel || editingPanelId === panel.id}
+                            onClick={() => editPanelImage(panel.id)}
+                          >
+                            {editingPanelId === panel.id ? <Loader2 size={15} className="spin" /> : <Sparkles size={15} />}
+                            修改画面
+                          </button>
+                        </div>
+                        {versions.length > 0 ? (
+                          <div className="panel-version-list">
+                            {versions.slice(0, 4).map((version) => (
+                              <div key={version.id} className={`panel-version-item ${version.status}`}>
+                                <span>v{version.generation_number}</span>
+                                <strong>{imageSourceLabel(version.source_type)}</strong>
+                                <em>{imageWorkflowLabel(version.workflow_step)}</em>
+                                <small>{imageStatusLabel(version.status)}{version.is_current ? " · 当前" : ""}</small>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </article>
                     );
                   })}
@@ -941,7 +1047,7 @@ function TasksView({ user }: { user: User }) {
             <figcaption>
               <div>
                 <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
-                <p>{previewImage.final_prompt}</p>
+                <p>{previewImage.final_prompt ?? previewImage.image_prompt ?? ""}</p>
               </div>
               <div className="preview-actions">
                 <button type="button" className="secondary-button" onClick={downloadPreviewImage}>

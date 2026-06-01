@@ -391,9 +391,29 @@ POST /api/v1/tasks/{task_id}/cancel
 POST /api/v1/tasks/{task_id}/retry
 ```
 
-只允许任务级重试，不支持单图片重试。第一版也不提供用户可编辑 prompt 后重试的能力。
+任务级重试用于处理失败任务，会复用已持久化的 panels 和已完成输出，避免重复副作用。
 
-任务级重试必须复用已持久化的 panels 和已完成输出，避免重复副作用。
+### 修改单个 Panel 画面
+
+```http
+POST /api/v1/tasks/{task_id}/panels/{panel_id}/edits
+```
+
+请求：
+
+```json
+{
+  "user_instruction": "人物表情更紧张，背景改成雨夜街头"
+}
+```
+
+行为：
+
+- 创建一条新的 `generated_images` 版本，`source_type = user_edit`。
+- 先进入 `rewrite_prompt`，调用 LLM 基于当前 `image_prompt` 和用户修改方向生成新提示词。
+- 再进入 `generate_image`，使用新提示词重新生成该 panel 图片。
+- 成功后将新版本标记为当前版本，旧版本保留。
+- 失败时保留错误信息，不影响旧的当前成功图。
 
 ### 删除任务
 
@@ -531,4 +551,4 @@ Provider 错误规则：
 - 永久性校验错误不重试。
 - 临时 provider 失败可以在次数上限内重试。
 - 用户取消的任务永不自动重试。
-- 第一版不支持单图片重试，每个 panel 只生成一张图。
+- 单 panel 修改会新增图片版本；当前版本由 `is_current` 标记。
