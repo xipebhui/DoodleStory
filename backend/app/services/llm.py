@@ -113,6 +113,54 @@ class RevisedPanelPrompt(BaseModel):
     change_summary: str = Field(min_length=1)
 
 
+AGE_STAGE_SPECS = [
+    (("童年", "儿童", "幼年", "小孩"), "child", "童年"),
+    (("少年", "青少年"), "teen", "少年"),
+    (("青年", "年轻"), "young_adult", "青年"),
+    (("中年",), "middle_aged", "中年"),
+    (("老年", "年老", "老人"), "elderly", "老年"),
+    (("成年", "成人"), "adult", "成年"),
+]
+DEFAULT_AGE_STAGE_SLUG = "default"
+DEFAULT_AGE_STAGE_LABEL = "默认"
+STATE_VISUAL_TOKENS = (
+    "愤怒",
+    "生气",
+    "焦虑",
+    "紧张",
+    "失败",
+    "崩溃",
+    "幻想",
+    "画饼",
+    "平静",
+    "冷静",
+    "石化",
+    "无奈",
+    "流汗",
+    "质问",
+    "指责",
+    "问话",
+    "回答",
+    "离开",
+    "满意",
+    "夸张",
+    "表情",
+    "动作",
+    "拍桌",
+    "前倾",
+    "手指",
+    "竖起",
+    "摸头",
+    "摊开",
+    "坐在",
+    "站在",
+    "躺在",
+    "常伴有",
+    "可能",
+)
+VISUAL_CLAUSE_SEPARATORS = ("。", "，", "；", ";", "\n")
+
+
 def read_prompt(name: str) -> str:
     return (PROMPT_ROOT / name).read_text(encoding="utf-8")
 
@@ -131,6 +179,94 @@ def ensure_continuous_panel_orders(panel_orders: list[int]) -> None:
     expected = list(range(1, len(panel_orders) + 1))
     if panel_orders != expected:
         raise LLMResponseError("LLM 返回的 panel_order 必须从 1 开始连续递增")
+
+
+def normalize_character_age_stage(age_stage: str | None) -> tuple[str, str]:
+    text = age_stage or ""
+    for keywords, slug, label in AGE_STAGE_SPECS:
+        if any(keyword in text for keyword in keywords):
+            return slug, label
+    return DEFAULT_AGE_STAGE_SLUG, DEFAULT_AGE_STAGE_LABEL
+
+
+def split_visual_clauses(visual_prompt: str) -> list[str]:
+    clauses = [visual_prompt.strip()]
+    for separator in VISUAL_CLAUSE_SEPARATORS:
+        next_clauses: list[str] = []
+        for clause in clauses:
+            next_clauses.extend(part.strip() for part in clause.split(separator))
+        clauses = next_clauses
+    return [clause for clause in clauses if clause]
+
+
+def stable_character_visual_prompt(appearances: list[CharacterAppearancePlan]) -> str:
+    candidates = sorted(
+        appearances,
+        key=lambda appearance: sum(token in appearance.visual_prompt for token in STATE_VISUAL_TOKENS),
+    )
+    for appearance in candidates:
+        stable_clauses = [
+            clause
+            for clause in split_visual_clauses(appearance.visual_prompt)
+            if not any(token in clause for token in STATE_VISUAL_TOKENS)
+        ]
+        stable_prompt = "，".join(stable_clauses).strip("，。；; ")
+        if len(stable_prompt) >= 8:
+            return stable_prompt
+    return appearances[0].visual_prompt
+
+
+def normalize_character_extraction_result(result: TaskCharacterExtractionResult) -> TaskCharacterExtractionResult:
+    normalized_characters: list[TaskCharacterPlan] = []
+    before_count = sum(len(character.appearances) for character in result.characters)
+
+    for character in result.characters:
+        grouped: dict[str, tuple[str, list[CharacterAppearancePlan]]] = {}
+        group_order: list[str] = []
+        for appearance in character.appearances:
+            slug, label = normalize_character_age_stage(appearance.age_stage)
+            if slug not in grouped:
+                grouped[slug] = (label, [])
+                group_order.append(slug)
+            grouped[slug][1].append(appearance)
+
+        normalized_appearances: list[CharacterAppearancePlan] = []
+        for slug in group_order:
+            label, appearances = grouped[slug]
+            panel_orders = sorted(
+                {
+                    panel_order
+                    for appearance in appearances
+                    for panel_order in appearance.panel_orders
+                }
+            )
+            normalized_appearances.append(
+                CharacterAppearancePlan(
+                    appearance_key=f"{character.character_key}_{slug}",
+                    age_stage=label,
+                    visual_prompt=stable_character_visual_prompt(appearances),
+                    panel_orders=panel_orders,
+                )
+            )
+
+        normalized_characters.append(
+            TaskCharacterPlan(
+                character_key=character.character_key,
+                name=character.name,
+                description=character.description,
+                appearances=normalized_appearances,
+            )
+        )
+
+    normalized_result = TaskCharacterExtractionResult(characters=normalized_characters)
+    after_count = sum(len(character.appearances) for character in normalized_result.characters)
+    if after_count != before_count:
+        logger.info(
+            "task character appearances normalized by age stage before_count=%s after_count=%s",
+            before_count,
+            after_count,
+        )
+    return normalized_result
 
 
 def create_siliconflow_client():
@@ -409,6 +545,8 @@ def extract_task_characters(
         result = TaskCharacterExtractionResult.model_validate(raw)
     except ValidationError as exc:
         raise LLMResponseError("LLM 主要人物 JSON 结构不符合要求") from exc
+
+    result = normalize_character_extraction_result(result)
 
     character_keys: set[str] = set()
     appearance_keys: set[str] = set()
