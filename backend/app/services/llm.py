@@ -307,7 +307,15 @@ def plan_storyboard_from_brief(
     try:
         result = StoryboardPlanningResult.model_validate(raw)
     except ValidationError as exc:
-        raise LLMResponseError("LLM 故事方案图文分镜 JSON 结构不符合要求") from exc
+        logger.warning(
+            "brief storyboard validation failed errors=%s raw_keys=%s",
+            exc.errors(),
+            sorted(raw.keys()),
+        )
+        first_error = exc.errors()[0] if exc.errors() else {}
+        location = ".".join(str(item) for item in first_error.get("loc", []))
+        message = first_error.get("msg", "未知结构错误")
+        raise LLMResponseError(f"LLM 故事方案图文分镜 JSON 结构不符合要求：{location} {message}") from exc
 
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
     if result.panels[0].panel_type != PanelType.cover:
