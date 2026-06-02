@@ -106,6 +106,8 @@ export type TaskPanel = {
   original_text_segment: string;
   narration_text: string | null;
   dialogue_text: string | null;
+  image_text_json: string | null;
+  text_layout: string | null;
   prompt_status: "pending" | "generated" | "failed";
   generated_prompt: string | null;
   created_at: string;
@@ -134,6 +136,8 @@ export type GeneratedImage = {
   user_instruction: string | null;
   previous_prompt: string | null;
   image_prompt: string | null;
+  image_text_json: string | null;
+  text_layout: string | null;
   prompt_change_summary: string | null;
   final_prompt: string | null;
   asset: FileAsset | null;

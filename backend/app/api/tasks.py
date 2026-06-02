@@ -313,6 +313,10 @@ async def edit_panel_image(
 
     current_image = current_or_latest_image_for_panel(task, panel_id)
     previous_prompt = (current_image.image_prompt if current_image and current_image.image_prompt else panel.generated_prompt) or ""
+    previous_image_text_json = (
+        current_image.image_text_json if current_image and current_image.image_text_json else panel.image_text_json
+    )
+    previous_text_layout = current_image.text_layout if current_image and current_image.text_layout else panel.text_layout
     image = GeneratedImage(
         task_id=task.id,
         panel_id=panel.id,
@@ -323,6 +327,8 @@ async def edit_panel_image(
         workflow_step=GeneratedImageWorkflowStep.rewrite_prompt,
         user_instruction=payload.user_instruction.strip(),
         previous_prompt=previous_prompt,
+        image_text_json=previous_image_text_json,
+        text_layout=previous_text_layout,
         image_model_name_snapshot=task.image_model_name_snapshot,
     )
     db.add(image)

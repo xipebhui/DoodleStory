@@ -30,6 +30,9 @@ class StorySegment(BaseModel):
     text: str = Field(min_length=1)
     narration_text: str | None = None
     dialogue_text: str | None = None
+    visual_prompt: str | None = None
+    image_text: dict[str, str | None] | None = None
+    text_layout: str | None = None
 
 
 class StorySegmentationResult(BaseModel):
@@ -42,13 +45,34 @@ class AdaptedStoryResult(BaseModel):
     adapted_story: str = Field(min_length=1)
 
 
+class ImageTextPlan(BaseModel):
+    title: str | None = None
+    narration: str | None = None
+    dialogue: str | None = None
+    emphasis: str | None = None
+
+
 class PanelPrompt(BaseModel):
     panel_order: int = Field(ge=1)
-    prompt: str = Field(min_length=1)
+    visual_prompt: str = Field(min_length=1)
+    image_text: ImageTextPlan = Field(default_factory=ImageTextPlan)
+    text_layout: str = Field(min_length=1)
 
 
 class PanelPromptResult(BaseModel):
     panels: list[PanelPrompt] = Field(min_length=1)
+
+
+class StoryboardPanelPlan(PanelPrompt):
+    panel_type: PanelType
+    story_beat: str = Field(min_length=1)
+
+
+class StoryboardPlanningResult(BaseModel):
+    story_title: str = Field(min_length=1, max_length=120)
+    story_hook: str = Field(min_length=1, max_length=200)
+    story_outline: str = Field(min_length=1)
+    panels: list[StoryboardPanelPlan] = Field(min_length=1)
 
 
 class CharacterAppearancePlan(BaseModel):
@@ -71,7 +95,9 @@ class TaskCharacterExtractionResult(BaseModel):
 
 class PanelPromptWithCharacters(BaseModel):
     panel_order: int = Field(ge=1)
-    prompt: str = Field(min_length=1)
+    visual_prompt: str = Field(min_length=1)
+    image_text: ImageTextPlan = Field(default_factory=ImageTextPlan)
+    text_layout: str = Field(min_length=1)
     appearance_keys: list[str] = Field(default_factory=list)
     usage_notes: dict[str, str] = Field(default_factory=dict)
 
@@ -81,7 +107,9 @@ class PanelPromptWithCharactersResult(BaseModel):
 
 
 class RevisedPanelPrompt(BaseModel):
-    prompt: str = Field(min_length=1)
+    visual_prompt: str = Field(min_length=1)
+    image_text: ImageTextPlan = Field(default_factory=ImageTextPlan)
+    text_layout: str = Field(min_length=1)
     change_summary: str = Field(min_length=1)
 
 
@@ -251,6 +279,53 @@ def plan_adapted_story_panels(
     return result
 
 
+def plan_storyboard_from_brief(
+    *,
+    brief_text: str,
+    style_prompt: str,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+) -> StoryboardPlanningResult:
+    if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
+        raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
+
+    system_prompt = read_prompt("plan_storyboard_from_brief_v1.md")
+    count_instruction = (
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，且第 1 个是封面。"
+        if image_count_mode == ImageCountMode.fixed
+        else "图片数量：自动判断。请根据用户方案中的显式或隐式分镜逻辑自然规划 panels，默认第 1 个是封面。"
+    )
+    user_prompt = json.dumps(
+        {
+            "count_instruction": count_instruction,
+            "brief_text": brief_text,
+            "style_prompt": style_prompt,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    try:
+        result = StoryboardPlanningResult.model_validate(raw)
+    except ValidationError as exc:
+        raise LLMResponseError("LLM 故事方案图文分镜 JSON 结构不符合要求") from exc
+
+    ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
+    if result.panels[0].panel_type != PanelType.cover:
+        raise LLMResponseError("故事方案图文分镜的第一个 panel 必须是封面")
+    if any(panel.panel_type == PanelType.cover for panel in result.panels[1:]):
+        raise LLMResponseError("故事方案图文分镜只能第一个 panel 是封面")
+    if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
+        raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
+    logger.info(
+        "brief storyboard planning succeeded image_count_mode=%s requested_image_count=%s panel_count=%s title=%s",
+        image_count_mode.value,
+        requested_image_count,
+        len(result.panels),
+        result.story_title,
+    )
+    return result
+
+
 def generate_panel_prompts(
     *,
     original_text: str,
@@ -265,6 +340,9 @@ def generate_panel_prompts(
             "text": panel.text,
             "narration_text": panel.narration_text,
             "dialogue_text": panel.dialogue_text,
+            "visual_prompt": panel.visual_prompt,
+            "image_text": panel.image_text,
+            "text_layout": panel.text_layout,
         }
         for panel in panels
     ]
@@ -304,6 +382,9 @@ def extract_task_characters(
             "text": panel.text,
             "narration_text": panel.narration_text,
             "dialogue_text": panel.dialogue_text,
+            "visual_prompt": panel.visual_prompt,
+            "image_text": panel.image_text,
+            "text_layout": panel.text_layout,
         }
         for panel in panels
     ]
@@ -360,6 +441,9 @@ def generate_panel_prompts_with_characters(
             "text": panel.text,
             "narration_text": panel.narration_text,
             "dialogue_text": panel.dialogue_text,
+            "visual_prompt": panel.visual_prompt,
+            "image_text": panel.image_text,
+            "text_layout": panel.text_layout,
         }
         for panel in panels
     ]
@@ -406,6 +490,8 @@ def revise_panel_prompt(
     style_prompt: str,
     panel_text: str,
     current_prompt: str,
+    current_image_text: dict[str, str | None] | None,
+    current_text_layout: str | None,
     user_instruction: str,
 ) -> RevisedPanelPrompt:
     system_prompt = read_prompt("revise_panel_prompt_v1.md")
@@ -415,6 +501,8 @@ def revise_panel_prompt(
             "style_prompt": style_prompt,
             "panel_text": panel_text,
             "current_prompt": current_prompt,
+            "current_image_text": current_image_text,
+            "current_text_layout": current_text_layout,
             "user_instruction": user_instruction,
         },
         ensure_ascii=False,
@@ -426,7 +514,7 @@ def revise_panel_prompt(
         raise LLMResponseError("LLM 单分镜提示词修改 JSON 结构不符合要求") from exc
     logger.info(
         "panel prompt revision succeeded prompt_chars=%s change_summary_chars=%s",
-        len(result.prompt),
+        len(result.visual_prompt),
         len(result.change_summary),
     )
     return result

@@ -16,6 +16,7 @@ from app.models.entities import (
 from app.models.enums import FileAssetPurpose, WorkflowStatus
 from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
 from app.services.llm import LLMResponseError, TaskCharacterPlan
+from app.services.prompt_templates import render_prompt_template
 from app.services.storage import resolve_storage_key
 
 logger = logging.getLogger(__name__)
@@ -95,16 +96,15 @@ def build_character_reference_prompt(
     age_stage: str | None,
     visual_prompt: str,
 ) -> str:
-    stage = f" · {age_stage.strip()}" if age_stage else ""
-    return "\n\n".join(
-        [
-            f"风格模板：{style_prompt.strip()}",
-            f"画面比例：{aspect_ratio}",
-            f"人物参考图：{character_name}{stage}",
-            f"人物外观设定：{visual_prompt.strip()}",
-            "生成要求：只生成这个人物的清晰角色参考图，保持正面或三分之二角度，完整呈现头发、脸部关键特征、服装、体态和标志物。",
-            "禁止项：不要加入文字、标题、Logo、水印、对话框、复杂背景或其他主要人物。",
-        ]
+    return render_prompt_template(
+        "character_reference_image_prompt_v1.md",
+        {
+            "style_prompt": style_prompt.strip(),
+            "aspect_ratio": aspect_ratio,
+            "character_name": character_name,
+            "age_stage": age_stage.strip() if age_stage else "未指定",
+            "visual_prompt": visual_prompt.strip(),
+        },
     )
 
 
@@ -210,6 +210,51 @@ def save_panel_character_links(
                 usage_note=usage_notes.get(appearance_key),
             )
         )
+
+
+def save_character_plan_panel_links(
+    *,
+    db: Session,
+    task: GenerationTask,
+    character_plans: list[TaskCharacterPlan],
+) -> None:
+    clear_panel_character_links(db, task)
+    panels_by_order = {panel.panel_order: panel for panel in task.panels}
+    appearances = {
+        appearance.appearance_key: appearance
+        for character in load_task_characters(db, task.id)
+        for appearance in character.appearances
+    }
+    panel_keys: dict[int, list[tuple[str, str]]] = {}
+    for character_plan in character_plans:
+        for appearance_plan in character_plan.appearances:
+            stage = f" · {appearance_plan.age_stage}" if appearance_plan.age_stage else ""
+            note = f"{character_plan.name}{stage}，主要人物参考"
+            for panel_order in appearance_plan.panel_orders:
+                panel_keys.setdefault(panel_order, []).append((appearance_plan.appearance_key, note))
+
+    for panel_order, key_notes in panel_keys.items():
+        panel = panels_by_order.get(panel_order)
+        if panel is None:
+            raise LLMResponseError(f"人物 appearance 引用了不存在的 panel_order：{panel_order}")
+        seen_keys: set[str] = set()
+        reference_order = 1
+        for appearance_key, note in key_notes:
+            if appearance_key in seen_keys:
+                continue
+            seen_keys.add(appearance_key)
+            appearance = appearances.get(appearance_key)
+            if appearance is None:
+                raise LLMResponseError(f"人物 appearance_key 尚未持久化：{appearance_key}")
+            db.add(
+                TaskPanelCharacterAppearance(
+                    panel_id=panel.id,
+                    task_character_appearance_id=appearance.id,
+                    reference_order=reference_order,
+                    usage_note=note,
+                )
+            )
+            reference_order += 1
 
 
 def build_panel_reference_pack(

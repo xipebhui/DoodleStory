@@ -35,6 +35,8 @@ class TaskPanelRead(TimestampFields):
     original_text_segment: str
     narration_text: str | None
     dialogue_text: str | None
+    image_text_json: str | None
+    text_layout: str | None
     prompt_status: PromptStatus
     generated_prompt: str | None
 
@@ -59,6 +61,8 @@ class GeneratedImageRead(TimestampFields):
     user_instruction: str | None
     previous_prompt: str | None
     image_prompt: str | None
+    image_text_json: str | None
+    text_layout: str | None
     prompt_change_summary: str | None
     final_prompt: str | None
     asset: FileAssetRead | None = None

@@ -25,6 +25,7 @@ from app.services.image_generation import (
     ImageProviderResponseError,
     generate_xg_image,
 )
+from app.services.prompt_templates import render_prompt_template
 from app.services.storage import save_upload_file
 from app.services.storage import resolve_storage_key
 
@@ -241,16 +242,13 @@ def create_style_test(
     if not style.reference_images:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格测试至少需要一张参考图")
 
-    composed_prompt = "\n\n".join(
-        [
-            f"风格模板：{style.style_prompt.strip()}",
-            f"画面比例：{style.aspect_ratio}",
-            "统一文字要求：图片内文字必须使用中文。请把测试文案作为图片内可读文字完整呈现，不要删改、翻译、总结或补充文案内容。可以通过字体大小、字重、颜色、位置、换行和留白做视觉强调，但不要把强调理解成 Markdown 或排版符号。",
-            "文字禁止项：不要在图片文字里加入 #、##、**、*、-、项目符号、引号包裹、代码块符号、标题标记或任何测试文案之外的格式字符。",
-            f"画面内容：{payload.test_text.strip()}",
-            f"测试文案：{payload.test_text.strip()}",
-            "输出要求：图片比例以画面比例参数为准，画布方向和分格构图以风格模板中的描述为准。无水印、无 Logo，不添加测试文案之外的无关文字。",
-        ]
+    composed_prompt = render_prompt_template(
+        "style_test_image_prompt_v1.md",
+        {
+            "style_prompt": style.style_prompt.strip(),
+            "aspect_ratio": style.aspect_ratio,
+            "test_text": payload.test_text.strip(),
+        },
     )
     now = datetime.utcnow()
     style_test = StyleTest(

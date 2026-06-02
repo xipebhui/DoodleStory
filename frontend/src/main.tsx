@@ -35,6 +35,36 @@ type View = "tasks" | "styles" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 
+type ImageTextPayload = {
+  title?: string | null;
+  narration?: string | null;
+  dialogue?: string | null;
+  emphasis?: string | null;
+};
+
+function parseImageText(value: string | null | undefined): ImageTextPayload | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as ImageTextPayload;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function imageTextSummary(value: string | null | undefined) {
+  const parsed = parseImageText(value);
+  if (!parsed) return "";
+  return [
+    parsed.title ? `标题：${parsed.title}` : "",
+    parsed.narration ? `旁白：${parsed.narration}` : "",
+    parsed.dialogue ? `对白：${parsed.dialogue}` : "",
+    parsed.emphasis ? `强调：${parsed.emphasis}` : "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
 function LazyAssetImage({
   assetId,
   alt,
@@ -956,6 +986,8 @@ function TasksView({ user }: { user: User }) {
                     const versions = panelImageVersions(taskForDetail, panel.id);
                     const activeVersion = versions.find((item) => item.status === "queued" || item.status === "running");
                     const canEditPanel = Boolean(panel.generated_prompt) && !activeVersion;
+                    const imageText = imageTextSummary(image?.image_text_json ?? panel.image_text_json);
+                    const textLayout = image?.text_layout ?? panel.text_layout;
                     return (
                       <article key={panel.id} className="panel-card">
                         <div className="poster">
@@ -976,6 +1008,8 @@ function TasksView({ user }: { user: User }) {
                         <p>{panel.original_text_segment}</p>
                         {panel.narration_text ? <small>旁白：{panel.narration_text}</small> : null}
                         {panel.dialogue_text ? <small>对白：{panel.dialogue_text}</small> : null}
+                        {imageText ? <small>图片文字：{imageText}</small> : null}
+                        {textLayout ? <small>文字布局：{textLayout}</small> : null}
                         {image?.workflow_step && image.status !== "succeeded" ? (
                           <small className="process-note">
                             {imageWorkflowLabel(image.workflow_step)} · {imageStatusLabel(image.status)}
