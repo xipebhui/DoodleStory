@@ -17,7 +17,7 @@ from app.models.enums import FileAssetPurpose, WorkflowStatus
 from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
 from app.services.llm import LLMResponseError, TaskCharacterPlan
 from app.services.prompt_templates import render_prompt_template
-from app.services.storage import resolve_storage_key
+from app.services.storage import materialize_asset_to_local
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,9 @@ def ensure_character_reference_images(
                 )
                 asset = FileAsset(
                     purpose=FileAssetPurpose.character_reference,
+                    storage_backend=generated.storage_backend,
                     storage_key=generated.storage_key,
+                    public_url=generated.public_url,
                     original_filename=generated.original_filename,
                     content_type=generated.content_type,
                     byte_size=generated.byte_size,
@@ -270,7 +272,7 @@ def build_panel_reference_pack(
         character = appearance.character
         if appearance.status != WorkflowStatus.succeeded or appearance.reference_image is None:
             raise ImageProviderConfigError(f"人物参考图尚未生成成功：{character.name}")
-        character_paths.append(resolve_storage_key(appearance.reference_image.storage_key))
+        character_paths.append(materialize_asset_to_local(appearance.reference_image))
         notes.append(f"{character.name}参考（参考图{index}）")
 
     paths = [*character_paths, *style_reference_paths]

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from app.models.enums import StyleStatus, WorkflowStatus
 from app.schemas.common import TimestampFields
@@ -29,11 +29,22 @@ class StyleUpdate(BaseModel):
 class FileAssetRead(TimestampFields):
     id: str
     purpose: str
+    storage_backend: str
     original_filename: str | None
     content_type: str
     byte_size: int
     width: int | None = None
     height: int | None = None
+
+    @computed_field
+    @property
+    def content_url(self) -> str:
+        return f"/api/v1/assets/{self.id}/content"
+
+    @computed_field
+    @property
+    def thumbnail_url(self) -> str:
+        return f"/api/v1/assets/{self.id}/content?variant=thumbnail"
 
 
 class StyleReferenceImageRead(BaseModel):

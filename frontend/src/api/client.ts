@@ -23,11 +23,14 @@ export type Style = {
 export type FileAsset = {
   id: string;
   purpose: string;
+  storage_backend: string;
   original_filename: string | null;
   content_type: string;
   byte_size: number;
   width: number | null;
   height: number | null;
+  content_url: string;
+  thumbnail_url: string;
   created_at: string;
   updated_at: string;
 };
@@ -88,6 +91,37 @@ export type Task = {
   generated_images: GeneratedImage[];
   character_references: TaskCharacterReference[];
   downloads: TaskDownload[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskPreviewImage = {
+  id: string;
+  panel_id: string;
+  asset: FileAsset;
+};
+
+export type TaskSummary = {
+  id: string;
+  owner_user_id: string;
+  display_title: string;
+  original_text_preview: string;
+  story_input_mode: Task["story_input_mode"];
+  image_count_mode: Task["image_count_mode"];
+  requested_image_count: number | null;
+  use_character_references: boolean;
+  style_id: string;
+  style_name_snapshot: string;
+  image_model_name_snapshot: string;
+  style_aspect_ratio_snapshot: string;
+  status: Task["status"];
+  progress_current: number;
+  progress_total: number;
+  error_code: string | null;
+  error_message: string | null;
+  current_step: string | null;
+  image_count: number;
+  preview_images: TaskPreviewImage[];
   created_at: string;
   updated_at: string;
 };
@@ -276,7 +310,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }).then((result) => result.data),
-  assetContentUrl: (assetId: string) => `${API_BASE_URL}/api/v1/assets/${assetId}/content`,
+  assetContentUrl: (assetId: string, variant: "original" | "thumbnail" = "original") =>
+    `${API_BASE_URL}/api/v1/assets/${assetId}/content${variant === "thumbnail" ? "?variant=thumbnail" : ""}`,
   tasks: (params?: {
     query?: string;
     status?: Task["status"] | "all";
@@ -291,7 +326,7 @@ export const api = {
     if (params?.cursor) search.set("cursor", params.cursor);
     if (params?.limit) search.set("limit", String(params.limit));
     const suffix = search.toString() ? `?${search.toString()}` : "";
-    return request<ApiList<Task>>(`/tasks${suffix}`);
+    return request<ApiList<TaskSummary>>(`/tasks${suffix}`);
   },
   task: (id: string) => request<ApiData<Task>>(`/tasks/${id}`).then((result) => result.data),
   createTask: (payload: {

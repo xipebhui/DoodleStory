@@ -91,6 +91,35 @@ class TaskDownloadRead(TimestampFields):
     error_message: str | None
 
 
+class TaskPreviewImageRead(BaseModel):
+    id: str
+    panel_id: str
+    asset: FileAssetRead
+
+
+class TaskListItemRead(TimestampFields):
+    id: str
+    owner_user_id: str
+    display_title: str
+    original_text_preview: str
+    story_input_mode: StoryInputMode
+    image_count_mode: ImageCountMode
+    requested_image_count: int | None
+    use_character_references: bool
+    style_id: str
+    style_name_snapshot: str
+    image_model_name_snapshot: str
+    style_aspect_ratio_snapshot: str
+    status: TaskStatus
+    progress_current: int
+    progress_total: int
+    error_code: str | None
+    error_message: str | None
+    current_step: GenerationStepName | None
+    image_count: int
+    preview_images: list[TaskPreviewImageRead] = []
+
+
 class TaskRead(TimestampFields):
     id: str
     owner_user_id: str

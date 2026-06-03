@@ -16,7 +16,7 @@ import requests
 from fastapi import HTTPException
 
 from app.core.config import get_settings
-from app.models.enums import FileAssetPurpose
+from app.models.enums import FileAssetPurpose, StorageBackend
 from app.services.storage import save_bytes
 
 logger = logging.getLogger(__name__)
@@ -41,12 +41,14 @@ class ImageProviderResponseError(ImageProviderError):
 
 @dataclass(frozen=True)
 class GeneratedImageFile:
+    storage_backend: StorageBackend
     storage_key: str
     byte_size: int
     checksum_sha256: str
     content_type: str
     original_filename: str
     provider_request_id: str | None
+    public_url: str | None = None
 
 
 def describe_proxy_url(proxy_url: str) -> str:
@@ -671,7 +673,7 @@ def generate_xg_image(
     )
     filename = f"generated-image{mimetypes.guess_extension(content_type) or '.png'}"
     try:
-        storage_key, byte_size, checksum = save_bytes(
+        stored = save_bytes(
             FileAssetPurpose.generated_image.value,
             content,
             content_type,
@@ -680,12 +682,14 @@ def generate_xg_image(
     except HTTPException as exc:
         raise ImageProviderResponseError(str(exc.detail)) from exc
     return GeneratedImageFile(
-        storage_key=storage_key,
-        byte_size=byte_size,
-        checksum_sha256=checksum,
+        storage_backend=stored.storage_backend,
+        storage_key=stored.storage_key,
+        byte_size=stored.byte_size,
+        checksum_sha256=stored.checksum_sha256,
         content_type=content_type,
         original_filename=filename,
         provider_request_id=provider_request_id,
+        public_url=stored.public_url,
     )
 
 

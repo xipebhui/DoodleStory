@@ -28,7 +28,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { API_BASE_URL, api, type Style, type StyleTest, type Task, type User } from "./api/client";
+import { API_BASE_URL, api, type Style, type StyleTest, type Task, type TaskSummary, type User } from "./api/client";
 import "./styles/app.css";
 
 type View = "tasks" | "styles" | "settings";
@@ -70,11 +70,13 @@ function LazyAssetImage({
   alt,
   className,
   eager = false,
+  variant = "thumbnail",
 }: {
   assetId: string;
   alt: string;
   className?: string;
   eager?: boolean;
+  variant?: "original" | "thumbnail";
 }) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(eager);
@@ -110,7 +112,7 @@ function LazyAssetImage({
     <img
       ref={imageRef}
       className={["lazy-asset-image", className].filter(Boolean).join(" ")}
-      src={shouldLoad ? api.assetContentUrl(assetId) : undefined}
+      src={shouldLoad ? api.assetContentUrl(assetId, variant) : undefined}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
       decoding="async"
@@ -335,7 +337,7 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
-function isActiveTask(task: Task | null | undefined) {
+function isActiveTask(task: Task | TaskSummary | null | undefined) {
   return Boolean(task && ["queued", "running", "retrying", "cancel_requested"].includes(task.status));
 }
 
@@ -343,7 +345,7 @@ function hasActivePanelEdit(task: Task | null | undefined) {
   return Boolean(task?.generated_images.some((image) => image.status === "queued" || image.status === "running"));
 }
 
-function taskProgress(task: Task) {
+function taskProgress(task: Task | TaskSummary) {
   if (task.progress_total <= 0) return 0;
   return Math.min(100, Math.round((task.progress_current / task.progress_total) * 100));
 }
@@ -403,7 +405,7 @@ function styleCover(style: Style) {
 }
 
 function TasksView({ user }: { user: User }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [styles, setStyles] = useState<Style[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -430,7 +432,7 @@ function TasksView({ user }: { user: User }) {
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
 
-  const taskForDetail = selectedTask ?? tasks.find((task) => task.id === selectedId) ?? tasks[0] ?? null;
+  const taskForDetail = selectedTask;
   const panelImageMap = useMemo(() => imagesByPanel(taskForDetail), [taskForDetail]);
   const previewItems = useMemo(() => succeededImages(taskForDetail), [taskForDetail]);
   const previewIndex = previewItems.findIndex((image) => image.id === previewImageId);
@@ -483,9 +485,10 @@ function TasksView({ user }: { user: User }) {
   useEffect(() => {
     if (!detailOpen) return;
     function handleKey(event: KeyboardEvent) {
-      if (event.key === "Escape" && !previewImageId) {
-        setDetailOpen(false);
-      }
+	      if (event.key === "Escape" && !previewImageId) {
+	        setDetailOpen(false);
+	        setSelectedTask(null);
+	      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -518,12 +521,12 @@ function TasksView({ user }: { user: User }) {
       setPageInfo(taskResult.page);
       setStyles(styleResult.items);
       setError("");
-      const nextSelectedId = preferredTaskId || taskResult.items[0]?.id || "";
-      if (nextSelectedId) {
+      const nextSelectedId = preferredTaskId || selectedId;
+      if (nextSelectedId && detailOpen) {
         setSelectedId(nextSelectedId);
         setSelectedTask(await api.task(nextSelectedId));
       } else {
-        setSelectedId("");
+        setSelectedId(nextSelectedId);
         setSelectedTask(null);
       }
       setLastRefreshedAt(new Date());
@@ -781,34 +784,32 @@ function TasksView({ user }: { user: User }) {
             </div>
           ) : null}
           {tasks.map((task) => {
-            const rowImages = succeededImages(task);
-            const imageCount = rowImages.length;
+            const rowImages = task.preview_images;
+            const imageCount = task.image_count;
             return (
               <button
                 type="button"
-                className={`task-project-row ${taskForDetail?.id === task.id ? "selected" : ""}`}
+	                className={`task-project-row ${selectedId === task.id ? "selected" : ""}`}
                 key={task.id}
                 aria-haspopup="dialog"
-                aria-expanded={detailOpen && taskForDetail?.id === task.id}
+	                aria-expanded={detailOpen && selectedId === task.id}
                 onClick={() => selectTask(task.id)}
               >
                 <div className="task-story-cell">
                   <span className={`task-dot ${task.status}`} />
                   <div>
                     <strong>{task.display_title}</strong>
-                    <p>{task.original_text}</p>
+                    <p>{task.original_text_preview}</p>
                     {user.role === "admin" ? <small>Owner {shortId(task.owner_user_id)}</small> : null}
                   </div>
                 </div>
                 <div className="thumb-strip">
-                  {rowImages.slice(0, TASK_ROW_IMAGE_PREVIEW_LIMIT).map((image) =>
-                    image.asset ? (
-                      <LazyAssetImage key={image.id} assetId={image.asset.id} alt={task.display_title} />
-                    ) : null,
-                  )}
+	                  {rowImages.slice(0, TASK_ROW_IMAGE_PREVIEW_LIMIT).map((image) => (
+	                    <LazyAssetImage key={image.id} assetId={image.asset.id} alt={task.display_title} />
+	                  ))}
                   {rowImages.length === 0 ? <span className="thumb-empty">等待图片</span> : null}
-                  {rowImages.length > TASK_ROW_IMAGE_PREVIEW_LIMIT ? (
-                    <span className="thumb-more">+{rowImages.length - TASK_ROW_IMAGE_PREVIEW_LIMIT}</span>
+	                  {imageCount > TASK_ROW_IMAGE_PREVIEW_LIMIT ? (
+	                    <span className="thumb-more">+{imageCount - TASK_ROW_IMAGE_PREVIEW_LIMIT}</span>
                   ) : null}
                 </div>
                 <div className="task-row-side">
@@ -835,7 +836,7 @@ function TasksView({ user }: { user: User }) {
                     <span>{imageCount} 张</span>
                     <span>{formatDateTime(task.created_at)}</span>
                     <span className="row-actions">
-                      {rowImages.some((image) => image.asset) ? (
+	                      {rowImages.length > 0 ? (
                         <span className="mini-action">
                           <Download size={15} />
                         </span>
@@ -861,8 +862,8 @@ function TasksView({ user }: { user: User }) {
 
       </div>
 
-      {detailOpen && taskForDetail ? (
-        <div className="task-detail-backdrop" onClick={() => setDetailOpen(false)}>
+	      {detailOpen && taskForDetail ? (
+	        <div className="task-detail-backdrop" onClick={() => { setDetailOpen(false); setSelectedTask(null); }}>
           <aside
             className="task-detail-drawer"
             role="dialog"
@@ -875,7 +876,7 @@ function TasksView({ user }: { user: User }) {
                 <span>任务详情</span>
                 <strong>{taskForDetail.display_title}</strong>
               </div>
-              <button type="button" className="icon-button" aria-label="关闭任务详情" onClick={() => setDetailOpen(false)}>
+	              <button type="button" className="icon-button" aria-label="关闭任务详情" onClick={() => { setDetailOpen(false); setSelectedTask(null); }}>
                 <X size={18} />
               </button>
             </div>
@@ -1203,7 +1204,7 @@ function TasksView({ user }: { user: User }) {
             <ChevronLeft size={22} />
           </button>
           <figure className="image-preview-frame" onClick={(event) => event.stopPropagation()}>
-            <LazyAssetImage assetId={previewImage.asset.id} alt="生成图预览" eager />
+	            <LazyAssetImage assetId={previewImage.asset.id} alt="生成图预览" eager variant="original" />
             <figcaption>
               <div>
                 <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
@@ -1444,7 +1445,7 @@ function StylesView({ user }: { user: User }) {
                   正在生成测试图
                 </div>
               ) : styleTest?.output_asset ? (
-                <LazyAssetImage assetId={styleTest.output_asset.id} alt="风格测试结果" eager />
+                <LazyAssetImage assetId={styleTest.output_asset.id} alt="风格测试结果" eager variant="original" />
               ) : (
                 <div className="empty mini">{styleTest?.error_message || "还没有测试结果"}</div>
               )}

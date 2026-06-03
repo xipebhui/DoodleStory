@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,14 @@ from app.models.entities import FileAsset, GeneratedImage, StyleReferenceImage, 
 from app.models.enums import FileAssetPurpose, UserRole
 from app.schemas.common import ApiData
 from app.schemas.style import FileAssetRead
-from app.services.storage import resolve_storage_key
+from app.models.enums import StorageBackend
+from app.services.storage import (
+    ASSET_URL_VARIANT_ORIGINAL,
+    ASSET_URL_VARIANT_THUMBNAIL,
+    asset_content_url,
+    ensure_local_thumbnail,
+    resolve_storage_key,
+)
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 ASSET_CACHE_HEADERS = {
@@ -52,13 +59,27 @@ def get_asset(asset_id: str, user: User = Depends(current_user), db: Session = D
     return ApiData(data=FileAssetRead.model_validate(asset))
 
 
-@router.get("/{asset_id}/content")
-def get_asset_content(asset_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> FileResponse:
+@router.get("/{asset_id}/content", response_model=None)
+def get_asset_content(
+    asset_id: str,
+    variant: str = Query(default=ASSET_URL_VARIANT_ORIGINAL),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> Response:
     asset = db.scalar(select(FileAsset).where(FileAsset.id == asset_id))
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文件不存在")
     if not can_read_asset(asset, user, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="没有权限访问该文件")
+    if variant not in {ASSET_URL_VARIANT_ORIGINAL, ASSET_URL_VARIANT_THUMBNAIL}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="资产访问变体不支持")
+
+    if asset.storage_backend == StorageBackend.qiniu:
+        return RedirectResponse(asset_content_url(asset, variant), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+    if variant == ASSET_URL_VARIANT_THUMBNAIL:
+        thumbnail_path = ensure_local_thumbnail(asset)
+        return FileResponse(thumbnail_path, media_type="image/webp", filename=f"{asset.id}.webp", headers=ASSET_CACHE_HEADERS)
 
     path = resolve_storage_key(asset.storage_key)
     if not path.exists():

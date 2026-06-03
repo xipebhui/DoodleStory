@@ -13,7 +13,17 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./doodlestory.db"
     session_secret: str = Field(min_length=16)
     admin_emails: str = ""
+    storage_backend: str = "local"
     doodlestory_storage_root: str = "./storage"
+    qiniu_access_key: str = ""
+    qiniu_secret_key: str = ""
+    qiniu_bucket: str = ""
+    qiniu_bucket_domain: str = ""
+    qiniu_private_bucket: bool = True
+    qiniu_download_url_expires_seconds: int = 3600
+    qiniu_thumbnail_fop: str = "imageView2/1/w/320/h/568/format/webp/q/75"
+    local_thumbnail_width: int = 320
+    local_thumbnail_height: int = 568
     frontend_origin: str = "http://127.0.0.1:3000"
     log_level: str = "INFO"
     siliconflow_api_key: str = ""

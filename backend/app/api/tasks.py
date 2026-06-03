@@ -17,6 +17,7 @@ from app.models.entities import (
     TaskCharacter,
     TaskCharacterAppearance,
     TaskDownload,
+    TaskPanel,
     User,
 )
 from app.models.enums import (
@@ -35,9 +36,9 @@ from app.models.enums import (
     UserRole,
 )
 from app.schemas.common import ApiData, ApiList
-from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskRead
+from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskListItemRead, TaskPreviewImageRead, TaskRead
 from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
-from app.services.storage import resolve_storage_key, save_binary_file
+from app.services.storage import materialize_asset_to_local, save_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -79,7 +80,12 @@ def current_or_latest_image_for_panel(task: GenerationTask, panel_id: str) -> Ge
     return sorted(panel_images, key=lambda image: image.generation_number, reverse=True)[0] if panel_images else None
 
 
-@router.get("", response_model=ApiList[TaskRead])
+def task_original_text_preview(task: GenerationTask) -> str:
+    text = task.original_text.strip().replace("\n", " ")
+    return text[:160]
+
+
+@router.get("", response_model=ApiList[TaskListItemRead])
 def list_tasks(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
@@ -88,13 +94,12 @@ def list_tasks(
     status_filter: TaskStatus | None = Query(default=None, alias="status"),
     style_id: str | None = Query(default=None),
     user_id: str | None = Query(default=None),
-) -> ApiList[TaskRead]:
+) -> ApiList[TaskListItemRead]:
     if user.role != UserRole.admin and user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="普通用户不能按用户筛选任务")
 
     statement = (
         select(GenerationTask)
-        .options(*task_options())
         .order_by(GenerationTask.created_at.desc())
         .offset(pagination.offset)
         .limit(pagination.limit + 1)
@@ -112,8 +117,56 @@ def list_tasks(
 
     tasks = db.scalars(statement).all()
     visible_tasks = tasks[: pagination.limit]
+    task_ids = [task.id for task in visible_tasks]
+    preview_images_by_task: dict[str, list[GeneratedImage]] = {task_id: [] for task_id in task_ids}
+    if task_ids:
+        preview_statement = (
+            select(GeneratedImage)
+            .join(GeneratedImage.panel)
+            .where(
+                GeneratedImage.task_id.in_(task_ids),
+                GeneratedImage.is_current.is_(True),
+                GeneratedImage.status == GeneratedImageStatus.succeeded,
+                GeneratedImage.asset_id.is_not(None),
+            )
+            .options(selectinload(GeneratedImage.asset), selectinload(GeneratedImage.panel))
+            .order_by(GeneratedImage.task_id, TaskPanel.panel_order)
+        )
+        for image in db.scalars(preview_statement).all():
+            preview_images_by_task.setdefault(image.task_id, []).append(image)
+
     return ApiList(
-        items=[TaskRead.model_validate(task) for task in visible_tasks],
+        items=[
+            TaskListItemRead(
+                id=task.id,
+                owner_user_id=task.owner_user_id,
+                display_title=task.display_title,
+                original_text_preview=task_original_text_preview(task),
+                story_input_mode=task.story_input_mode,
+                image_count_mode=task.image_count_mode,
+                requested_image_count=task.requested_image_count,
+                use_character_references=task.use_character_references,
+                style_id=task.style_id,
+                style_name_snapshot=task.style_name_snapshot,
+                image_model_name_snapshot=task.image_model_name_snapshot,
+                style_aspect_ratio_snapshot=task.style_aspect_ratio_snapshot,
+                status=task.status,
+                progress_current=task.progress_current,
+                progress_total=task.progress_total,
+                error_code=task.error_code,
+                error_message=task.error_message,
+                current_step=task.current_step,
+                image_count=len(preview_images_by_task.get(task.id, [])),
+                preview_images=[
+                    TaskPreviewImageRead(id=image.id, panel_id=image.panel_id, asset=image.asset)
+                    for image in preview_images_by_task.get(task.id, [])[:4]
+                    if image.asset is not None
+                ],
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+            )
+            for task in visible_tasks
+        ],
         page=build_page(pagination.limit, pagination.offset, len(tasks)),
     )
 
@@ -376,24 +429,24 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
         with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
             for index, image in enumerate(images, start=1):
                 asset = image.asset
-                source_path = resolve_storage_key(asset.storage_key)
-                if not source_path.exists():
-                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="生成图片文件不存在")
+                source_path = materialize_asset_to_local(asset)
                 suffix = source_path.suffix or ".png"
                 archive.write(source_path, arcname=f"panel-{index:02d}{suffix}")
 
-        storage_key, byte_size, checksum = save_binary_file(
+        stored = save_binary_file(
             FileAssetPurpose.download_archive.value,
             buffer.getvalue(),
             ".zip",
         )
         asset = FileAsset(
             purpose=FileAssetPurpose.download_archive,
-            storage_key=storage_key,
+            storage_backend=stored.storage_backend,
+            storage_key=stored.storage_key,
+            public_url=stored.public_url,
             original_filename=filename,
             content_type="application/zip",
-            byte_size=byte_size,
-            checksum_sha256=checksum,
+            byte_size=stored.byte_size,
+            checksum_sha256=stored.checksum_sha256,
         )
         db.add(asset)
         db.flush()

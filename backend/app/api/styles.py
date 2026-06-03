@@ -26,8 +26,7 @@ from app.services.image_generation import (
     generate_xg_image,
 )
 from app.services.prompt_templates import render_prompt_template
-from app.services.storage import save_upload_file
-from app.services.storage import resolve_storage_key
+from app.services.storage import materialize_asset_to_local, save_upload_file
 
 router = APIRouter(prefix="/styles", tags=["styles"])
 logger = logging.getLogger(__name__)
@@ -157,14 +156,16 @@ async def upload_reference_image(
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
-    storage_key, byte_size, checksum = await save_upload_file(FileAssetPurpose.style_reference.value, file)
+    stored = await save_upload_file(FileAssetPurpose.style_reference.value, file)
     asset = FileAsset(
         purpose=FileAssetPurpose.style_reference,
-        storage_key=storage_key,
+        storage_backend=stored.storage_backend,
+        storage_key=stored.storage_key,
+        public_url=stored.public_url,
         original_filename=file.filename,
         content_type=file.content_type or "application/octet-stream",
-        byte_size=byte_size,
-        checksum_sha256=checksum,
+        byte_size=stored.byte_size,
+        checksum_sha256=stored.checksum_sha256,
     )
     db.add(asset)
     db.flush()
@@ -275,7 +276,7 @@ def create_style_test(
     )
 
     try:
-        reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         generated = generate_xg_image(
             prompt=composed_prompt,
             reference_paths=reference_paths,
@@ -284,7 +285,9 @@ def create_style_test(
         )
         asset = FileAsset(
             purpose=FileAssetPurpose.generated_image,
+            storage_backend=generated.storage_backend,
             storage_key=generated.storage_key,
+            public_url=generated.public_url,
             original_filename=generated.original_filename,
             content_type=generated.content_type,
             byte_size=generated.byte_size,

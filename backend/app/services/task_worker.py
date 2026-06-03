@@ -56,7 +56,7 @@ from app.services.llm import (
     segment_story,
 )
 from app.services.prompt_templates import render_prompt_template
-from app.services.storage import resolve_storage_key
+from app.services.storage import materialize_asset_to_local
 
 _queue: asyncio.Queue[str] | None = None
 _worker_task: asyncio.Task[None] | None = None
@@ -546,7 +546,7 @@ def process_task(task_id: str) -> None:
             )
             return
 
-        style_reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        style_reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         story_segments = panel_story_segments(task)
 
         if task.use_character_references:
@@ -686,7 +686,7 @@ def process_task(task_id: str) -> None:
             fail_step_and_task(db, task, GenerationStepName.generate_images, ImageProviderConfigError("风格至少需要一张参考图"))
             return
 
-        reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         logger.info(
             "task image generation started task_id=%s panel_count=%s reference_count=%s image_model=%s",
             task.id,
@@ -778,7 +778,9 @@ def process_task(task_id: str) -> None:
                 )
                 asset = FileAsset(
                     purpose=FileAssetPurpose.generated_image,
+                    storage_backend=generated.storage_backend,
                     storage_key=generated.storage_key,
+                    public_url=generated.public_url,
                     original_filename=generated.original_filename,
                     content_type=generated.content_type,
                     byte_size=generated.byte_size,
@@ -948,7 +950,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             db.commit()
             return
 
-        style_reference_paths = [resolve_storage_key(reference.asset.storage_key) for reference in style.reference_images]
+        style_reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         if task.use_character_references:
             try:
                 reference_pack = build_panel_reference_pack(panel=panel, style_reference_paths=style_reference_paths)
@@ -1015,7 +1017,9 @@ def process_panel_edit(generated_image_id: str) -> None:
             )
             asset = FileAsset(
                 purpose=FileAssetPurpose.generated_image,
+                storage_backend=generated.storage_backend,
                 storage_key=generated.storage_key,
+                public_url=generated.public_url,
                 original_filename=generated.original_filename,
                 content_type=generated.content_type,
                 byte_size=generated.byte_size,

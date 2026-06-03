@@ -90,7 +90,7 @@
 - 外部集成：LLM 固定使用 SiliconFlow 配置；生图 API key、base url 和代理地址从 env 读取。`/v1/images/edits` 类模型继续使用 XG 配置，Google/Gemini 图片模型和 `nano-banana`/`nana-banana` 类 Chat 生图模型使用 ApexerAPI 的 `/v1/chat/completions`，ApexerAPI 请求可通过 `APEXERAPI_PROXY_URL` 单独配置代理。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
-- 文件存储：第一版使用本地磁盘。存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`。
+- 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛私有空间访问必须通过后端鉴权后生成短期签名 URL。任务列表和小尺寸预览默认使用缩略图 URL，本地资产由后端按需生成 WebP 缩略图，七牛资产使用 `imageView2` 缩略图处理参数。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 
 ## 约束
@@ -103,6 +103,8 @@
 - Panel 文案需要作为图片内可读文字进入最终生图 prompt，不能删改文案内容；旁白和对白需要在 prompt 中区分呈现方式。
 - 风格测试和任务必须使用所选风格绑定的模型，除非用户明确修改该风格绑定。
 - 图片 Provider 排障时可以通过 `IMAGE_PROVIDER_DEBUG_LOG_RAW_IO` 临时开启请求/响应正文日志；日志不得输出 Authorization，参考图 data URL 的 base64 内容需要省略，只保留 prompt 和请求结构用于确认。
+- 任务列表接口只能返回摘要字段、图片数量和少量缩略图预览；不能默认返回完整 panels、generated_images、prompts 或原图内容。任务详情必须通过独立详情接口按需加载。
+- 七牛对象存储配置缺失、上传失败、签名 URL 生成失败或资产下载失败时必须明确报错，不能静默切回本地存储。
 - 普通用户只能访问自己创建的任务；Admin 可以访问所有任务。
 - 暂不做组织、团队、项目空间或租户级隔离。
 - 图片模型不作为独立模块管理；风格只保存生图模型名，provider、API key 和默认参数由 env 维护，不暴露给普通用户。

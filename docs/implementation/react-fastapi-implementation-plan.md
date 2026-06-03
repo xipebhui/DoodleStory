@@ -63,7 +63,7 @@ SiliconFlow 文档显示其文本生成支持 OpenAI SDK 调用方式，示例 b
 
 ### 对象存储：七牛是否需要
 
-第一版本地开发不强制接七牛，继续用本地磁盘即可。
+本地开发仍可使用本地磁盘；需要跨机器访问、长期保存或 CDN 加速时，配置 `STORAGE_BACKEND=qiniu` 启用七牛对象存储。
 
 需要接七牛的场景：
 
@@ -74,11 +74,12 @@ SiliconFlow 文档显示其文本生成支持 OpenAI SDK 调用方式，示例 b
 
 建议实现方式：
 
-- 先抽象 `StorageBackend`，提供 `local` 和 `qiniu` 两种实现。
+- 抽象 `StorageBackend`，提供 `local` 和 `qiniu` 两种实现。
 - 默认 `STORAGE_BACKEND=local`。
-- 当 env 配置 `STORAGE_BACKEND=qiniu` 时启用七牛。
+- 当 env 配置 `STORAGE_BACKEND=qiniu` 时启用七牛；配置缺失或上传失败必须明确报错，不能静默切回本地。
 - 数据库 `file_assets.storage_backend` 保存 `local` 或 `qiniu`。
 - `storage_key` 永远是内部 key，不暴露服务器绝对路径。
+- 缩略图访问通过 `/api/v1/assets/{asset_id}/content?variant=thumbnail`；本地资产按需生成 WebP 缩略图，七牛资产使用 `imageView2` URL 参数生成缩略图。
 
 七牛 Python SDK 文档支持 `pip install qiniu`，通过 `Auth(access_key, secret_key)` 初始化，使用 `upload_token` 和 `put_file_v2` 上传文件；私有空间下载可以通过 `private_download_url` 生成带过期时间的下载 URL。
 
