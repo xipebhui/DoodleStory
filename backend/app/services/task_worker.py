@@ -323,6 +323,19 @@ def dialogue_lines_for_prompt(dialogue: str) -> list[str]:
     return lines
 
 
+def text_rules_block(image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
+    common_rule = (
+        "图片文字只用于标题、旁白、字幕或画外信息；旁白应补充故事前因后果或剧情信息，"
+        "不要只重复画面状态。不要添加无关文字、Logo 或水印。"
+    )
+    if dialogue_block(image_text):
+        return (
+            "画面里的对白要自然出现在对应人物附近的气泡中，气泡里只写人物说出的句子，"
+            f"不写说话人名字和冒号。{common_rule}"
+        )
+    return f"这一格没有人物对白，不要添加对白气泡或人物台词。{common_rule}"
+
+
 def split_dialogue_speaker(line: str) -> tuple[str | None, str | None]:
     for separator in ("：", ":"):
         if separator not in line:
@@ -367,6 +380,7 @@ def build_final_prompt(
             "panel_type": "封面图" if panel_type == PanelType.cover else "剧情分镜",
             "scene_block": scene_block(story_beat, visual_prompt, image_text),
             "image_text_block": image_text_block(image_text, panel_type),
+            "text_rules_block": text_rules_block(image_text),
             "reference_notes_block": reference_notes_block(reference_notes),
         },
     )
