@@ -56,7 +56,7 @@ class PanelPrompt(BaseModel):
     panel_order: int = Field(ge=1)
     visual_prompt: str = Field(min_length=1)
     image_text: ImageTextPlan = Field(default_factory=ImageTextPlan)
-    text_layout: str = Field(min_length=1)
+    text_layout: str | None = None
 
 
 class PanelPromptResult(BaseModel):
@@ -97,7 +97,7 @@ class PanelPromptWithCharacters(BaseModel):
     panel_order: int = Field(ge=1)
     visual_prompt: str = Field(min_length=1)
     image_text: ImageTextPlan = Field(default_factory=ImageTextPlan)
-    text_layout: str = Field(min_length=1)
+    text_layout: str | None = None
     appearance_keys: list[str] = Field(default_factory=list)
     usage_notes: dict[str, str] = Field(default_factory=dict)
 
@@ -109,7 +109,7 @@ class PanelPromptWithCharactersResult(BaseModel):
 class RevisedPanelPrompt(BaseModel):
     visual_prompt: str = Field(min_length=1)
     image_text: ImageTextPlan = Field(default_factory=ImageTextPlan)
-    text_layout: str = Field(min_length=1)
+    text_layout: str | None = None
     change_summary: str = Field(min_length=1)
 
 

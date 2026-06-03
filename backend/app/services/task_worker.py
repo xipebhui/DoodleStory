@@ -293,11 +293,19 @@ def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None, p
     return "\n".join(lines) if lines else "无图片内文字。"
 
 
-def dialogue_block(image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
+def scene_block(story_beat: str, visual_prompt: str, image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
+    lines = [story_beat.strip(), visual_prompt.strip()]
+    dialogue = dialogue_block(image_text)
+    if dialogue:
+        lines.append(dialogue)
+    return "\n".join(line for line in lines if line)
+
+
+def dialogue_block(image_text: ImageTextPlan | dict[str, str | None] | None) -> str | None:
     values = image_text_to_dict(image_text)
     dialogue = values.get("dialogue")
     if not dialogue:
-        return "无人物对白。"
+        return None
     return "\n".join(dialogue_lines_for_prompt(dialogue))
 
 
@@ -357,11 +365,8 @@ def build_final_prompt(
         {
             "aspect_ratio": aspect_ratio,
             "panel_type": "封面图" if panel_type == PanelType.cover else "剧情分镜",
-            "story_beat": story_beat.strip(),
-            "visual_prompt": visual_prompt.strip(),
-            "dialogue_block": dialogue_block(image_text),
+            "scene_block": scene_block(story_beat, visual_prompt, image_text),
             "image_text_block": image_text_block(image_text, panel_type),
-            "text_layout": text_layout.strip() if text_layout else "由图片模型根据画面构图自行决定，但不得遮挡主体脸部和关键动作。",
             "reference_notes_block": reference_notes_block(reference_notes),
         },
     )
