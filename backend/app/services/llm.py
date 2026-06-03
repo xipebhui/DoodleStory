@@ -165,6 +165,15 @@ def read_prompt(name: str) -> str:
     return (PROMPT_ROOT / name).read_text(encoding="utf-8")
 
 
+def system_prompt_with_style(system_prompt: str, style_prompt: str) -> str:
+    return (
+        f"{system_prompt.strip()}\n\n"
+        "当前风格规则如下。你必须把这些规则吸收到分镜、画面、人物、文字和排版设计中，"
+        "但不要在输出里原样复述这些规则，也不要把它当作最终生图 prompt 的独立字段。\n"
+        f"风格规则[\n{style_prompt.strip()}\n]"
+    )
+
+
 def parse_json_object(raw_content: str) -> dict[str, Any]:
     try:
         parsed = json.loads(raw_content)
@@ -425,7 +434,7 @@ def plan_storyboard_from_brief(
     if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
         raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
 
-    system_prompt = read_prompt("plan_storyboard_from_brief_v1.md")
+    system_prompt = system_prompt_with_style(read_prompt("plan_storyboard_from_brief_v1.md"), style_prompt)
     count_instruction = (
         f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，且第 1 个是封面。"
         if image_count_mode == ImageCountMode.fixed
@@ -435,7 +444,6 @@ def plan_storyboard_from_brief(
         {
             "count_instruction": count_instruction,
             "brief_text": brief_text,
-            "style_prompt": style_prompt,
         },
         ensure_ascii=False,
     )
@@ -476,7 +484,7 @@ def generate_panel_prompts(
     style_prompt: str,
     panels: list[StorySegment],
 ) -> PanelPromptResult:
-    system_prompt = read_prompt("generate_panel_prompt_v1.md")
+    system_prompt = system_prompt_with_style(read_prompt("generate_panel_prompt_v1.md"), style_prompt)
     input_panels = [
         {
             "panel_order": panel.panel_order,
@@ -493,7 +501,6 @@ def generate_panel_prompts(
     user_prompt = json.dumps(
         {
             "original_text": original_text,
-            "style_prompt": style_prompt,
             "panels": input_panels,
         },
         ensure_ascii=False,
@@ -518,7 +525,7 @@ def extract_task_characters(
     style_prompt: str,
     panels: list[StorySegment],
 ) -> TaskCharacterExtractionResult:
-    system_prompt = read_prompt("extract_task_characters_v1.md")
+    system_prompt = system_prompt_with_style(read_prompt("extract_task_characters_v1.md"), style_prompt)
     input_panels = [
         {
             "panel_order": panel.panel_order,
@@ -535,7 +542,6 @@ def extract_task_characters(
     user_prompt = json.dumps(
         {
             "original_text": original_text,
-            "style_prompt": style_prompt,
             "panels": input_panels,
         },
         ensure_ascii=False,
@@ -579,7 +585,7 @@ def generate_panel_prompts_with_characters(
     panels: list[StorySegment],
     characters: list[TaskCharacterPlan],
 ) -> PanelPromptWithCharactersResult:
-    system_prompt = read_prompt("generate_panel_prompt_with_characters_v1.md")
+    system_prompt = system_prompt_with_style(read_prompt("generate_panel_prompt_with_characters_v1.md"), style_prompt)
     input_panels = [
         {
             "panel_order": panel.panel_order,
@@ -602,7 +608,6 @@ def generate_panel_prompts_with_characters(
     user_prompt = json.dumps(
         {
             "original_text": original_text,
-            "style_prompt": style_prompt,
             "panels": input_panels,
             "characters": character_payload,
         },
@@ -640,11 +645,10 @@ def revise_panel_prompt(
     current_text_layout: str | None,
     user_instruction: str,
 ) -> RevisedPanelPrompt:
-    system_prompt = read_prompt("revise_panel_prompt_v1.md")
+    system_prompt = system_prompt_with_style(read_prompt("revise_panel_prompt_v1.md"), style_prompt)
     user_prompt = json.dumps(
         {
             "original_text": original_text,
-            "style_prompt": style_prompt,
             "panel_text": panel_text,
             "current_prompt": current_prompt,
             "current_image_text": current_image_text,

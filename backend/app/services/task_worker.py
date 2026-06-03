@@ -280,19 +280,25 @@ def parse_image_text_json(value: str | None) -> dict[str, str | None] | None:
     }
 
 
-def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
+def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None, panel_type: PanelType) -> str:
     values = image_text_to_dict(image_text)
     lines = []
     title = values.get("title")
     narration = values.get("narration")
-    dialogue = values.get("dialogue")
     if title:
-        lines.append(f"标题：“{title.strip()}”")
-    if dialogue:
-        lines.extend(dialogue_lines_for_prompt(dialogue))
+        label = "大标题" if panel_type == PanelType.cover else "标题"
+        lines.append(f"{label}：“{title.strip()}”")
     if narration:
         lines.append(f"旁白：“{narration.strip()}”")
     return "\n".join(lines) if lines else "无图片内文字。"
+
+
+def dialogue_block(image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
+    values = image_text_to_dict(image_text)
+    dialogue = values.get("dialogue")
+    if not dialogue:
+        return "无人物对白。"
+    return "\n".join(dialogue_lines_for_prompt(dialogue))
 
 
 def dialogue_lines_for_prompt(dialogue: str) -> list[str]:
@@ -349,12 +355,12 @@ def build_final_prompt(
     return render_prompt_template(
         "final_image_prompt_v1.md",
         {
-            "style_prompt": style_prompt.strip(),
             "aspect_ratio": aspect_ratio,
             "panel_type": "封面图" if panel_type == PanelType.cover else "剧情分镜",
             "story_beat": story_beat.strip(),
             "visual_prompt": visual_prompt.strip(),
-            "image_text_block": image_text_block(image_text),
+            "dialogue_block": dialogue_block(image_text),
+            "image_text_block": image_text_block(image_text, panel_type),
             "text_layout": text_layout.strip() if text_layout else "由图片模型根据画面构图自行决定，但不得遮挡主体脸部和关键动作。",
             "reference_notes_block": reference_notes_block(reference_notes),
         },
