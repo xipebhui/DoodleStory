@@ -18,6 +18,7 @@
   - 缩略图：`/api/v1/assets/{asset_id}/content?variant=thumbnail`
 - 七牛对象存储接入：
   - `STORAGE_BACKEND=qiniu` 时，新上传和新生成资产写入七牛。
+  - 七牛配置支持 `QINIU_ACCESS_KEY` / `QINIU_SECRET_KEY` / `QINIU_BUCKET` / `QINIU_BUCKET_DOMAIN`，也兼容现有 `QNY_ACCESS_KEY` / `QNY_SECRET_KEY` / `QNY_BUCKET` / `QNY_DOMAIN`。
   - 七牛私有空间通过签名下载 URL 访问。
   - 七牛缩略图通过 `imageView2` 参数生成。
   - 七牛配置缺失或上传失败时明确报错，不静默切回本地。

@@ -27,6 +27,24 @@ class StoredFile:
     public_url: str | None = None
 
 
+@dataclass(frozen=True)
+class QiniuConfig:
+    access_key: str
+    secret_key: str
+    bucket: str
+    bucket_domain: str
+
+
+def qiniu_config() -> QiniuConfig:
+    settings = get_settings()
+    return QiniuConfig(
+        access_key=settings.qiniu_access_key.strip() or settings.qny_access_key.strip(),
+        secret_key=settings.qiniu_secret_key.strip() or settings.qny_secret_key.strip(),
+        bucket=settings.qiniu_bucket.strip() or settings.qny_bucket.strip(),
+        bucket_domain=settings.qiniu_bucket_domain.strip() or settings.qny_domain.strip(),
+    )
+
+
 def configured_storage_backend() -> StorageBackend:
     raw_backend = get_settings().storage_backend.strip().lower()
     try:
@@ -55,16 +73,16 @@ def write_local_file(storage_key: str, content: bytes) -> None:
 
 
 def qiniu_auth():
-    settings = get_settings()
+    config = qiniu_config()
     missing = [
         name
         for name, value in {
-            "QINIU_ACCESS_KEY": settings.qiniu_access_key,
-            "QINIU_SECRET_KEY": settings.qiniu_secret_key,
-            "QINIU_BUCKET": settings.qiniu_bucket,
-            "QINIU_BUCKET_DOMAIN": settings.qiniu_bucket_domain,
+            "QINIU_ACCESS_KEY 或 QNY_ACCESS_KEY": config.access_key,
+            "QINIU_SECRET_KEY 或 QNY_SECRET_KEY": config.secret_key,
+            "QINIU_BUCKET 或 QNY_BUCKET": config.bucket,
+            "QINIU_BUCKET_DOMAIN 或 QNY_DOMAIN": config.bucket_domain,
         }.items()
-        if not value.strip()
+        if not value
     ]
     if missing:
         raise HTTPException(
@@ -75,11 +93,11 @@ def qiniu_auth():
         from qiniu import Auth
     except ImportError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="缺少 qiniu Python SDK") from exc
-    return Auth(settings.qiniu_access_key, settings.qiniu_secret_key)
+    return Auth(config.access_key, config.secret_key)
 
 
 def qiniu_base_url(storage_key: str) -> str:
-    domain = get_settings().qiniu_bucket_domain.strip().rstrip("/")
+    domain = qiniu_config().bucket_domain.rstrip("/")
     if not domain:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="七牛 Bucket 域名未配置")
     if not domain.startswith(("http://", "https://")):
@@ -110,8 +128,7 @@ def upload_qiniu_file(storage_key: str, local_path: Path) -> str:
     except ImportError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="缺少 qiniu Python SDK") from exc
 
-    settings = get_settings()
-    token = qiniu_auth().upload_token(settings.qiniu_bucket, storage_key, 3600)
+    token = qiniu_auth().upload_token(qiniu_config().bucket, storage_key, 3600)
     result, info = put_file_v2(token, storage_key, str(local_path), version="v2")
     status_code = getattr(info, "status_code", None)
     if status_code != 200 or not isinstance(result, dict) or result.get("key") != storage_key:

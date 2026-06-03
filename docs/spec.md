@@ -90,7 +90,7 @@
 - 外部集成：LLM 固定使用 SiliconFlow 配置；生图 API key、base url 和代理地址从 env 读取。`/v1/images/edits` 类模型继续使用 XG 配置，Google/Gemini 图片模型和 `nano-banana`/`nana-banana` 类 Chat 生图模型使用 ApexerAPI 的 `/v1/chat/completions`，ApexerAPI 请求可通过 `APEXERAPI_PROXY_URL` 单独配置代理。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
-- 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛私有空间访问必须通过后端鉴权后生成短期签名 URL。任务列表和小尺寸预览默认使用缩略图 URL，本地资产由后端按需生成 WebP 缩略图，七牛资产使用 `imageView2` 缩略图处理参数。
+- 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。七牛私有空间访问必须通过后端鉴权后生成短期签名 URL。任务列表和小尺寸预览默认使用缩略图 URL，本地资产由后端按需生成 WebP 缩略图，七牛资产使用 `imageView2` 缩略图处理参数。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 
 ## 约束

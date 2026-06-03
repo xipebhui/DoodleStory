@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     qiniu_private_bucket: bool = True
     qiniu_download_url_expires_seconds: int = 3600
     qiniu_thumbnail_fop: str = "imageView2/1/w/320/h/568/format/webp/q/75"
+    qny_access_key: str = ""
+    qny_secret_key: str = ""
+    qny_bucket: str = ""
+    qny_domain: str = ""
     local_thumbnail_width: int = 320
     local_thumbnail_height: int = 568
     frontend_origin: str = "http://127.0.0.1:3000"

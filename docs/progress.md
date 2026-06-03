@@ -86,6 +86,7 @@
 - 故事方案 storyboard planning 与 Markdown prompt 模板调整后，`./scripts/check.sh` 通过。
 - 故事方案显式图号与人物锚点 prompt 修正后，`./scripts/check.sh` 通过；用“老板和男孩办公室对话”固定 10 张场景手动验证第一步返回 10 个 panels，且第 1 个为封面。
 - 任务列表与对象存储性能改造后，`python3 -m compileall backend/app`、`npm run build` 和 `./scripts/check.sh` 通过。
+- 七牛配置兼容 `QNY_*` 前缀后，用本地 `.env` 中的 QNY 配置完成真实烟测：临时启用 `STORAGE_BACKEND=qiniu` 上传测试 PNG 成功，原图签名 URL 返回 `200 image/png`，`imageView2` 缩略图返回 `200 image/webp`，烟测对象已从七牛删除。
 
 ## 已知缺口
 
@@ -94,7 +95,7 @@
 - 风格测试真实生图尚未实现，当前仍会明确返回 Provider 未接入错误，避免产生 Mock 结果。
 - LLM 客户端和 prompts 已实现，但尚未接入任务 worker 流程。
 - 任务 worker 已接入 LLM 和 XG 客户端，基础任务详情、批量下载和预览已完成；更精细的运行中恢复策略、单图下载入口和更系统的组件拆分仍可继续完善。
-- 历史本地资产尚未迁移到七牛；七牛对象存储已支持新资产写入、签名访问和 imageView2 缩略图，但仍需要在真实七牛配置下做端到端上传/访问验证。
+- 历史本地资产尚未迁移到七牛；七牛对象存储已通过独立上传/访问烟测，仍建议用真实任务生成链路做一次端到端验证。
 - 旧的多 profile registry 已移除；SiliconFlow、XG 图片编辑接口与 ApexerAPI Chat 生图接口按固定平台配置接入。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
 

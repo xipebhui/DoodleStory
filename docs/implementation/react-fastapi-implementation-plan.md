@@ -80,6 +80,7 @@ SiliconFlow 文档显示其文本生成支持 OpenAI SDK 调用方式，示例 b
 - 数据库 `file_assets.storage_backend` 保存 `local` 或 `qiniu`。
 - `storage_key` 永远是内部 key，不暴露服务器绝对路径。
 - 缩略图访问通过 `/api/v1/assets/{asset_id}/content?variant=thumbnail`；本地资产按需生成 WebP 缩略图，七牛资产使用 `imageView2` URL 参数生成缩略图。
+- 七牛配置字段兼容 `QINIU_*` 和现有 `QNY_*` 命名：`QNY_ACCESS_KEY`、`QNY_SECRET_KEY`、`QNY_BUCKET`、`QNY_DOMAIN`。
 
 七牛 Python SDK 文档支持 `pip install qiniu`，通过 `Auth(access_key, secret_key)` 初始化，使用 `upload_token` 和 `put_file_v2` 上传文件；私有空间下载可以通过 `private_download_url` 生成带过期时间的下载 URL。
 
