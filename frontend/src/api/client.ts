@@ -24,6 +24,7 @@ export type FileAsset = {
   id: string;
   purpose: string;
   storage_backend: string;
+  public_url: string | null;
   original_filename: string | null;
   content_type: string;
   byte_size: number;

@@ -64,7 +64,7 @@
 - 修正人物参考拆分规则：人物只在不同年龄阶段拆不同 appearance，情绪、动作、失败、焦虑、幻想、石化等都作为同一人物的状态处理；最终生图 prompt 去掉 DoodleStory/Markdown 文档标题，改成更接近画师创作指令，并允许为“问话、回答、说话”等动作补充简短人物对白。
 - 为人物提取增加代码层归一化：LLM 即使按愤怒、焦虑、幻想等状态拆出多个 appearance，后端也会按童年/少年/青年/成年/中年/老年等年龄阶段合并，人物参考图只保留稳定身份外观。
 - 开始 Sprint 05 性能优化：任务列表接口改为轻量摘要，不再返回完整 panels、steps、generated_images、人物参考和下载记录；前端列表页不再自动拉取第一条任务详情，列表预览图改用缩略图变体。
-- 接入可配置存储后端：`STORAGE_BACKEND=local` 保持本地存储；`STORAGE_BACKEND=qiniu` 时新资产写入七牛对象存储，访问时经后端鉴权后重定向到七牛原图或 `imageView2` 缩略图签名 URL；本地历史资产按需生成 WebP 缩略图。
+- 接入可配置存储后端：`STORAGE_BACKEND=local` 保持本地存储；`STORAGE_BACKEND=qiniu` 时新资产写入七牛对象存储，并向前端返回固定公开 CDN 原图 URL 或 `imageView2` 缩略图 URL；本地历史资产按需生成 WebP 缩略图。
 - 调整故事方案和生图 prompt 风格：故事方案 prompt 从工程化字段规则改为“故事导演分镜”口吻，允许每格按剧情自然选择旁白、对白、强调或留白；最终生图、风格测试和人物参考图 prompt 去掉 Markdown 任务书结构，改为自然画师指令，并让图片文字只绘制引号内内容。
 - 放宽故事方案和分镜 prompt 的创作边界：允许 LLM 围绕用户粗略想法主动补足冲突、反差、情绪推进、短对白和旁白钩子，避免因过度限制导致故事性不足；新增内容只要求服务主线和人物关系，不把故事带偏。
 - 精简最终生图 prompt：参考图说明缩短为“人物参考（参考图N）/风格参考（参考图N）”；最终 prompt 不再使用 emphasis；对白会从“人物：台词”转换为“人物说：台词”，并提示气泡中只绘制台词本身；旁白定位调整为补充前因后果和剧情信息，而不是复述画面状态。
@@ -86,7 +86,8 @@
 - 故事方案 storyboard planning 与 Markdown prompt 模板调整后，`./scripts/check.sh` 通过。
 - 故事方案显式图号与人物锚点 prompt 修正后，`./scripts/check.sh` 通过；用“老板和男孩办公室对话”固定 10 张场景手动验证第一步返回 10 个 panels，且第 1 个为封面。
 - 任务列表与对象存储性能改造后，`python3 -m compileall backend/app`、`npm run build` 和 `./scripts/check.sh` 通过。
-- 七牛配置兼容 `QNY_*` 前缀后，用本地 `.env` 中的 QNY 配置完成真实烟测：临时启用 `STORAGE_BACKEND=qiniu` 上传测试 PNG 成功，原图签名 URL 返回 `200 image/png`，`imageView2` 缩略图返回 `200 image/webp`，烟测对象已从七牛删除。
+- 七牛配置兼容 `QNY_*` 前缀后，用本地 `.env` 中的 QNY 配置完成真实烟测：临时启用 `STORAGE_BACKEND=qiniu` 上传测试 PNG 成功，固定原图 CDN URL 返回 `200 image/png`，固定 `imageView2` 缩略图 URL 返回 `200 image/webp`，烟测对象已从七牛删除。
+- 七牛资产访问改为前端直接使用 `file_assets.public_url` 派生出的固定公开 CDN URL，避免短期签名 URL 造成浏览器缓存命中差；后端 `/assets/{id}/content` 仅保留本地资产访问和七牛固定 URL 兼容跳转。
 
 ## 已知缺口
 

@@ -19,8 +19,6 @@ class Settings(BaseSettings):
     qiniu_secret_key: str = ""
     qiniu_bucket: str = ""
     qiniu_bucket_domain: str = ""
-    qiniu_private_bucket: bool = True
-    qiniu_download_url_expires_seconds: int = 3600
     qiniu_thumbnail_fop: str = "imageView2/1/w/320/h/568/format/webp/q/75"
     qny_access_key: str = ""
     qny_secret_key: str = ""

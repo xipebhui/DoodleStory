@@ -28,7 +28,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { API_BASE_URL, api, type Style, type StyleTest, type Task, type TaskSummary, type User } from "./api/client";
+import { API_BASE_URL, api, type FileAsset, type Style, type StyleTest, type Task, type TaskSummary, type User } from "./api/client";
 import "./styles/app.css";
 
 type View = "tasks" | "styles" | "settings";
@@ -66,12 +66,14 @@ function imageTextSummary(value: string | null | undefined) {
 }
 
 function LazyAssetImage({
+  asset,
   assetId,
   alt,
   className,
   eager = false,
   variant = "thumbnail",
 }: {
+  asset?: FileAsset | null;
   assetId: string;
   alt: string;
   className?: string;
@@ -108,16 +110,30 @@ function LazyAssetImage({
     return () => observer.disconnect();
   }, [assetId, eager]);
 
+  const resolvedSrc = asset ? assetUrl(asset, variant) : api.assetContentUrl(assetId, variant);
+
   return (
     <img
       ref={imageRef}
       className={["lazy-asset-image", className].filter(Boolean).join(" ")}
-      src={shouldLoad ? api.assetContentUrl(assetId, variant) : undefined}
+      src={shouldLoad ? resolvedSrc : undefined}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
       decoding="async"
     />
   );
+}
+
+function absoluteAssetUrl(value: string): string {
+  if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:")) {
+    return value;
+  }
+  return `${API_BASE_URL}${value.startsWith("/") ? "" : "/"}${value}`;
+}
+
+function assetUrl(asset: FileAsset, variant: "original" | "thumbnail" = "original"): string {
+  const value = variant === "thumbnail" ? asset.thumbnail_url : asset.content_url;
+  return absoluteAssetUrl(value || api.assetContentUrl(asset.id, variant));
 }
 
 function App() {
@@ -665,12 +681,12 @@ function TasksView({ user }: { user: User }) {
 
   function downloadPreviewImage() {
     if (!previewImage?.asset) return;
-    window.location.href = api.assetContentUrl(previewImage.asset.id);
+    window.location.href = assetUrl(previewImage.asset, "original");
   }
 
   function openPreviewImage() {
     if (!previewImage?.asset) return;
-    window.open(api.assetContentUrl(previewImage.asset.id), "_blank", "noopener,noreferrer");
+    window.open(assetUrl(previewImage.asset, "original"), "_blank", "noopener,noreferrer");
   }
 
   async function downloadSelectedTask() {
@@ -678,7 +694,7 @@ function TasksView({ user }: { user: User }) {
     try {
       const result = await api.createTaskDownload(selectedTask.id);
       if (result.status === "ready" && result.asset) {
-        window.location.href = api.assetContentUrl(result.asset.id);
+        window.location.href = assetUrl(result.asset, "original");
       } else {
         setMessage(result.error_message ?? "下载包未就绪");
       }
@@ -805,7 +821,7 @@ function TasksView({ user }: { user: User }) {
                 </div>
                 <div className="thumb-strip">
 	                  {rowImages.slice(0, TASK_ROW_IMAGE_PREVIEW_LIMIT).map((image) => (
-	                    <LazyAssetImage key={image.id} assetId={image.asset.id} alt={task.display_title} />
+	                    <LazyAssetImage key={image.id} asset={image.asset} assetId={image.asset.id} alt={task.display_title} />
 	                  ))}
                   {rowImages.length === 0 ? <span className="thumb-empty">等待图片</span> : null}
 	                  {imageCount > TASK_ROW_IMAGE_PREVIEW_LIMIT ? (
@@ -945,7 +961,7 @@ function TasksView({ user }: { user: User }) {
                     <div className="character-reference-grid">
                       {taskForDetail.character_references.map((reference) => (
                         <figure key={reference.id} className="character-reference-card">
-                          <LazyAssetImage assetId={reference.asset.id} alt={reference.name} />
+                          <LazyAssetImage asset={reference.asset} assetId={reference.asset.id} alt={reference.name} />
                           <figcaption>
                             <strong>{reference.name}</strong>
                             {reference.age_stage ? <span>{reference.age_stage}</span> : null}
@@ -998,7 +1014,7 @@ function TasksView({ user }: { user: User }) {
                               className="image-button"
                               onClick={() => setPreviewImageId(image.id)}
                             >
-                              <LazyAssetImage assetId={image.asset.id} alt={`分镜 ${panel.panel_order}`} />
+                              <LazyAssetImage asset={image.asset} assetId={image.asset.id} alt={`分镜 ${panel.panel_order}`} />
                               <Eye size={18} />
                             </button>
                           ) : (
@@ -1115,6 +1131,7 @@ function TasksView({ user }: { user: User }) {
                     <div className="selected-style-poster">
                       {styleCover(selectedCreateStyle) ? (
                         <LazyAssetImage
+                          asset={styleCover(selectedCreateStyle)}
                           assetId={styleCover(selectedCreateStyle)!.id}
                           alt={selectedCreateStyle.name}
                         />
@@ -1144,7 +1161,7 @@ function TasksView({ user }: { user: User }) {
                       >
                         <div className="style-pick-images">
                           {assets.slice(0, 4).map((asset) => (
-                            <LazyAssetImage key={asset.id} assetId={asset.id} alt={style.name} />
+                            <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
                           ))}
                           {assets.length === 0 ? <span>模板比例</span> : null}
                         </div>
@@ -1204,7 +1221,7 @@ function TasksView({ user }: { user: User }) {
             <ChevronLeft size={22} />
           </button>
           <figure className="image-preview-frame" onClick={(event) => event.stopPropagation()}>
-	            <LazyAssetImage assetId={previewImage.asset.id} alt="生成图预览" eager variant="original" />
+	            <LazyAssetImage asset={previewImage.asset} assetId={previewImage.asset.id} alt="生成图预览" eager variant="original" />
             <figcaption>
               <div>
                 <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
@@ -1418,7 +1435,7 @@ function StylesView({ user }: { user: User }) {
                 {stylePreviewAssets(testingStyle)
                   .slice(0, 6)
                   .map((asset) => (
-                    <LazyAssetImage key={asset.id} assetId={asset.id} alt={testingStyle.name} />
+                    <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={testingStyle.name} />
                   ))}
                 {testingStyle.reference_images.length === 0 ? <span>暂无参考图</span> : null}
               </div>
@@ -1445,7 +1462,7 @@ function StylesView({ user }: { user: User }) {
                   正在生成测试图
                 </div>
               ) : styleTest?.output_asset ? (
-                <LazyAssetImage assetId={styleTest.output_asset.id} alt="风格测试结果" eager variant="original" />
+                <LazyAssetImage asset={styleTest.output_asset} assetId={styleTest.output_asset.id} alt="风格测试结果" eager variant="original" />
               ) : (
                 <div className="empty mini">{styleTest?.error_message || "还没有测试结果"}</div>
               )}
@@ -1495,7 +1512,7 @@ function StylesView({ user }: { user: User }) {
           return (
             <article className="style-card" key={style.id}>
               <div className="poster">
-                {cover ? <LazyAssetImage assetId={cover.id} alt={style.name} /> : <span>模板比例</span>}
+                {cover ? <LazyAssetImage asset={cover} assetId={cover.id} alt={style.name} /> : <span>模板比例</span>}
               </div>
               <div className="style-card-copy">
                 <div className="style-row-title">
@@ -1507,7 +1524,7 @@ function StylesView({ user }: { user: User }) {
               </div>
               <div className="style-row-strip">
                 {assets.slice(0, 5).map((asset) => (
-                  <LazyAssetImage key={asset.id} assetId={asset.id} alt={style.name} />
+                  <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
                 ))}
                 {assets.length === 0 ? <span>无参考图</span> : null}
               </div>
@@ -1588,7 +1605,7 @@ function StylesView({ user }: { user: User }) {
                 {formStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
                 {formStyle.reference_images.map((reference) => (
                   <figure key={reference.id} className="reference-item">
-                    <LazyAssetImage assetId={reference.asset.id} alt={reference.asset.original_filename ?? "参考图"} />
+                    <LazyAssetImage asset={reference.asset} assetId={reference.asset.id} alt={reference.asset.original_filename ?? "参考图"} />
                     <button type="button" onClick={() => deleteReference(reference.id)}>
                       <Trash2 size={14} />
                     </button>

@@ -69,7 +69,7 @@ SiliconFlow 文档显示其文本生成支持 OpenAI SDK 调用方式，示例 b
 
 - 生成图片需要跨机器访问。
 - 后端容器/服务重启后本地磁盘不可靠。
-- 图片结果需要长期保存、CDN 加速、私有下载 URL。
+- 图片结果需要长期保存和 CDN 加速。
 - XG 返回远程图片 URL，后端下载后希望持久化到对象存储，而不是只存本地。
 
 建议实现方式：
@@ -79,10 +79,10 @@ SiliconFlow 文档显示其文本生成支持 OpenAI SDK 调用方式，示例 b
 - 当 env 配置 `STORAGE_BACKEND=qiniu` 时启用七牛；配置缺失或上传失败必须明确报错，不能静默切回本地。
 - 数据库 `file_assets.storage_backend` 保存 `local` 或 `qiniu`。
 - `storage_key` 永远是内部 key，不暴露服务器绝对路径。
-- 缩略图访问通过 `/api/v1/assets/{asset_id}/content?variant=thumbnail`；本地资产按需生成 WebP 缩略图，七牛资产使用 `imageView2` URL 参数生成缩略图。
+- 缩略图访问：本地资产通过 `/api/v1/assets/{asset_id}/content?variant=thumbnail` 按需生成 WebP 缩略图；七牛资产直接返回固定公开 CDN URL，并追加 `imageView2` URL 参数生成缩略图。
 - 七牛配置字段兼容 `QINIU_*` 和现有 `QNY_*` 命名：`QNY_ACCESS_KEY`、`QNY_SECRET_KEY`、`QNY_BUCKET`、`QNY_DOMAIN`。
 
-七牛 Python SDK 文档支持 `pip install qiniu`，通过 `Auth(access_key, secret_key)` 初始化，使用 `upload_token` 和 `put_file_v2` 上传文件；私有空间下载可以通过 `private_download_url` 生成带过期时间的下载 URL。
+七牛 Python SDK 文档支持 `pip install qiniu`，通过 `Auth(access_key, secret_key)` 初始化，使用 `upload_token` 和 `put_file_v2` 上传文件；前端展示使用 Bucket/CDN 域名下的固定公开 URL。
 
 ## 环境变量规划
 
@@ -107,7 +107,7 @@ QINIU_ACCESS_KEY=
 QINIU_SECRET_KEY=
 QINIU_BUCKET=
 QINIU_BUCKET_DOMAIN=
-QINIU_PRIVATE_BUCKET=true
+QINIU_THUMBNAIL_FOP=imageView2/1/w/320/h/568/format/webp/q/75
 ```
 
 规则：

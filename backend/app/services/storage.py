@@ -105,13 +105,6 @@ def qiniu_base_url(storage_key: str) -> str:
     return f"{domain}/{quote(storage_key, safe='/')}"
 
 
-def qiniu_signed_url(base_url: str) -> str:
-    settings = get_settings()
-    if not settings.qiniu_private_bucket:
-        return base_url
-    return qiniu_auth().private_download_url(base_url, expires=settings.qiniu_download_url_expires_seconds)
-
-
 def qiniu_asset_url(storage_key: str, variant: str) -> str:
     base_url = qiniu_base_url(storage_key)
     if variant == ASSET_URL_VARIANT_THUMBNAIL:
@@ -119,7 +112,7 @@ def qiniu_asset_url(storage_key: str, variant: str) -> str:
         if not thumbnail_fop:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="七牛缩略图处理参数未配置")
         base_url = f"{base_url}?{thumbnail_fop}"
-    return qiniu_signed_url(base_url)
+    return base_url
 
 
 def upload_qiniu_file(storage_key: str, local_path: Path) -> str:

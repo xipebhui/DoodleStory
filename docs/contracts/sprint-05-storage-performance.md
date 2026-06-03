@@ -19,8 +19,8 @@
 - 七牛对象存储接入：
   - `STORAGE_BACKEND=qiniu` 时，新上传和新生成资产写入七牛。
   - 七牛配置支持 `QINIU_ACCESS_KEY` / `QINIU_SECRET_KEY` / `QINIU_BUCKET` / `QINIU_BUCKET_DOMAIN`，也兼容现有 `QNY_ACCESS_KEY` / `QNY_SECRET_KEY` / `QNY_BUCKET` / `QNY_DOMAIN`。
-  - 七牛私有空间通过签名下载 URL 访问。
-  - 七牛缩略图通过 `imageView2` 参数生成。
+  - 七牛资产使用固定公开 CDN URL 访问，不使用短期签名 URL。
+  - 七牛缩略图通过固定 CDN URL 追加 `imageView2` 参数生成。
   - 七牛配置缺失或上传失败时明确报错，不静默切回本地。
 - 本地存储资产支持按需生成 WebP 缩略图，避免旧本地资产列表页继续拉原图。
 - 任务生成、风格测试、人物参考图生成和下载打包可以读取本地资产或七牛资产。
@@ -37,7 +37,7 @@
 - `GET /api/v1/tasks` 不再返回完整 `TaskRead`。
 - 任务列表首屏不再自动请求第一条任务详情。
 - 列表缩略图请求使用 `variant=thumbnail`。
-- `STORAGE_BACKEND=qiniu` 下新资产保存到七牛，并在访问时走后端鉴权后重定向到七牛 URL。
+- `STORAGE_BACKEND=qiniu` 下新资产保存到七牛，并向前端返回固定公开 CDN URL。
 - 已运行 `./scripts/check.sh`。
 
 ## 验证
@@ -51,4 +51,4 @@
 - 打开任务列表，观察 Network 中 `/tasks` 响应不包含 panels 和 generated_images 完整数组。
 - 打开任务详情，确认详情抽屉才请求 `/tasks/{id}`。
 - 本地资产缩略图访问 `/assets/{id}/content?variant=thumbnail` 返回 WebP。
-- 七牛配置齐全时，新生成资产记录 `storage_backend=qiniu`，缩略图 URL 包含 `imageView2` 处理参数。
+- 七牛配置齐全时，新生成资产记录 `storage_backend=qiniu`，原图 URL 为固定 CDN 路径，缩略图 URL 包含 `imageView2` 处理参数。
