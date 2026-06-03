@@ -297,13 +297,15 @@ def call_siliconflow_json(*, system_prompt: str, user_prompt: str) -> dict[str, 
     settings = get_settings()
     client = create_siliconflow_client()
     logger.info(
-        "calling siliconflow model=%s system_prompt_chars=%s user_prompt_chars=%s",
+        "calling siliconflow model=%s temperature=%s system_prompt_chars=%s user_prompt_chars=%s",
         settings.siliconflow_model,
+        settings.siliconflow_temperature,
         len(system_prompt),
         len(user_prompt),
     )
     response = client.chat.completions.create(
         model=settings.siliconflow_model,
+        temperature=settings.siliconflow_temperature,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system_prompt},
