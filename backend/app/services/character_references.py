@@ -271,20 +271,16 @@ def build_panel_reference_pack(
         if appearance.status != WorkflowStatus.succeeded or appearance.reference_image is None:
             raise ImageProviderConfigError(f"人物参考图尚未生成成功：{character.name}")
         character_paths.append(resolve_storage_key(appearance.reference_image.storage_key))
-        stage = f" · {appearance.age_stage}" if appearance.age_stage else ""
-        usage_note = f"，{link.usage_note}" if link.usage_note else ""
-        notes.append(
-            f"参考图{index}：{character.name}{stage}{usage_note}。必须保持该人物身份、年龄阶段、脸部关键特征、服装方向和标志物。"
-        )
+        notes.append(f"{character.name}参考（参考图{index}）")
 
     paths = [*character_paths, *style_reference_paths]
     if character_paths and style_reference_paths:
         start = len(character_paths) + 1
         end = len(character_paths) + len(style_reference_paths)
         if start == end:
-            notes.append(f"参考图{start}：风格参考图，用于保持整体画风、质感和色彩。")
+            notes.append(f"风格参考（参考图{start}）")
         else:
-            notes.append(f"参考图{start}-{end}：风格参考图，用于保持整体画风、质感和色彩。")
+            notes.append(f"风格参考（参考图{start}-{end}）")
     return PanelReferencePack(
         paths=paths,
         notes=notes,

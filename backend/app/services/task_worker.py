@@ -286,22 +286,54 @@ def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None) -
     title = values.get("title")
     narration = values.get("narration")
     dialogue = values.get("dialogue")
-    emphasis = values.get("emphasis")
     if title:
-        lines.append(f"标题文字只写：“{title.strip()}”")
-    if narration:
-        lines.append(f"旁白框只写：“{narration.strip()}”")
+        lines.append(f"标题：“{title.strip()}”")
     if dialogue:
-        lines.append(f"对白气泡只写：“{dialogue.strip()}”")
-    if emphasis:
-        lines.append(f"需要放大的短句只写：“{emphasis.strip()}”")
-    return "\n".join(lines) if lines else "这张图不需要图片内文字。"
+        lines.extend(dialogue_lines_for_prompt(dialogue))
+    if narration:
+        lines.append(f"旁白：“{narration.strip()}”")
+    return "\n".join(lines) if lines else "无图片内文字。"
+
+
+def dialogue_lines_for_prompt(dialogue: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in dialogue.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        speaker, content = split_dialogue_speaker(line)
+        if speaker and content:
+            lines.append(f"{speaker}说：“{content}”")
+        else:
+            lines.append(f"对白：“{line}”")
+    return lines
+
+
+def split_dialogue_speaker(line: str) -> tuple[str | None, str | None]:
+    for separator in ("：", ":"):
+        if separator not in line:
+            continue
+        speaker, content = line.split(separator, 1)
+        speaker = speaker.strip()
+        content = content.strip()
+        if 1 <= len(speaker) <= 12 and content:
+            return speaker, content
+    return None, None
 
 
 def reference_notes_block(reference_notes: list[str] | None) -> str:
     if not reference_notes:
         return "不需要额外参考图说明。"
     return "\n".join(reference_notes)
+
+
+def style_reference_notes(start_index: int, reference_count: int) -> list[str]:
+    if reference_count <= 0:
+        return []
+    end_index = start_index + reference_count - 1
+    if start_index == end_index:
+        return [f"风格参考（参考图{start_index}）"]
+    return [f"风格参考（参考图{start_index}-{end_index}）"]
 
 
 def build_final_prompt(
@@ -662,7 +694,7 @@ def process_task(task_id: str) -> None:
                     character_reference_count = reference_pack.character_count
                 else:
                     panel_reference_paths = reference_paths
-                    reference_notes = []
+                    reference_notes = style_reference_notes(1, len(reference_paths))
                     character_reference_count = 0
                 final_prompt = build_final_prompt(
                     task.style_prompt_snapshot,
@@ -923,6 +955,24 @@ def process_panel_edit(generated_image_id: str) -> None:
             db.commit()
         else:
             reference_paths = style_reference_paths
+            reference_notes = style_reference_notes(1, len(style_reference_paths))
+            image.final_prompt = build_final_prompt(
+                task.style_prompt_snapshot,
+                task.style_aspect_ratio_snapshot,
+                image.image_prompt or "",
+                panel.original_text_segment,
+                panel_type=panel.panel_type,
+                image_text=parse_image_text_json(image.image_text_json)
+                or {
+                    "title": None,
+                    "narration": panel.narration_text,
+                    "dialogue": panel.dialogue_text,
+                    "emphasis": None,
+                },
+                text_layout=image.text_layout or panel.text_layout,
+                reference_notes=reference_notes,
+            )
+            db.commit()
         try:
             logger.info(
                 "panel edit image request generated_image_id=%s task_id=%s panel_id=%s prompt_chars=%s reference_count=%s",
