@@ -283,23 +283,25 @@ def parse_image_text_json(value: str | None) -> dict[str, str | None] | None:
 def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
     values = image_text_to_dict(image_text)
     lines = []
-    labels = {
-        "title": "标题",
-        "narration": "旁白",
-        "dialogue": "对白",
-        "emphasis": "强调",
-    }
-    for key, label in labels.items():
-        value = values.get(key)
-        if value:
-            lines.append(f"- {label}：{value.strip()}")
-    return "\n".join(lines) if lines else "无"
+    title = values.get("title")
+    narration = values.get("narration")
+    dialogue = values.get("dialogue")
+    emphasis = values.get("emphasis")
+    if title:
+        lines.append(f"标题文字只写：“{title.strip()}”")
+    if narration:
+        lines.append(f"旁白框只写：“{narration.strip()}”")
+    if dialogue:
+        lines.append(f"对白气泡只写：“{dialogue.strip()}”")
+    if emphasis:
+        lines.append(f"需要放大的短句只写：“{emphasis.strip()}”")
+    return "\n".join(lines) if lines else "这张图不需要图片内文字。"
 
 
 def reference_notes_block(reference_notes: list[str] | None) -> str:
     if not reference_notes:
-        return "无"
-    return "\n".join(f"- {note}" for note in reference_notes)
+        return "不需要额外参考图说明。"
+    return "\n".join(reference_notes)
 
 
 def build_final_prompt(
