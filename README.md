@@ -16,6 +16,16 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 
 本仓库使用 `codex-project-template` 的 Codex 开发 harness，并已结合 DoodleStory 的业务进行适配。
 
+## 本地开发
+
+一键重启前后端开发服务：
+
+```bash
+./scripts/restart-dev.sh
+```
+
+默认后端启动在 `http://127.0.0.1:8000`，前端启动在 `http://127.0.0.1:3000`。日志默认写入 `/tmp/doodlestory-backend.log` 和 `/tmp/doodlestory-frontend.log`。
+
 开始较大实现工作前，请先阅读：
 
 - [项目规格](docs/spec.md)
