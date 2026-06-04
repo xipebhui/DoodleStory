@@ -85,6 +85,7 @@
 - 增强 `内容提取` 媒体预览交互：下载后的图片缩略图支持点击放大、键盘关闭、左右切换、下载单图和打开原图；视频仍保留内嵌播放器。
 - 完成内容提取下一版 UI 设计：将页面重构为列表入口，创建任务和查看详情都使用弹窗；新增图文故事总结展示，包含故事内容、故事爆点和目标观众；明确列表页只加载摘要，不加载所有图片。
 - 输出内容提取列表化 UI 三张效果图：列表页、创建任务弹窗和查看详情弹窗，作为 Sprint 08 后续实现的视觉参照。
+- 完成 Sprint 08 内容提取列表化实现：新增一键同步处理接口，创建任务时完成抖音链接解析、下载、图文 OCR 或视频音频转写，并对图文作品生成故事内容、故事爆点和目标观众；前端 `内容提取` tab 已改为列表入口，创建任务和查看详情都使用弹窗，详情才加载完整媒体，列表只加载摘要。
 
 ## 验证记录
 
@@ -102,6 +103,7 @@
 - 使用 `scripts/fetch-douyin-cookie.sh` 按官方流程打开浏览器登录抖音并保存 Cookie 到本地忽略路径 `.cache/douyin/cookies.json`；随后在 `.env` 中配置 `DOUYIN_DOWNLOADER_ROOT`、`DOUYIN_DOWNLOADER_PYTHON` 和 `DOUYIN_COOKIE_FILE`，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 成功下载该图文作品，产出 5 个媒体文件和 `download_manifest.jsonl`。
 - Sprint 07 同步内容提取后，`python3.11 -m compileall backend/app`、空 SQLite 数据库 Alembic `upgrade head`、`npm run build` 和 `./scripts/check.sh` 通过；用临时本地前后端服务在浏览器中注册测试账号并打开 `内容提取` tab，页面可正常加载并在 `127.0.0.1:8010` 不可达时显示明确错误。
 - 内容提取图片放大预览增强后，`npm run build` 和 `./scripts/check.sh` 通过；临时启动本地前后端与同机抖音下载服务，用真实图文链接 `https://v.douyin.com/Vcpjpg3pcMk/` 下载 5 张图片，浏览器验证第 1 张缩略图可打开预览、可切换到第 2 张、Esc 可关闭。
+- Sprint 08 内容提取列表化实现后，`./scripts/check.sh` 通过；临时启动本地前后端，使用真实图文分享文本中的 `https://v.douyin.com/Vcpjpg3pcMk/` 调用一键处理接口成功，结果为 `gallery`，登记 5 张图片和 1 个 metadata，生成原始文案与三段故事总结；浏览器验证列表页、创建弹窗和详情弹窗布局，详情内多图默认折叠且缩略图加载成功。
 
 ## 已知缺口
 
@@ -113,7 +115,7 @@
 - 历史本地资产尚未迁移到七牛；七牛对象存储已通过独立上传/访问烟测，仍建议用真实任务生成链路做一次端到端验证。
 - 旧的多 profile registry 已移除；SiliconFlow、XG 图片编辑接口与 ApexerAPI Chat 生图接口按固定平台配置接入。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
-- 内容提取已完成本地不可达错误路径和页面加载验证；还需要在同机 `127.0.0.1:8010` 抖音下载服务可达、且 SiliconFlow 多模态模型配置齐全时做真实图文下载提取和视频音频转写端到端验证。
+- 内容提取已完成同机 `127.0.0.1:8010` 可达时的真实图文下载、图文 OCR、故事总结、列表和详情弹窗验证；视频音频转写仍需用真实视频链接单独端到端验证。
 
 ## 建议下一步
 
@@ -121,4 +123,4 @@
 2. 使用 `scripts/fetch-douyin-cookie.sh` 获取有效抖音 Cookie 后，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 验证图文下载产物。
 3. 继续做组件拆分，把当前 `frontend/src/main.tsx` 拆成页面、组件和 API 模块。
 4. 补充更细的自动化测试和任务 worker 运行恢复策略。
-5. 启动同机抖音下载服务 `127.0.0.1:8010`，用真实抖音图文和视频链接验证 `内容提取` tab 的下载、资产预览、图文 OCR 和视频音频转写。
+5. 用真实抖音视频链接验证 `内容提取` tab 的视频下载、音频分离和语音转写链路。

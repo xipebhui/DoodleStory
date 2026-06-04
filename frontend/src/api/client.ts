@@ -212,6 +212,11 @@ export type ContentExtraction = {
   media_type: string;
   aweme_id: string | null;
   extracted_text: string | null;
+  story_content: string | null;
+  story_highlight: string | null;
+  target_audience: string | null;
+  story_summary_model: string | null;
+  story_summarized_at: string | null;
   media: ContentExtractionMedia[];
   created_at: string;
   updated_at: string;
@@ -223,7 +228,13 @@ export type ContentExtractionSummary = {
   source_url: string;
   media_type: string;
   aweme_id: string | null;
+  raw_input_preview: string | null;
   extracted_text_preview: string | null;
+  story_content_preview: string | null;
+  story_highlight_preview: string | null;
+  target_audience_preview: string | null;
+  has_extracted_text: boolean;
+  has_story_summary: boolean;
   media_count: number;
   created_at: string;
   updated_at: string;
@@ -384,11 +395,19 @@ export const api = {
     request<ApiData<TaskDownload>>(`/tasks/${id}/downloads`, { method: "POST" }).then((result) => result.data),
   contentExtractionHealth: () =>
     request<ApiData<ContentExtractionHealth>>("/content-extractions/douyin-health").then((result) => result.data),
-  contentExtractions: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
+  contentExtractions: (params?: {
+    query?: string;
+    cursor?: string | null;
+    limit?: number;
+    media_type?: string;
+    result_status?: string;
+  }) => {
     const search = new URLSearchParams();
     if (params?.query) search.set("query", params.query);
     if (params?.cursor) search.set("cursor", params.cursor);
     if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.media_type) search.set("media_type", params.media_type);
+    if (params?.result_status) search.set("result_status", params.result_status);
     const suffix = search.toString() ? `?${search.toString()}` : "";
     return request<ApiList<ContentExtractionSummary>>(`/content-extractions${suffix}`);
   },
@@ -399,8 +418,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }).then((result) => result.data),
+  processContentExtraction: (payload: { raw_input: string }) =>
+    request<ApiData<ContentExtraction>>("/content-extractions/process", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
   extractContentText: (id: string) =>
     request<ApiData<ContentExtraction>>(`/content-extractions/${id}/extract`, { method: "POST" }).then(
+      (result) => result.data,
+    ),
+  summarizeContentStory: (id: string) =>
+    request<ApiData<ContentExtraction>>(`/content-extractions/${id}/summarize-story`, { method: "POST" }).then(
       (result) => result.data,
     ),
 };

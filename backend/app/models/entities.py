@@ -379,6 +379,11 @@ class ContentExtraction(Base, TimestampMixin):
     output_dir: Mapped[str] = mapped_column(String(1000))
     manifest_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    story_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    story_highlight: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    target_audience: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    story_summary_model: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    story_summarized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     owner: Mapped[User] = relationship(back_populates="content_extractions")
     media: Mapped[list["ContentExtractionMedia"]] = relationship(back_populates="content_extraction", cascade="all, delete-orphan")

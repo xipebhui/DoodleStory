@@ -33,6 +33,11 @@ class ContentExtractionRead(TimestampFields):
     media_type: str
     aweme_id: str | None
     extracted_text: str | None
+    story_content: str | None = None
+    story_highlight: str | None = None
+    target_audience: str | None = None
+    story_summary_model: str | None = None
+    story_summarized_at: datetime | None = None
     media: list[ContentExtractionMediaRead] = []
 
 
@@ -42,7 +47,13 @@ class ContentExtractionListItemRead(TimestampFields):
     source_url: str
     media_type: str
     aweme_id: str | None
+    raw_input_preview: str | None
     extracted_text_preview: str | None
+    story_content_preview: str | None
+    story_highlight_preview: str | None
+    target_audience_preview: str | None
+    has_extracted_text: bool
+    has_story_summary: bool
     media_count: int
 
 

@@ -1271,10 +1271,16 @@ function ContentExtractionView({ user }: { user: User }) {
   const [health, setHealth] = useState<ContentExtractionHealth | null>(null);
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
+  const [mediaTypeFilter, setMediaTypeFilter] = useState("");
+  const [resultStatusFilter, setResultStatusFilter] = useState("");
   const [message, setMessage] = useState("");
   const [loadingRecords, setLoadingRecords] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
   const [mediaExpanded, setMediaExpanded] = useState(false);
   const [previewMediaId, setPreviewMediaId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -1296,10 +1302,11 @@ function ContentExtractionView({ user }: { user: User }) {
   const previewMedia = previewIndex >= 0 ? imageMedia[previewIndex] : null;
   const isGallery = current?.media_type === "gallery" || sourceMedia.some((item) => item.media_kind === "image");
   const isVideo = current?.media_type === "video" || sourceMedia.some((item) => item.media_kind === "video");
+  const hasStorySummary = Boolean(current?.story_content || current?.story_highlight || current?.target_audience);
 
   useEffect(() => {
     refreshRecords();
-  }, [query, cursor]);
+  }, [query, cursor, mediaTypeFilter, resultStatusFilter]);
 
   useEffect(() => {
     api
@@ -1338,7 +1345,13 @@ function ContentExtractionView({ user }: { user: User }) {
   async function refreshRecords() {
     try {
       setLoadingRecords(true);
-      const result = await api.contentExtractions({ query, cursor, limit: 8 });
+      const result = await api.contentExtractions({
+        query,
+        cursor,
+        limit: 10,
+        media_type: mediaTypeFilter || undefined,
+        result_status: resultStatusFilter || undefined,
+      });
       setRecords(result.items);
       setPageInfo(result.page);
     } catch (error) {
@@ -1348,7 +1361,7 @@ function ContentExtractionView({ user }: { user: User }) {
     }
   }
 
-  async function downloadContent(event: React.FormEvent<HTMLFormElement>) {
+  async function processContent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = rawInput.trim();
     if (!value) {
@@ -1356,18 +1369,20 @@ function ContentExtractionView({ user }: { user: User }) {
       return;
     }
     try {
-      setDownloading(true);
-      setMessage("正在解析并下载，请稍候...");
-      const result = await api.downloadContentExtraction({ raw_input: value });
+      setProcessing(true);
+      setMessage("正在解析下载、提取文案并总结故事，请稍候...");
+      const result = await api.processContentExtraction({ raw_input: value });
       setCurrent(result);
+      setCreateOpen(false);
+      setDetailOpen(true);
       setMediaExpanded(false);
       setPreviewMediaId(null);
-      setMessage("下载完成，可以提取文案");
+      setMessage(result.story_content ? "任务完成：文案和故事总结已生成" : "任务完成：文案已生成");
       await refreshRecords();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "解析并下载失败");
+      setMessage(error instanceof Error ? error.message : "一键解析提取失败");
     } finally {
-      setDownloading(false);
+      setProcessing(false);
     }
   }
 
@@ -1390,16 +1405,39 @@ function ContentExtractionView({ user }: { user: User }) {
     }
   }
 
+  async function summarizeStory() {
+    if (!current) {
+      setMessage("请先打开一条内容提取记录");
+      return;
+    }
+    try {
+      setSummarizing(true);
+      setMessage("正在按图片顺序总结故事，请稍候...");
+      const result = await api.summarizeContentStory(current.id);
+      setCurrent(result);
+      setMessage("故事总结完成");
+      await refreshRecords();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "故事总结失败");
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
   async function selectRecord(id: string) {
     try {
+      setLoadingDetail(true);
       const result = await api.contentExtraction(id);
       setCurrent(result);
       setRawInput(result.raw_input);
+      setDetailOpen(true);
       setMediaExpanded(false);
       setPreviewMediaId(null);
       setMessage("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "记录加载失败");
+    } finally {
+      setLoadingDetail(false);
     }
   }
 
@@ -1407,6 +1445,19 @@ function ContentExtractionView({ user }: { user: User }) {
     if (!current?.extracted_text) return;
     await navigator.clipboard.writeText(current.extracted_text);
     setMessage("文案已复制");
+  }
+
+  async function copyStorySummary() {
+    if (!current || !hasStorySummary) return;
+    const text = [
+      current.story_content ? `故事内容：${current.story_content}` : "",
+      current.story_highlight ? `故事爆点：${current.story_highlight}` : "",
+      current.target_audience ? `目标观众：${current.target_audience}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    await navigator.clipboard.writeText(text);
+    setMessage("故事总结已复制");
   }
 
   function applyRecordSearch(event: React.FormEvent<HTMLFormElement>) {
@@ -1448,190 +1499,279 @@ function ContentExtractionView({ user }: { user: User }) {
     window.open(assetUrl(previewMedia.asset, "original"), "_blank", "noopener,noreferrer");
   }
 
+  function resetFilters() {
+    setQueryInput("");
+    setQuery("");
+    setMediaTypeFilter("");
+    setResultStatusFilter("");
+    setCursor(null);
+    setCursorStack([]);
+  }
+
+  function recordStatusLabel(record: ContentExtractionSummary) {
+    if (record.has_story_summary) return "已总结";
+    if (record.has_extracted_text) return "已提取";
+    return "已下载";
+  }
+
   return (
     <section className="page content-extraction-page">
       <header className="page-header">
         <div>
           <h1>内容提取</h1>
-          <p>从抖音图文或视频中提取原始文案，下载结果只作为来源校验。</p>
+          <p>列表查看历史任务，创建时一键完成解析下载、文案提取和图文故事总结。</p>
         </div>
-        <div className={`health-pill ${health?.ok ? "ok" : ""}`}>
-          <span />
-          {health?.ok ? `抖音下载服务可用 · ${health.service_base_url}` : "抖音下载服务待检查"}
+        <div className="content-header-actions">
+          <div className={`health-pill ${health?.ok ? "ok" : ""}`}>
+            <span />
+            {health?.ok ? `下载服务可用 · ${health.service_base_url}` : "下载服务待检查"}
+          </div>
+          <button type="button" onClick={() => setCreateOpen(true)}>
+            <Plus size={16} />
+            创建任务
+          </button>
         </div>
       </header>
 
       {message ? <p className="form-message">{message}</p> : null}
 
-      <div className="content-extraction-layout">
-        <div className="content-main-stack">
-          <section className="panel content-input-panel">
-            <div className="editor-title">
+      <section className="panel content-list-panel">
+        <form className="content-list-toolbar" onSubmit={applyRecordSearch}>
+          <div className="content-search-control">
+            <Search size={16} />
+            <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索链接、原始分享文本、提取文案或故事总结" />
+          </div>
+          <select value={mediaTypeFilter} onChange={(event) => { setCursor(null); setCursorStack([]); setMediaTypeFilter(event.target.value); }}>
+            <option value="">全部类型</option>
+            <option value="gallery">图文</option>
+            <option value="video">视频</option>
+          </select>
+          <select value={resultStatusFilter} onChange={(event) => { setCursor(null); setCursorStack([]); setResultStatusFilter(event.target.value); }}>
+            <option value="">全部结果</option>
+            <option value="summarized">已总结</option>
+            <option value="extracted">已提取</option>
+            <option value="downloaded">仅下载</option>
+          </select>
+          <button type="submit" className="secondary-button">
+            <Filter size={16} />
+            筛选
+          </button>
+          <button type="button" className="secondary-button" onClick={resetFilters}>
+            <RefreshCw size={16} />
+            重置
+          </button>
+        </form>
+
+        <div className="content-list-table">
+          <div className="content-list-row header">
+            <span>来源</span>
+            <span>结果摘要</span>
+            <span>媒体</span>
+            <span>状态</span>
+            <span>更新时间</span>
+          </div>
+          {loadingRecords ? <div className="empty mini">正在加载内容提取任务</div> : null}
+          {!loadingRecords && records.length === 0 ? <div className="empty mini">暂无内容提取任务</div> : null}
+          {records.map((record) => (
+            <button
+              type="button"
+              key={record.id}
+              className={`content-list-row ${current?.id === record.id ? "selected" : ""}`}
+              onClick={() => selectRecord(record.id)}
+              disabled={loadingDetail}
+            >
+              <span>
+                <strong>{record.source_url}</strong>
+                <em>{record.raw_input_preview || record.aweme_id || "未记录分享文本"}</em>
+              </span>
+              <span>
+                <strong>{record.story_content_preview || record.extracted_text_preview || "暂无结果摘要"}</strong>
+                <em>{record.story_highlight_preview || record.target_audience_preview || "打开详情查看完整内容"}</em>
+              </span>
+              <span>{record.media_type === "gallery" ? "图文" : record.media_type === "video" ? "视频" : record.media_type}</span>
+              <span>
+                <b className={`content-status-badge ${record.has_story_summary ? "done" : record.has_extracted_text ? "active" : ""}`}>
+                  {recordStatusLabel(record)}
+                </b>
+                <em>{record.media_count} 个媒体</em>
+              </span>
+              <span>{formatDateTime(record.updated_at)}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="pagination-bar compact">
+          <button className="icon-button" type="button" aria-label="上一页" disabled={cursorStack.length === 0} onClick={goPreviousPage}>
+            <ChevronLeft size={16} />
+          </button>
+          <span>{cursor ? `第 ${Math.floor(Number(cursor) / 10) + 1} 页` : "第 1 页"}</span>
+          <button className="icon-button" type="button" aria-label="下一页" disabled={!pageInfo?.has_more} onClick={goNextPage}>
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </section>
+
+      {createOpen ? (
+        <div className="content-modal-backdrop" onClick={() => (processing ? null : setCreateOpen(false))}>
+          <section className="content-modal create" onClick={(event) => event.stopPropagation()}>
+            <header className="content-modal-header">
               <div>
-                <h2>抖音分享文本或链接</h2>
-                <p>可以粘贴完整分享文案，后端会只提取其中的抖音 URL。</p>
+                <h2>创建内容提取任务</h2>
+                <p>粘贴完整抖音分享文本或链接，后端会识别其中真实 URL。</p>
               </div>
-              <span className="status-pill running">同步下载</span>
-            </div>
-            <form onSubmit={downloadContent} className="content-download-form">
+              <button type="button" className="icon-button" aria-label="关闭创建任务" disabled={processing} onClick={() => setCreateOpen(false)}>
+                <X size={18} />
+              </button>
+            </header>
+            <form onSubmit={processContent} className="content-download-form">
               <textarea
                 value={rawInput}
                 onChange={(event) => setRawInput(event.target.value)}
                 placeholder="粘贴抖音分享文本或链接，例如 https://v.douyin.com/..."
-                disabled={downloading || extracting}
+                disabled={processing}
               />
               <div className="content-action-row">
-                <button type="submit" disabled={downloading || extracting}>
-                  {downloading ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-                  解析并下载
+                <button type="submit" disabled={processing}>
+                  {processing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                  一键解析下载并提取总结
                 </button>
-                <button type="button" className="secondary-button" disabled={!current || downloading || extracting} onClick={extractText}>
-                  {extracting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
-                  提取文案
-                </button>
-                <span>{current ? `已解析：${current.source_url}` : "等待解析"}</span>
+                <span>图文会同步提取图片文字并总结故事；视频会同步分离音频并转写文案。</span>
               </div>
             </form>
           </section>
+        </div>
+      ) : null}
 
-          <section className="panel extraction-result-panel">
-            <div className="editor-title">
+      {detailOpen && current ? (
+        <div className="content-modal-backdrop detail-backdrop" onClick={() => setDetailOpen(false)}>
+          <section className="content-modal detail" onClick={(event) => event.stopPropagation()}>
+            <header className="content-modal-header">
               <div>
-                <h2>提取文案</h2>
-                <p>{current?.extracted_text ? "原始文案结果会保留换行和顺序。" : "下载完成后点击提取文案。"}</p>
+                <h2>内容提取详情</h2>
+                <p>{current.source_url}</p>
               </div>
-              <div className="content-action-row compact">
-                <button type="button" className="secondary-button" disabled={!current || extracting} onClick={extractText}>
+              <div className="content-detail-actions">
+                <button type="button" className="secondary-button" disabled={extracting} onClick={extractText}>
+                  {extracting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
                   重新提取
                 </button>
-                <button type="button" disabled={!current?.extracted_text} onClick={copyExtractedText}>
-                  复制文案
+                <button type="button" className="secondary-button" disabled={!isGallery || summarizing} onClick={summarizeStory}>
+                  {summarizing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                  重新总结
+                </button>
+                <button type="button" className="icon-button" aria-label="关闭详情" onClick={() => setDetailOpen(false)}>
+                  <X size={18} />
                 </button>
               </div>
-            </div>
-            <div className="extracted-text-box">
-              {current?.extracted_text ? (
-                <p>{current.extracted_text}</p>
-              ) : (
-                <div className="empty mini">{extracting ? "正在提取文案" : "暂无文案结果"}</div>
-              )}
-            </div>
-            <div className="content-result-meta">
-              <span>
-                {isGallery ? `图文文案按 ${sourceMedia.length} 张图片顺序合并` : isVideo ? "视频文案来自分离音频转写" : "等待下载媒体"}
-              </span>
-              <span>{current ? `更新于 ${formatDateTime(current.updated_at)}` : "未开始"}</span>
+            </header>
+
+            <div className="content-detail-grid">
+              <section className="content-detail-main">
+                <div className="content-section-title">
+                  <h3>故事总结</h3>
+                  <button type="button" className="secondary-button" disabled={!hasStorySummary} onClick={copyStorySummary}>
+                    复制总结
+                  </button>
+                </div>
+                {hasStorySummary ? (
+                  <div className="story-summary-grid">
+                    <article>
+                      <span>故事内容</span>
+                      <p>{current.story_content || "暂无"}</p>
+                    </article>
+                    <article>
+                      <span>故事爆点</span>
+                      <p>{current.story_highlight || "暂无"}</p>
+                    </article>
+                    <article>
+                      <span>目标观众</span>
+                      <p>{current.target_audience || "暂无"}</p>
+                    </article>
+                  </div>
+                ) : (
+                  <div className="empty mini">{isVideo ? "视频记录暂不生成故事总结" : "暂无故事总结"}</div>
+                )}
+
+                <div className="content-section-title">
+                  <h3>提取文案</h3>
+                  <button type="button" className="secondary-button" disabled={!current.extracted_text} onClick={copyExtractedText}>
+                    复制文案
+                  </button>
+                </div>
+                <div className="extracted-text-box detail">
+                  {current.extracted_text ? <p>{current.extracted_text}</p> : <div className="empty mini">暂无文案结果</div>}
+                </div>
+              </section>
+
+              <aside className="content-detail-side">
+                <section>
+                  <h3>任务信息</h3>
+                  <div className="content-summary-grid detail">
+                    <div>
+                      <span>作品 ID</span>
+                      <strong>{current.aweme_id ? shortId(current.aweme_id) : "暂无"}</strong>
+                    </div>
+                    <div>
+                      <span>媒体类型</span>
+                      <strong>{isGallery ? "图文" : isVideo ? "视频" : current.media_type}</strong>
+                    </div>
+                    <div>
+                      <span>媒体数量</span>
+                      <strong>{sourceMedia.length} 个</strong>
+                    </div>
+                    <div>
+                      <span>音频</span>
+                      <strong>{audioMedia.length ? "已生成" : "无"}</strong>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <div className="content-section-title compact">
+                    <h3>下载媒体</h3>
+                    <button type="button" className="secondary-button" disabled={sourceMedia.length <= 3} onClick={() => setMediaExpanded((value) => !value)}>
+                      {mediaExpanded ? "收起" : "展开"}
+                    </button>
+                  </div>
+                  <div className="content-media-preview">
+                    {visibleMedia.length === 0 ? <div className="empty mini">暂无下载媒体</div> : null}
+                    {visibleMedia.map((media) => (
+                      <figure key={media.id} className={`content-media-card ${media.media_kind}`}>
+                        {media.media_kind === "image" ? (
+                          <button
+                            type="button"
+                            className="content-media-button"
+                            aria-label={`放大预览媒体 ${media.display_order}`}
+                            onClick={() => setPreviewMediaId(media.id)}
+                          >
+                            <LazyAssetImage asset={media.asset} assetId={media.asset.id} alt={`媒体 ${media.display_order}`} />
+                            <Eye size={17} />
+                          </button>
+                        ) : (
+                          <video src={assetUrl(media.asset, "original")} controls preload="metadata" />
+                        )}
+                        <figcaption>{media.display_order}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                  {sourceMedia.length > visibleMedia.length ? (
+                    <div className="content-fold-note">默认折叠 · 还有 {sourceMedia.length - visibleMedia.length} 个媒体</div>
+                  ) : null}
+                </section>
+
+                <section>
+                  <h3>原始输入</h3>
+                  <div className="raw-input-box">{current.raw_input}</div>
+                  <div className="content-result-meta">
+                    <span>创建于 {formatDateTime(current.created_at)}</span>
+                    <span>更新于 {formatDateTime(current.updated_at)}</span>
+                  </div>
+                </section>
+              </aside>
             </div>
           </section>
         </div>
-
-        <aside className="content-side-stack">
-          <section className="panel">
-            <div className="editor-title">
-              <div>
-                <h2>下载摘要</h2>
-                <p>下载路径只在后端保存，前端使用资产接口预览。</p>
-              </div>
-              {current ? <span className="status-pill active">{current.media_type}</span> : null}
-            </div>
-            <div className="content-summary-grid">
-              <div>
-                <span>作品 ID</span>
-                <strong>{current?.aweme_id ? shortId(current.aweme_id) : "暂无"}</strong>
-              </div>
-              <div>
-                <span>媒体数量</span>
-                <strong>{sourceMedia.length ? `${sourceMedia.length} 个` : "暂无"}</strong>
-              </div>
-              <div>
-                <span>音频</span>
-                <strong>{audioMedia.length ? "已登记" : "未生成"}</strong>
-              </div>
-              <div>
-                <span>用户</span>
-                <strong>{user.role === "admin" ? "Admin" : "Owner"}</strong>
-              </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="editor-title">
-              <div>
-                <h2>媒体预览</h2>
-                <p>多图默认折叠，避免压住文案结果。</p>
-              </div>
-              <button type="button" className="secondary-button" disabled={sourceMedia.length <= 3} onClick={() => setMediaExpanded((value) => !value)}>
-                {mediaExpanded ? "收起" : "展开全部"}
-              </button>
-            </div>
-            <div className="content-media-preview">
-              {visibleMedia.length === 0 ? <div className="empty mini">暂无下载媒体</div> : null}
-              {visibleMedia.map((media) => (
-                <figure key={media.id} className={`content-media-card ${media.media_kind}`}>
-                  {media.media_kind === "image" ? (
-                    <button
-                      type="button"
-                      className="content-media-button"
-                      aria-label={`放大预览媒体 ${media.display_order}`}
-                      onClick={() => setPreviewMediaId(media.id)}
-                    >
-                      <LazyAssetImage asset={media.asset} assetId={media.asset.id} alt={`媒体 ${media.display_order}`} />
-                      <Eye size={17} />
-                    </button>
-                  ) : (
-                    <video src={assetUrl(media.asset, "original")} controls preload="metadata" />
-                  )}
-                  <figcaption>{media.display_order}</figcaption>
-                </figure>
-              ))}
-            </div>
-            {sourceMedia.length > visibleMedia.length ? (
-              <div className="content-fold-note">默认折叠 · 还有 {sourceMedia.length - visibleMedia.length} 个媒体</div>
-            ) : null}
-          </section>
-
-          <section className="panel">
-            <div className="editor-title">
-              <div>
-                <h2>最近记录</h2>
-                <p>已保存的下载与提取结果。</p>
-              </div>
-            </div>
-            <form className="content-record-search" onSubmit={applyRecordSearch}>
-              <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索链接或文案" />
-              <button type="submit" className="secondary-button">
-                <Search size={15} />
-              </button>
-            </form>
-            <div className="content-record-list">
-              {loadingRecords ? <div className="empty mini">正在加载记录</div> : null}
-              {!loadingRecords && records.length === 0 ? <div className="empty mini">暂无内容提取记录</div> : null}
-              {records.map((record) => (
-                <button
-                  type="button"
-                  key={record.id}
-                  className={`content-record-item ${current?.id === record.id ? "selected" : ""}`}
-                  onClick={() => selectRecord(record.id)}
-                >
-                  <strong>{record.source_url}</strong>
-                  <span>
-                    {record.media_type} · {record.media_count} 个媒体 · {record.extracted_text_preview ? "已提取" : "等待提取"}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="pagination-bar compact">
-              <button className="icon-button" aria-label="上一页" disabled={cursorStack.length === 0} onClick={goPreviousPage}>
-                <ChevronLeft size={16} />
-              </button>
-              <span>{cursor ? `第 ${Math.floor(Number(cursor) / 8) + 1} 页` : "第 1 页"}</span>
-              <button className="icon-button" aria-label="下一页" disabled={!pageInfo?.has_more} onClick={goNextPage}>
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </section>
-        </aside>
-      </div>
+      ) : null}
       {previewMedia ? (
         <div className="image-modal" onClick={() => setPreviewMediaId(null)}>
           <button ref={previewCloseRef} type="button" className="modal-close" aria-label="关闭媒体预览" onClick={() => setPreviewMediaId(null)}>

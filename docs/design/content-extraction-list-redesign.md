@@ -211,6 +211,19 @@ Interaction thesis：
 - 媒体数组和资产 URL。
 - 每个媒体项的单项 OCR 文本。
 
+### 一键创建处理
+
+`POST /api/v1/content-extractions/process`
+
+创建弹窗的主操作调用该接口。接口在一次同步请求内完成：
+
+1. 从原始输入解析抖音 URL。
+2. 调用同机抖音下载服务并登记媒体资产。
+3. 图文按图片顺序提取原始文字；视频分离音频并转写原始口播。
+4. 图文继续按全部图片顺序生成故事总结。
+
+任一步失败都返回明确错误，不生成 Mock 结果或占位总结。
+
 ### 故事总结
 
 `POST /api/v1/content-extractions/{id}/summarize-story`

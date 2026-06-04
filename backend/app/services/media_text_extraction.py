@@ -1,4 +1,5 @@
 import base64
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,14 @@ AUDIO_TRANSCRIPTION_PROMPT = """请转录这段音频中的原始口播、旁白
 不要总结，不要补充音频里没有的内容。
 如果无法识别，请说明无法识别的原因。"""
 
+STORY_SUMMARY_PROMPT = """请按图片顺序理解这一组抖音图文作品，输出故事总结。
+只返回一个合法 JSON 对象，不要 Markdown，不要解释。
+JSON 字段必须是：
+- story_content: 概括故事内容，说明人物、处境、情绪变化和结局。
+- story_highlight: 提炼故事爆点，说明最容易打动观众、引发转发或评论的点。
+- target_audience: 判断目标观众，说明适合哪些人群以及他们会被什么吸引。
+每个字段使用中文，内容要具体，不要写空话。"""
+
 
 @dataclass(frozen=True)
 class MediaTextResult:
@@ -36,6 +45,14 @@ class AudioExtractionResult:
     text: str
     model: str
     audio_bytes: bytes
+
+
+@dataclass(frozen=True)
+class StorySummaryResult:
+    story_content: str
+    story_highlight: str
+    target_audience: str
+    model: str
 
 
 def create_multimodal_client():
@@ -119,6 +136,55 @@ def extract_image_text(path: Path, content_type: str) -> MediaTextResult:
         ],
     )
     return MediaTextResult(text=text, model=model)
+
+
+def _json_object_from_text(text: str) -> dict[str, object]:
+    value = text.strip()
+    if value.startswith("```"):
+        lines = value.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            value = "\n".join(lines[1:-1]).strip()
+            if value.startswith("json"):
+                value = value[4:].strip()
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise LLMResponseError(f"故事总结不是合法 JSON：{text}") from exc
+    if not isinstance(parsed, dict):
+        raise LLMResponseError("故事总结返回内容不是 JSON 对象")
+    return parsed
+
+
+def _required_text_field(payload: dict[str, object], field_name: str) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise LLMResponseError(f"故事总结缺少字段：{field_name}")
+    return value.strip()
+
+
+def summarize_images_story(images: list[tuple[Path, str]]) -> StorySummaryResult:
+    if not images:
+        raise LLMResponseError("没有可总结的图文图片")
+    if len(images) > MAX_CONTENT_EXTRACTION_IMAGES:
+        raise LLMResponseError(f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}")
+    settings = get_settings()
+    model = settings.siliconflow_vision_model.strip()
+    content: list[dict[str, object]] = [{"type": "text", "text": STORY_SUMMARY_PROMPT}]
+    for index, (path, content_type) in enumerate(images, start=1):
+        content.append({"type": "text", "text": f"第 {index} 张图片："})
+        content.append({"type": "image_url", "image_url": {"url": data_url(path, content_type), "detail": "high"}})
+    text = _chat_multimodal(
+        model=model,
+        prompt_name="content_extraction_story_summary",
+        content=content,
+    )
+    payload = _json_object_from_text(text)
+    return StorySummaryResult(
+        story_content=_required_text_field(payload, "story_content"),
+        story_highlight=_required_text_field(payload, "story_highlight"),
+        target_audience=_required_text_field(payload, "target_audience"),
+        model=model,
+    )
 
 
 def split_audio_to_mp3(video_path: Path) -> bytes:
