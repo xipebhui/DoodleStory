@@ -79,6 +79,7 @@
 - 增强 prompt 链路诊断日志：新增统一 `prompt_trace` 单行 JSON 日志，记录 LLM 请求/响应、原始 JSON、结构校验、panel prompt 采纳、最终生图 prompt、人物参考图 prompt 和单 panel 修改链路；所有关键日志带 task_id、step、panel_id 或 generated_image_id，便于后续按任务复盘生成问题。
 - 修复远程前端 API 地址推断：生产环境默认使用同源 `/api/v1` 走 nginx 代理，不再自动拼接公网主机的 `:8000` 端口；本地 loopback 开发仍默认请求 `http://127.0.0.1:8000`。
 - 开始 Sprint 06 抖音下载 Cookie 与导入适配：阅读 `jiji262/douyin-downloader` V2.0 的 Cookie 获取方式，确认官方推荐用 `tools.cookie_fetcher` 打开浏览器登录并保存 Cookie；新增 DoodleStory 后端抖音下载 adapter，通过 `DOUYIN_DOWNLOADER_ROOT` 定位外部下载器，并支持 `DOUYIN_COOKIE` 或 `DOUYIN_COOKIE_FILE` 注入 Cookie；新增 `scripts/fetch-douyin-cookie.sh` 和 `scripts/test-douyin-download.sh`，用于先获取 Cookie 再输入抖音链接做真实下载验证。
+- 新增内容提取需求设计：后续 `内容提取` tab 由后端解析抖音分享文本中的真实 URL，调用同机抖音下载服务下载图文或视频；下载后视频先分离音频并用 SiliconFlow 音频多模态转写，图文按图片顺序逐张用 SiliconFlow 视觉理解提取文字，页面以最终文案为主，媒体预览为辅。
 
 ## 验证记录
 
@@ -112,3 +113,4 @@
 2. 使用 `scripts/fetch-douyin-cookie.sh` 获取有效抖音 Cookie 后，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 验证图文下载产物。
 3. 继续做组件拆分，把当前 `frontend/src/main.tsx` 拆成页面、组件和 API 模块。
 4. 补充更细的自动化测试和任务 worker 运行恢复策略。
+5. 基于 `docs/design/content-extraction.md` 新建内容提取 sprint contract，并实现后端服务代理、内容提取记录、SiliconFlow 文案提取和前端 tab。
