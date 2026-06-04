@@ -48,6 +48,25 @@ import "./styles/app.css";
 type View = "tasks" | "content" | "styles" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+const viewRoutes: Record<View, string> = {
+  tasks: "/tasks",
+  content: "/content-extractions",
+  styles: "/styles",
+  settings: "/settings",
+};
+
+function normalizedPathname(pathname: string) {
+  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+}
+
+function viewFromPathname(pathname: string): View | null {
+  const path = normalizedPathname(pathname);
+  if (path === "/" || path === viewRoutes.tasks) return "tasks";
+  if (path === viewRoutes.content) return "content";
+  if (path === viewRoutes.styles) return "styles";
+  if (path === viewRoutes.settings) return "settings";
+  return null;
+}
 
 type ImageTextPayload = {
   title?: string | null;
@@ -153,8 +172,9 @@ function assetUrl(asset: FileAsset, variant: "original" | "thumbnail" = "origina
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [view, setView] = useState<View>("tasks");
+  const [pathname, setPathname] = useState(() => window.location.pathname);
   const [loading, setLoading] = useState(true);
+  const view = viewFromPathname(pathname);
 
   useEffect(() => {
     api
@@ -164,6 +184,29 @@ function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    function handlePopState() {
+      setPathname(window.location.pathname);
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && user && normalizedPathname(pathname) === "/") {
+      window.history.replaceState(null, "", viewRoutes.tasks);
+      setPathname(viewRoutes.tasks);
+    }
+  }, [loading, pathname, user]);
+
+  function navigateToView(nextView: View) {
+    const nextPath = viewRoutes[nextView];
+    if (normalizedPathname(window.location.pathname) !== nextPath) {
+      window.history.pushState(null, "", nextPath);
+    }
+    setPathname(nextPath);
+  }
+
   if (loading) {
     return <div className="center">加载中</div>;
   }
@@ -172,8 +215,16 @@ function App() {
     return <AuthScreen mode={authMode} setMode={setAuthMode} onAuthed={setUser} />;
   }
 
+  if (!view) {
+    return (
+      <Shell user={user} view={null} onNavigate={navigateToView} onLogout={() => setUser(null)}>
+        <NotFoundView />
+      </Shell>
+    );
+  }
+
   return (
-    <Shell user={user} view={view} setView={setView} onLogout={() => setUser(null)}>
+    <Shell user={user} view={view} onNavigate={navigateToView} onLogout={() => setUser(null)}>
       {view === "tasks" ? <TasksView user={user} /> : null}
       {view === "content" ? <ContentExtractionView user={user} /> : null}
       {view === "styles" ? <StylesView user={user} /> : null}
@@ -249,21 +300,21 @@ function AuthScreen({
 function Shell({
   user,
   view,
-  setView,
+  onNavigate,
   onLogout,
   children,
 }: {
   user: User;
-  view: View;
-  setView: (view: View) => void;
+  view: View | null;
+  onNavigate: (view: View) => void;
   onLogout: () => void;
   children: React.ReactNode;
 }) {
   const items = [
-    { key: "tasks" as const, label: "任务", icon: Images },
-    { key: "content" as const, label: "内容提取", icon: FileText },
-    { key: "styles" as const, label: "风格", icon: Sparkles },
-    { key: "settings" as const, label: "设置", icon: Settings },
+    { key: "tasks" as const, label: "任务", icon: Images, path: viewRoutes.tasks },
+    { key: "content" as const, label: "内容提取", icon: FileText, path: viewRoutes.content },
+    { key: "styles" as const, label: "风格", icon: Sparkles, path: viewRoutes.styles },
+    { key: "settings" as const, label: "设置", icon: Settings, path: viewRoutes.settings },
   ];
 
   async function logout() {
@@ -285,10 +336,18 @@ function Shell({
         </div>
         <nav>
           {items.map((item) => (
-            <button key={item.key} className={view === item.key ? "active" : ""} onClick={() => setView(item.key)}>
+            <a
+              key={item.key}
+              className={view === item.key ? "active" : ""}
+              href={item.path}
+              onClick={(event) => {
+                event.preventDefault();
+                onNavigate(item.key);
+              }}
+            >
               <item.icon size={18} />
               {item.label}
-            </button>
+            </a>
           ))}
         </nav>
         <div className="user-box">
@@ -302,6 +361,20 @@ function Shell({
       </aside>
       <main className="content">{children}</main>
     </div>
+  );
+}
+
+function NotFoundView() {
+  return (
+    <section className="page">
+      <header className="page-header">
+        <div>
+          <h1>页面不存在</h1>
+          <p>这个地址没有对应的 DoodleStory 工作台页面。</p>
+        </div>
+      </header>
+      <div className="empty">请从左侧导航进入任务、内容提取、风格或设置页面。</div>
+    </section>
   );
 }
 

@@ -170,14 +170,22 @@ textarea {
   margin-top: 32px;
 }
 
-.sidebar nav button {
+.sidebar nav a {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
   justify-content: flex-start;
+  gap: 10px;
+  border-radius: 8px;
+  padding: 0 14px;
   background: transparent;
   color: #a7afbd;
+  font-weight: 700;
+  text-decoration: none;
 }
 
-.sidebar nav button.active,
-.sidebar nav button:hover {
+.sidebar nav a.active,
+.sidebar nav a:hover {
   background: #1a1d24;
   color: #eef2f7;
 }
@@ -2783,7 +2791,7 @@ textarea {
     margin-top: 18px;
   }
 
-  .sidebar nav button {
+  .sidebar nav a {
     justify-content: center;
     padding: 0 10px;
   }
