@@ -91,6 +91,7 @@
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
 - 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。七牛资产使用固定公开 CDN URL，任务列表和小尺寸预览默认使用 `imageView2` 缩略图 URL，本地资产由后端按需生成 WebP 缩略图。
+- 抖音素材导入：通过本地 `jiji262/douyin-downloader` 仓库作为隔离下载器运行。DoodleStory 通过 `DOUYIN_DOWNLOADER_ROOT` 定位下载器，通过 `DOUYIN_COOKIE` 或 `DOUYIN_COOKIE_FILE` 注入抖音 Cookie；Cookie 属于敏感配置，不写入仓库、日志或下载临时配置。第一步只提供后端 adapter 和命令行测试入口，后续再接入前端素材导入 UI 或任务流程。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 
 ## 约束
@@ -105,6 +106,7 @@
 - 图片 Provider 排障时可以通过 `IMAGE_PROVIDER_DEBUG_LOG_RAW_IO` 临时开启请求/响应正文日志；日志不得输出 Authorization，参考图 data URL 的 base64 内容需要省略，只保留 prompt 和请求结构用于确认。
 - 任务列表接口只能返回摘要字段、图片数量和少量缩略图预览；不能默认返回完整 panels、generated_images、prompts 或原图内容。任务详情必须通过独立详情接口按需加载。
 - 七牛对象存储配置缺失、上传失败、公开 CDN URL 访问失败或资产下载失败时必须明确报错，不能静默切回本地存储。
+- 抖音下载器仓库路径缺失、Cookie 缺失、Cookie 文件无效、下载器执行失败或执行后没有媒体文件时必须明确报错，不能静默切换到无 Cookie、浏览器兜底或占位结果。
 - 普通用户只能访问自己创建的任务；Admin 可以访问所有任务。
 - 暂不做组织、团队、项目空间或租户级隔离。
 - 图片模型不作为独立模块管理；风格只保存生图模型名，provider、API key 和默认参数由 env 维护，不暴露给普通用户。

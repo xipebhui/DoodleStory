@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-05-storage-performance.md`
+- `docs/contracts/sprint-06-douyin-cookie-import.md`
 
 ## 最近完成的工作
 
@@ -78,6 +78,7 @@
 - 拆分完整故事和故事方案的文字生成责任：完整故事模式改为后端确定性断句，所有 panel 拼接后必须逐字等于原文；LLM 只生成画面 `visual_prompt`，图片内文字固定使用 panel 原文且不添加“旁白/字幕/标题”等标签。故事方案模式继续由 LLM 规划封面、剧情图、对白和旁白。
 - 增强 prompt 链路诊断日志：新增统一 `prompt_trace` 单行 JSON 日志，记录 LLM 请求/响应、原始 JSON、结构校验、panel prompt 采纳、最终生图 prompt、人物参考图 prompt 和单 panel 修改链路；所有关键日志带 task_id、step、panel_id 或 generated_image_id，便于后续按任务复盘生成问题。
 - 修复远程前端 API 地址推断：生产环境默认使用同源 `/api/v1` 走 nginx 代理，不再自动拼接公网主机的 `:8000` 端口；本地 loopback 开发仍默认请求 `http://127.0.0.1:8000`。
+- 开始 Sprint 06 抖音下载 Cookie 与导入适配：阅读 `jiji262/douyin-downloader` V2.0 的 Cookie 获取方式，确认官方推荐用 `tools.cookie_fetcher` 打开浏览器登录并保存 Cookie；新增 DoodleStory 后端抖音下载 adapter，通过 `DOUYIN_DOWNLOADER_ROOT` 定位外部下载器，并支持 `DOUYIN_COOKIE` 或 `DOUYIN_COOKIE_FILE` 注入 Cookie；新增 `scripts/fetch-douyin-cookie.sh` 和 `scripts/test-douyin-download.sh`，用于先获取 Cookie 再输入抖音链接做真实下载验证。
 
 ## 验证记录
 
@@ -91,6 +92,7 @@
 - 任务列表与对象存储性能改造后，`python3 -m compileall backend/app`、`npm run build` 和 `./scripts/check.sh` 通过。
 - 七牛配置兼容 `QNY_*` 前缀后，用本地 `.env` 中的 QNY 配置完成真实烟测：临时启用 `STORAGE_BACKEND=qiniu` 上传测试 PNG 成功，固定原图 CDN URL 返回 `200 image/png`，固定 `imageView2` 缩略图 URL 返回 `200 image/webp`，烟测对象已从七牛删除。
 - 七牛资产访问改为前端直接使用 `file_assets.public_url` 派生出的固定公开 CDN URL，避免短期签名 URL 造成浏览器缓存命中差；后端 `/assets/{id}/content` 仅保留本地资产访问和七牛固定 URL 兼容跳转。
+- 抖音图文链接 `https://v.douyin.com/Vcpjpg3pcMk/` 已用外部下载器做无 Cookie 烟测：短链可解析为 `https://www.douyin.com/note/7578551127650620323?previous_page=web_code_link`，类型识别为 `gallery`，但详情接口连续返回空 `200`，下载器判断为反爬信号，未产生媒体文件。后续需配置有效 Cookie 后复测。
 
 ## 已知缺口
 
@@ -106,5 +108,6 @@
 ## 建议下一步
 
 1. 用真实七牛配置跑一条风格参考图上传、任务生成、缩略图访问和打包下载的端到端验证。
-2. 继续做组件拆分，把当前 `frontend/src/main.tsx` 拆成页面、组件和 API 模块。
-3. 补充更细的自动化测试和任务 worker 运行恢复策略。
+2. 使用 `scripts/fetch-douyin-cookie.sh` 获取有效抖音 Cookie 后，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 验证图文下载产物。
+3. 继续做组件拆分，把当前 `frontend/src/main.tsx` 拆成页面、组件和 API 模块。
+4. 补充更细的自动化测试和任务 worker 运行恢复策略。
