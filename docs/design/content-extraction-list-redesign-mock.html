@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>内容提取列表化 UI Mock</title>
+    <style>
+      :root {
+        --bg: #0b0d10;
+        --panel: #12151b;
+        --panel-strong: #181c23;
+        --line: rgba(255, 255, 255, 0.1);
+        --line-strong: rgba(255, 255, 255, 0.16);
+        --text: #eef2f7;
+        --muted: #8f98a8;
+        --soft: #c5ccd8;
+        --accent: #e0b15d;
+        --accent-strong: #f0c777;
+        --green: #7fc7a7;
+        --teal: #6fb8c8;
+        --red: #e58383;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "PingFang SC", "Microsoft YaHei", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        width: 1280px;
+        min-height: 720px;
+        background: var(--bg);
+        color: var(--text);
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 248px minmax(0, 1fr);
+        min-height: 720px;
+      }
+
+      .sidebar {
+        position: relative;
+        border-right: 1px solid var(--line);
+        background: #0e1116;
+        padding: 28px 22px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 30px;
+      }
+
+      .mark {
+        display: grid;
+        width: 36px;
+        height: 36px;
+        place-items: center;
+        border: 1px solid rgba(224, 177, 93, 0.55);
+        border-radius: 8px;
+        background: #19150d;
+        color: var(--accent-strong);
+        font-weight: 800;
+      }
+
+      .brand strong {
+        display: block;
+        font-size: 15px;
+      }
+
+      .brand span,
+      .side-meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .nav {
+        display: grid;
+        gap: 7px;
+      }
+
+      .nav button,
+      .user-box,
+      .filter-bar,
+      .list-shell,
+      .modal,
+      .detail-card,
+      .media-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .nav button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 42px;
+        background: transparent;
+        color: var(--soft);
+        padding: 0 12px;
+        text-align: left;
+      }
+
+      .nav button.active {
+        border-color: rgba(224, 177, 93, 0.45);
+        background: rgba(224, 177, 93, 0.1);
+        color: var(--accent-strong);
+      }
+
+      .nav i {
+        display: grid;
+        width: 18px;
+        height: 18px;
+        place-items: center;
+        color: currentColor;
+        font-style: normal;
+      }
+
+      .user-box {
+        position: absolute;
+        right: 22px;
+        bottom: 24px;
+        left: 22px;
+        display: grid;
+        gap: 5px;
+        background: #11141a;
+        padding: 14px;
+      }
+
+      .main {
+        padding: 28px 36px;
+      }
+
+      .page-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 22px;
+        margin-bottom: 22px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 30px;
+        line-height: 1.15;
+      }
+
+      .sub {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .health,
+      .pill,
+      .tag,
+      .metric,
+      .tab {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0 10px;
+        color: var(--soft);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .health {
+        gap: 8px;
+      }
+
+      .dot {
+        display: block;
+        width: 7px;
+        height: 7px;
+        border-radius: 99px;
+        background: var(--green);
+      }
+
+      .primary,
+      .secondary,
+      .icon-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        border: 1px solid rgba(224, 177, 93, 0.5);
+        border-radius: 8px;
+        background: var(--accent);
+        color: #0b0d10;
+        padding: 0 14px;
+        font-weight: 800;
+      }
+
+      .secondary,
+      .icon-button {
+        border-color: var(--line-strong);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--soft);
+      }
+
+      .icon-button {
+        width: 40px;
+        padding: 0;
+      }
+
+      .filter-bar {
+        display: grid;
+        grid-template-columns: minmax(300px, 1fr) 130px 150px 130px;
+        gap: 10px;
+        align-items: center;
+        background: var(--panel);
+        padding: 14px;
+        margin-bottom: 16px;
+      }
+
+      .field {
+        display: grid;
+        gap: 7px;
+      }
+
+      label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      input,
+      textarea,
+      select {
+        width: 100%;
+        min-height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #0d1015;
+        color: var(--text);
+        padding: 0 12px;
+        outline: none;
+      }
+
+      textarea {
+        min-height: 164px;
+        padding: 12px;
+        line-height: 1.6;
+        resize: none;
+      }
+
+      .list-shell {
+        overflow: hidden;
+        background: var(--panel);
+      }
+
+      .list-tools {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 52px;
+        border-bottom: 1px solid var(--line);
+        padding: 0 16px;
+      }
+
+      .list-tools strong {
+        font-size: 14px;
+      }
+
+      .list-tools span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 12px 14px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      td {
+        color: var(--soft);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .source-cell strong {
+        display: block;
+        color: var(--text);
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .source-cell span,
+      .muted {
+        color: var(--muted);
+      }
+
+      .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .pill.good {
+        border-color: rgba(127, 199, 167, 0.45);
+        color: #a7dec7;
+      }
+
+      .pill.waiting {
+        border-color: rgba(224, 177, 93, 0.45);
+        color: var(--accent-strong);
+      }
+
+      .pill.info {
+        border-color: rgba(111, 184, 200, 0.5);
+        color: #9ed7e1;
+      }
+
+      .preview-text {
+        display: -webkit-box;
+        max-height: 40px;
+        overflow: hidden;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 13px 16px;
+      }
+
+      .modal-layer {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        background: rgba(5, 6, 8, 0.72);
+        padding: 24px;
+      }
+
+      .show-create .modal-layer.create,
+      .show-detail .modal-layer.detail {
+        display: grid;
+      }
+
+      .modal {
+        width: min(680px, 92vw);
+        background: #12151b;
+        box-shadow: var(--shadow);
+      }
+
+      .modal.detail-modal {
+        width: min(1180px, 96vw);
+      }
+
+      .modal-head,
+      .modal-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding: 18px 20px;
+      }
+
+      .modal-foot {
+        border-top: 1px solid var(--line);
+        border-bottom: 0;
+      }
+
+      .modal-head h2 {
+        font-size: 20px;
+      }
+
+      .modal-body {
+        padding: 16px 20px 18px;
+      }
+
+      .form-stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .notice {
+        border: 1px solid rgba(111, 184, 200, 0.36);
+        border-radius: 8px;
+        background: rgba(111, 184, 200, 0.08);
+        color: #bde4eb;
+        padding: 12px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 310px;
+        gap: 16px;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .tab.active {
+        border-color: rgba(224, 177, 93, 0.55);
+        background: rgba(224, 177, 93, 0.12);
+        color: var(--accent-strong);
+      }
+
+      .detail-card {
+        background: var(--panel-strong);
+        padding: 12px;
+      }
+
+      .detail-card + .detail-card {
+        margin-top: 12px;
+      }
+
+      .detail-card h3 {
+        margin-bottom: 9px;
+        font-size: 15px;
+      }
+
+      .detail-card p {
+        color: var(--soft);
+        font-size: 14px;
+        line-height: 1.62;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+
+      .summary-grid .detail-card {
+        min-height: 132px;
+        margin: 0;
+      }
+
+      .media-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .thumb {
+        position: relative;
+        height: 70px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background:
+          linear-gradient(145deg, rgba(224, 177, 93, 0.18), rgba(111, 184, 200, 0.12)),
+          #11141a;
+      }
+
+      .thumb::before {
+        content: "";
+        position: absolute;
+        inset: 13px 10px;
+        border-radius: 7px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 38%),
+          linear-gradient(130deg, rgba(127, 199, 167, 0.4), rgba(224, 177, 93, 0.18));
+      }
+
+      .thumb::after {
+        content: attr(data-index);
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        display: grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border-radius: 99px;
+        background: rgba(11, 13, 16, 0.82);
+        color: var(--text);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .meta-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .meta-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 7px;
+      }
+
+      .meta-row span:first-child {
+        color: var(--muted);
+      }
+
+      .meta-row span:last-child {
+        color: var(--soft);
+        text-align: right;
+      }
+
+      .raw-input {
+        max-height: 72px;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
+      .screen-label {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="mark">D</div>
+          <div>
+            <strong>DoodleStory</strong>
+            <span>FastAPI + React</span>
+          </div>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <button><i>□</i>任务</button>
+          <button class="active"><i>▤</i>内容提取</button>
+          <button><i>◇</i>风格</button>
+          <button><i>○</i>设置</button>
+        </nav>
+        <div class="user-box">
+          <strong>Preview User</strong>
+          <span class="side-meta">普通用户</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="page-head">
+          <div>
+            <h1>内容提取</h1>
+            <p class="sub">管理抖音图文和视频的下载、文案提取与故事总结。</p>
+          </div>
+          <div class="head-actions">
+            <span class="health"><span class="dot"></span>抖音下载服务可用</span>
+            <button class="primary">新建提取</button>
+          </div>
+        </header>
+
+        <section class="filter-bar" aria-label="筛选">
+          <div class="field">
+            <label>搜索</label>
+            <input value="治愈系漫画" />
+          </div>
+          <div class="field">
+            <label>媒体类型</label>
+            <select><option>全部</option></select>
+          </div>
+          <div class="field">
+            <label>处理状态</label>
+            <select><option>全部状态</option></select>
+          </div>
+          <div class="field">
+            <label>排序</label>
+            <select><option>最近更新</option></select>
+          </div>
+        </section>
+
+        <section class="list-shell">
+          <div class="list-tools">
+            <div>
+              <strong>内容提取任务</strong>
+              <span>列表只加载摘要，详情打开后再加载媒体</span>
+            </div>
+            <span>共 18 条 · 每页 20 条</span>
+          </div>
+          <table>
+            <colgroup>
+              <col style="width: 25%" />
+              <col style="width: 12%" />
+              <col style="width: 17%" />
+              <col style="width: 22%" />
+              <col style="width: 16%" />
+              <col style="width: 8%" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>来源</th>
+                <th>类型</th>
+                <th>处理结果</th>
+                <th>文案预览</th>
+                <th>故事爆点预览</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="source-cell">
+                  <strong>https://v.douyin.com/Vcpjpg3pcMk/</strong>
+                  <span>多和自己相处吧 · 治愈系漫画 · 06/04 18:47</span>
+                </td>
+                <td>
+                  <span class="tag">gallery · 5 张</span>
+                </td>
+                <td>
+                  <div class="badges">
+                    <span class="pill good">文案已提取</span>
+                    <span class="pill good">故事已总结</span>
+                  </div>
+                </td>
+                <td><div class="preview-text">我经常自己一个人去做很多事情。我会自己去逛花鸟市场，还有各种琳琅满目的花样市集。</div></td>
+                <td><div class="preview-text">爆点是“独处不是孤单，而是重新爱上自己”的情绪反转，适合治愈系内容传播。</div></td>
+                <td><button class="secondary">查看</button></td>
+              </tr>
+              <tr>
+                <td class="source-cell">
+                  <strong>https://v.douyin.com/xO3Q79Ao4ds/</strong>
+                  <span>小懒猫的图文作品 · 温暖 · 06/04 17:10</span>
+                </td>
+                <td><span class="tag">gallery · 8 张</span></td>
+                <td>
+                  <div class="badges">
+                    <span class="pill good">文案已提取</span>
+                    <span class="pill waiting">待总结</span>
+                  </div>
+                </td>
+                <td><div class="preview-text">这一刻我好幸福。平凡的小日子里，突然被一点点温柔击中。</div></td>
+                <td><div class="preview-text muted">还没有故事总结</div></td>
+                <td><button class="secondary">查看</button></td>
+              </tr>
+              <tr>
+                <td class="source-cell">
+                  <strong>https://www.douyin.com/video/7590...</strong>
+                  <span>口播视频 · 生活方式 · 06/03 22:16</span>
+                </td>
+                <td><span class="tag">video · 1 个</span></td>
+                <td>
+                  <div class="badges">
+                    <span class="pill good">文案已提取</span>
+                    <span class="pill info">视频</span>
+                  </div>
+                </td>
+                <td><div class="preview-text">今天想和你聊聊，为什么越忙的时候，越需要给自己留出一点安静的时间。</div></td>
+                <td><div class="preview-text muted">视频故事总结需后续设计</div></td>
+                <td><button class="secondary">查看</button></td>
+              </tr>
+              <tr>
+                <td class="source-cell">
+                  <strong>https://v.douyin.com/A92cMk...</strong>
+                  <span>漫画教程 · 绘画灵感 · 06/02 20:41</span>
+                </td>
+                <td><span class="tag">gallery · 4 张</span></td>
+                <td>
+                  <div class="badges">
+                    <span class="pill waiting">仅已下载</span>
+                  </div>
+                </td>
+                <td><div class="preview-text muted">等待提取文案</div></td>
+                <td><div class="preview-text muted">等待故事总结</div></td>
+                <td><button class="secondary">查看</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pagination">
+            <button class="icon-button">‹</button>
+            <span class="muted">第 1 页</span>
+            <button class="icon-button">›</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <section class="modal-layer create">
+      <div class="modal" role="dialog" aria-modal="true">
+        <header class="modal-head">
+          <div>
+            <h2>新建内容提取</h2>
+            <p class="sub">粘贴完整分享文案，后端只解析其中的抖音链接。</p>
+          </div>
+          <button class="icon-button">×</button>
+        </header>
+        <div class="modal-body">
+          <div class="form-stack">
+            <span class="health"><span class="dot"></span>抖音下载服务可用 · http://127.0.0.1:8010</span>
+            <div class="field">
+              <label>抖音分享文本或链接</label>
+              <textarea>6.10 eoQ:/ K@w.SY 05/04 :6pm 多和自己相处吧。# 治愈系漫画 # 原创漫画 # 画渣日常 # procreate绘画 # 绘画教程 https://v.douyin.com/Vcpjpg3pcMk/ 复制此链接，打开Dou音搜索，直接观看视频！</textarea>
+            </div>
+            <div class="notice">创建弹窗只负责解析和下载。下载成功后自动关闭弹窗、刷新列表，并打开详情弹窗继续提取文案或总结故事。</div>
+          </div>
+        </div>
+        <footer class="modal-foot">
+          <button class="secondary">取消</button>
+          <button class="primary">解析并下载</button>
+        </footer>
+      </div>
+    </section>
+
+    <section class="modal-layer detail">
+      <div class="modal detail-modal" role="dialog" aria-modal="true">
+        <header class="modal-head">
+          <div>
+            <h2>内容提取详情</h2>
+            <p class="sub">https://v.douyin.com/Vcpjpg3pcMk/ · 作品 75785511 · gallery · 更新于 06/04 18:47</p>
+          </div>
+          <div class="head-actions">
+            <span class="pill good">文案已提取</span>
+            <span class="pill good">故事已总结</span>
+            <button class="icon-button">×</button>
+          </div>
+        </header>
+        <div class="modal-body">
+          <div class="detail-grid">
+            <div>
+              <div class="tabs">
+                <span class="tab">文案</span>
+                <span class="tab active">故事总结</span>
+                <span class="tab">媒体</span>
+              </div>
+              <div class="detail-card">
+                <div class="head-actions" style="justify-content: space-between; margin-bottom: 12px">
+                  <h3>故事总结</h3>
+                  <div class="head-actions">
+                    <button class="secondary">复制总结</button>
+                    <button class="primary">重新总结故事</button>
+                  </div>
+                </div>
+                <p>基于 5 张图文图片按顺序生成，提取的是故事理解，不会覆盖原始文案。</p>
+              </div>
+              <div class="summary-grid">
+                <article class="detail-card">
+                  <h3>故事内容</h3>
+                  <p>主角用几个独处场景串起一天的自我陪伴：逛花鸟市场、吃一顿安静的大餐、夜里决定去海边看日出，最后落到“多创造和自己相处的机会”。</p>
+                </article>
+                <article class="detail-card">
+                  <h3>故事爆点</h3>
+                  <p>爆点在于把“一个人做事”从孤单感反转成自我照顾。情绪落点柔和但明确，很适合治愈系图文的收藏和转发。</p>
+                </article>
+                <article class="detail-card">
+                  <h3>目标观众</h3>
+                  <p>适合独居、内耗、需要情绪修复的年轻女性，以及喜欢漫画日常、慢生活和自我成长内容的创作者受众。</p>
+                </article>
+              </div>
+              <div class="detail-card">
+                <h3>原始文案</h3>
+                <p>我经常自己一个人去做很多事情。我会自己去逛花鸟市场，还有各种琳琅满目的花样市集。还会在某个安静的夜晚，决定自己去做点特别的事情。</p>
+              </div>
+            </div>
+            <aside>
+              <div class="detail-card">
+                <h3>下载摘要</h3>
+                <div class="meta-list">
+                  <div class="meta-row"><span>媒体类型</span><span>gallery</span></div>
+                  <div class="meta-row"><span>媒体数量</span><span>5 张图片</span></div>
+                  <div class="meta-row"><span>音频</span><span>未生成</span></div>
+                  <div class="meta-row"><span>列表加载</span><span>摘要接口</span></div>
+                </div>
+              </div>
+              <div class="detail-card">
+                <div class="head-actions" style="justify-content: space-between; margin-bottom: 12px">
+                  <h3>媒体预览</h3>
+                  <button class="secondary">展开全部</button>
+                </div>
+                <div class="media-grid">
+                  <div class="thumb" data-index="1"></div>
+                  <div class="thumb" data-index="2"></div>
+                  <div class="thumb" data-index="3"></div>
+                  <div class="thumb" data-index="4"></div>
+                  <div class="thumb" data-index="5"></div>
+                  <div class="thumb" data-index="+"></div>
+                </div>
+              </div>
+              <div class="detail-card">
+                <h3>原始输入</h3>
+                <p class="raw-input">6.10 eoQ:/ K@w.SY 05/04 :6pm 多和自己相处吧。# 治愈系漫画 # 原创漫画 # 画渣日常 # procreate绘画 # 绘画教程 https://v.douyin.com/Vcpjpg3pcMk/ 复制此链接，打开Dou音搜索，直接观看视频！</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <span class="screen-label">DoodleStory · Content Extraction Redesign</span>
+    <script>
+      const screen = new URLSearchParams(window.location.search).get("screen") || "list";
+      document.body.classList.toggle("show-create", screen === "create");
+      document.body.classList.toggle("show-detail", screen === "detail");
+    </script>
+  </body>
+</html>
