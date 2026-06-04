@@ -43,11 +43,6 @@ class Settings(BaseSettings):
     xg_request_retry_backoff_seconds: float = 2.0
     image_provider_debug_log_raw_io: bool = False
     image_provider_debug_log_raw_max_chars: int = 20000
-    douyin_downloader_root: str = ""
-    douyin_downloader_python: str = ""
-    douyin_cookie: str = ""
-    douyin_cookie_file: str = ""
-    douyin_download_timeout_seconds: int = 180
     douyin_import_service_base_url: str = "http://127.0.0.1:8010"
     siliconflow_vision_model: str = ""
     siliconflow_audio_model: str = ""

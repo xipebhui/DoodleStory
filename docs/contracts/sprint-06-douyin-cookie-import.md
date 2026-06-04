@@ -1,59 +1,42 @@
 # Sprint 06 合同：抖音下载 Cookie 与导入适配
 
-## 目标
+## 当前状态
 
-接入 `jiji262/douyin-downloader` 的 Cookie 获取与下载运行方式，为后续把抖音视频或图文素材导入 DoodleStory 做最小可验证基础。
+本 sprint 是早期验证记录：当时用 `jiji262/douyin-downloader` 官方 Cookie 登录流程和后端子进程 adapter 验证了抖音图文下载可行性。后续 Sprint 07 起，DoodleStory 的正式集成边界改为调用独立 HTTP 下载服务，主仓库不再保留旧的直连 adapter、Cookie 获取脚本或命令行下载脚本。
 
-## 范围内
+当前有效运行链路：
 
-- 增加 DoodleStory 后端配置：
-  - `DOUYIN_DOWNLOADER_ROOT` 指向外部 `jiji262/douyin-downloader` 仓库。
-  - `DOUYIN_DOWNLOADER_PYTHON` 指向该下载器依赖所在 Python，可为空，默认使用当前 Python。
-  - `DOUYIN_COOKIE` 支持直接传入浏览器 Cookie header。
-  - `DOUYIN_COOKIE_FILE` 支持读取官方 `tools.cookie_fetcher` 生成的 JSON Cookie 文件。
-  - `DOUYIN_DOWNLOAD_TIMEOUT_SECONDS` 控制单次下载超时。
-- 增加 Cookie 获取脚本，按下载器官方方式打开浏览器登录并保存 Cookie JSON。
-- 增加后端下载 adapter，通过子进程运行外部下载器，并把 Cookie 临时注入环境变量。
-- 下载 adapter 必须显式报错：
-  - 下载器仓库路径缺失或错误。
-  - Cookie 缺失或 Cookie 文件无效。
-  - 下载器退出失败。
-  - 命令执行后没有产生媒体文件。
-- 增加命令行测试脚本，用于输入抖音链接并检查实际落盘媒体文件。
+1. DoodleStory 后端通过 `app/services/douyin_import_service.py` 调用同机下载服务。
+2. 下载服务地址由 `DOUYIN_IMPORT_SERVICE_BASE_URL` 配置，默认 `http://127.0.0.1:8010`。
+3. Cookie、下载器源码和下载产物顺序处理都属于独立下载服务的职责，不放在 DoodleStory 主仓库内。
 
-## 范围外
+## 历史目标
 
-- 不把 `jiji262/douyin-downloader` 源码 vendoring 到本仓库。
-- 不新增前端素材导入 UI。
-- 不新增数据库表或素材管理后台。
-- 不默认启用浏览器兜底、评论采集、转写、封面、头像或音乐下载。
+接入外部抖音下载器的 Cookie 获取与下载运行方式，为后续把抖音视频或图文素材导入 DoodleStory 做最小可验证基础。
+
+## 历史范围
+
+- 按外部下载器官方方式获取 Cookie。
+- 通过临时后端 adapter 调用外部下载器并验证媒体文件落盘。
+- 明确暴露路径、Cookie、下载失败和无媒体文件等错误。
+- 不把外部下载器源码 vendoring 到本仓库。
+- 不新增前端素材导入 UI、数据库表或素材管理后台。
 - 不把 Cookie 写入仓库、日志或临时下载配置。
 
 ## 后续内容提取设计边界
 
-用户后续需要新增 `内容提取` tab：由后端解析抖音分享文本中的真实 URL，同步调用同机抖音下载服务 `127.0.0.1:8010` 下载图文或视频；下载完成后，用户再同步触发文案提取，视频先分离音频并调用 SiliconFlow 音频多模态能力提取原始文案，图文按图片顺序逐张调用 SiliconFlow 视觉理解能力提取图片文字。该需求已记录在 `docs/design/content-extraction.md`。
+用户后续需要新增 `内容提取` tab：由后端解析抖音分享文本中的真实 URL，同步调用同机抖音下载服务 `127.0.0.1:8010` 下载图文或视频；下载完成后，用户再同步触发文案提取，视频先分离音频并调用 SiliconFlow 音频多模态能力提取原始文案，图文按图片顺序逐张调用 SiliconFlow 视觉理解能力提取图片文字。该需求已记录在 `docs/design/content-extraction.md`，并在后续 sprint 中实现。
 
-该内容不纳入 Sprint 06 的实现范围。Sprint 06 仍只负责旧的下载器 Cookie、后端 adapter 和命令行验证入口；内容提取 tab、下载服务代理、最小内容提取数据库记录和前端页面应在新的 sprint contract 中实现。内容提取第一版不设计异步状态机、worker、轮询或取消流程。
+## 当前完成标准
 
-## 完成标准
+- DoodleStory 主仓库只保留 HTTP 下载服务调用配置。
+- 旧的直连下载 adapter 和临时脚本已移出主仓库。
+- `.env.example` 只说明当前内容提取集成所需配置。
+- 已运行相关检查。
 
-- `.env.example` 说明抖音下载器与 Cookie 配置。
-- `scripts/fetch-douyin-cookie.sh` 可调用官方 `tools.cookie_fetcher` 保存 Cookie JSON。
-- `scripts/test-douyin-download.sh <url>` 可通过后端 adapter 调用下载器。
-- 缺少 Cookie 时返回明确配置错误。
-- 已运行 `./scripts/check.sh`。
-
-## 验证
+## 当前验证
 
 ```bash
 ./scripts/check.sh
-```
-
-人工验证：
-
-```bash
-export DOUYIN_DOWNLOADER_ROOT=/path/to/douyin-downloader
-export DOUYIN_DOWNLOADER_PYTHON=/path/to/python
-./scripts/fetch-douyin-cookie.sh
-./scripts/test-douyin-download.sh "https://v.douyin.com/..."
+curl -sS http://127.0.0.1:8010/health
 ```
