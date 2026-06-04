@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import get_settings
 from app.models.enums import ImageCountMode, PanelType
+from app.services.prompt_logging import log_prompt_trace
 
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 logger = logging.getLogger(__name__)
@@ -293,32 +296,113 @@ def create_siliconflow_client():
     return OpenAI(api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url)
 
 
-def call_siliconflow_json(*, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+def call_siliconflow_json(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    prompt_name: str,
+    trace_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
     client = create_siliconflow_client()
-    logger.info(
-        "calling siliconflow model=%s temperature=%s system_prompt_chars=%s user_prompt_chars=%s",
-        settings.siliconflow_model,
-        settings.siliconflow_temperature,
-        len(system_prompt),
-        len(user_prompt),
-    )
-    response = client.chat.completions.create(
+    trace_id = uuid4().hex
+    context = trace_context or {}
+    log_prompt_trace(
+        logger,
+        "llm_request_prepared",
+        trace_id=trace_id,
+        prompt_name=prompt_name,
+        context=context,
+        provider="siliconflow",
         model=settings.siliconflow_model,
         temperature=settings.siliconflow_temperature,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        response_format="json_object",
+        system_prompt_chars=len(system_prompt),
+        user_prompt_chars=len(user_prompt),
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
     )
+    started = time.monotonic()
+    try:
+        response = client.chat.completions.create(
+            model=settings.siliconflow_model,
+            temperature=settings.siliconflow_temperature,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except Exception as exc:
+        log_prompt_trace(
+            logger,
+            "llm_request_exception",
+            trace_id=trace_id,
+            prompt_name=prompt_name,
+            context=context,
+            elapsed_ms=round((time.monotonic() - started) * 1000),
+            exception_type=exc.__class__.__name__,
+            error=str(exc),
+        )
+        raise
     if not response.choices:
+        log_prompt_trace(
+            logger,
+            "llm_response_missing_choices",
+            trace_id=trace_id,
+            prompt_name=prompt_name,
+            context=context,
+            elapsed_ms=round((time.monotonic() - started) * 1000),
+            response_id=getattr(response, "id", None),
+        )
         raise LLMResponseError("LLM 没有返回 choices")
     content = response.choices[0].message.content
     if not content:
+        log_prompt_trace(
+            logger,
+            "llm_response_empty_content",
+            trace_id=trace_id,
+            prompt_name=prompt_name,
+            context=context,
+            elapsed_ms=round((time.monotonic() - started) * 1000),
+            response_id=getattr(response, "id", None),
+            finish_reason=getattr(response.choices[0], "finish_reason", None),
+        )
         raise LLMResponseError("LLM 返回内容为空")
-    logger.info("siliconflow returned content_chars=%s", len(content))
-    return parse_json_object(content)
+    log_prompt_trace(
+        logger,
+        "llm_response_received",
+        trace_id=trace_id,
+        prompt_name=prompt_name,
+        context=context,
+        elapsed_ms=round((time.monotonic() - started) * 1000),
+        response_id=getattr(response, "id", None),
+        finish_reason=getattr(response.choices[0], "finish_reason", None),
+        usage=getattr(response, "usage", None),
+        content_chars=len(content),
+        raw_content=content,
+    )
+    try:
+        parsed = parse_json_object(content)
+    except LLMResponseError:
+        log_prompt_trace(
+            logger,
+            "llm_response_json_parse_failed",
+            trace_id=trace_id,
+            prompt_name=prompt_name,
+            context=context,
+            raw_content=content,
+        )
+        raise
+    log_prompt_trace(
+        logger,
+        "llm_response_json_parsed",
+        trace_id=trace_id,
+        prompt_name=prompt_name,
+        context=context,
+        top_level_keys=sorted(parsed.keys()),
+    )
+    return parsed
 
 
 def segment_story(
@@ -326,6 +410,7 @@ def segment_story(
     original_text: str,
     image_count_mode: ImageCountMode,
     requested_image_count: int | None,
+    trace_context: dict[str, Any] | None = None,
 ) -> StorySegmentationResult:
     if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
         raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
@@ -344,6 +429,16 @@ def segment_story(
         image_count_mode.value,
         requested_image_count,
         len(result.panels),
+    )
+    log_prompt_trace(
+        logger,
+        "original_story_segmentation_result",
+        context=trace_context or {},
+        image_count_mode=image_count_mode.value,
+        requested_image_count=requested_image_count,
+        original_text_chars=len(original_text),
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
     )
     return result
 
@@ -463,19 +558,38 @@ def ensure_original_text_coverage(original_text: str, panels: list[StorySegment]
         raise LLMResponseError("完整故事断句结果未能逐字覆盖原文")
 
 
-def adapt_story_for_douyin(*, original_text: str) -> AdaptedStoryResult:
+def adapt_story_for_douyin(*, original_text: str, trace_context: dict[str, Any] | None = None) -> AdaptedStoryResult:
     system_prompt = read_prompt("adapt_story_for_douyin_v1.md")
     user_prompt = json.dumps({"original_text": original_text}, ensure_ascii=False)
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="adapt_story_for_douyin_v1.md",
+        trace_context={**(trace_context or {}), "operation": "adapt_story_for_douyin"},
+    )
     try:
         result = AdaptedStoryResult.model_validate(raw)
     except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="adapt_story_for_douyin_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
         raise LLMResponseError("LLM 故事增强 JSON 结构不符合要求") from exc
     logger.info(
         "story adaptation succeeded title_chars=%s hook_chars=%s story_chars=%s",
         len(result.title),
         len(result.hook),
         len(result.adapted_story),
+    )
+    log_prompt_trace(
+        logger,
+        "adapt_story_result",
+        context=trace_context or {},
+        result=result,
     )
     return result
 
@@ -487,6 +601,7 @@ def plan_adapted_story_panels(
     adapted_story: str,
     image_count_mode: ImageCountMode,
     requested_image_count: int | None,
+    trace_context: dict[str, Any] | None = None,
 ) -> StorySegmentationResult:
     if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
         raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
@@ -506,10 +621,23 @@ def plan_adapted_story_panels(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="plan_adapted_story_panels_v1.md",
+        trace_context={**(trace_context or {}), "operation": "plan_adapted_story_panels"},
+    )
     try:
         result = StorySegmentationResult.model_validate(raw)
     except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="plan_adapted_story_panels_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
         raise LLMResponseError("LLM 增强故事分镜 JSON 结构不符合要求") from exc
 
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
@@ -525,6 +653,15 @@ def plan_adapted_story_panels(
         requested_image_count,
         len(result.panels),
     )
+    log_prompt_trace(
+        logger,
+        "adapted_story_panel_planning_result",
+        context=trace_context or {},
+        image_count_mode=image_count_mode.value,
+        requested_image_count=requested_image_count,
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
+    )
     return result
 
 
@@ -534,6 +671,7 @@ def plan_storyboard_from_brief(
     style_prompt: str,
     image_count_mode: ImageCountMode,
     requested_image_count: int | None,
+    trace_context: dict[str, Any] | None = None,
 ) -> StoryboardPlanningResult:
     if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
         raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
@@ -551,7 +689,12 @@ def plan_storyboard_from_brief(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="plan_storyboard_from_brief_v1.md",
+        trace_context={**(trace_context or {}), "operation": "plan_storyboard_from_brief"},
+    )
     try:
         result = StoryboardPlanningResult.model_validate(raw)
     except ValidationError as exc:
@@ -559,6 +702,14 @@ def plan_storyboard_from_brief(
             "brief storyboard validation failed errors=%s raw_keys=%s",
             exc.errors(),
             sorted(raw.keys()),
+        )
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="plan_storyboard_from_brief_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
         )
         first_error = exc.errors()[0] if exc.errors() else {}
         location = ".".join(str(item) for item in first_error.get("loc", []))
@@ -579,6 +730,18 @@ def plan_storyboard_from_brief(
         len(result.panels),
         result.story_title,
     )
+    log_prompt_trace(
+        logger,
+        "storyboard_planning_result",
+        context=trace_context or {},
+        image_count_mode=image_count_mode.value,
+        requested_image_count=requested_image_count,
+        story_title=result.story_title,
+        story_hook=result.story_hook,
+        story_outline=result.story_outline,
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
+    )
     return result
 
 
@@ -587,6 +750,7 @@ def generate_panel_prompts(
     original_text: str,
     style_prompt: str,
     panels: list[StorySegment],
+    trace_context: dict[str, Any] | None = None,
 ) -> PanelPromptResult:
     system_prompt = system_prompt_with_style(read_prompt("generate_panel_prompt_v1.md"), style_prompt)
     input_panels = [
@@ -609,17 +773,46 @@ def generate_panel_prompts(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="generate_panel_prompt_v1.md",
+        trace_context={**(trace_context or {}), "operation": "generate_panel_prompts"},
+    )
     try:
         result = PanelPromptResult.model_validate(raw)
     except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="generate_panel_prompt_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
         raise LLMResponseError("LLM 分镜提示词 JSON 结构不符合要求") from exc
 
     returned_orders = [panel.panel_order for panel in result.panels]
     expected_orders = [panel.panel_order for panel in panels]
     if returned_orders != expected_orders:
+        log_prompt_trace(
+            logger,
+            "llm_panel_order_mismatch",
+            prompt_name="generate_panel_prompt_v1.md",
+            context=trace_context or {},
+            expected_orders=expected_orders,
+            returned_orders=returned_orders,
+            raw=raw,
+        )
         raise LLMResponseError("LLM 返回的提示词分镜顺序与输入 panels 不一致")
     logger.info("panel prompt generation succeeded panel_count=%s", len(result.panels))
+    log_prompt_trace(
+        logger,
+        "panel_prompt_generation_result",
+        context=trace_context or {},
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
+    )
     return result
 
 
@@ -628,6 +821,7 @@ def extract_task_characters(
     original_text: str,
     style_prompt: str,
     panels: list[StorySegment],
+    trace_context: dict[str, Any] | None = None,
 ) -> TaskCharacterExtractionResult:
     system_prompt = system_prompt_with_style(read_prompt("extract_task_characters_v1.md"), style_prompt)
     input_panels = [
@@ -650,10 +844,23 @@ def extract_task_characters(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="extract_task_characters_v1.md",
+        trace_context={**(trace_context or {}), "operation": "extract_task_characters"},
+    )
     try:
         result = TaskCharacterExtractionResult.model_validate(raw)
     except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="extract_task_characters_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
         raise LLMResponseError("LLM 主要人物 JSON 结构不符合要求") from exc
 
     result = normalize_character_extraction_result(result)
@@ -663,14 +870,52 @@ def extract_task_characters(
     panel_orders = {panel.panel_order for panel in panels}
     for character in result.characters:
         if character.character_key in character_keys:
+            log_prompt_trace(
+                logger,
+                "character_extraction_validation_failed",
+                prompt_name="extract_task_characters_v1.md",
+                context=trace_context or {},
+                reason="duplicate_character_key",
+                character_key=character.character_key,
+                result=result,
+            )
             raise LLMResponseError("LLM 返回了重复 character_key")
         character_keys.add(character.character_key)
         for appearance in character.appearances:
             if appearance.appearance_key in appearance_keys:
+                log_prompt_trace(
+                    logger,
+                    "character_extraction_validation_failed",
+                    prompt_name="extract_task_characters_v1.md",
+                    context=trace_context or {},
+                    reason="duplicate_appearance_key",
+                    appearance_key=appearance.appearance_key,
+                    result=result,
+                )
                 raise LLMResponseError("LLM 返回了重复 appearance_key")
             if not appearance.appearance_key.startswith(character.character_key):
+                log_prompt_trace(
+                    logger,
+                    "character_extraction_validation_failed",
+                    prompt_name="extract_task_characters_v1.md",
+                    context=trace_context or {},
+                    reason="appearance_key_prefix_mismatch",
+                    character_key=character.character_key,
+                    appearance_key=appearance.appearance_key,
+                    result=result,
+                )
                 raise LLMResponseError("appearance_key 必须以所属 character_key 开头")
             if any(panel_order not in panel_orders for panel_order in appearance.panel_orders):
+                log_prompt_trace(
+                    logger,
+                    "character_extraction_validation_failed",
+                    prompt_name="extract_task_characters_v1.md",
+                    context=trace_context or {},
+                    reason="appearance_panel_order_unknown",
+                    panel_orders=appearance.panel_orders,
+                    valid_panel_orders=sorted(panel_orders),
+                    result=result,
+                )
                 raise LLMResponseError("人物 appearance 的 panel_orders 包含不存在的 panel")
             appearance_keys.add(appearance.appearance_key)
 
@@ -678,6 +923,14 @@ def extract_task_characters(
         "task character extraction succeeded character_count=%s appearance_count=%s",
         len(result.characters),
         len(appearance_keys),
+    )
+    log_prompt_trace(
+        logger,
+        "character_extraction_result",
+        context=trace_context or {},
+        character_count=len(result.characters),
+        appearance_count=len(appearance_keys),
+        characters=result.characters,
     )
     return result
 
@@ -688,6 +941,7 @@ def generate_panel_prompts_with_characters(
     style_prompt: str,
     panels: list[StorySegment],
     characters: list[TaskCharacterPlan],
+    trace_context: dict[str, Any] | None = None,
 ) -> PanelPromptWithCharactersResult:
     system_prompt = system_prompt_with_style(read_prompt("generate_panel_prompt_with_characters_v1.md"), style_prompt)
     input_panels = [
@@ -717,25 +971,75 @@ def generate_panel_prompts_with_characters(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="generate_panel_prompt_with_characters_v1.md",
+        trace_context={**(trace_context or {}), "operation": "generate_panel_prompts_with_characters"},
+    )
     try:
         result = PanelPromptWithCharactersResult.model_validate(raw)
     except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="generate_panel_prompt_with_characters_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
         raise LLMResponseError("LLM 带人物分镜提示词 JSON 结构不符合要求") from exc
 
     returned_orders = [panel.panel_order for panel in result.panels]
     expected_orders = [panel.panel_order for panel in panels]
     if returned_orders != expected_orders:
+        log_prompt_trace(
+            logger,
+            "llm_panel_order_mismatch",
+            prompt_name="generate_panel_prompt_with_characters_v1.md",
+            context=trace_context or {},
+            expected_orders=expected_orders,
+            returned_orders=returned_orders,
+            raw=raw,
+        )
         raise LLMResponseError("LLM 返回的提示词分镜顺序与输入 panels 不一致")
     for panel in result.panels:
         unknown_keys = [key for key in panel.appearance_keys if key not in valid_appearance_keys]
         if unknown_keys:
+            log_prompt_trace(
+                logger,
+                "panel_prompt_character_validation_failed",
+                prompt_name="generate_panel_prompt_with_characters_v1.md",
+                context=trace_context or {},
+                reason="unknown_appearance_keys",
+                panel_order=panel.panel_order,
+                unknown_keys=unknown_keys,
+                valid_appearance_keys=sorted(valid_appearance_keys),
+                raw=raw,
+            )
             raise LLMResponseError(f"LLM 返回了不存在的人物 appearance_key：{', '.join(unknown_keys)}")
         invalid_usage_keys = [key for key in panel.usage_notes if key not in panel.appearance_keys]
         if invalid_usage_keys:
+            log_prompt_trace(
+                logger,
+                "panel_prompt_character_validation_failed",
+                prompt_name="generate_panel_prompt_with_characters_v1.md",
+                context=trace_context or {},
+                reason="invalid_usage_keys",
+                panel_order=panel.panel_order,
+                invalid_usage_keys=invalid_usage_keys,
+                raw=raw,
+            )
             raise LLMResponseError("usage_notes 只能描述当前 panel 的 appearance_keys")
 
     logger.info("panel prompt with characters generation succeeded panel_count=%s", len(result.panels))
+    log_prompt_trace(
+        logger,
+        "panel_prompt_with_characters_result",
+        context=trace_context or {},
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
+    )
     return result
 
 
@@ -748,6 +1052,7 @@ def revise_panel_prompt(
     current_image_text: dict[str, str | None] | None,
     current_text_layout: str | None,
     user_instruction: str,
+    trace_context: dict[str, Any] | None = None,
 ) -> RevisedPanelPrompt:
     system_prompt = system_prompt_with_style(read_prompt("revise_panel_prompt_v1.md"), style_prompt)
     user_prompt = json.dumps(
@@ -761,14 +1066,33 @@ def revise_panel_prompt(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="revise_panel_prompt_v1.md",
+        trace_context={**(trace_context or {}), "operation": "revise_panel_prompt"},
+    )
     try:
         result = RevisedPanelPrompt.model_validate(raw)
     except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="revise_panel_prompt_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
         raise LLMResponseError("LLM 单分镜提示词修改 JSON 结构不符合要求") from exc
     logger.info(
         "panel prompt revision succeeded prompt_chars=%s change_summary_chars=%s",
         len(result.visual_prompt),
         len(result.change_summary),
+    )
+    log_prompt_trace(
+        logger,
+        "panel_prompt_revision_result",
+        context=trace_context or {},
+        result=result,
     )
     return result

@@ -16,6 +16,7 @@ from app.models.entities import (
 from app.models.enums import FileAssetPurpose, WorkflowStatus
 from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
 from app.services.llm import LLMResponseError, TaskCharacterPlan
+from app.services.prompt_logging import log_prompt_trace
 from app.services.prompt_templates import render_prompt_template
 from app.services.storage import materialize_asset_to_local
 
@@ -128,6 +129,26 @@ def ensure_character_reference_images(
                 character_name=character.name,
                 age_stage=appearance.age_stage,
                 visual_prompt=appearance.visual_prompt,
+            )
+            log_prompt_trace(
+                logger,
+                "character_reference_prompt_composed",
+                context={
+                    "task_id": task.id,
+                    "style_id": task.style_id,
+                    "story_input_mode": task.story_input_mode.value,
+                    "step": "generate_character_references",
+                    "character_id": character.id,
+                    "character_key": character.character_key,
+                    "appearance_id": appearance.id,
+                    "appearance_key": appearance.appearance_key,
+                },
+                character_name=character.name,
+                age_stage=appearance.age_stage,
+                visual_prompt=appearance.visual_prompt,
+                reference_prompt_chars=len(appearance.reference_prompt or ""),
+                reference_prompt=appearance.reference_prompt,
+                style_reference_count=len(style_reference_paths),
             )
             db.commit()
             try:

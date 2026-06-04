@@ -56,11 +56,26 @@ from app.services.llm import (
     revise_panel_prompt,
     segment_story,
 )
+from app.services.prompt_logging import log_prompt_trace
 from app.services.storage import materialize_asset_to_local
 
 _queue: asyncio.Queue[str] | None = None
 _worker_task: asyncio.Task[None] | None = None
 logger = logging.getLogger(__name__)
+
+
+def task_trace_context(task: GenerationTask, step: str, **extra: object) -> dict[str, object]:
+    return {
+        "task_id": task.id,
+        "owner_user_id": task.owner_user_id,
+        "style_id": task.style_id,
+        "story_input_mode": task.story_input_mode.value,
+        "image_count_mode": task.image_count_mode.value,
+        "requested_image_count": task.requested_image_count,
+        "use_character_references": task.use_character_references,
+        "step": step,
+        **extra,
+    }
 
 
 def init_task_queue() -> None:
@@ -514,6 +529,7 @@ def process_task(task_id: str) -> None:
                         style_prompt=task.style_prompt_snapshot,
                         image_count_mode=task.image_count_mode,
                         requested_image_count=task.requested_image_count,
+                        trace_context=task_trace_context(task, "adapt_story"),
                     )
                     task.adapted_story_title = storyboard.story_title
                     task.adapted_story_hook = storyboard.story_hook
@@ -570,6 +586,7 @@ def process_task(task_id: str) -> None:
                     original_text=task.original_text,
                     image_count_mode=task.image_count_mode,
                     requested_image_count=task.requested_image_count,
+                    trace_context=task_trace_context(task, "segment_story"),
                 )
                 for panel in segmentation.panels:
                     db.add(
@@ -635,6 +652,7 @@ def process_task(task_id: str) -> None:
                         original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
                         panels=story_segments,
+                        trace_context=task_trace_context(task, "extract_characters"),
                     )
                     if not character_result.characters:
                         raise LLMResponseError("未识别到可用于参考图的主要人物")
@@ -705,6 +723,7 @@ def process_task(task_id: str) -> None:
                         style_prompt=task.style_prompt_snapshot,
                         panels=story_segments,
                         characters=character_plans,
+                        trace_context=task_trace_context(task, "generate_panel_prompts"),
                     )
                     clear_panel_character_links(db, task)
                 else:
@@ -712,6 +731,7 @@ def process_task(task_id: str) -> None:
                         original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
                         panels=story_segments,
+                        trace_context=task_trace_context(task, "generate_panel_prompts"),
                     )
                 for panel in task.panels:
                     prompt_item = next(item for item in prompt_result.panels if item.panel_order == panel.panel_order)
@@ -745,6 +765,22 @@ def process_task(task_id: str) -> None:
                             appearance_keys=getattr(prompt_item, "appearance_keys", []),
                             usage_notes=getattr(prompt_item, "usage_notes", {}),
                         )
+                    log_prompt_trace(
+                        logger,
+                        "panel_prompt_adopted",
+                        context=task_trace_context(
+                            task,
+                            "generate_panel_prompts",
+                            panel_id=panel.id,
+                            panel_order=panel.panel_order,
+                        ),
+                        visual_prompt=panel.generated_prompt,
+                        image_text_json=panel.image_text_json,
+                        text_layout=panel.text_layout,
+                        prompt_model_snapshot=panel.prompt_model_snapshot,
+                        appearance_keys=getattr(prompt_item, "appearance_keys", []),
+                        usage_notes=getattr(prompt_item, "usage_notes", {}),
+                    )
                 task.progress_current = prompts_progress
                 set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
                 logger.info("task panel prompts completed task_id=%s panel_count=%s", task.id, len(story_segments))
@@ -819,6 +855,23 @@ def process_task(task_id: str) -> None:
                         "emphasis": None,
                     },
                     reference_notes=reference_notes,
+                )
+                log_prompt_trace(
+                    logger,
+                    "final_image_prompt_composed",
+                    context=task_trace_context(
+                        task,
+                        "generate_images",
+                        panel_id=panel.id,
+                        panel_order=panel.panel_order,
+                    ),
+                    reference_notes=reference_notes,
+                    reference_count=len(panel_reference_paths),
+                    character_reference_count=character_reference_count,
+                    visual_prompt=panel.generated_prompt,
+                    image_text_json=panel.image_text_json,
+                    final_prompt_chars=len(final_prompt),
+                    final_prompt=final_prompt,
                 )
             except ImageProviderConfigError as exc:
                 fail_step_and_task(db, task, GenerationStepName.generate_images, exc)
@@ -982,6 +1035,14 @@ def process_panel_edit(generated_image_id: str) -> None:
                 current_image_text=parse_image_text_json(image.image_text_json or panel.image_text_json),
                 current_text_layout=image.text_layout or panel.text_layout,
                 user_instruction=image.user_instruction or "",
+                trace_context=task_trace_context(
+                    task,
+                    "panel_edit_rewrite_prompt",
+                    panel_id=panel.id,
+                    panel_order=panel.panel_order,
+                    generated_image_id=image.id,
+                    generation_number=image.generation_number,
+                ),
             )
             image.image_prompt = revision.visual_prompt
             if task.story_input_mode == StoryInputMode.original:
@@ -1004,6 +1065,25 @@ def process_panel_edit(generated_image_id: str) -> None:
                 panel=panel,
                 visual_prompt=revision.visual_prompt,
                 image_text=parse_image_text_json(image.image_text_json),
+            )
+            log_prompt_trace(
+                logger,
+                "panel_edit_prompt_adopted",
+                context=task_trace_context(
+                    task,
+                    "panel_edit_rewrite_prompt",
+                    panel_id=panel.id,
+                    panel_order=panel.panel_order,
+                    generated_image_id=image.id,
+                    generation_number=image.generation_number,
+                ),
+                user_instruction=image.user_instruction,
+                previous_prompt=image.previous_prompt,
+                revised_visual_prompt=image.image_prompt,
+                image_text_json=image.image_text_json,
+                text_layout=image.text_layout,
+                change_summary=image.prompt_change_summary,
+                final_prompt=image.final_prompt,
             )
             image.workflow_step = GeneratedImageWorkflowStep.generate_image
             db.commit()
@@ -1067,6 +1147,24 @@ def process_panel_edit(generated_image_id: str) -> None:
                 },
                 reference_notes=reference_notes,
             )
+            log_prompt_trace(
+                logger,
+                "panel_edit_final_image_prompt_composed",
+                context=task_trace_context(
+                    task,
+                    "panel_edit_generate_image",
+                    panel_id=panel.id,
+                    panel_order=panel.panel_order,
+                    generated_image_id=image.id,
+                    generation_number=image.generation_number,
+                ),
+                reference_notes=reference_notes,
+                reference_count=len(reference_paths),
+                visual_prompt=image.image_prompt,
+                image_text_json=image.image_text_json,
+                final_prompt_chars=len(image.final_prompt or ""),
+                final_prompt=image.final_prompt,
+            )
             db.commit()
         else:
             reference_paths = style_reference_paths
@@ -1083,6 +1181,24 @@ def process_panel_edit(generated_image_id: str) -> None:
                     "emphasis": None,
                 },
                 reference_notes=reference_notes,
+            )
+            log_prompt_trace(
+                logger,
+                "panel_edit_final_image_prompt_composed",
+                context=task_trace_context(
+                    task,
+                    "panel_edit_generate_image",
+                    panel_id=panel.id,
+                    panel_order=panel.panel_order,
+                    generated_image_id=image.id,
+                    generation_number=image.generation_number,
+                ),
+                reference_notes=reference_notes,
+                reference_count=len(reference_paths),
+                visual_prompt=image.image_prompt,
+                image_text_json=image.image_text_json,
+                final_prompt_chars=len(image.final_prompt or ""),
+                final_prompt=image.final_prompt,
             )
             db.commit()
         try:

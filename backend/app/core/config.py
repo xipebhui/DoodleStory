@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     siliconflow_model: str = ""
     siliconflow_temperature: float = 0.8
+    prompt_trace_log_max_chars: int = 60000
     xg_api_key: str = ""
     xg_api_base_url: str = "https://api.xgapi.top"
     apexerapi_api_key: str = ""
