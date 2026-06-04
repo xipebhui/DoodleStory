@@ -916,9 +916,19 @@ textarea {
   color: #83bbff;
 }
 
+.content-status-badge.running {
+  border-color: rgba(224, 177, 93, 0.48);
+  color: #e0b15d;
+}
+
 .content-status-badge.done {
   border-color: rgba(89, 198, 132, 0.42);
   color: #8fe0aa;
+}
+
+.content-status-badge.failed {
+  border-color: rgba(255, 116, 116, 0.45);
+  color: #ff8a8a;
 }
 
 .content-modal-backdrop {

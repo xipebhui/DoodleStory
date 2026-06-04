@@ -378,6 +378,8 @@ class ContentExtraction(Base, TimestampMixin):
     aweme_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True, index=True)
     output_dir: Mapped[str] = mapped_column(String(1000))
     manifest_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    processing_status: Mapped[str] = mapped_column(String(40), default="succeeded", index=True)
+    processing_error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     story_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     story_highlight: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

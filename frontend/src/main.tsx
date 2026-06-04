@@ -1303,10 +1303,20 @@ function ContentExtractionView({ user }: { user: User }) {
   const isGallery = current?.media_type === "gallery" || sourceMedia.some((item) => item.media_kind === "image");
   const isVideo = current?.media_type === "video" || sourceMedia.some((item) => item.media_kind === "video");
   const hasStorySummary = Boolean(current?.story_content || current?.story_highlight || current?.target_audience);
+  const currentProcessing = current?.processing_status === "processing";
+  const currentFailed = current?.processing_status === "failed";
 
   useEffect(() => {
     refreshRecords();
   }, [query, cursor, mediaTypeFilter, resultStatusFilter]);
+
+  useEffect(() => {
+    if (!records.some((record) => record.processing_status === "processing")) return;
+    const timer = window.setTimeout(() => {
+      refreshRecords();
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [records, query, cursor, mediaTypeFilter, resultStatusFilter]);
 
   useEffect(() => {
     api
@@ -1370,17 +1380,24 @@ function ContentExtractionView({ user }: { user: User }) {
     }
     try {
       setProcessing(true);
-      setMessage("正在解析下载、提取文案并总结故事，请稍候...");
-      const result = await api.processContentExtraction({ raw_input: value });
-      setCurrent(result);
+      setMessage("任务已提交，正在解析下载、提取文案并总结故事...");
       setCreateOpen(false);
-      setDetailOpen(true);
-      setMediaExpanded(false);
-      setPreviewMediaId(null);
-      setMessage(result.story_content ? "任务完成：文案和故事总结已生成" : "任务完成：文案已生成");
-      await refreshRecords();
+      await api.processContentExtraction({ raw_input: value });
+      setCursor(null);
+      setCursorStack([]);
+      setRawInput("");
+      setMessage("任务已提交，可在列表查看处理状态");
+      const result = await api.contentExtractions({
+        query,
+        cursor: null,
+        limit: 10,
+        media_type: mediaTypeFilter || undefined,
+        result_status: resultStatusFilter || undefined,
+      });
+      setRecords(result.items);
+      setPageInfo(result.page);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "一键解析提取失败");
+      setMessage(error instanceof Error ? error.message : "提交内容提取任务失败");
     } finally {
       setProcessing(false);
     }
@@ -1509,9 +1526,19 @@ function ContentExtractionView({ user }: { user: User }) {
   }
 
   function recordStatusLabel(record: ContentExtractionSummary) {
+    if (record.processing_status === "processing") return "处理中";
+    if (record.processing_status === "failed") return "失败";
     if (record.has_story_summary) return "已总结";
     if (record.has_extracted_text) return "已提取";
     return "已下载";
+  }
+
+  function recordStatusClass(record: ContentExtractionSummary) {
+    if (record.processing_status === "processing") return "running";
+    if (record.processing_status === "failed") return "failed";
+    if (record.has_story_summary) return "done";
+    if (record.has_extracted_text) return "active";
+    return "";
   }
 
   return (
@@ -1548,6 +1575,8 @@ function ContentExtractionView({ user }: { user: User }) {
           </select>
           <select value={resultStatusFilter} onChange={(event) => { setCursor(null); setCursorStack([]); setResultStatusFilter(event.target.value); }}>
             <option value="">全部结果</option>
+            <option value="processing">处理中</option>
+            <option value="failed">失败</option>
             <option value="summarized">已总结</option>
             <option value="extracted">已提取</option>
             <option value="downloaded">仅下载</option>
@@ -1585,12 +1614,18 @@ function ContentExtractionView({ user }: { user: User }) {
                 <em>{record.raw_input_preview || record.aweme_id || "未记录分享文本"}</em>
               </span>
               <span>
-                <strong>{record.story_content_preview || record.extracted_text_preview || "暂无结果摘要"}</strong>
+                <strong>
+                  {record.processing_status === "processing"
+                    ? "正在处理，完成后可打开详情"
+                    : record.processing_status === "failed"
+                      ? record.processing_error_message || "处理失败"
+                      : record.story_content_preview || record.extracted_text_preview || "暂无结果摘要"}
+                </strong>
                 <em>{record.story_highlight_preview || record.target_audience_preview || "打开详情查看完整内容"}</em>
               </span>
-              <span>{record.media_type === "gallery" ? "图文" : record.media_type === "video" ? "视频" : record.media_type}</span>
+              <span>{record.media_type === "pending" ? "待识别" : record.media_type === "gallery" ? "图文" : record.media_type === "video" ? "视频" : record.media_type}</span>
               <span>
-                <b className={`content-status-badge ${record.has_story_summary ? "done" : record.has_extracted_text ? "active" : ""}`}>
+                <b className={`content-status-badge ${recordStatusClass(record)}`}>
                   {recordStatusLabel(record)}
                 </b>
                 <em>{record.media_count} 个媒体</em>
@@ -1612,14 +1647,14 @@ function ContentExtractionView({ user }: { user: User }) {
       </section>
 
       {createOpen ? (
-        <div className="content-modal-backdrop" onClick={() => (processing ? null : setCreateOpen(false))}>
+        <div className="content-modal-backdrop" onClick={() => setCreateOpen(false)}>
           <section className="content-modal create" onClick={(event) => event.stopPropagation()}>
             <header className="content-modal-header">
               <div>
                 <h2>创建内容提取任务</h2>
                 <p>粘贴完整抖音分享文本或链接，后端会识别其中真实 URL。</p>
               </div>
-              <button type="button" className="icon-button" aria-label="关闭创建任务" disabled={processing} onClick={() => setCreateOpen(false)}>
+              <button type="button" className="icon-button" aria-label="关闭创建任务" onClick={() => setCreateOpen(false)}>
                 <X size={18} />
               </button>
             </header>
@@ -1651,11 +1686,11 @@ function ContentExtractionView({ user }: { user: User }) {
                 <p>{current.source_url}</p>
               </div>
               <div className="content-detail-actions">
-                <button type="button" className="secondary-button" disabled={extracting} onClick={extractText}>
+                <button type="button" className="secondary-button" disabled={currentProcessing || extracting} onClick={extractText}>
                   {extracting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
                   重新提取
                 </button>
-                <button type="button" className="secondary-button" disabled={!isGallery || summarizing} onClick={summarizeStory}>
+                <button type="button" className="secondary-button" disabled={currentProcessing || !isGallery || summarizing} onClick={summarizeStory}>
                   {summarizing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
                   重新总结
                 </button>
@@ -1689,7 +1724,15 @@ function ContentExtractionView({ user }: { user: User }) {
                     </article>
                   </div>
                 ) : (
-                  <div className="empty mini">{isVideo ? "视频记录暂不生成故事总结" : "暂无故事总结"}</div>
+                  <div className="empty mini">
+                    {currentProcessing
+                      ? "任务正在处理，完成后会显示故事总结"
+                      : currentFailed
+                        ? current.processing_error_message || "任务处理失败"
+                        : isVideo
+                          ? "视频记录暂不生成故事总结"
+                          : "暂无故事总结"}
+                  </div>
                 )}
 
                 <div className="content-section-title">
@@ -1699,7 +1742,13 @@ function ContentExtractionView({ user }: { user: User }) {
                   </button>
                 </div>
                 <div className="extracted-text-box detail">
-                  {current.extracted_text ? <p>{current.extracted_text}</p> : <div className="empty mini">暂无文案结果</div>}
+                  {current.extracted_text ? (
+                    <p>{current.extracted_text}</p>
+                  ) : (
+                    <div className="empty mini">
+                      {currentProcessing ? "任务正在处理，完成后会显示提取文案" : currentFailed ? current.processing_error_message || "任务处理失败" : "暂无文案结果"}
+                    </div>
+                  )}
                 </div>
               </section>
 
@@ -1722,6 +1771,10 @@ function ContentExtractionView({ user }: { user: User }) {
                     <div>
                       <span>音频</span>
                       <strong>{audioMedia.length ? "已生成" : "无"}</strong>
+                    </div>
+                    <div>
+                      <span>处理状态</span>
+                      <strong>{current.processing_status === "processing" ? "处理中" : current.processing_status === "failed" ? "失败" : "已完成"}</strong>
                     </div>
                   </div>
                 </section>

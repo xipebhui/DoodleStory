@@ -3,14 +3,14 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.models.entities import ContentExtraction, ContentExtractionMedia, FileAsset, User
 from app.models.enums import ContentExtractionMediaKind, FileAssetPurpose, UserRole
 from app.schemas.common import ApiData, ApiList
@@ -143,6 +143,8 @@ def list_item_for_content(content: ContentExtraction, media_count: int) -> Conte
         source_url=content.source_url,
         media_type=content.media_type,
         aweme_id=content.aweme_id,
+        processing_status=content.processing_status,
+        processing_error_message=content.processing_error_message,
         raw_input_preview=content_preview(content.raw_input, 120),
         extracted_text_preview=content_preview(content.extracted_text, 96),
         story_content_preview=content_preview(content.story_content, 96),
@@ -160,30 +162,39 @@ def list_item_for_content(content: ContentExtraction, media_count: int) -> Conte
     )
 
 
-def create_content_from_douyin_download(
+def create_pending_content_extraction(
     payload: ContentExtractionDownloadCreate,
     user: User,
     db: Session,
+    *,
+    processing_status: str = "processing",
 ) -> ContentExtraction:
     source_url = extract_douyin_url(payload.raw_input)
+    content = ContentExtraction(
+        owner_user_id=user.id,
+        raw_input=payload.raw_input,
+        source_url=source_url,
+        media_type="pending",
+        output_dir="",
+        processing_status=processing_status,
+    )
+    db.add(content)
+    db.flush()
+    return content
+
+
+def attach_douyin_download_result(content: ContentExtraction, db: Session) -> None:
     try:
-        result = download_douyin_content(source_url)
+        result = download_douyin_content(content.source_url)
     except DouyinImportConfigError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except DouyinImportServiceError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
-    content = ContentExtraction(
-        owner_user_id=user.id,
-        raw_input=payload.raw_input,
-        source_url=source_url,
-        media_type=result.media_type,
-        aweme_id=result.aweme_id,
-        output_dir=str(result.output_dir),
-        manifest_path=str(result.manifest_path) if result.manifest_path else None,
-    )
-    db.add(content)
-    db.flush()
+    content.media_type = result.media_type
+    content.aweme_id = result.aweme_id
+    content.output_dir = str(result.output_dir)
+    content.manifest_path = str(result.manifest_path) if result.manifest_path else None
 
     display_order = 1
     for path in result.media_files:
@@ -219,6 +230,15 @@ def create_content_from_douyin_download(
 
     db.flush()
     content.media.sort(key=lambda item: (item.display_order, item.media_kind.value))
+
+
+def create_content_from_douyin_download(
+    payload: ContentExtractionDownloadCreate,
+    user: User,
+    db: Session,
+) -> ContentExtraction:
+    content = create_pending_content_extraction(payload, user, db, processing_status="succeeded")
+    attach_douyin_download_result(content, db)
     return content
 
 
@@ -319,6 +339,38 @@ def apply_content_story_summary(content: ContentExtraction, *, skip_video: bool 
     content.story_summarized_at = datetime.utcnow()
 
 
+def run_content_extraction_processing(content_id: str) -> None:
+    with SessionLocal() as db:
+        content = load_content_extraction(db, content_id)
+        if not content:
+            return
+        try:
+            content.processing_status = "processing"
+            content.processing_error_message = None
+            db.commit()
+            content = load_content_extraction(db, content_id)
+            attach_douyin_download_result(content, db)
+            apply_content_text_extraction(content, db)
+            apply_content_story_summary(content, skip_video=True)
+            content.processing_status = "succeeded"
+            content.processing_error_message = None
+            db.commit()
+        except HTTPException as exc:
+            db.rollback()
+            failed = load_content_extraction(db, content_id)
+            if failed:
+                failed.processing_status = "failed"
+                failed.processing_error_message = str(exc.detail)
+                db.commit()
+        except Exception as exc:
+            db.rollback()
+            failed = load_content_extraction(db, content_id)
+            if failed:
+                failed.processing_status = "failed"
+                failed.processing_error_message = str(exc)
+                db.commit()
+
+
 @router.get("/douyin-health", response_model=ApiData[ContentExtractionHealthRead])
 def douyin_health(user: User = Depends(current_user)) -> ApiData[ContentExtractionHealthRead]:
     try:
@@ -359,7 +411,11 @@ def list_content_extractions(
     if media_type:
         statement = statement.where(ContentExtraction.media_type == media_type)
     if result_status:
-        if result_status == "extracted":
+        if result_status == "processing":
+            statement = statement.where(ContentExtraction.processing_status == "processing")
+        elif result_status == "failed":
+            statement = statement.where(ContentExtraction.processing_status == "failed")
+        elif result_status == "extracted":
             statement = statement.where(ContentExtraction.extracted_text.is_not(None))
         elif result_status == "summarized":
             statement = statement.where(ContentExtraction.story_content.is_not(None))
@@ -416,15 +472,14 @@ def download_content_extraction(
 @router.post("/process", response_model=ApiData[ContentExtractionRead])
 def process_content_extraction(
     payload: ContentExtractionDownloadCreate,
+    background_tasks: BackgroundTasks,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[ContentExtractionRead]:
-    content = create_content_from_douyin_download(payload, user, db)
-    apply_content_text_extraction(content, db)
-    apply_content_story_summary(content, skip_video=True)
+    content = create_pending_content_extraction(payload, user, db)
     db.commit()
     content = load_content_extraction(db, content.id)
-    content.media.sort(key=lambda item: (item.display_order, item.media_kind.value))
+    background_tasks.add_task(run_content_extraction_processing, content.id)
     return ApiData(data=ContentExtractionRead.model_validate(content))
 
 

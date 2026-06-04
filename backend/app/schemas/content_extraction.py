@@ -32,6 +32,8 @@ class ContentExtractionRead(TimestampFields):
     source_url: str
     media_type: str
     aweme_id: str | None
+    processing_status: str
+    processing_error_message: str | None = None
     extracted_text: str | None
     story_content: str | None = None
     story_highlight: str | None = None
@@ -47,6 +49,8 @@ class ContentExtractionListItemRead(TimestampFields):
     source_url: str
     media_type: str
     aweme_id: str | None
+    processing_status: str
+    processing_error_message: str | None = None
     raw_input_preview: str | None
     extracted_text_preview: str | None
     story_content_preview: str | None
