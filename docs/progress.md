@@ -93,6 +93,7 @@
 - 七牛配置兼容 `QNY_*` 前缀后，用本地 `.env` 中的 QNY 配置完成真实烟测：临时启用 `STORAGE_BACKEND=qiniu` 上传测试 PNG 成功，固定原图 CDN URL 返回 `200 image/png`，固定 `imageView2` 缩略图 URL 返回 `200 image/webp`，烟测对象已从七牛删除。
 - 七牛资产访问改为前端直接使用 `file_assets.public_url` 派生出的固定公开 CDN URL，避免短期签名 URL 造成浏览器缓存命中差；后端 `/assets/{id}/content` 仅保留本地资产访问和七牛固定 URL 兼容跳转。
 - 抖音图文链接 `https://v.douyin.com/Vcpjpg3pcMk/` 已用外部下载器做无 Cookie 烟测：短链可解析为 `https://www.douyin.com/note/7578551127650620323?previous_page=web_code_link`，类型识别为 `gallery`，但详情接口连续返回空 `200`，下载器判断为反爬信号，未产生媒体文件。后续需配置有效 Cookie 后复测。
+- 使用 `scripts/fetch-douyin-cookie.sh` 按官方流程打开浏览器登录抖音并保存 Cookie 到本地忽略路径 `.cache/douyin/cookies.json`；随后在 `.env` 中配置 `DOUYIN_DOWNLOADER_ROOT`、`DOUYIN_DOWNLOADER_PYTHON` 和 `DOUYIN_COOKIE_FILE`，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 成功下载该图文作品，产出 5 个媒体文件和 `download_manifest.jsonl`。
 
 ## 已知缺口
 
