@@ -34,6 +34,7 @@ import {
   api,
   type ContentExtraction,
   type ContentExtractionHealth,
+  type ContentExtractionMedia,
   type ContentExtractionSummary,
   type FileAsset,
   type Style,
@@ -1275,16 +1276,24 @@ function ContentExtractionView({ user }: { user: User }) {
   const [downloading, setDownloading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [mediaExpanded, setMediaExpanded] = useState(false);
+  const [previewMediaId, setPreviewMediaId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
+  const previewCloseRef = useRef<HTMLButtonElement | null>(null);
 
   const sourceMedia = useMemo(
     () => (current?.media ?? []).filter((item) => item.media_kind === "image" || item.media_kind === "video"),
     [current],
   );
+  const imageMedia = useMemo(
+    () => sourceMedia.filter((item): item is ContentExtractionMedia & { media_kind: "image" } => item.media_kind === "image"),
+    [sourceMedia],
+  );
   const audioMedia = useMemo(() => (current?.media ?? []).filter((item) => item.media_kind === "audio"), [current]);
   const visibleMedia = mediaExpanded ? sourceMedia : sourceMedia.slice(0, 3);
+  const previewIndex = imageMedia.findIndex((item) => item.id === previewMediaId);
+  const previewMedia = previewIndex >= 0 ? imageMedia[previewIndex] : null;
   const isGallery = current?.media_type === "gallery" || sourceMedia.some((item) => item.media_kind === "image");
   const isVideo = current?.media_type === "video" || sourceMedia.some((item) => item.media_kind === "video");
 
@@ -1298,6 +1307,33 @@ function ContentExtractionView({ user }: { user: User }) {
       .then(setHealth)
       .catch((error) => setMessage(error instanceof Error ? error.message : "抖音下载服务不可用"));
   }, []);
+
+  useEffect(() => {
+    if (!previewMediaId) return;
+    if (!imageMedia.some((item) => item.id === previewMediaId)) {
+      setPreviewMediaId(null);
+    }
+  }, [imageMedia, previewMediaId]);
+
+  useEffect(() => {
+    if (!previewMediaId) return;
+    previewCloseRef.current?.focus();
+
+    function handlePreviewKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setPreviewMediaId(null);
+      }
+      if (event.key === "ArrowLeft") {
+        showPreviewOffset(-1);
+      }
+      if (event.key === "ArrowRight") {
+        showPreviewOffset(1);
+      }
+    }
+
+    window.addEventListener("keydown", handlePreviewKey);
+    return () => window.removeEventListener("keydown", handlePreviewKey);
+  }, [previewMediaId, imageMedia, previewIndex]);
 
   async function refreshRecords() {
     try {
@@ -1325,6 +1361,7 @@ function ContentExtractionView({ user }: { user: User }) {
       const result = await api.downloadContentExtraction({ raw_input: value });
       setCurrent(result);
       setMediaExpanded(false);
+      setPreviewMediaId(null);
       setMessage("下载完成，可以提取文案");
       await refreshRecords();
     } catch (error) {
@@ -1359,6 +1396,7 @@ function ContentExtractionView({ user }: { user: User }) {
       setCurrent(result);
       setRawInput(result.raw_input);
       setMediaExpanded(false);
+      setPreviewMediaId(null);
       setMessage("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "记录加载失败");
@@ -1391,6 +1429,23 @@ function ContentExtractionView({ user }: { user: User }) {
       setCursor(previous || null);
       return next;
     });
+  }
+
+  function showPreviewOffset(offset: number) {
+    if (!imageMedia.length) return;
+    const currentIndex = Math.max(0, previewIndex);
+    const nextIndex = (currentIndex + offset + imageMedia.length) % imageMedia.length;
+    setPreviewMediaId(imageMedia[nextIndex].id);
+  }
+
+  function downloadPreviewMedia() {
+    if (!previewMedia) return;
+    window.location.href = assetUrl(previewMedia.asset, "original");
+  }
+
+  function openPreviewMedia() {
+    if (!previewMedia) return;
+    window.open(assetUrl(previewMedia.asset, "original"), "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -1514,7 +1569,15 @@ function ContentExtractionView({ user }: { user: User }) {
               {visibleMedia.map((media) => (
                 <figure key={media.id} className={`content-media-card ${media.media_kind}`}>
                   {media.media_kind === "image" ? (
-                    <LazyAssetImage asset={media.asset} assetId={media.asset.id} alt={`媒体 ${media.display_order}`} />
+                    <button
+                      type="button"
+                      className="content-media-button"
+                      aria-label={`放大预览媒体 ${media.display_order}`}
+                      onClick={() => setPreviewMediaId(media.id)}
+                    >
+                      <LazyAssetImage asset={media.asset} assetId={media.asset.id} alt={`媒体 ${media.display_order}`} />
+                      <Eye size={17} />
+                    </button>
                   ) : (
                     <video src={assetUrl(media.asset, "original")} controls preload="metadata" />
                   )}
@@ -1569,6 +1632,38 @@ function ContentExtractionView({ user }: { user: User }) {
           </section>
         </aside>
       </div>
+      {previewMedia ? (
+        <div className="image-modal" onClick={() => setPreviewMediaId(null)}>
+          <button ref={previewCloseRef} type="button" className="modal-close" aria-label="关闭媒体预览" onClick={() => setPreviewMediaId(null)}>
+            <X size={18} />
+          </button>
+          <button type="button" className="modal-nav left" aria-label="上一张图片" disabled={imageMedia.length <= 1} onClick={(event) => { event.stopPropagation(); showPreviewOffset(-1); }}>
+            <ChevronLeft size={22} />
+          </button>
+          <figure className="image-preview-frame content-preview-frame" onClick={(event) => event.stopPropagation()}>
+            <LazyAssetImage asset={previewMedia.asset} assetId={previewMedia.asset.id} alt={`媒体 ${previewMedia.display_order} 放大预览`} eager variant="original" />
+            <figcaption>
+              <div>
+                <strong>媒体 {previewMedia.display_order}</strong>
+                <p>{previewMedia.extracted_text || current?.source_url || ""}</p>
+              </div>
+              <div className="preview-actions">
+                <button type="button" className="secondary-button" onClick={downloadPreviewMedia}>
+                  <Download size={16} />
+                  下载图片
+                </button>
+                <button type="button" className="secondary-button" onClick={openPreviewMedia}>
+                  <ArrowUpRight size={16} />
+                  打开原图
+                </button>
+              </div>
+            </figcaption>
+          </figure>
+          <button type="button" className="modal-nav right" aria-label="下一张图片" disabled={imageMedia.length <= 1} onClick={(event) => { event.stopPropagation(); showPreviewOffset(1); }}>
+            <ChevronRight size={22} />
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

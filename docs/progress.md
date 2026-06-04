@@ -82,6 +82,7 @@
 - 新增内容提取需求设计：后续 `内容提取` tab 由后端解析抖音分享文本中的真实 URL，同步调用同机抖音下载服务下载图文或视频；下载后用户再同步触发文案提取，视频先分离音频并用 SiliconFlow 音频多模态转写，图文按图片顺序逐张用 SiliconFlow 视觉理解提取文字。该功能第一版不设计异步状态机、worker、轮询或取消流程，页面以最终文案为主，媒体预览为辅。
 - 开始 Sprint 07 同步内容提取：新增合同 `docs/contracts/sprint-07-content-extraction.md`，范围锁定为后端同步下载服务代理、最小内容提取记录、SiliconFlow 图文/音频文案提取和前端 `内容提取` tab。
 - 完成 Sprint 07 同步内容提取第一版：新增 `content_extractions` 和 `content_extraction_media` 表、内容提取 API、同机抖音下载服务代理、SiliconFlow 图文/音频多模态提取服务、内容提取资产权限和前端 `内容提取` tab；页面支持粘贴分享文本、同步解析下载、同步提取文案、复制结果、媒体预览和最近记录。
+- 增强 `内容提取` 媒体预览交互：下载后的图片缩略图支持点击放大、键盘关闭、左右切换、下载单图和打开原图；视频仍保留内嵌播放器。
 
 ## 验证记录
 
@@ -98,6 +99,7 @@
 - 抖音图文链接 `https://v.douyin.com/Vcpjpg3pcMk/` 已用外部下载器做无 Cookie 烟测：短链可解析为 `https://www.douyin.com/note/7578551127650620323?previous_page=web_code_link`，类型识别为 `gallery`，但详情接口连续返回空 `200`，下载器判断为反爬信号，未产生媒体文件。后续需配置有效 Cookie 后复测。
 - 使用 `scripts/fetch-douyin-cookie.sh` 按官方流程打开浏览器登录抖音并保存 Cookie 到本地忽略路径 `.cache/douyin/cookies.json`；随后在 `.env` 中配置 `DOUYIN_DOWNLOADER_ROOT`、`DOUYIN_DOWNLOADER_PYTHON` 和 `DOUYIN_COOKIE_FILE`，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 成功下载该图文作品，产出 5 个媒体文件和 `download_manifest.jsonl`。
 - Sprint 07 同步内容提取后，`python3.11 -m compileall backend/app`、空 SQLite 数据库 Alembic `upgrade head`、`npm run build` 和 `./scripts/check.sh` 通过；用临时本地前后端服务在浏览器中注册测试账号并打开 `内容提取` tab，页面可正常加载并在 `127.0.0.1:8010` 不可达时显示明确错误。
+- 内容提取图片放大预览增强后，`npm run build` 和 `./scripts/check.sh` 通过；临时启动本地前后端与同机抖音下载服务，用真实图文链接 `https://v.douyin.com/Vcpjpg3pcMk/` 下载 5 张图片，浏览器验证第 1 张缩略图可打开预览、可切换到第 2 张、Esc 可关闭。
 
 ## 已知缺口
 
