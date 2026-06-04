@@ -33,7 +33,7 @@ from app.services.media_text_extraction import (
     summarize_images_story,
     transcribe_video_audio,
 )
-from app.services.storage import materialize_asset_to_local, save_binary_file
+from app.services.storage import save_binary_file
 
 router = APIRouter(prefix="/content-extractions", tags=["content-extractions"])
 
@@ -249,6 +249,13 @@ def media_by_kind(content: ContentExtraction) -> tuple[list[ContentExtractionMed
     return image_media, video_media
 
 
+def source_media_path(media: ContentExtractionMedia) -> Path:
+    path = Path(media.source_path)
+    if not path.exists() or not path.is_file() or path.stat().st_size <= 0:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"下载原始媒体文件不存在或为空：{media.source_path}")
+    return path
+
+
 def apply_content_text_extraction(content: ContentExtraction, db: Session) -> None:
     image_media, video_media = media_by_kind(content)
 
@@ -256,8 +263,7 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
         if content.media_type == "video" or (video_media and not image_media):
             if not video_media:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="没有可提取的视频文件")
-            video_asset = video_media[0].asset
-            video_path = materialize_asset_to_local(video_asset)
+            video_path = source_media_path(video_media[0])
             transcription = transcribe_video_audio(video_path)
             audio_stored = save_binary_file(FileAssetPurpose.douyin_audio.value, transcription.audio_bytes, ".mp3")
             audio_asset = FileAsset(
@@ -295,7 +301,7 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
             parts: list[str] = []
             for media in image_media:
                 asset = media.asset
-                image_path = materialize_asset_to_local(asset)
+                image_path = source_media_path(media)
                 result = extract_image_text(image_path, asset.content_type)
                 media.extracted_text = result.text
                 if result.text.strip():
@@ -325,7 +331,7 @@ def apply_content_story_summary(content: ContentExtraction, *, skip_video: bool 
 
     try:
         images = [
-            (materialize_asset_to_local(media.asset), media.asset.content_type)
+            (source_media_path(media), media.asset.content_type)
             for media in image_media
         ]
         summary = summarize_images_story(images)
