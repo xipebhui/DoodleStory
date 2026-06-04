@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-06-douyin-cookie-import.md`
+- `docs/contracts/sprint-07-content-extraction.md`
 
 ## 最近完成的工作
 
@@ -80,6 +80,8 @@
 - 修复远程前端 API 地址推断：生产环境默认使用同源 `/api/v1` 走 nginx 代理，不再自动拼接公网主机的 `:8000` 端口；本地 loopback 开发仍默认请求 `http://127.0.0.1:8000`。
 - 开始 Sprint 06 抖音下载 Cookie 与导入适配：阅读 `jiji262/douyin-downloader` V2.0 的 Cookie 获取方式，确认官方推荐用 `tools.cookie_fetcher` 打开浏览器登录并保存 Cookie；新增 DoodleStory 后端抖音下载 adapter，通过 `DOUYIN_DOWNLOADER_ROOT` 定位外部下载器，并支持 `DOUYIN_COOKIE` 或 `DOUYIN_COOKIE_FILE` 注入 Cookie；新增 `scripts/fetch-douyin-cookie.sh` 和 `scripts/test-douyin-download.sh`，用于先获取 Cookie 再输入抖音链接做真实下载验证。
 - 新增内容提取需求设计：后续 `内容提取` tab 由后端解析抖音分享文本中的真实 URL，同步调用同机抖音下载服务下载图文或视频；下载后用户再同步触发文案提取，视频先分离音频并用 SiliconFlow 音频多模态转写，图文按图片顺序逐张用 SiliconFlow 视觉理解提取文字。该功能第一版不设计异步状态机、worker、轮询或取消流程，页面以最终文案为主，媒体预览为辅。
+- 开始 Sprint 07 同步内容提取：新增合同 `docs/contracts/sprint-07-content-extraction.md`，范围锁定为后端同步下载服务代理、最小内容提取记录、SiliconFlow 图文/音频文案提取和前端 `内容提取` tab。
+- 完成 Sprint 07 同步内容提取第一版：新增 `content_extractions` 和 `content_extraction_media` 表、内容提取 API、同机抖音下载服务代理、SiliconFlow 图文/音频多模态提取服务、内容提取资产权限和前端 `内容提取` tab；页面支持粘贴分享文本、同步解析下载、同步提取文案、复制结果、媒体预览和最近记录。
 
 ## 验证记录
 
@@ -95,6 +97,7 @@
 - 七牛资产访问改为前端直接使用 `file_assets.public_url` 派生出的固定公开 CDN URL，避免短期签名 URL 造成浏览器缓存命中差；后端 `/assets/{id}/content` 仅保留本地资产访问和七牛固定 URL 兼容跳转。
 - 抖音图文链接 `https://v.douyin.com/Vcpjpg3pcMk/` 已用外部下载器做无 Cookie 烟测：短链可解析为 `https://www.douyin.com/note/7578551127650620323?previous_page=web_code_link`，类型识别为 `gallery`，但详情接口连续返回空 `200`，下载器判断为反爬信号，未产生媒体文件。后续需配置有效 Cookie 后复测。
 - 使用 `scripts/fetch-douyin-cookie.sh` 按官方流程打开浏览器登录抖音并保存 Cookie 到本地忽略路径 `.cache/douyin/cookies.json`；随后在 `.env` 中配置 `DOUYIN_DOWNLOADER_ROOT`、`DOUYIN_DOWNLOADER_PYTHON` 和 `DOUYIN_COOKIE_FILE`，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 成功下载该图文作品，产出 5 个媒体文件和 `download_manifest.jsonl`。
+- Sprint 07 同步内容提取后，`python3.11 -m compileall backend/app`、空 SQLite 数据库 Alembic `upgrade head`、`npm run build` 和 `./scripts/check.sh` 通过；用临时本地前后端服务在浏览器中注册测试账号并打开 `内容提取` tab，页面可正常加载并在 `127.0.0.1:8010` 不可达时显示明确错误。
 
 ## 已知缺口
 
@@ -106,6 +109,7 @@
 - 历史本地资产尚未迁移到七牛；七牛对象存储已通过独立上传/访问烟测，仍建议用真实任务生成链路做一次端到端验证。
 - 旧的多 profile registry 已移除；SiliconFlow、XG 图片编辑接口与 ApexerAPI Chat 生图接口按固定平台配置接入。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
+- 内容提取已完成本地不可达错误路径和页面加载验证；还需要在同机 `127.0.0.1:8010` 抖音下载服务可达、且 SiliconFlow 多模态模型配置齐全时做真实图文下载提取和视频音频转写端到端验证。
 
 ## 建议下一步
 
@@ -113,4 +117,4 @@
 2. 使用 `scripts/fetch-douyin-cookie.sh` 获取有效抖音 Cookie 后，重新运行 `scripts/test-douyin-download.sh "https://v.douyin.com/Vcpjpg3pcMk/"` 验证图文下载产物。
 3. 继续做组件拆分，把当前 `frontend/src/main.tsx` 拆成页面、组件和 API 模块。
 4. 补充更细的自动化测试和任务 worker 运行恢复策略。
-5. 基于 `docs/design/content-extraction.md` 新建内容提取 sprint contract，并实现后端同步服务代理、最小内容提取记录、SiliconFlow 文案提取和前端 tab。
+5. 启动同机抖音下载服务 `127.0.0.1:8010`，用真实抖音图文和视频链接验证 `内容提取` tab 的下载、资产预览、图文 OCR 和视频音频转写。

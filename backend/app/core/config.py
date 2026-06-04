@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     douyin_cookie: str = ""
     douyin_cookie_file: str = ""
     douyin_download_timeout_seconds: int = 180
+    douyin_import_service_base_url: str = "http://127.0.0.1:8010"
+    siliconflow_vision_model: str = ""
+    siliconflow_audio_model: str = ""
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

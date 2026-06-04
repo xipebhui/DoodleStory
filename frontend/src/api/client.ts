@@ -194,6 +194,47 @@ export type TaskDownload = {
   updated_at: string;
 };
 
+export type ContentExtractionMedia = {
+  id: string;
+  media_kind: "image" | "video" | "audio" | "metadata";
+  display_order: number;
+  asset: FileAsset;
+  extracted_text: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContentExtraction = {
+  id: string;
+  owner_user_id: string;
+  raw_input: string;
+  source_url: string;
+  media_type: string;
+  aweme_id: string | null;
+  extracted_text: string | null;
+  media: ContentExtractionMedia[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContentExtractionSummary = {
+  id: string;
+  owner_user_id: string;
+  source_url: string;
+  media_type: string;
+  aweme_id: string | null;
+  extracted_text_preview: string | null;
+  media_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContentExtractionHealth = {
+  ok: boolean;
+  service_base_url: string;
+  response: Record<string, unknown> | null;
+};
+
 export type PageInfo = {
   limit: number;
   next_cursor: string | null;
@@ -341,4 +382,25 @@ export const api = {
     }).then((result) => result.data),
   createTaskDownload: (id: string) =>
     request<ApiData<TaskDownload>>(`/tasks/${id}/downloads`, { method: "POST" }).then((result) => result.data),
+  contentExtractionHealth: () =>
+    request<ApiData<ContentExtractionHealth>>("/content-extractions/douyin-health").then((result) => result.data),
+  contentExtractions: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<ContentExtractionSummary>>(`/content-extractions${suffix}`);
+  },
+  contentExtraction: (id: string) =>
+    request<ApiData<ContentExtraction>>(`/content-extractions/${id}`).then((result) => result.data),
+  downloadContentExtraction: (payload: { raw_input: string }) =>
+    request<ApiData<ContentExtraction>>("/content-extractions/download", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  extractContentText: (id: string) =>
+    request<ApiData<ContentExtraction>>(`/content-extractions/${id}/extract`, { method: "POST" }).then(
+      (result) => result.data,
+    ),
 };

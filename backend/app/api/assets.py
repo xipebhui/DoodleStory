@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
 from app.core.database import get_db
-from app.models.entities import FileAsset, GeneratedImage, StyleReferenceImage, TaskDownload, User
+from app.models.entities import ContentExtractionMedia, FileAsset, GeneratedImage, StyleReferenceImage, TaskDownload, User
 from app.models.enums import FileAssetPurpose, UserRole
 from app.schemas.common import ApiData
 from app.schemas.style import FileAssetRead
@@ -45,6 +45,16 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
             .where(TaskDownload.asset_id == asset.id, TaskDownload.task.has(owner_user_id=user.id))
         )
         return download is not None
+    if asset.purpose in {FileAssetPurpose.douyin_media, FileAssetPurpose.douyin_audio, FileAssetPurpose.douyin_metadata}:
+        media = db.scalar(
+            select(ContentExtractionMedia)
+            .join(ContentExtractionMedia.content_extraction)
+            .where(
+                ContentExtractionMedia.asset_id == asset.id,
+                ContentExtractionMedia.content_extraction.has(owner_user_id=user.id),
+            )
+        )
+        return media is not None
     return False
 
 

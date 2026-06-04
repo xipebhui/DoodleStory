@@ -474,6 +474,31 @@ textarea {
   color: #ff9d9d;
 }
 
+.health-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #111318;
+  color: #8d96a6;
+  padding: 0 14px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.health-pill span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff9d9d;
+}
+
+.health-pill.ok span {
+  background: #68d391;
+}
+
 .editor-title {
   display: flex;
   justify-content: space-between;
@@ -758,6 +783,223 @@ textarea {
 .character-reference-card span {
   color: #8d96a6;
   font-size: 12px;
+}
+
+.content-extraction-page {
+  --page-max: 1440px;
+}
+
+.content-extraction-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+.content-main-stack,
+.content-side-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.content-input-panel,
+.extraction-result-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.content-download-form {
+  display: grid;
+  gap: 12px;
+}
+
+.content-download-form textarea {
+  min-height: 132px;
+}
+
+.content-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.content-action-row.compact {
+  justify-content: flex-end;
+}
+
+.content-action-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: #8d96a6;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extraction-result-panel {
+  min-height: 460px;
+}
+
+.extracted-text-box {
+  min-height: 330px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 18px 2px;
+}
+
+.extracted-text-box p {
+  margin: 0;
+  color: #eef2f7;
+  font-size: 16px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.content-result-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #8d96a6;
+  font-size: 13px;
+}
+
+.content-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.content-summary-grid div {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #0f1116;
+  padding: 12px;
+}
+
+.content-summary-grid span {
+  display: block;
+  color: #8d96a6;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.content-summary-grid strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-media-preview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.content-media-card {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+}
+
+.content-media-card img,
+.content-media-card video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #171a21;
+  object-fit: cover;
+}
+
+.content-media-card.video {
+  grid-column: 1 / -1;
+}
+
+.content-media-card.video video {
+  aspect-ratio: 16 / 9;
+}
+
+.content-media-card figcaption {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(11, 13, 16, 0.78);
+  color: #eef2f7;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.content-fold-note {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8d96a6;
+  font-size: 13px;
+  padding-top: 10px;
+}
+
+.content-record-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.content-record-search button {
+  min-width: 0;
+  padding: 0;
+}
+
+.content-record-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.content-record-item {
+  display: grid;
+  justify-content: stretch;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: #0f1116;
+  color: #eef2f7;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.content-record-item.selected {
+  border-color: rgba(224, 177, 93, 0.7);
+  background: rgba(224, 177, 93, 0.08);
+}
+
+.content-record-item strong,
+.content-record-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-record-item span {
+  color: #8d96a6;
+  font-size: 12px;
+}
+
+.pagination-bar.compact {
+  margin-top: 12px;
 }
 
 .image-button {

@@ -9,6 +9,7 @@ import {
   Clock3,
   Download,
   Eye,
+  FileText,
   Filter,
   FolderOpen,
   Images,
@@ -28,10 +29,22 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { API_BASE_URL, api, type FileAsset, type Style, type StyleTest, type Task, type TaskSummary, type User } from "./api/client";
+import {
+  API_BASE_URL,
+  api,
+  type ContentExtraction,
+  type ContentExtractionHealth,
+  type ContentExtractionSummary,
+  type FileAsset,
+  type Style,
+  type StyleTest,
+  type Task,
+  type TaskSummary,
+  type User,
+} from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "styles" | "settings";
+type View = "tasks" | "content" | "styles" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 
@@ -161,6 +174,7 @@ function App() {
   return (
     <Shell user={user} view={view} setView={setView} onLogout={() => setUser(null)}>
       {view === "tasks" ? <TasksView user={user} /> : null}
+      {view === "content" ? <ContentExtractionView user={user} /> : null}
       {view === "styles" ? <StylesView user={user} /> : null}
       {view === "settings" ? <SettingsView user={user} onLogout={() => setUser(null)} /> : null}
     </Shell>
@@ -246,6 +260,7 @@ function Shell({
 }) {
   const items = [
     { key: "tasks" as const, label: "任务", icon: Images },
+    { key: "content" as const, label: "内容提取", icon: FileText },
     { key: "styles" as const, label: "风格", icon: Sparkles },
     { key: "settings" as const, label: "设置", icon: Settings },
   ];
@@ -1244,6 +1259,316 @@ function TasksView({ user }: { user: User }) {
           </button>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function ContentExtractionView({ user }: { user: User }) {
+  const [rawInput, setRawInput] = useState("");
+  const [current, setCurrent] = useState<ContentExtraction | null>(null);
+  const [records, setRecords] = useState<ContentExtractionSummary[]>([]);
+  const [health, setHealth] = useState<ContentExtractionHealth | null>(null);
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [message, setMessage] = useState("");
+  const [loadingRecords, setLoadingRecords] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [mediaExpanded, setMediaExpanded] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
+
+  const sourceMedia = useMemo(
+    () => (current?.media ?? []).filter((item) => item.media_kind === "image" || item.media_kind === "video"),
+    [current],
+  );
+  const audioMedia = useMemo(() => (current?.media ?? []).filter((item) => item.media_kind === "audio"), [current]);
+  const visibleMedia = mediaExpanded ? sourceMedia : sourceMedia.slice(0, 3);
+  const isGallery = current?.media_type === "gallery" || sourceMedia.some((item) => item.media_kind === "image");
+  const isVideo = current?.media_type === "video" || sourceMedia.some((item) => item.media_kind === "video");
+
+  useEffect(() => {
+    refreshRecords();
+  }, [query, cursor]);
+
+  useEffect(() => {
+    api
+      .contentExtractionHealth()
+      .then(setHealth)
+      .catch((error) => setMessage(error instanceof Error ? error.message : "抖音下载服务不可用"));
+  }, []);
+
+  async function refreshRecords() {
+    try {
+      setLoadingRecords(true);
+      const result = await api.contentExtractions({ query, cursor, limit: 8 });
+      setRecords(result.items);
+      setPageInfo(result.page);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "内容提取记录加载失败");
+    } finally {
+      setLoadingRecords(false);
+    }
+  }
+
+  async function downloadContent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = rawInput.trim();
+    if (!value) {
+      setMessage("请输入抖音分享文本或链接");
+      return;
+    }
+    try {
+      setDownloading(true);
+      setMessage("正在解析并下载，请稍候...");
+      const result = await api.downloadContentExtraction({ raw_input: value });
+      setCurrent(result);
+      setMediaExpanded(false);
+      setMessage("下载完成，可以提取文案");
+      await refreshRecords();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "解析并下载失败");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function extractText() {
+    if (!current) {
+      setMessage("请先解析并下载内容");
+      return;
+    }
+    try {
+      setExtracting(true);
+      setMessage("正在提取文案，请稍候...");
+      const result = await api.extractContentText(current.id);
+      setCurrent(result);
+      setMessage("文案提取完成");
+      await refreshRecords();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "提取文案失败");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function selectRecord(id: string) {
+    try {
+      const result = await api.contentExtraction(id);
+      setCurrent(result);
+      setRawInput(result.raw_input);
+      setMediaExpanded(false);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "记录加载失败");
+    }
+  }
+
+  async function copyExtractedText() {
+    if (!current?.extracted_text) return;
+    await navigator.clipboard.writeText(current.extracted_text);
+    setMessage("文案已复制");
+  }
+
+  function applyRecordSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCursor(null);
+    setCursorStack([]);
+    setQuery(queryInput.trim());
+  }
+
+  function goNextPage() {
+    if (!pageInfo?.next_cursor) return;
+    setCursorStack((items) => [...items, cursor ?? ""]);
+    setCursor(pageInfo.next_cursor);
+  }
+
+  function goPreviousPage() {
+    setCursorStack((items) => {
+      const next = [...items];
+      const previous = next.pop() ?? "";
+      setCursor(previous || null);
+      return next;
+    });
+  }
+
+  return (
+    <section className="page content-extraction-page">
+      <header className="page-header">
+        <div>
+          <h1>内容提取</h1>
+          <p>从抖音图文或视频中提取原始文案，下载结果只作为来源校验。</p>
+        </div>
+        <div className={`health-pill ${health?.ok ? "ok" : ""}`}>
+          <span />
+          {health?.ok ? `抖音下载服务可用 · ${health.service_base_url}` : "抖音下载服务待检查"}
+        </div>
+      </header>
+
+      {message ? <p className="form-message">{message}</p> : null}
+
+      <div className="content-extraction-layout">
+        <div className="content-main-stack">
+          <section className="panel content-input-panel">
+            <div className="editor-title">
+              <div>
+                <h2>抖音分享文本或链接</h2>
+                <p>可以粘贴完整分享文案，后端会只提取其中的抖音 URL。</p>
+              </div>
+              <span className="status-pill running">同步下载</span>
+            </div>
+            <form onSubmit={downloadContent} className="content-download-form">
+              <textarea
+                value={rawInput}
+                onChange={(event) => setRawInput(event.target.value)}
+                placeholder="粘贴抖音分享文本或链接，例如 https://v.douyin.com/..."
+                disabled={downloading || extracting}
+              />
+              <div className="content-action-row">
+                <button type="submit" disabled={downloading || extracting}>
+                  {downloading ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
+                  解析并下载
+                </button>
+                <button type="button" className="secondary-button" disabled={!current || downloading || extracting} onClick={extractText}>
+                  {extracting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
+                  提取文案
+                </button>
+                <span>{current ? `已解析：${current.source_url}` : "等待解析"}</span>
+              </div>
+            </form>
+          </section>
+
+          <section className="panel extraction-result-panel">
+            <div className="editor-title">
+              <div>
+                <h2>提取文案</h2>
+                <p>{current?.extracted_text ? "原始文案结果会保留换行和顺序。" : "下载完成后点击提取文案。"}</p>
+              </div>
+              <div className="content-action-row compact">
+                <button type="button" className="secondary-button" disabled={!current || extracting} onClick={extractText}>
+                  重新提取
+                </button>
+                <button type="button" disabled={!current?.extracted_text} onClick={copyExtractedText}>
+                  复制文案
+                </button>
+              </div>
+            </div>
+            <div className="extracted-text-box">
+              {current?.extracted_text ? (
+                <p>{current.extracted_text}</p>
+              ) : (
+                <div className="empty mini">{extracting ? "正在提取文案" : "暂无文案结果"}</div>
+              )}
+            </div>
+            <div className="content-result-meta">
+              <span>
+                {isGallery ? `图文文案按 ${sourceMedia.length} 张图片顺序合并` : isVideo ? "视频文案来自分离音频转写" : "等待下载媒体"}
+              </span>
+              <span>{current ? `更新于 ${formatDateTime(current.updated_at)}` : "未开始"}</span>
+            </div>
+          </section>
+        </div>
+
+        <aside className="content-side-stack">
+          <section className="panel">
+            <div className="editor-title">
+              <div>
+                <h2>下载摘要</h2>
+                <p>下载路径只在后端保存，前端使用资产接口预览。</p>
+              </div>
+              {current ? <span className="status-pill active">{current.media_type}</span> : null}
+            </div>
+            <div className="content-summary-grid">
+              <div>
+                <span>作品 ID</span>
+                <strong>{current?.aweme_id ? shortId(current.aweme_id) : "暂无"}</strong>
+              </div>
+              <div>
+                <span>媒体数量</span>
+                <strong>{sourceMedia.length ? `${sourceMedia.length} 个` : "暂无"}</strong>
+              </div>
+              <div>
+                <span>音频</span>
+                <strong>{audioMedia.length ? "已登记" : "未生成"}</strong>
+              </div>
+              <div>
+                <span>用户</span>
+                <strong>{user.role === "admin" ? "Admin" : "Owner"}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="editor-title">
+              <div>
+                <h2>媒体预览</h2>
+                <p>多图默认折叠，避免压住文案结果。</p>
+              </div>
+              <button type="button" className="secondary-button" disabled={sourceMedia.length <= 3} onClick={() => setMediaExpanded((value) => !value)}>
+                {mediaExpanded ? "收起" : "展开全部"}
+              </button>
+            </div>
+            <div className="content-media-preview">
+              {visibleMedia.length === 0 ? <div className="empty mini">暂无下载媒体</div> : null}
+              {visibleMedia.map((media) => (
+                <figure key={media.id} className={`content-media-card ${media.media_kind}`}>
+                  {media.media_kind === "image" ? (
+                    <LazyAssetImage asset={media.asset} assetId={media.asset.id} alt={`媒体 ${media.display_order}`} />
+                  ) : (
+                    <video src={assetUrl(media.asset, "original")} controls preload="metadata" />
+                  )}
+                  <figcaption>{media.display_order}</figcaption>
+                </figure>
+              ))}
+            </div>
+            {sourceMedia.length > visibleMedia.length ? (
+              <div className="content-fold-note">默认折叠 · 还有 {sourceMedia.length - visibleMedia.length} 个媒体</div>
+            ) : null}
+          </section>
+
+          <section className="panel">
+            <div className="editor-title">
+              <div>
+                <h2>最近记录</h2>
+                <p>已保存的下载与提取结果。</p>
+              </div>
+            </div>
+            <form className="content-record-search" onSubmit={applyRecordSearch}>
+              <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索链接或文案" />
+              <button type="submit" className="secondary-button">
+                <Search size={15} />
+              </button>
+            </form>
+            <div className="content-record-list">
+              {loadingRecords ? <div className="empty mini">正在加载记录</div> : null}
+              {!loadingRecords && records.length === 0 ? <div className="empty mini">暂无内容提取记录</div> : null}
+              {records.map((record) => (
+                <button
+                  type="button"
+                  key={record.id}
+                  className={`content-record-item ${current?.id === record.id ? "selected" : ""}`}
+                  onClick={() => selectRecord(record.id)}
+                >
+                  <strong>{record.source_url}</strong>
+                  <span>
+                    {record.media_type} · {record.media_count} 个媒体 · {record.extracted_text_preview ? "已提取" : "等待提取"}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="pagination-bar compact">
+              <button className="icon-button" aria-label="上一页" disabled={cursorStack.length === 0} onClick={goPreviousPage}>
+                <ChevronLeft size={16} />
+              </button>
+              <span>{cursor ? `第 ${Math.floor(Number(cursor) / 8) + 1} 页` : "第 1 页"}</span>
+              <button className="icon-button" aria-label="下一页" disabled={!pageInfo?.has_more} onClick={goNextPage}>
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </section>
+        </aside>
+      </div>
     </section>
   );
 }

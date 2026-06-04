@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.enums import (
+    ContentExtractionMediaKind,
     DownloadStatus,
     FileAssetPurpose,
     GenerationStepName,
@@ -47,6 +48,7 @@ class User(Base, TimestampMixin):
     auth_provider_subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     tasks: Mapped[list["GenerationTask"]] = relationship(back_populates="owner")
+    content_extractions: Mapped[list["ContentExtraction"]] = relationship(back_populates="owner")
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
@@ -363,3 +365,38 @@ class TaskDownload(Base, TimestampMixin):
 
     task: Mapped[GenerationTask] = relationship(back_populates="downloads")
     asset: Mapped[Optional[FileAsset]] = relationship()
+
+
+class ContentExtraction(Base, TimestampMixin):
+    __tablename__ = "content_extractions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    raw_input: Mapped[str] = mapped_column(Text)
+    source_url: Mapped[str] = mapped_column(String(1000), index=True)
+    media_type: Mapped[str] = mapped_column(String(40), index=True)
+    aweme_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True, index=True)
+    output_dir: Mapped[str] = mapped_column(String(1000))
+    manifest_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    owner: Mapped[User] = relationship(back_populates="content_extractions")
+    media: Mapped[list["ContentExtractionMedia"]] = relationship(back_populates="content_extraction", cascade="all, delete-orphan")
+
+
+class ContentExtractionMedia(Base, TimestampMixin):
+    __tablename__ = "content_extraction_media"
+    __table_args__ = (
+        CheckConstraint("display_order > 0", name="ck_content_extraction_media_display_order_positive"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    content_extraction_id: Mapped[str] = mapped_column(ForeignKey("content_extractions.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("file_assets.id", ondelete="RESTRICT"), index=True)
+    source_path: Mapped[str] = mapped_column(String(1000))
+    media_kind: Mapped[ContentExtractionMediaKind] = mapped_column(Enum(ContentExtractionMediaKind), index=True)
+    display_order: Mapped[int] = mapped_column(Integer)
+    extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    content_extraction: Mapped[ContentExtraction] = relationship(back_populates="media")
+    asset: Mapped[FileAsset] = relationship()

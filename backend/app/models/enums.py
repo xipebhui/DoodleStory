@@ -17,6 +17,16 @@ class FileAssetPurpose(StrEnum):
     character_reference = "character_reference"
     generated_image = "generated_image"
     download_archive = "download_archive"
+    douyin_media = "douyin_media"
+    douyin_audio = "douyin_audio"
+    douyin_metadata = "douyin_metadata"
+
+
+class ContentExtractionMediaKind(StrEnum):
+    image = "image"
+    video = "video"
+    audio = "audio"
+    metadata = "metadata"
 
 
 class StorageBackend(StrEnum):
