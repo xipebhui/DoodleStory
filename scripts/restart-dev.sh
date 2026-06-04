@@ -90,6 +90,14 @@ kill_port "frontend" "$FRONTEND_PORT"
 sleep 1
 
 BACKEND_PYTHON="$(backend_python)"
+if [ -x "$ROOT_DIR/backend/.venv/bin/alembic" ]; then
+  echo "[restart-dev] running backend migrations"
+  (
+    cd "$ROOT_DIR"
+    "$ROOT_DIR/backend/.venv/bin/alembic" upgrade head
+  )
+fi
+
 echo "[restart-dev] starting backend: http://$BACKEND_HOST:$BACKEND_PORT"
 (
   cd "$ROOT_DIR"
