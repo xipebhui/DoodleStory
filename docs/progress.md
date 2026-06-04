@@ -88,6 +88,7 @@
 - 完成 Sprint 08 内容提取列表化实现：新增一键同步处理接口，创建任务时完成抖音链接解析、下载、图文 OCR 或视频音频转写，并对图文作品生成故事内容、故事爆点和目标观众；前端 `内容提取` tab 已改为列表入口，创建任务和查看详情都使用弹窗，详情才加载完整媒体，列表只加载摘要。
 - 调整内容提取创建交互：提交后先保存真实记录并在列表显示 `处理中`，后端在同进程后台继续下载、提取和总结；处理完成后列表刷新状态，不再自动弹出详情弹窗，用户从列表行手动查看详情。
 - 清理主仓库内早期抖音直连下载临时代码：删除旧后端 adapter、Cookie 获取脚本和命令行下载验证脚本；移除旧环境变量说明与本地配置项。当前 DoodleStory 只通过 `backend/app/services/douyin_import_service.py` 调用独立 HTTP 下载服务，地址由 `DOUYIN_IMPORT_SERVICE_BASE_URL` 指定。
+- 开始并完成 Sprint 09 内容提取下载先展示与本地 OCR：新增合同 `docs/contracts/sprint-09-content-extraction-fast-media-ocr.md`；后台任务改为下载媒体登记后立即提交、OCR 后再次提交、故事总结完成后标记成功；图文 OCR 改用 `rapidocr-onnxruntime` 本地 Python SDK，只有故事总结继续调用 SiliconFlow 视觉模型；前端创建提示同步说明“下载完成先显示媒体，本地 OCR 提取文字，AI 总结故事”。
 
 ## 验证记录
 
@@ -108,6 +109,7 @@
 - Sprint 08 内容提取列表化实现后，`./scripts/check.sh` 通过；临时启动本地前后端，使用真实图文分享文本中的 `https://v.douyin.com/Vcpjpg3pcMk/` 调用一键处理接口成功，结果为 `gallery`，登记 5 张图片和 1 个 metadata，生成原始文案与三段故事总结；浏览器验证列表页、创建弹窗和详情弹窗布局，详情内多图默认折叠且缩略图加载成功。
 - 内容提取提交即入列表调整后，`./scripts/check.sh` 通过；本地页面提交真实图文分享文本后，创建弹窗立即关闭，列表顶部立刻出现 `处理中` 记录，且没有自动弹出详情弹窗。
 - 抖音直连下载临时代码清理后，`python3.11 -m compileall backend/app` 和 `./scripts/check.sh` 通过；本地后端已通过 LaunchAgent 重启并监听 `127.0.0.1:8000`，`curl -sS http://127.0.0.1:8000/health` 返回 `{"status":"ok"}`；独立抖音下载服务 `127.0.0.1:8010` 健康检查也返回 `status=ok`。
+- Sprint 09 本地 OCR 与分阶段提交实现后，`python3.11 -m compileall backend/app`、`npm run build` 和 `./scripts/check.sh` 通过；本地重启后端并用真实图文链接 `https://v.douyin.com/XQ5ncKT0UAo/` 验证分阶段可见性：任务仍为 `processing` 时媒体数量先从 0 变为 14，随后 `extracted_text` 先于故事总结写入，最终任务变为 `succeeded` 且故事总结正常生成。
 
 ## 已知缺口
 

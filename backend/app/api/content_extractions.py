@@ -350,7 +350,11 @@ def run_content_extraction_processing(content_id: str) -> None:
             db.commit()
             content = load_content_extraction(db, content_id)
             attach_douyin_download_result(content, db)
+            db.commit()
+            content = load_content_extraction(db, content_id)
             apply_content_text_extraction(content, db)
+            db.commit()
+            content = load_content_extraction(db, content_id)
             apply_content_story_summary(content, skip_video=True)
             content.processing_status = "succeeded"
             content.processing_error_message = None

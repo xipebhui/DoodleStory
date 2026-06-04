@@ -2,6 +2,7 @@ import base64
 import json
 import subprocess
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import monotonic
@@ -15,10 +16,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 MAX_CONTENT_EXTRACTION_IMAGES = 40
-
-IMAGE_TEXT_PROMPT = """请只提取这张图片中可见的中文或英文文字，保持原始顺序和原始措辞。
-不要解释图片内容，不要总结，不要改写。
-如果图片里没有可读文字，返回空字符串。"""
+LOCAL_OCR_MODEL_NAME = "rapidocr-onnxruntime"
 
 AUDIO_TRANSCRIPTION_PROMPT = """请转录这段音频中的原始口播、旁白或对白。
 保持原始语气词、停顿和句子顺序，尽量不要改写。
@@ -74,6 +72,38 @@ def data_url(path: Path, content_type: str) -> str:
     return f"data:{content_type};base64,{encoded}"
 
 
+@lru_cache
+def local_ocr_engine():
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError as exc:
+        raise LLMConfigError("缺少 rapidocr-onnxruntime 依赖，请安装 backend/requirements.txt") from exc
+    return RapidOCR()
+
+
+def _ocr_text_lines(path: Path) -> list[str]:
+    try:
+        result, _elapsed = local_ocr_engine()(str(path))
+    except Exception as exc:
+        raise LLMProviderError(f"本地 OCR 识别失败：{exc}") from exc
+    if result is None:
+        return []
+    if not isinstance(result, list):
+        raise LLMResponseError("本地 OCR 返回内容格式不正确")
+
+    lines: list[str] = []
+    for item in result:
+        if not isinstance(item, list) or len(item) < 2:
+            raise LLMResponseError("本地 OCR 返回行格式不正确")
+        text = item[1]
+        if not isinstance(text, str):
+            raise LLMResponseError("本地 OCR 返回文字格式不正确")
+        value = text.strip()
+        if value:
+            lines.append(value)
+    return lines
+
+
 def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
     if not model.strip():
         raise LLMConfigError("SiliconFlow 多模态模型未配置")
@@ -125,17 +155,10 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
 
 
 def extract_image_text(path: Path, content_type: str) -> MediaTextResult:
-    settings = get_settings()
-    model = settings.siliconflow_vision_model.strip()
-    text = _chat_multimodal(
-        model=model,
-        prompt_name="content_extraction_image_text",
-        content=[
-            {"type": "image_url", "image_url": {"url": data_url(path, content_type), "detail": "high"}},
-            {"type": "text", "text": IMAGE_TEXT_PROMPT},
-        ],
-    )
-    return MediaTextResult(text=text, model=model)
+    if not path.exists() or not path.is_file() or path.stat().st_size <= 0:
+        raise LLMResponseError(f"媒体文件为空：{path}")
+    lines = _ocr_text_lines(path)
+    return MediaTextResult(text="\n".join(lines), model=LOCAL_OCR_MODEL_NAME)
 
 
 def _json_object_from_text(text: str) -> dict[str, object]:

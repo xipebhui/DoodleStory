@@ -1670,7 +1670,7 @@ function ContentExtractionView({ user }: { user: User }) {
                   {processing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
                   一键解析下载并提取总结
                 </button>
-                <span>图文会同步提取图片文字并总结故事；视频会同步分离音频并转写文案。</span>
+                <span>下载完成后会先显示媒体；图文用本地 OCR 提取图片文字，再用 AI 总结故事。</span>
               </div>
             </form>
           </section>
