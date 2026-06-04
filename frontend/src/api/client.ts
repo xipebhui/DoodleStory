@@ -228,21 +228,13 @@ function resolveApiBaseUrl(): string {
 
   const current = window.location;
   if (configured) {
-    try {
-      const configuredUrl = new URL(configured);
-      if (isLoopbackHost(configuredUrl.hostname) && !isLoopbackHost(current.hostname)) {
-        return `${current.protocol}//${current.hostname}:8000`;
-      }
-    } catch {
-      return trimTrailingSlash(configured);
-    }
     return trimTrailingSlash(configured);
   }
 
   if (isLoopbackHost(current.hostname)) {
     return "http://127.0.0.1:8000";
   }
-  return `${current.protocol}//${current.hostname}:8000`;
+  return "";
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();
