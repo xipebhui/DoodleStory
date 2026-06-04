@@ -330,28 +330,15 @@ def segment_story(
     if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
         raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
 
-    system_prompt = read_prompt("segment_story_v1.md")
-    count_instruction = (
-        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels。"
-        if image_count_mode == ImageCountMode.fixed
-        else "图片数量：自动判断。请按语义自然切分。"
+    result = split_original_story(
+        original_text=original_text,
+        image_count_mode=image_count_mode,
+        requested_image_count=requested_image_count,
     )
-    user_prompt = "\n".join(
-        [
-            count_instruction,
-            "用户原始故事：",
-            original_text,
-        ]
-    )
-    raw = call_siliconflow_json(system_prompt=system_prompt, user_prompt=user_prompt)
-    try:
-        result = StorySegmentationResult.model_validate(raw)
-    except ValidationError as exc:
-        raise LLMResponseError("LLM 故事切分 JSON 结构不符合要求") from exc
-
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
-        raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
+        raise LLMResponseError("完整故事断句数量与用户指定图片数量不一致")
+    ensure_original_text_coverage(original_text, result.panels)
     logger.info(
         "story segmentation succeeded image_count_mode=%s requested_image_count=%s panel_count=%s",
         image_count_mode.value,
@@ -359,6 +346,121 @@ def segment_story(
         len(result.panels),
     )
     return result
+
+
+def split_original_story(
+    *,
+    original_text: str,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+) -> StorySegmentationResult:
+    atoms = split_text_atoms(original_text)
+    if image_count_mode == ImageCountMode.fixed:
+        atoms = ensure_atom_count(atoms, requested_image_count or 0)
+        segments = group_atoms_fixed(atoms, requested_image_count or 0)
+    else:
+        segments = group_atoms_auto(atoms)
+    return StorySegmentationResult(
+        panels=[
+            StorySegment(panel_order=index + 1, panel_type=PanelType.scene, text=segment)
+            for index, segment in enumerate(segments)
+        ]
+    )
+
+
+def split_text_atoms(text: str) -> list[str]:
+    if not text:
+        raise LLMResponseError("完整故事不能为空")
+
+    atoms: list[str] = []
+    start = 0
+    hard_breaks = set("。！？!?；;…\n")
+    soft_breaks = set("，,、")
+    for index, char in enumerate(text):
+        if char in hard_breaks or char in soft_breaks:
+            atoms.append(text[start : index + 1])
+            start = index + 1
+    if start < len(text):
+        atoms.append(text[start:])
+    return [atom for atom in atoms if atom]
+
+
+def ensure_atom_count(atoms: list[str], requested_count: int) -> list[str]:
+    if requested_count <= 0:
+        raise LLMConfigError("固定图片数量必须大于 0")
+
+    expanded = list(atoms)
+    while len(expanded) < requested_count:
+        split_index = max(range(len(expanded)), key=lambda index: len(expanded[index]))
+        atom = expanded[split_index]
+        if len(atom) <= 1:
+            raise LLMResponseError("固定图片数量超过可切分的原文字数")
+        midpoint = len(atom) // 2
+        expanded[split_index : split_index + 1] = [atom[:midpoint], atom[midpoint:]]
+    return expanded
+
+
+def group_atoms_fixed(atoms: list[str], requested_count: int) -> list[str]:
+    if len(atoms) == requested_count:
+        return atoms
+
+    total_length = sum(len(atom) for atom in atoms)
+    target_length = max(1, total_length / requested_count)
+    groups: list[str] = []
+    current: list[str] = []
+    current_length = 0
+    remaining_groups = requested_count
+
+    for index, atom in enumerate(atoms):
+        remaining_atoms = len(atoms) - index
+        must_close_after_atom = remaining_atoms == remaining_groups
+        should_close_before_atom = (
+            current
+            and current_length >= target_length
+            and remaining_atoms > remaining_groups
+        )
+        if should_close_before_atom:
+            groups.append("".join(current))
+            current = []
+            current_length = 0
+            remaining_groups -= 1
+
+        current.append(atom)
+        current_length += len(atom)
+        if must_close_after_atom:
+            groups.append("".join(current))
+            current = []
+            current_length = 0
+            remaining_groups -= 1
+
+    if current:
+        groups.append("".join(current))
+    if len(groups) != requested_count:
+        raise LLMResponseError("完整故事固定数量断句失败")
+    return groups
+
+
+def group_atoms_auto(atoms: list[str]) -> list[str]:
+    target_length = 34
+    groups: list[str] = []
+    current: list[str] = []
+    current_length = 0
+    for atom in atoms:
+        if current and current_length + len(atom) > target_length:
+            groups.append("".join(current))
+            current = []
+            current_length = 0
+        current.append(atom)
+        current_length += len(atom)
+    if current:
+        groups.append("".join(current))
+    return groups
+
+
+def ensure_original_text_coverage(original_text: str, panels: list[StorySegment]) -> None:
+    joined = "".join(panel.text for panel in panels)
+    if joined != original_text:
+        raise LLMResponseError("完整故事断句结果未能逐字覆盖原文")
 
 
 def adapt_story_for_douyin(*, original_text: str) -> AdaptedStoryResult:

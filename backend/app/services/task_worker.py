@@ -56,7 +56,6 @@ from app.services.llm import (
     revise_panel_prompt,
     segment_story,
 )
-from app.services.prompt_templates import render_prompt_template
 from app.services.storage import materialize_asset_to_local
 
 _queue: asyncio.Queue[str] | None = None
@@ -287,11 +286,10 @@ def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None, p
     title = values.get("title")
     narration = values.get("narration")
     if title:
-        label = "大标题" if panel_type == PanelType.cover else "标题"
-        lines.append(f"{label}：“{title.strip()}”")
+        lines.append(f"「{title.strip()}」")
     if narration:
-        lines.append(f"旁白：“{narration.strip()}”")
-    return "\n".join(lines) if lines else "无标题、旁白或字幕。"
+        lines.append(f"「{narration.strip()}」")
+    return "\n".join(lines)
 
 
 def scene_block(story_beat: str, visual_prompt: str, image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
@@ -334,16 +332,13 @@ def visual_prompt_has_dialogue(visual_prompt: str) -> bool:
 
 
 def text_rules_block(visual_prompt: str, image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
-    common_rule = (
-        "图片文字只用于标题、旁白、字幕或画外信息；旁白应补充故事前因后果或剧情信息，"
-        "不要只重复画面状态。不要添加无关文字、Logo 或水印。"
-    )
+    common_rule = "不要添加指定文字之外的任何文字、Logo 或水印。"
     if dialogue_block(image_text) or visual_prompt_has_dialogue(visual_prompt):
         return (
             "画面里的对白要自然出现在对应人物附近的气泡中，气泡里只写人物说出的句子，"
             f"不写说话人名字和冒号。{common_rule}"
         )
-    return f"这一格没有人物对白，不要添加对白气泡或人物台词。{common_rule}"
+    return common_rule
 
 
 def split_dialogue_speaker(line: str) -> tuple[str | None, str | None]:
@@ -373,26 +368,86 @@ def style_reference_notes(start_index: int, reference_count: int) -> list[str]:
     return [f"风格参考（参考图{start_index}-{end_index}）"]
 
 
-def build_final_prompt(
-    style_prompt: str,
+def build_original_story_final_prompt(
+    aspect_ratio: str,
+    visual_prompt: str,
+    reference_notes: list[str] | None = None,
+    exact_text: str = "",
+) -> str:
+    return "\n".join(
+        [
+            "参考：",
+            reference_notes_block(reference_notes),
+            "",
+            f"画面比例：{aspect_ratio}",
+            "",
+            "画面：",
+            visual_prompt.strip(),
+            "",
+            "必须把下面这段原文完整写入图片中，逐字一致，不能增加、删除、替换或改写任何一个字，不能添加“旁白”“字幕”“标题”等标签：",
+            f"「{exact_text}」",
+            "",
+            "不要添加这段原文之外的任何文字、Logo 或水印。",
+        ]
+    ).strip()
+
+
+def build_adapted_story_final_prompt(
     aspect_ratio: str,
     visual_prompt: str,
     story_beat: str,
     panel_type: PanelType = PanelType.scene,
     image_text: ImageTextPlan | dict[str, str | None] | None = None,
-    text_layout: str | None = None,
     reference_notes: list[str] | None = None,
 ) -> str:
-    return render_prompt_template(
-        "final_image_prompt_v1.md",
-        {
-            "aspect_ratio": aspect_ratio,
-            "panel_type": "封面图" if panel_type == PanelType.cover else "剧情分镜",
-            "scene_block": scene_block(story_beat, visual_prompt, image_text),
-            "image_text_block": image_text_block(image_text, panel_type),
-            "text_rules_block": text_rules_block(visual_prompt, image_text),
-            "reference_notes_block": reference_notes_block(reference_notes),
-        },
+    lines = [
+        "参考：",
+        reference_notes_block(reference_notes),
+        "",
+        f"画面比例：{aspect_ratio}",
+        "",
+        "剧情意图：",
+        story_beat.strip(),
+        "",
+        "画面：",
+        visual_prompt.strip(),
+    ]
+    image_text_lines = image_text_block(image_text, panel_type)
+    if image_text_lines:
+        lines.extend(
+            [
+                "",
+                "需要写入图片的文字只包括以下内容，不要写字段名或标签：",
+                image_text_lines,
+            ]
+        )
+    rules = text_rules_block(visual_prompt, image_text)
+    if rules:
+        lines.extend(["", rules])
+    return "\n".join(line for line in lines if line is not None).strip()
+
+
+def build_panel_final_prompt(
+    task: GenerationTask,
+    panel: TaskPanel,
+    visual_prompt: str,
+    image_text: ImageTextPlan | dict[str, str | None] | None,
+    reference_notes: list[str] | None = None,
+) -> str:
+    if task.story_input_mode == StoryInputMode.original:
+        return build_original_story_final_prompt(
+            aspect_ratio=task.style_aspect_ratio_snapshot,
+            visual_prompt=visual_prompt,
+            reference_notes=reference_notes,
+            exact_text=panel.original_text_segment,
+        )
+    return build_adapted_story_final_prompt(
+        aspect_ratio=task.style_aspect_ratio_snapshot,
+        visual_prompt=visual_prompt,
+        story_beat=panel.original_text_segment,
+        panel_type=panel.panel_type,
+        image_text=image_text,
+        reference_notes=reference_notes,
     )
 
 
@@ -523,8 +578,16 @@ def process_task(task_id: str) -> None:
                             panel_order=panel.panel_order,
                             panel_type=panel.panel_type,
                             original_text_segment=panel.text,
-                            narration_text=panel.narration_text or panel.text,
-                            dialogue_text=panel.dialogue_text,
+                            narration_text=None,
+                            dialogue_text=None,
+                            image_text_json=image_text_to_json(
+                                {
+                                    "title": None,
+                                    "narration": panel.text,
+                                    "dialogue": None,
+                                    "emphasis": None,
+                                }
+                            ),
                         )
                     )
                 task.progress_current = 2 if task.story_input_mode == StoryInputMode.adapted else 1
@@ -653,10 +716,23 @@ def process_task(task_id: str) -> None:
                 for panel in task.panels:
                     prompt_item = next(item for item in prompt_result.panels if item.panel_order == panel.panel_order)
                     panel.generated_prompt = prompt_item.visual_prompt
-                    panel.narration_text = prompt_item.image_text.narration
-                    panel.dialogue_text = prompt_item.image_text.dialogue
-                    panel.image_text_json = image_text_to_json(prompt_item.image_text)
-                    panel.text_layout = prompt_item.text_layout
+                    if task.story_input_mode == StoryInputMode.original:
+                        panel.narration_text = None
+                        panel.dialogue_text = None
+                        panel.image_text_json = image_text_to_json(
+                            {
+                                "title": None,
+                                "narration": panel.original_text_segment,
+                                "dialogue": None,
+                                "emphasis": None,
+                            }
+                        )
+                        panel.text_layout = None
+                    else:
+                        panel.narration_text = prompt_item.image_text.narration
+                        panel.dialogue_text = prompt_item.image_text.dialogue
+                        panel.image_text_json = image_text_to_json(prompt_item.image_text)
+                        panel.text_layout = prompt_item.text_layout
                     panel.prompt_status = PromptStatus.generated
                     panel.prompt_model_snapshot = get_settings().siliconflow_model
                     panel.error_code = None
@@ -731,12 +807,10 @@ def process_task(task_id: str) -> None:
                     panel_reference_paths = reference_paths
                     reference_notes = style_reference_notes(1, len(reference_paths))
                     character_reference_count = 0
-                final_prompt = build_final_prompt(
-                    task.style_prompt_snapshot,
-                    task.style_aspect_ratio_snapshot,
-                    panel.generated_prompt or "",
-                    panel.original_text_segment,
-                    panel_type=panel.panel_type,
+                final_prompt = build_panel_final_prompt(
+                    task=task,
+                    panel=panel,
+                    visual_prompt=panel.generated_prompt or "",
                     image_text=parse_image_text_json(panel.image_text_json)
                     or {
                         "title": None,
@@ -744,7 +818,6 @@ def process_task(task_id: str) -> None:
                         "dialogue": panel.dialogue_text,
                         "emphasis": None,
                     },
-                    text_layout=panel.text_layout,
                     reference_notes=reference_notes,
                 )
             except ImageProviderConfigError as exc:
@@ -911,18 +984,26 @@ def process_panel_edit(generated_image_id: str) -> None:
                 user_instruction=image.user_instruction or "",
             )
             image.image_prompt = revision.visual_prompt
-            image.image_text_json = image_text_to_json(revision.image_text)
-            image.text_layout = revision.text_layout
+            if task.story_input_mode == StoryInputMode.original:
+                image.image_text_json = image_text_to_json(
+                    {
+                        "title": None,
+                        "narration": panel.original_text_segment,
+                        "dialogue": None,
+                        "emphasis": None,
+                    }
+                )
+                image.text_layout = None
+            else:
+                image.image_text_json = image_text_to_json(revision.image_text)
+                image.text_layout = revision.text_layout
             image.prompt_change_summary = revision.change_summary
             image.llm_model_snapshot = get_settings().siliconflow_model
-            image.final_prompt = build_final_prompt(
-                task.style_prompt_snapshot,
-                task.style_aspect_ratio_snapshot,
-                revision.visual_prompt,
-                panel.original_text_segment,
-                panel_type=panel.panel_type,
-                image_text=revision.image_text,
-                text_layout=revision.text_layout,
+            image.final_prompt = build_panel_final_prompt(
+                task=task,
+                panel=panel,
+                visual_prompt=revision.visual_prompt,
+                image_text=parse_image_text_json(image.image_text_json),
             )
             image.workflow_step = GeneratedImageWorkflowStep.generate_image
             db.commit()
@@ -973,12 +1054,10 @@ def process_panel_edit(generated_image_id: str) -> None:
                 return
             reference_paths = reference_pack.paths
             reference_notes = reference_pack.notes
-            image.final_prompt = build_final_prompt(
-                task.style_prompt_snapshot,
-                task.style_aspect_ratio_snapshot,
-                image.image_prompt or "",
-                panel.original_text_segment,
-                panel_type=panel.panel_type,
+            image.final_prompt = build_panel_final_prompt(
+                task=task,
+                panel=panel,
+                visual_prompt=image.image_prompt or "",
                 image_text=parse_image_text_json(image.image_text_json)
                 or {
                     "title": None,
@@ -986,19 +1065,16 @@ def process_panel_edit(generated_image_id: str) -> None:
                     "dialogue": panel.dialogue_text,
                     "emphasis": None,
                 },
-                text_layout=image.text_layout or panel.text_layout,
                 reference_notes=reference_notes,
             )
             db.commit()
         else:
             reference_paths = style_reference_paths
             reference_notes = style_reference_notes(1, len(style_reference_paths))
-            image.final_prompt = build_final_prompt(
-                task.style_prompt_snapshot,
-                task.style_aspect_ratio_snapshot,
-                image.image_prompt or "",
-                panel.original_text_segment,
-                panel_type=panel.panel_type,
+            image.final_prompt = build_panel_final_prompt(
+                task=task,
+                panel=panel,
+                visual_prompt=image.image_prompt or "",
                 image_text=parse_image_text_json(image.image_text_json)
                 or {
                     "title": None,
@@ -1006,7 +1082,6 @@ def process_panel_edit(generated_image_id: str) -> None:
                     "dialogue": panel.dialogue_text,
                     "emphasis": None,
                 },
-                text_layout=image.text_layout or panel.text_layout,
                 reference_notes=reference_notes,
             )
             db.commit()
