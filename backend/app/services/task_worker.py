@@ -68,7 +68,9 @@ from app.services.prompt_logging import log_prompt_trace
 from app.services.storage import materialize_asset_to_local
 
 _queue: asyncio.Queue[str] | None = None
-_worker_task: asyncio.Task[None] | None = None
+_worker_tasks: list[asyncio.Task[None]] = []
+_running_task_ids: set[str] = set()
+_running_task_ids_lock: asyncio.Lock | None = None
 logger = logging.getLogger(__name__)
 
 
@@ -142,22 +144,28 @@ def task_trace_context(task: GenerationTask, step: str, **extra: object) -> dict
 
 
 def init_task_queue() -> None:
-    global _queue, _worker_task
+    global _queue, _worker_tasks, _running_task_ids_lock
+    settings = get_settings()
     _queue = asyncio.Queue()
-    _worker_task = asyncio.create_task(worker_loop())
-    logger.info("task queue initialized")
+    _running_task_ids.clear()
+    _running_task_ids_lock = asyncio.Lock()
+    _worker_tasks = [
+        asyncio.create_task(worker_loop(worker_index=worker_index))
+        for worker_index in range(settings.task_worker_concurrency)
+    ]
+    logger.info("task queue initialized worker_count=%s", len(_worker_tasks))
 
 
 async def shutdown_task_queue() -> None:
-    global _worker_task
-    if _worker_task is None:
+    global _worker_tasks, _running_task_ids_lock
+    if not _worker_tasks:
         return
-    _worker_task.cancel()
-    try:
-        await _worker_task
-    except asyncio.CancelledError:
-        pass
-    _worker_task = None
+    for worker_task in _worker_tasks:
+        worker_task.cancel()
+    await asyncio.gather(*_worker_tasks, return_exceptions=True)
+    _worker_tasks = []
+    _running_task_ids.clear()
+    _running_task_ids_lock = None
     logger.info("task queue shutdown complete")
 
 
@@ -201,19 +209,41 @@ async def recover_queued_tasks() -> None:
     logger.info("recovered queued tasks count=%s", len(task_ids))
 
 
-async def worker_loop() -> None:
+async def worker_loop(*, worker_index: int) -> None:
     if _queue is None:
         raise RuntimeError("任务队列尚未初始化")
-    logger.info("task worker loop started")
+    if _running_task_ids_lock is None:
+        raise RuntimeError("任务运行锁尚未初始化")
+    logger.info("task worker loop started worker_index=%s", worker_index)
     while True:
         task_id = await _queue.get()
+        should_process = False
         try:
-            logger.info("task worker picked task_id=%s queue_size=%s", task_id, _queue.qsize())
+            async with _running_task_ids_lock:
+                if task_id in _running_task_ids:
+                    logger.warning(
+                        "task worker skipped duplicate running task_id=%s worker_index=%s queue_size=%s",
+                        task_id,
+                        worker_index,
+                        _queue.qsize(),
+                    )
+                    continue
+                _running_task_ids.add(task_id)
+                should_process = True
+            logger.info(
+                "task worker picked task_id=%s worker_index=%s queue_size=%s",
+                task_id,
+                worker_index,
+                _queue.qsize(),
+            )
             await asyncio.to_thread(process_task, task_id)
         except Exception as exc:
-            logger.exception("task worker unexpected error task_id=%s", task_id)
+            logger.exception("task worker unexpected error task_id=%s worker_index=%s", task_id, worker_index)
             mark_task_failed_by_unhandled_error(task_id, exc)
         finally:
+            if should_process:
+                async with _running_task_ids_lock:
+                    _running_task_ids.discard(task_id)
             _queue.task_done()
 
 

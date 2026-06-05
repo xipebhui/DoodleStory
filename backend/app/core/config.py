@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     xg_request_max_attempts: int = 3
     xg_request_retry_backoff_seconds: float = 2.0
     image_provider_timeout_retry_attempts: int = Field(default=3, ge=0)
+    task_worker_concurrency: int = Field(default=3, ge=1)
     image_generation_concurrency: int = Field(default=3, ge=1)
     image_provider_debug_log_raw_io: bool = False
     image_provider_debug_log_raw_max_chars: int = 20000
