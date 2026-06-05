@@ -17,6 +17,7 @@ import {
   LogOut,
   Loader2,
   Monitor,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
@@ -48,6 +49,7 @@ import "./styles/app.css";
 type View = "tasks" | "content" | "styles" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+const imageModelNamePlaceholder = "生图模型名，例如 gpt-image-2";
 const viewRoutes: Record<View, string> = {
   tasks: "/tasks",
   content: "/content-extractions",
@@ -2417,8 +2419,14 @@ function StylesView({ user }: { user: User }) {
               </div>
               <div className="style-card-copy">
                 <div className="style-row-title">
-                  <strong>{style.name}</strong>
-                  <span className={`status-pill ${style.status}`}>{style.status}</span>
+                  <div className="style-row-name">
+                    <strong>{style.name}</strong>
+                    <span className={`status-pill ${style.status}`}>{style.status}</span>
+                  </div>
+                  <button type="button" className="secondary-button style-inline-edit" onClick={() => startEdit(style)}>
+                    <Pencil size={14} />
+                    编辑模板
+                  </button>
                 </div>
                 <p>{style.description || "暂无描述"}</p>
                 <small>{style.reference_images.length} 张参考图 · 比例 {style.aspect_ratio} · 模型 {style.image_model_name} · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
@@ -2430,9 +2438,6 @@ function StylesView({ user }: { user: User }) {
                 {assets.length === 0 ? <span>无参考图</span> : null}
               </div>
               <div className="style-card-actions">
-                <button type="button" className="secondary-button" onClick={() => startEdit(style)}>
-                  编辑
-                </button>
                 <button type="button" onClick={() => openStyleTest(style)}>
                   测试
                 </button>
@@ -2467,7 +2472,11 @@ function StylesView({ user }: { user: User }) {
               ) : null}
             </div>
             <input name="name" placeholder="风格名称" defaultValue={formStyle?.name ?? ""} required />
-            <input name="image_model_name" placeholder="生图模型名，例如 gpt-image-2" defaultValue={formStyle?.image_model_name ?? ""} required />
+            <label className="form-field">
+              <span>图片模型</span>
+              <input name="image_model_name" placeholder={imageModelNamePlaceholder} defaultValue={formStyle?.image_model_name ?? ""} required />
+              <small>手动输入模型名，不使用下拉选择。</small>
+            </label>
             <select name="aspect_ratio" defaultValue={formStyle?.aspect_ratio ?? "9:16"} required>
               {aspectRatioOptions.map((ratio) => (
                 <option key={ratio} value={ratio}>

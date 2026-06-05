@@ -295,6 +295,24 @@ textarea {
   min-height: 180px;
 }
 
+.form-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: #c8d0dc;
+  font-weight: 800;
+}
+
+.form-field input {
+  width: 100%;
+}
+
+.form-field small {
+  color: #7f8998;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -389,6 +407,14 @@ textarea {
   display: flex;
   min-width: 0;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.style-row-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
   gap: 10px;
 }
 
@@ -397,6 +423,13 @@ textarea {
   overflow: hidden;
   line-height: 1.25;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.style-inline-edit {
+  width: auto;
+  min-height: 34px;
+  padding: 0 10px;
   white-space: nowrap;
 }
 
