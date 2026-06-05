@@ -2,7 +2,6 @@ import hashlib
 import mimetypes
 from dataclasses import dataclass
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -140,12 +139,19 @@ def store_content(purpose: str, content: bytes, suffix: str) -> StoredFile:
         write_local_file(storage_key, content)
         return StoredFile(StorageBackend.local, storage_key, len(content), checksum)
     if backend == StorageBackend.qiniu:
-        with NamedTemporaryFile(suffix=suffix) as temp_file:
-            temp_file.write(content)
-            temp_file.flush()
-            public_url = upload_qiniu_file(storage_key, Path(temp_file.name))
+        write_local_file(storage_key, content)
+        public_url = upload_qiniu_file(storage_key, resolve_storage_key(storage_key))
         return StoredFile(StorageBackend.qiniu, storage_key, len(content), checksum, public_url)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="存储后端配置不支持")
+
+
+def store_local_content(purpose: str, content: bytes, suffix: str) -> StoredFile:
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件内容不能为空")
+    storage_key = safe_storage_key(purpose, suffix)
+    checksum = hashlib.sha256(content).hexdigest()
+    write_local_file(storage_key, content)
+    return StoredFile(StorageBackend.local, storage_key, len(content), checksum)
 
 
 async def save_upload_file(purpose: str, file: UploadFile) -> StoredFile:
@@ -168,6 +174,10 @@ def save_bytes(purpose: str, content: bytes, content_type: str, filename_hint: s
 
 def save_binary_file(purpose: str, content: bytes, suffix: str) -> StoredFile:
     return store_content(purpose, content, suffix)
+
+
+def save_local_binary_file(purpose: str, content: bytes, suffix: str) -> StoredFile:
+    return store_local_content(purpose, content, suffix)
 
 
 def resolve_storage_key(storage_key: str) -> Path:
@@ -231,4 +241,25 @@ def materialize_asset_to_local(asset) -> Path:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="七牛资产下载失败")
         cache_path.write_bytes(response.content)
         return cache_path
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="资产存储后端不支持")
+
+
+def existing_local_asset_path(asset) -> Path:
+    if asset.storage_backend == StorageBackend.local:
+        path = resolve_storage_key(asset.storage_key)
+        if not path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="本地文件不存在")
+        return path
+    if asset.storage_backend == StorageBackend.qiniu:
+        mirrored_path = resolve_storage_key(asset.storage_key)
+        if mirrored_path.exists():
+            return mirrored_path
+        suffix = Path(asset.storage_key).suffix or mimetypes.guess_extension(asset.content_type) or ".bin"
+        cache_path = get_settings().storage_root / "_cache" / "qiniu" / f"{asset.id}{suffix}"
+        if cache_path.exists() and cache_path.stat().st_size > 0:
+            return cache_path
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="图片本地文件不存在，无法从本地打包；请重新生成图片或补齐服务器本地资产镜像",
+        )
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="资产存储后端不支持")

@@ -61,11 +61,19 @@ function normalizedPathname(pathname: string) {
 
 function viewFromPathname(pathname: string): View | null {
   const path = normalizedPathname(pathname);
-  if (path === "/" || path === viewRoutes.tasks) return "tasks";
+  if (path === "/" || path === viewRoutes.tasks || path.startsWith(`${viewRoutes.tasks}/`)) return "tasks";
   if (path === viewRoutes.content) return "content";
   if (path === viewRoutes.styles) return "styles";
   if (path === viewRoutes.settings) return "settings";
   return null;
+}
+
+function taskIdFromPathname(pathname: string): string | null {
+  const path = normalizedPathname(pathname);
+  const prefix = `${viewRoutes.tasks}/`;
+  if (!path.startsWith(prefix)) return null;
+  const rawTaskId = path.slice(prefix.length).split("/")[0];
+  return rawTaskId ? decodeURIComponent(rawTaskId) : null;
 }
 
 type ImageTextPayload = {
@@ -175,6 +183,7 @@ function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [loading, setLoading] = useState(true);
   const view = viewFromPathname(pathname);
+  const routeTaskId = taskIdFromPathname(pathname);
 
   useEffect(() => {
     api
@@ -199,12 +208,19 @@ function App() {
     }
   }, [loading, pathname, user]);
 
-  function navigateToView(nextView: View) {
-    const nextPath = viewRoutes[nextView];
+  function navigateToPath(nextPath: string, options: { replace?: boolean } = {}) {
     if (normalizedPathname(window.location.pathname) !== nextPath) {
-      window.history.pushState(null, "", nextPath);
+      if (options.replace) {
+        window.history.replaceState(null, "", nextPath);
+      } else {
+        window.history.pushState(null, "", nextPath);
+      }
     }
     setPathname(nextPath);
+  }
+
+  function navigateToView(nextView: View) {
+    navigateToPath(viewRoutes[nextView]);
   }
 
   if (loading) {
@@ -225,7 +241,7 @@ function App() {
 
   return (
     <Shell user={user} view={view} onNavigate={navigateToView} onLogout={() => setUser(null)}>
-      {view === "tasks" ? <TasksView user={user} /> : null}
+      {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "content" ? <ContentExtractionView user={user} /> : null}
       {view === "styles" ? <StylesView user={user} /> : null}
       {view === "settings" ? <SettingsView user={user} onLogout={() => setUser(null)} /> : null}
@@ -509,7 +525,15 @@ function styleCover(style: Style) {
   return style.cover_asset ?? style.reference_images[0]?.asset ?? null;
 }
 
-function TasksView({ user }: { user: User }) {
+function TasksView({
+  user,
+  routeTaskId,
+  onNavigatePath,
+}: {
+  user: User;
+  routeTaskId: string | null;
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
+}) {
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [styles, setStyles] = useState<Style[]>([]);
   const [error, setError] = useState("");
@@ -535,6 +559,7 @@ function TasksView({ user }: { user: User }) {
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
   const [panelEditInputs, setPanelEditInputs] = useState<Record<string, string>>({});
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
+  const [downloadingTaskId, setDownloadingTaskId] = useState<string | null>(null);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
 
   const taskForDetail = selectedTask;
@@ -564,6 +589,42 @@ function TasksView({ user }: { user: User }) {
   }, [query, statusFilter, styleFilter, cursor]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadRouteTask(taskId: string) {
+      setSelectedId(taskId);
+      setDetailOpen(true);
+      setSelectedTask(null);
+      setPreviewImageId(null);
+      try {
+        const task = await api.task(taskId);
+        if (cancelled) return;
+        setSelectedTask(task);
+        setError("");
+      } catch (err) {
+        if (cancelled) return;
+        setSelectedTask(null);
+        setError(err instanceof Error ? err.message : "任务详情加载失败");
+      }
+    }
+
+    if (!routeTaskId) {
+      setDetailOpen(false);
+      setSelectedId("");
+      setSelectedTask(null);
+      setPreviewImageId(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    loadRouteTask(routeTaskId);
+    return () => {
+      cancelled = true;
+    };
+  }, [routeTaskId]);
+
+  useEffect(() => {
     if (!isActiveTask(selectedTask) && !hasActivePanelEdit(selectedTask) && !tasks.some(isActiveTask)) return;
     const timer = window.setInterval(() => refresh(selectedId, { quiet: true }), 6000);
     return () => window.clearInterval(timer);
@@ -591,8 +652,7 @@ function TasksView({ user }: { user: User }) {
     if (!detailOpen) return;
     function handleKey(event: KeyboardEvent) {
 	      if (event.key === "Escape" && !previewImageId) {
-	        setDetailOpen(false);
-	        setSelectedTask(null);
+	        closeTaskDetail();
 	      }
     }
     window.addEventListener("keydown", handleKey);
@@ -626,8 +686,8 @@ function TasksView({ user }: { user: User }) {
       setPageInfo(taskResult.page);
       setStyles(styleResult.items);
       setError("");
-      const nextSelectedId = preferredTaskId || selectedId;
-      if (nextSelectedId && detailOpen) {
+      const nextSelectedId = preferredTaskId || routeTaskId || selectedId;
+      if (nextSelectedId && (detailOpen || routeTaskId)) {
         setSelectedId(nextSelectedId);
         setSelectedTask(await api.task(nextSelectedId));
       } else {
@@ -645,9 +705,18 @@ function TasksView({ user }: { user: User }) {
 
   async function selectTask(taskId: string) {
     setSelectedId(taskId);
-    setSelectedTask(await api.task(taskId));
     setDetailOpen(true);
+    setSelectedTask(null);
     setPreviewImageId(null);
+    onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(taskId)}`);
+  }
+
+  function closeTaskDetail() {
+    setDetailOpen(false);
+    setSelectedId("");
+    setSelectedTask(null);
+    setPreviewImageId(null);
+    onNavigatePath(viewRoutes.tasks);
   }
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
@@ -706,6 +775,7 @@ function TasksView({ user }: { user: User }) {
       setCreateStyleId(styles[0]?.id ?? "");
       setCreateOpen(false);
       setMessage("任务已进入队列");
+      onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(task.id)}`);
       await refresh(task.id);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "创建失败");
@@ -781,23 +851,27 @@ function TasksView({ user }: { user: User }) {
   async function downloadSelectedTask() {
     if (!selectedTask) return;
     try {
+      setDownloadingTaskId(selectedTask.id);
       const result = await api.createTaskDownload(selectedTask.id);
       if (result.status === "ready" && result.asset) {
         window.location.href = assetUrl(result.asset, "original");
       } else {
         setMessage(result.error_message ?? "下载包未就绪");
       }
-      await refresh();
+      await refresh(selectedTask.id, { quiet: true });
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "打包下载失败");
+    } finally {
+      setDownloadingTaskId(null);
     }
   }
 
   const canCancel =
     taskForDetail?.status === "queued" || taskForDetail?.status === "running" || taskForDetail?.status === "retrying";
   const canDownload = Boolean(
-    succeededImages(taskForDetail).length,
+    succeededImages(taskForDetail).length && taskForDetail?.id !== downloadingTaskId,
   );
+  const isDownloadingSelectedTask = Boolean(taskForDetail?.id && taskForDetail.id === downloadingTaskId);
   const canRetry = taskForDetail?.status === "failed" || taskForDetail?.status === "partial_succeeded";
 
   return (
@@ -968,7 +1042,7 @@ function TasksView({ user }: { user: User }) {
       </div>
 
 	      {detailOpen && taskForDetail ? (
-	        <div className="task-detail-backdrop" onClick={() => { setDetailOpen(false); setSelectedTask(null); }}>
+	        <div className="task-detail-backdrop" onClick={closeTaskDetail}>
           <aside
             className="task-detail-drawer"
             role="dialog"
@@ -981,7 +1055,7 @@ function TasksView({ user }: { user: User }) {
                 <span>任务详情</span>
                 <strong>{taskForDetail.display_title}</strong>
               </div>
-	              <button type="button" className="icon-button" aria-label="关闭任务详情" onClick={() => { setDetailOpen(false); setSelectedTask(null); }}>
+	              <button type="button" className="icon-button" aria-label="关闭任务详情" onClick={closeTaskDetail}>
                 <X size={18} />
               </button>
             </div>
@@ -998,8 +1072,8 @@ function TasksView({ user }: { user: User }) {
                 </div>
                 <div className="detail-actions">
                   <button type="button" className="secondary-button" disabled={!canDownload} onClick={downloadSelectedTask}>
-                    <Download size={16} />
-                    下载图片
+                    {isDownloadingSelectedTask ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
+                    {isDownloadingSelectedTask ? "打包中" : "下载图片"}
                   </button>
                   <button type="button" className="secondary-button" disabled={!canRetry} onClick={retrySelectedTask}>
                     <RefreshCw size={16} />

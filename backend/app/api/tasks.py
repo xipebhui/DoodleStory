@@ -38,7 +38,7 @@ from app.models.enums import (
 from app.schemas.common import ApiData, ApiList
 from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskListItemRead, TaskPreviewImageRead, TaskRead
 from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
-from app.services.storage import materialize_asset_to_local, save_binary_file
+from app.services.storage import existing_local_asset_path, save_local_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -429,11 +429,11 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
         with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
             for index, image in enumerate(images, start=1):
                 asset = image.asset
-                source_path = materialize_asset_to_local(asset)
+                source_path = existing_local_asset_path(asset)
                 suffix = source_path.suffix or ".png"
                 archive.write(source_path, arcname=f"panel-{index:02d}{suffix}")
 
-        stored = save_binary_file(
+        stored = save_local_binary_file(
             FileAssetPurpose.download_archive.value,
             buffer.getvalue(),
             ".zip",
