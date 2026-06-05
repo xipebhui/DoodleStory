@@ -1942,6 +1942,8 @@ function StylesView({ user }: { user: User }) {
   const [styleDrawerOpen, setStyleDrawerOpen] = useState(false);
   const [styleFormMode, setStyleFormMode] = useState<"create" | "edit">("create");
   const [editingStyleId, setEditingStyleId] = useState("");
+  const [pendingReferenceFiles, setPendingReferenceFiles] = useState<File[]>([]);
+  const [savingStyle, setSavingStyle] = useState(false);
   const [stylePage, setStylePage] = useState<"library" | "test">("library");
   const [testingStyleId, setTestingStyleId] = useState("");
   const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
@@ -1976,6 +1978,7 @@ function StylesView({ user }: { user: User }) {
   function startCreate() {
     setStyleFormMode("create");
     setEditingStyleId("");
+    setPendingReferenceFiles([]);
     setMessage("");
     setStyleDrawerOpen(true);
   }
@@ -1983,6 +1986,7 @@ function StylesView({ user }: { user: User }) {
   function startEdit(style: Style) {
     setEditingStyleId(style.id);
     setStyleFormMode("edit");
+    setPendingReferenceFiles([]);
     setMessage("");
     setStyleDrawerOpen(true);
   }
@@ -2007,19 +2011,46 @@ function StylesView({ user }: { user: User }) {
       description: String(formData.get("description") ?? ""),
     };
 
+    const selectedReferenceFiles = [...pendingReferenceFiles];
+    const isEditMode = styleFormMode === "edit" && Boolean(editingStyle);
+
     try {
+      setSavingStyle(true);
       const saved =
-        styleFormMode === "edit" && editingStyle
+        isEditMode && editingStyle
           ? await api.updateStyle(editingStyle.id, payload)
           : await api.createStyle(payload);
       setEditingStyleId(saved.id);
       setTestingStyleId(saved.id);
       setStyleFormMode("edit");
+      if (!isEditMode && selectedReferenceFiles.length > 0) {
+        try {
+          for (const file of selectedReferenceFiles) {
+            await api.uploadStyleReferenceImage(saved.id, file);
+          }
+          setPendingReferenceFiles([]);
+        } catch (uploadError) {
+          await refresh(saved.id);
+          setStyleDrawerOpen(true);
+          setMessage(
+            `风格已创建，但参考图上传失败：${uploadError instanceof Error ? uploadError.message : "上传失败"}`,
+          );
+          return;
+        }
+      }
       setStyleDrawerOpen(false);
-      setMessage(styleFormMode === "edit" ? "风格已保存" : "风格已创建");
+      setMessage(
+        isEditMode
+          ? "风格已保存"
+          : selectedReferenceFiles.length > 0
+            ? "风格已创建，参考图已上传"
+            : "风格已创建",
+      );
       await refresh(saved.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setSavingStyle(false);
     }
   }
 
@@ -2043,6 +2074,11 @@ function StylesView({ user }: { user: User }) {
   }
 
   async function uploadReferences(event: React.ChangeEvent<HTMLInputElement>) {
+    if (styleFormMode === "create") {
+      setPendingReferenceFiles(Array.from(event.target.files ?? []));
+      event.target.value = "";
+      return;
+    }
     if (!editingStyle || !event.target.files?.length) {
       return;
     }
@@ -2090,6 +2126,7 @@ function StylesView({ user }: { user: User }) {
   }
 
   const formStyle = styleFormMode === "edit" ? editingStyle : null;
+  const pendingReferenceNames = pendingReferenceFiles.map((file) => file.name).join("、");
 
   if (stylePage === "test") {
     return (
@@ -2268,28 +2305,34 @@ function StylesView({ user }: { user: User }) {
             <textarea name="description" placeholder="描述" defaultValue={formStyle?.description ?? ""} />
             <textarea name="style_prompt" placeholder="风格提示词" defaultValue={formStyle?.style_prompt ?? ""} required />
             {message ? <p className="form-message">{message}</p> : null}
-            <button type="submit">
-              <Save size={16} />
-              {styleFormMode === "edit" ? "保存风格" : "创建风格"}
+            <button type="submit" disabled={savingStyle}>
+              {savingStyle ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              {savingStyle ? "保存中..." : styleFormMode === "edit" ? "保存风格" : "创建风格"}
             </button>
           </form>
 
-          {formStyle ? (
-            <section className="panel reference-panel">
+          <section className="panel reference-panel">
               <div className="editor-title">
                 <div>
                   <h2>参考图</h2>
-                  <p>参考图会作为图生图参考，生成比例由风格模板控制。</p>
+                  <p>{formStyle ? "参考图会作为图生图参考，生成比例由风格模板控制。" : "创建时选择的参考图会在风格创建成功后自动上传。"}</p>
                 </div>
                 <label className="upload-button">
                   <Upload size={16} />
-                  上传
+                  {formStyle ? "上传" : "选择图片"}
                   <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} />
                 </label>
               </div>
               <div className="reference-grid">
-                {formStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
-                {formStyle.reference_images.map((reference) => (
+                {!formStyle && pendingReferenceFiles.length === 0 ? <div className="empty mini">创建风格时可先选择参考图</div> : null}
+                {!formStyle && pendingReferenceFiles.length > 0 ? (
+                  <div className="empty mini">
+                    已选择 {pendingReferenceFiles.length} 张参考图
+                    <small>{pendingReferenceNames}</small>
+                  </div>
+                ) : null}
+                {formStyle && formStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
+                {formStyle?.reference_images.map((reference) => (
                   <figure key={reference.id} className="reference-item">
                     <LazyAssetImage asset={reference.asset} assetId={reference.asset.id} alt={reference.asset.original_filename ?? "参考图"} />
                     <button type="button" onClick={() => deleteReference(reference.id)}>
@@ -2299,7 +2342,6 @@ function StylesView({ user }: { user: User }) {
                 ))}
               </div>
             </section>
-          ) : null}
           </aside>
         </div>
       ) : null}

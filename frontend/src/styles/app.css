@@ -1419,6 +1419,19 @@ textarea {
   gap: 10px;
 }
 
+.reference-grid .empty {
+  grid-column: 1 / -1;
+}
+
+.reference-grid .empty small {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+  color: #7d8592;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .reference-item {
   position: relative;
   aspect-ratio: 9 / 16;
