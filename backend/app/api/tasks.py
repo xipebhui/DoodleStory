@@ -242,8 +242,6 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     task = ensure_task_access(task, user)
     if task.status not in {TaskStatus.failed, TaskStatus.partial_succeeded}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败或部分完成的任务可以重试")
-    if task.attempts >= task.max_attempts:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务已达到最大重试次数")
 
     style = db.scalar(select(Style).where(Style.id == task.style_id))
     if not style:

@@ -2,7 +2,10 @@ import asyncio
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -43,7 +46,12 @@ from app.services.character_references import (
     save_character_plan_panel_links,
     save_panel_character_links,
 )
-from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
+from app.services.image_generation import (
+    GeneratedImageFile,
+    ImageProviderConfigError,
+    ImageProviderResponseError,
+    generate_xg_image,
+)
 from app.services.llm import (
     LLMProviderError,
     LLMResponseError,
@@ -62,6 +70,61 @@ from app.services.storage import materialize_asset_to_local
 _queue: asyncio.Queue[str] | None = None
 _worker_task: asyncio.Task[None] | None = None
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PreparedPanelImageRequest:
+    panel_id: str
+    panel_order: int
+    image_id: str
+    final_prompt: str
+    reference_paths: list[Path]
+    reference_count: int
+    character_reference_count: int
+
+
+@dataclass(frozen=True)
+class PanelImageGenerationResult:
+    request: PreparedPanelImageRequest
+    generated: GeneratedImageFile | None = None
+    error: Exception | None = None
+
+
+def generate_panel_image_request(
+    *,
+    task_id: str,
+    image_model_name: str,
+    aspect_ratio: str,
+    request: PreparedPanelImageRequest,
+) -> PanelImageGenerationResult:
+    try:
+        logger.info(
+            "task panel image request task_id=%s panel_id=%s panel_order=%s image_id=%s prompt_chars=%s reference_count=%s character_reference_count=%s",
+            task_id,
+            request.panel_id,
+            request.panel_order,
+            request.image_id,
+            len(request.final_prompt),
+            request.reference_count,
+            request.character_reference_count,
+        )
+        generated = generate_xg_image(
+            prompt=request.final_prompt,
+            reference_paths=request.reference_paths,
+            image_model_name=image_model_name,
+            aspect_ratio=aspect_ratio,
+        )
+        return PanelImageGenerationResult(request=request, generated=generated)
+    except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+        return PanelImageGenerationResult(request=request, error=exc)
+    except Exception as exc:
+        logger.exception(
+            "task panel image unexpected failure task_id=%s panel_id=%s image_id=%s",
+            task_id,
+            request.panel_id,
+            request.image_id,
+        )
+        return PanelImageGenerationResult(request=request, error=exc)
 
 
 def task_trace_context(task: GenerationTask, step: str, **extra: object) -> dict[str, object]:
@@ -818,6 +881,7 @@ def process_task(task_id: str) -> None:
         )
         success_count = 0
         skipped_count = 0
+        prepared_requests: list[PreparedPanelImageRequest] = []
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
             if should_stop_for_cancel(db, task):
                 return
@@ -894,64 +958,103 @@ def process_task(task_id: str) -> None:
             db.add(image)
             db.commit()
             db.refresh(image)
-
-            try:
-                logger.info(
-                    "task panel image request task_id=%s panel_id=%s panel_order=%s image_id=%s prompt_chars=%s reference_count=%s character_reference_count=%s",
-                    task.id,
-                    panel.id,
-                    panel.panel_order,
-                    image.id,
-                    len(final_prompt),
-                    len(panel_reference_paths),
-                    character_reference_count,
-                )
-                generated = generate_xg_image(
-                    prompt=final_prompt,
+            prepared_requests.append(
+                PreparedPanelImageRequest(
+                    panel_id=panel.id,
+                    panel_order=panel.panel_order,
+                    image_id=image.id,
+                    final_prompt=final_prompt,
                     reference_paths=panel_reference_paths,
-                    image_model_name=task.image_model_name_snapshot,
-                    aspect_ratio=task.style_aspect_ratio_snapshot,
+                    reference_count=len(panel_reference_paths),
+                    character_reference_count=character_reference_count,
                 )
-                asset = FileAsset(
-                    purpose=FileAssetPurpose.generated_image,
-                    storage_backend=generated.storage_backend,
-                    storage_key=generated.storage_key,
-                    public_url=generated.public_url,
-                    original_filename=generated.original_filename,
-                    content_type=generated.content_type,
-                    byte_size=generated.byte_size,
-                    checksum_sha256=generated.checksum_sha256,
-                )
-                db.add(asset)
-                db.flush()
-                image.asset_id = asset.id
-                image.provider_request_id = generated.provider_request_id
-                image.status = GeneratedImageStatus.succeeded
-                mark_image_current(db, image)
-                image.finished_at = datetime.utcnow()
-                success_count += 1
-                logger.info(
-                    "task panel image succeeded task_id=%s panel_id=%s image_id=%s asset_storage_key=%s bytes=%s",
-                    task.id,
-                    panel.id,
-                    image.id,
-                    generated.storage_key,
-                    generated.byte_size,
-                )
-            except (ImageProviderConfigError, ImageProviderResponseError) as exc:
-                logger.warning(
-                    "task panel image failed task_id=%s panel_id=%s image_id=%s error_type=%s error=%s",
-                    task.id,
-                    panel.id,
-                    image.id,
-                    exc.__class__.__name__,
-                    exc,
-                )
-                image.status = GeneratedImageStatus.failed
-                image.error_code = exc.__class__.__name__
-                image.error_message = str(exc)
-                image.finished_at = datetime.utcnow()
-            db.commit()
+            )
+
+        image_generation_concurrency = get_settings().image_generation_concurrency
+        image_generation_concurrency = min(image_generation_concurrency, len(prepared_requests) or 1)
+        logger.info(
+            "task image generation provider batch prepared task_id=%s request_count=%s concurrency=%s skipped_existing_success_count=%s",
+            task.id,
+            len(prepared_requests),
+            image_generation_concurrency,
+            skipped_count,
+        )
+        if prepared_requests:
+            with ThreadPoolExecutor(max_workers=image_generation_concurrency) as executor:
+                futures = [
+                    executor.submit(
+                        generate_panel_image_request,
+                        task_id=task.id,
+                        image_model_name=task.image_model_name_snapshot,
+                        aspect_ratio=task.style_aspect_ratio_snapshot,
+                        request=request,
+                    )
+                    for request in prepared_requests
+                ]
+                for future in as_completed(futures):
+                    result = future.result()
+                    image = db.scalar(select(GeneratedImage).where(GeneratedImage.id == result.request.image_id))
+                    if image is None:
+                        logger.warning(
+                            "task panel image result skipped missing image task_id=%s panel_id=%s image_id=%s",
+                            task.id,
+                            result.request.panel_id,
+                            result.request.image_id,
+                        )
+                        continue
+                    if result.error is not None:
+                        logger.warning(
+                            "task panel image failed task_id=%s panel_id=%s image_id=%s error_type=%s error=%s",
+                            task.id,
+                            result.request.panel_id,
+                            result.request.image_id,
+                            result.error.__class__.__name__,
+                            result.error,
+                        )
+                        image.status = GeneratedImageStatus.failed
+                        image.error_code = result.error.__class__.__name__
+                        image.error_message = str(result.error)
+                        image.finished_at = datetime.utcnow()
+                        db.commit()
+                        continue
+                    generated = result.generated
+                    if generated is None:
+                        image.status = GeneratedImageStatus.failed
+                        image.error_code = "ImageGenerationFailed"
+                        image.error_message = "图片 Provider 未返回生成结果"
+                        image.finished_at = datetime.utcnow()
+                        db.commit()
+                        continue
+                    asset = FileAsset(
+                        purpose=FileAssetPurpose.generated_image,
+                        storage_backend=generated.storage_backend,
+                        storage_key=generated.storage_key,
+                        public_url=generated.public_url,
+                        original_filename=generated.original_filename,
+                        content_type=generated.content_type,
+                        byte_size=generated.byte_size,
+                        checksum_sha256=generated.checksum_sha256,
+                    )
+                    db.add(asset)
+                    db.flush()
+                    image.asset_id = asset.id
+                    image.provider_request_id = generated.provider_request_id
+                    image.status = GeneratedImageStatus.succeeded
+                    mark_image_current(db, image)
+                    image.finished_at = datetime.utcnow()
+                    success_count += 1
+                    logger.info(
+                        "task panel image succeeded task_id=%s panel_id=%s image_id=%s asset_storage_key=%s bytes=%s",
+                        task.id,
+                        result.request.panel_id,
+                        result.request.image_id,
+                        generated.storage_key,
+                        generated.byte_size,
+                    )
+                    db.commit()
+                    if should_stop_for_cancel(db, task):
+                        logger.info("task image generation cancellation observed after result task_id=%s", task.id)
+                        return
 
         task = load_task(db, task_id)
         if task is None:

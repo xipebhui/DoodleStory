@@ -112,6 +112,7 @@
 - 外部集成：LLM 固定使用 SiliconFlow 配置；生图 API key、base url 和代理地址从 env 读取。`Qwen/Qwen-Image-Edit-2509`、`Qwen/Qwen-Image-Edit`、`baidu/ERNIE-Image-Turbo` 和 `Qwen/Qwen-Image` 使用 SiliconFlow `/v1/images/generations`，返回的短期图片 URL 必须立即下载保存为 DoodleStory 资产。`/v1/images/edits` 类模型继续使用 XG 配置，Google/Gemini 图片模型和 `nano-banana`/`nana-banana` 类 Chat 生图模型使用 ApexerAPI 的 `/v1/chat/completions`，ApexerAPI 请求可通过 `APEXERAPI_PROXY_URL` 单独配置代理。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
+- 图片生成并发：任务队列仍由单个进程内 worker 串行领取任务；单个任务的 panel 图片 Provider 请求在 `generate_images` 阶段按 `IMAGE_GENERATION_CONCURRENCY` 做有限并发，默认 3。
 - 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。七牛资产使用固定公开 CDN URL，任务列表和小尺寸预览默认使用 `imageView2` 缩略图 URL，本地资产由后端按需生成 WebP 缩略图。
 - 使用七牛对象存储时，新写入资产必须在服务器存储根目录保留本地镜像；任务批量下载只使用本地镜像或已有本地缓存打包，缺少本地文件时明确失败，不自动从公网回源下载；下载 zip 固定保存为本地资产，不上传到七牛。
 - 抖音素材导入：已完成通过本地 `jiji262/douyin-downloader` 仓库运行的最小 adapter 和命令行验证入口；后续 `内容提取` tab 改为由 DoodleStory 后端调用同机抖音下载服务 `127.0.0.1:8010`，前端不得直接请求该本地服务。下载后的服务器绝对路径不能暴露给浏览器，必须登记为 DoodleStory 资产后再展示。
@@ -139,6 +140,8 @@
 - 图片模型不作为独立模块管理；风格只保存生图模型名，provider、API key 和默认参数由 env 维护，不暴露给普通用户。
 - 支持用户对单个 panel 提交画面修改方向；系统调用一次 LLM 基于当前 `image_prompt` 生成新版本提示词，再重新生成该 panel 图片。
 - 单个 panel 可以保留多次图片生成版本；当前展示和下载只使用标记为当前版本的成功图片。
+- 用户显式点击任务重试时不限制重试次数；`attempts` 只用于排查和标记重试来源，不作为阻止用户操作的上限。
+- 任务 `generate_images` 阶段支持同一任务内 panel 生图并发提交，默认 `IMAGE_GENERATION_CONCURRENCY=3`；数据库状态写入仍由主 worker 串行完成。
 - 开启人物参考的任务如果没有识别到可用于参考图的主要人物，任务应失败并显示明确错误，不能静默降级为普通生图。
 - 单 panel 修改在人物参考任务中必须继续携带该 panel 已绑定的人物参考图。
 - 技术选型仍未确定。未来实现代码前，应先通过 sprint contract 选择具体技术栈。

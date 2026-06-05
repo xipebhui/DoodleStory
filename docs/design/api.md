@@ -404,7 +404,7 @@ POST /api/v1/tasks/{task_id}/cancel
 POST /api/v1/tasks/{task_id}/retry
 ```
 
-任务级重试用于处理失败任务，会复用已持久化的 panels 和已完成输出，避免重复副作用。
+任务级重试用于处理失败任务，会复用已持久化的 panels 和已完成输出，避免重复副作用。用户显式点击重试不限制次数，`attempts` 仅用于排查和标记重试来源。
 
 ### 修改单个 Panel 画面
 
@@ -586,6 +586,6 @@ GET /api/v1/assets/{asset_id}/content
 Provider 错误规则：
 
 - 永久性校验错误不重试。
-- 临时 provider 失败可以在次数上限内重试。
+- 临时 provider 失败可以由用户显式再次重试；Provider 单次请求内部仍使用配置的有限重试次数。
 - 用户取消的任务永不自动重试。
 - 单 panel 修改会新增图片版本；当前版本由 `is_current` 标记。
