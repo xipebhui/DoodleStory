@@ -586,6 +586,7 @@ GET /api/v1/assets/{asset_id}/content
 Provider 错误规则：
 
 - 永久性校验错误不重试。
-- 临时 provider 失败可以由用户显式再次重试；Provider 单次请求内部仍使用配置的有限重试次数。
+- 生图请求或结果图下载出现 timeout 时自动重试 3 次，任一重试成功即停止。
+- 其它临时 provider 失败可以由用户显式再次重试；Provider 单次请求内部仍使用配置的有限重试次数。
 - 用户取消的任务永不自动重试。
 - 单 panel 修改会新增图片版本；当前版本由 `is_current` 标记。

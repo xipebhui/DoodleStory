@@ -152,6 +152,57 @@ def retryable_xg_status(status_code: int) -> bool:
     return status_code in {408, 409, 425, 429} or status_code >= 500
 
 
+def is_timeout_exception(exc: requests.RequestException) -> bool:
+    if isinstance(exc, requests.Timeout):
+        return True
+    message = str(exc).lower()
+    return any(token in message for token in ("timeout", "timed out", "read timed out", "connection timed out"))
+
+
+def is_timeout_response(response: requests.Response) -> bool:
+    if response.status_code in {408, 504}:
+        return True
+    if response.status_code < 400:
+        return False
+    return any(
+        token in response.text.lower()
+        for token in ("timeout", "timed out", "read timed out", "connection timed out")
+    )
+
+
+def image_provider_attempt_limits() -> tuple[int, int]:
+    settings = get_settings()
+    standard_max_attempts = max(1, settings.xg_request_max_attempts)
+    timeout_max_attempts = max(1, settings.image_provider_timeout_retry_attempts + 1)
+    return standard_max_attempts, timeout_max_attempts
+
+
+def should_retry_provider_exception(
+    exc: requests.RequestException,
+    *,
+    attempt: int,
+    standard_max_attempts: int,
+    timeout_max_attempts: int,
+) -> bool:
+    if is_timeout_exception(exc):
+        return attempt < timeout_max_attempts
+    return attempt < standard_max_attempts
+
+
+def should_retry_provider_response(
+    response: requests.Response,
+    *,
+    attempt: int,
+    standard_max_attempts: int,
+    timeout_max_attempts: int,
+) -> bool:
+    if response.status_code < 400:
+        return False
+    if is_timeout_response(response):
+        return attempt < timeout_max_attempts
+    return retryable_xg_status(response.status_code) and attempt < standard_max_attempts
+
+
 def retry_delay_seconds(base_delay: float, attempt: int) -> float:
     return max(0.0, base_delay) * attempt
 
@@ -280,7 +331,8 @@ def download_generated_image(
     provider_name: str = "ApexerAPI chat image",
 ) -> tuple[bytes, str]:
     settings = get_settings()
-    max_attempts = max(1, settings.xg_request_max_attempts)
+    standard_max_attempts, timeout_max_attempts = image_provider_attempt_limits()
+    max_attempts = max(standard_max_attempts, timeout_max_attempts)
     response: requests.Response | None = None
 
     for attempt in range(1, max_attempts + 1):
@@ -300,15 +352,21 @@ def download_generated_image(
             response = session.get(image_url, headers={"Accept": "image/*"}, timeout=300)
         except requests.RequestException as exc:
             elapsed_ms = round((monotonic() - started_at) * 1000)
-            if attempt < max_attempts:
+            if should_retry_provider_exception(
+                exc,
+                attempt=attempt,
+                standard_max_attempts=standard_max_attempts,
+                timeout_max_attempts=timeout_max_attempts,
+            ):
                 delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                 logger.warning(
-                    "%s download exception will retry attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    "%s download exception will retry attempt=%s/%s elapsed_ms=%s exception_type=%s timeout_retry=%s retry_delay_seconds=%s error=%s",
                     provider_name,
                     attempt,
                     max_attempts,
                     elapsed_ms,
                     exc.__class__.__name__,
+                    is_timeout_exception(exc),
                     delay,
                     exc,
                 )
@@ -328,15 +386,21 @@ def download_generated_image(
             response.headers.get("content-type"),
             provider_request_id,
         )
-        if response.status_code < 400 or not retryable_xg_status(response.status_code) or attempt == max_attempts:
+        if not should_retry_provider_response(
+            response,
+            attempt=attempt,
+            standard_max_attempts=standard_max_attempts,
+            timeout_max_attempts=timeout_max_attempts,
+        ):
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
         logger.warning(
-            "%s download retryable response will retry status_code=%s attempt=%s/%s retry_delay_seconds=%s provider_request_id=%s",
+            "%s download retryable response will retry status_code=%s attempt=%s/%s timeout_retry=%s retry_delay_seconds=%s provider_request_id=%s",
             provider_name,
             response.status_code,
             attempt,
             max_attempts,
+            is_timeout_response(response),
             delay,
             provider_request_id,
         )
@@ -443,7 +507,8 @@ def request_siliconflow_image_generation(
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
-    max_attempts = max(1, settings.xg_request_max_attempts)
+    standard_max_attempts, timeout_max_attempts = image_provider_attempt_limits()
+    max_attempts = max(standard_max_attempts, timeout_max_attempts)
     response: requests.Response | None = None
     request_started_at = monotonic()
 
@@ -475,15 +540,21 @@ def request_siliconflow_image_generation(
             response = session.post(endpoint, headers=headers, json=payload, timeout=300)
         except requests.RequestException as exc:
             elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
-            if attempt < max_attempts:
+            if should_retry_provider_exception(
+                exc,
+                attempt=attempt,
+                standard_max_attempts=standard_max_attempts,
+                timeout_max_attempts=timeout_max_attempts,
+            ):
                 delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                 logger.warning(
-                    "SiliconFlow image generation request exception will retry model=%s attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    "SiliconFlow image generation request exception will retry model=%s attempt=%s/%s elapsed_ms=%s exception_type=%s timeout_retry=%s retry_delay_seconds=%s error=%s",
                     image_model_name.strip(),
                     attempt,
                     max_attempts,
                     elapsed_ms,
                     exc.__class__.__name__,
+                    is_timeout_exception(exc),
                     delay,
                     exc,
                 )
@@ -511,15 +582,21 @@ def request_siliconflow_image_generation(
                 max_chars=settings.image_provider_debug_log_raw_max_chars,
                 sanitize_request=False,
             )
-        if response.status_code < 400 or not retryable_xg_status(response.status_code) or attempt == max_attempts:
+        if not should_retry_provider_response(
+            response,
+            attempt=attempt,
+            standard_max_attempts=standard_max_attempts,
+            timeout_max_attempts=timeout_max_attempts,
+        ):
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
         logger.warning(
-            "SiliconFlow image generation retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s retry_delay_seconds=%s response_preview=%s",
+            "SiliconFlow image generation retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s timeout_retry=%s retry_delay_seconds=%s response_preview=%s",
             response.status_code,
             attempt,
             max_attempts,
             provider_request_id,
+            is_timeout_response(response),
             delay,
             response.text[:500],
         )
@@ -610,7 +687,8 @@ def request_apexerapi_chat_image(
     proxy_url = settings.apexerapi_proxy_url.strip()
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     proxy_description = describe_proxy_url(proxy_url)
-    max_attempts = max(1, settings.xg_request_max_attempts)
+    standard_max_attempts, timeout_max_attempts = image_provider_attempt_limits()
+    max_attempts = max(standard_max_attempts, timeout_max_attempts)
     response: requests.Response | None = None
     request_started_at = monotonic()
 
@@ -644,10 +722,15 @@ def request_apexerapi_chat_image(
             response = session.post(endpoint, headers=headers, json=payload, timeout=300, proxies=proxies)
         except requests.RequestException as exc:
             elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
-            if attempt < max_attempts:
+            if should_retry_provider_exception(
+                exc,
+                attempt=attempt,
+                standard_max_attempts=standard_max_attempts,
+                timeout_max_attempts=timeout_max_attempts,
+            ):
                 delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                 logger.warning(
-                    "ApexerAPI chat image request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    "ApexerAPI chat image request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s timeout_retry=%s retry_delay_seconds=%s error=%s",
                     image_model_name.strip(),
                     attempt,
                     max_attempts,
@@ -655,6 +738,7 @@ def request_apexerapi_chat_image(
                     proxy_description,
                     elapsed_ms,
                     exc.__class__.__name__,
+                    is_timeout_exception(exc),
                     delay,
                     exc,
                 )
@@ -682,15 +766,21 @@ def request_apexerapi_chat_image(
                 max_chars=settings.image_provider_debug_log_raw_max_chars,
                 sanitize_request=False,
             )
-        if response.status_code < 400 or not retryable_xg_status(response.status_code) or attempt == max_attempts:
+        if not should_retry_provider_response(
+            response,
+            attempt=attempt,
+            standard_max_attempts=standard_max_attempts,
+            timeout_max_attempts=timeout_max_attempts,
+        ):
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
         logger.warning(
-            "ApexerAPI chat image retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s retry_delay_seconds=%s response_preview=%s",
+            "ApexerAPI chat image retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s timeout_retry=%s retry_delay_seconds=%s response_preview=%s",
             response.status_code,
             attempt,
             max_attempts,
             provider_request_id,
+            is_timeout_response(response),
             delay,
             response.text[:500],
         )
@@ -767,7 +857,8 @@ def request_xg_image_edit(
     proxy_url = settings.xg_proxy_url.strip()
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     proxy_description = describe_proxy_url(proxy_url)
-    max_attempts = max(1, settings.xg_request_max_attempts)
+    standard_max_attempts, timeout_max_attempts = image_provider_attempt_limits()
+    max_attempts = max(standard_max_attempts, timeout_max_attempts)
     response: requests.Response | None = None
     request_started_at = monotonic()
 
@@ -804,10 +895,15 @@ def request_xg_image_edit(
                 response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300, proxies=proxies)
             except requests.RequestException as exc:
                 elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
-                if attempt < max_attempts:
+                if should_retry_provider_exception(
+                    exc,
+                    attempt=attempt,
+                    standard_max_attempts=standard_max_attempts,
+                    timeout_max_attempts=timeout_max_attempts,
+                ):
                     delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                     logger.warning(
-                        "XG image edit request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                        "XG image edit request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s timeout_retry=%s retry_delay_seconds=%s error=%s",
                         image_model_name.strip(),
                         attempt,
                         max_attempts,
@@ -815,6 +911,7 @@ def request_xg_image_edit(
                         proxy_description,
                         elapsed_ms,
                         exc.__class__.__name__,
+                        is_timeout_exception(exc),
                         delay,
                         exc,
                     )
@@ -844,15 +941,21 @@ def request_xg_image_edit(
             response.headers.get("content-type"),
             provider_request_id,
         )
-        if response.status_code < 400 or not retryable_xg_status(response.status_code) or attempt == max_attempts:
+        if not should_retry_provider_response(
+            response,
+            attempt=attempt,
+            standard_max_attempts=standard_max_attempts,
+            timeout_max_attempts=timeout_max_attempts,
+        ):
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
         logger.warning(
-            "XG image edit retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s retry_delay_seconds=%s response_preview=%s",
+            "XG image edit retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s timeout_retry=%s retry_delay_seconds=%s response_preview=%s",
             response.status_code,
             attempt,
             max_attempts,
             provider_request_id,
+            is_timeout_response(response),
             delay,
             response.text[:500],
         )
