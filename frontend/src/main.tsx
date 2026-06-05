@@ -2317,19 +2317,22 @@ function StylesView({ user }: { user: User }) {
                   <h2>参考图</h2>
                   <p>{formStyle ? "参考图会作为图生图参考，生成比例由风格模板控制。" : "创建时选择的参考图会在风格创建成功后自动上传。"}</p>
                 </div>
-                <label className="upload-button">
-                  <Upload size={16} />
-                  {formStyle ? "上传" : "选择图片"}
-                  <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} />
-                </label>
+                {formStyle ? (
+                  <label className="upload-button">
+                    <Upload size={16} />
+                    上传
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} />
+                  </label>
+                ) : null}
               </div>
               <div className="reference-grid">
-                {!formStyle && pendingReferenceFiles.length === 0 ? <div className="empty mini">创建风格时可先选择参考图</div> : null}
-                {!formStyle && pendingReferenceFiles.length > 0 ? (
-                  <div className="empty mini">
-                    已选择 {pendingReferenceFiles.length} 张参考图
-                    <small>{pendingReferenceNames}</small>
-                  </div>
+                {!formStyle ? (
+                  <label className={`reference-dropzone ${pendingReferenceFiles.length > 0 ? "has-files" : ""}`}>
+                    <Upload size={22} />
+                    <strong>{pendingReferenceFiles.length > 0 ? `已选择 ${pendingReferenceFiles.length} 张参考图` : "点击这里上传参考图"}</strong>
+                    <span>{pendingReferenceFiles.length > 0 ? pendingReferenceNames : "支持 PNG、JPEG、WebP，可多选"}</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} />
+                  </label>
                 ) : null}
                 {formStyle && formStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
                 {formStyle?.reference_images.map((reference) => (

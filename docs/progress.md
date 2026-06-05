@@ -92,6 +92,7 @@
 - 开始并完成 Sprint 10 工作台二级路径路由：新增合同 `docs/contracts/sprint-10-stable-workspace-routes.md`；前端主工作台从内存态 tab 切换改为 URL 驱动，任务、内容提取、风格和设置页面分别使用 `/tasks`、`/content-extractions`、`/styles` 和 `/settings`，侧边栏改为真实导航链接，刷新和浏览器前进后退会保留当前页面。
 - 开始并完成 Sprint 11 内容提取使用下载原始媒体：新增合同 `docs/contracts/sprint-11-content-extraction-source-media.md`；远程故障排查确认任务 `5b7cb28b10224ab8843c23b4441e24d8` 在旧代码中因 `cdn.vdgen.shop` 读取超时失败，失败发生在下载成功后的 OCR/处理阶段，旧事务回滚导致媒体记录不可见；内容提取 OCR、图文故事总结和视频转写改为直接使用下载服务返回的 `source_path` 本地原始媒体，不再为了处理流程从对象存储公开 CDN 回拉刚下载的媒体。
 - 开始并完成 Sprint 12 风格创建参考图上传：新增合同 `docs/contracts/sprint-12-style-create-reference-upload.md`；风格创建抽屉现在直接展示参考图区域，新建时可先选择多张参考图并显示文件名，创建风格成功后自动按顺序上传到新风格；编辑风格保留原有即时上传和删除参考图能力。
+- 细化 Sprint 12 创建态上传交互：新建风格时不再在参考图标题右侧显示上传按钮，参考图区大空白框本身就是文件选择入口，选中文件后仍在同一区域显示数量和文件名。
 
 ## 验证记录
 
@@ -116,6 +117,7 @@
 - Sprint 10 工作台二级路径路由实现后，`npm run build` 和 `./scripts/check.sh` 通过；本地浏览器使用测试账号验证 `/content-extractions` 刷新后仍显示内容提取页面，点击进入 `/styles` 后刷新仍显示风格页面，浏览器后退回到内容提取、前进回到风格时页面标题和地址均保持同步。
 - Sprint 11 内容提取使用下载原始媒体实现后，`./scripts/check.sh` 通过；远程诊断已确认 `doodlestory-backend.service` 正常运行、`douyin-import-service.service` 正常运行且目标下载请求返回 200，`127.0.0.1:7890` 代理进程存在但经代理访问 `cdn.vdgen.shop` 出现 TLS EOF，直连 CDN 可返回但较慢。修复方向是不让内容提取处理依赖 CDN 回读。
 - Sprint 12 风格创建参考图上传实现后，`npm run build` 和 `./scripts/check.sh` 通过；本地浏览器打开 `/styles`，点击“新建风格”后确认创建抽屉中展示“参考图”区域、“选择图片”按钮和创建态参考图说明。
+- Sprint 12 创建态上传投放区细化后，`npm run build` 和 `./scripts/check.sh` 通过；本地浏览器打开 `/styles`，点击“新建风格”后确认创建态参考图标题右侧不再显示小上传按钮，参考图区大空白框展示“点击这里上传参考图”并包含文件选择输入。
 
 ## 已知缺口
 
