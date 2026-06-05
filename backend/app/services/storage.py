@@ -231,6 +231,9 @@ def materialize_asset_to_local(asset) -> Path:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="本地文件不存在")
         return path
     if asset.storage_backend == StorageBackend.qiniu:
+        mirrored_path = resolve_storage_key(asset.storage_key)
+        if mirrored_path.exists() and mirrored_path.stat().st_size > 0:
+            return mirrored_path
         suffix = Path(asset.storage_key).suffix or mimetypes.guess_extension(asset.content_type) or ".bin"
         cache_path = get_settings().storage_root / "_cache" / "qiniu" / f"{asset.id}{suffix}"
         if cache_path.exists() and cache_path.stat().st_size > 0:

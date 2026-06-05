@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-18-task-worker-concurrency.md`
+- `docs/contracts/sprint-19-qiniu-materialize-local-mirror.md`
 
 ## 最近完成的工作
 
@@ -99,6 +99,7 @@
 - 开始并完成 Sprint 16 任务创建弹窗与风格宫格选择：新增合同 `docs/contracts/sprint-16-task-create-modal-style-grid.md`；任务创建从侧边抽屉改为居中弹窗，完整故事/故事方案改为带说明的点击选择，使用参考人物默认勾选并移动到风格前，图片数量也前置，风格选择改为紧凑宫格并支持展开二级弹窗选择更多风格。
 - 开始并完成 Sprint 17 生图 timeout 自动重试：新增合同 `docs/contracts/sprint-17-image-timeout-retry.md`；新增 `IMAGE_PROVIDER_TIMEOUT_RETRY_ATTEMPTS=3` 配置，生图请求和结果图下载遇到 timeout 时最多自动重试 3 次，成功即停止；非 timeout 错误不使用 timeout 专用重试次数。
 - 开始并完成 Sprint 18 任务 worker 并发：新增合同 `docs/contracts/sprint-18-task-worker-concurrency.md`；任务队列启动时按 `TASK_WORKER_CONCURRENCY` 创建进程内 worker 池，默认 3 个 worker 并发领取任务；同一进程内同一个任务 ID 重复入队时不会并发执行两次，单任务内 panel 生图并发仍由 `IMAGE_GENERATION_CONCURRENCY` 单独控制。
+- 开始并完成 Sprint 19 七牛资产本地镜像优先读取：新增合同 `docs/contracts/sprint-19-qiniu-materialize-local-mirror.md`；远程任务 `bec1e4f7dda144278b4254bf4eba4d7d` 失败原因确认是正式生图前准备人物参考图时，`materialize_asset_to_local()` 未优先使用已存在的服务器本地镜像，转而从 `cdn.vdgen.shop` 回拉七牛资产并读超时；现已改为七牛资产优先读取本地镜像，再读取已有缓存，最后才保留历史 CDN 下载路径。
 
 ## 验证记录
 
@@ -130,6 +131,7 @@
 - Sprint 16 任务创建弹窗与风格宫格选择实现后，`npm run build`、`./scripts/check.sh` 和 `git diff --check` 通过；浏览器验证创建任务弹窗、默认参考人物勾选、紧凑风格宫格与二级风格选择弹窗。
 - Sprint 17 生图 timeout 自动重试实现后，`backend/.venv/bin/python -m compileall backend/app`、`./scripts/check.sh` 和 `git diff --check` 通过；单元级 smoke 模拟 SiliconFlow 连续 3 次 `ReadTimeout` 后第 4 次成功，确认 timeout 会使用首尝试 + 3 次重试；模拟非 timeout `ConnectionError` 时确认不会使用 timeout 专用 4 次尝试。
 - Sprint 18 任务 worker 并发实现后，`backend/.venv/bin/python -m compileall backend/app`、`./scripts/check.sh` 和 `git diff --check` 通过；单元级 smoke 模拟 5 个任务入队，确认默认 `TASK_WORKER_CONCURRENCY=3` 时最大同时执行任务数为 3。
+- Sprint 19 七牛资产本地镜像优先读取实现后，`backend/.venv/bin/python -m compileall backend/app`、`./scripts/check.sh` 和 `git diff --check` 通过；单元级 smoke 构造七牛资产和本地镜像，禁用 `requests.get` 后确认 `materialize_asset_to_local()` 直接返回本地镜像路径，不访问公开 CDN。
 
 ## 已知缺口
 
