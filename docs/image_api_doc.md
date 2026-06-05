@@ -1,17 +1,49 @@
-# XG 图片生成接口参考
+# 图片生成接口参考
 
 用于 DoodleStory 风格测试和任务 panel 生图。
 
 ## 环境变量
 
 ```env
+SILICONFLOW_API_KEY=
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
 XG_API_KEY=
 XG_API_BASE_URL=https://api.xgapi.top
 XG_IMAGE_MODEL=gpt-image-2
 XG_IMAGE_ASPECT_RATIO=9:16
 ```
 
-## 接口
+## SiliconFlow 图片生成接口
+
+以下模型精确命中时走 SiliconFlow：
+
+- `Qwen/Qwen-Image-Edit-2509`
+- `Qwen/Qwen-Image-Edit`
+- `baidu/ERNIE-Image-Turbo`
+- `Qwen/Qwen-Image`
+
+```text
+POST https://api.siliconflow.cn/v1/images/generations
+```
+
+请求：
+
+- `application/json`
+- `Authorization: Bearer <SILICONFLOW_API_KEY>`
+- 文本提示字段：`prompt`
+- 模型字段：`model`
+- `Qwen/Qwen-Image-Edit-2509` 不传 `image_size`，最多传 `image`、`image2`、`image3`
+- `Qwen/Qwen-Image-Edit` 不传 `image_size`，最多传 `image`
+- `Qwen/Qwen-Image` 使用官方推荐 `image_size`，并传 `cfg=4`
+- `baidu/ERNIE-Image-Turbo` 使用与画面比例对应的 `image_size`
+
+响应：
+
+- `images[0].url` 是短期有效 URL
+- 后端必须立即下载图片并写入 `file_assets`
+- 前端不得直接使用 SiliconFlow 返回的短期 URL
+
+## XG 图片编辑接口
 
 ```text
 POST https://api.xgapi.top/v1/images/edits

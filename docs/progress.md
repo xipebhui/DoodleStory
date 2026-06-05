@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-12-style-create-reference-upload.md`
+- `docs/contracts/sprint-13-siliconflow-image-generation-routing.md`
 
 ## 最近完成的工作
 
@@ -93,6 +93,7 @@
 - 开始并完成 Sprint 11 内容提取使用下载原始媒体：新增合同 `docs/contracts/sprint-11-content-extraction-source-media.md`；远程故障排查确认任务 `5b7cb28b10224ab8843c23b4441e24d8` 在旧代码中因 `cdn.vdgen.shop` 读取超时失败，失败发生在下载成功后的 OCR/处理阶段，旧事务回滚导致媒体记录不可见；内容提取 OCR、图文故事总结和视频转写改为直接使用下载服务返回的 `source_path` 本地原始媒体，不再为了处理流程从对象存储公开 CDN 回拉刚下载的媒体。
 - 开始并完成 Sprint 12 风格创建参考图上传：新增合同 `docs/contracts/sprint-12-style-create-reference-upload.md`；风格创建抽屉现在直接展示参考图区域，新建时可先选择多张参考图并显示文件名，创建风格成功后自动按顺序上传到新风格；编辑风格保留原有即时上传和删除参考图能力。
 - 细化 Sprint 12 创建态上传交互：新建风格时不再在参考图标题右侧显示上传按钮，参考图区大空白框本身就是文件选择入口，选中文件后仍在同一区域显示数量和文件名。
+- 开始并完成 Sprint 13 SiliconFlow 生图模型路由：新增合同 `docs/contracts/sprint-13-siliconflow-image-generation-routing.md`；`Qwen/Qwen-Image-Edit-2509`、`Qwen/Qwen-Image-Edit`、`baidu/ERNIE-Image-Turbo` 和 `Qwen/Qwen-Image` 已精确路由到 SiliconFlow `/v1/images/generations`，并保持返回 URL 立即下载入库；其它模型继续走原有 ApexerAPI 或 XG 路径。
 
 ## 验证记录
 
@@ -118,6 +119,7 @@
 - Sprint 11 内容提取使用下载原始媒体实现后，`./scripts/check.sh` 通过；远程诊断已确认 `doodlestory-backend.service` 正常运行、`douyin-import-service.service` 正常运行且目标下载请求返回 200，`127.0.0.1:7890` 代理进程存在但经代理访问 `cdn.vdgen.shop` 出现 TLS EOF，直连 CDN 可返回但较慢。修复方向是不让内容提取处理依赖 CDN 回读。
 - Sprint 12 风格创建参考图上传实现后，`npm run build` 和 `./scripts/check.sh` 通过；本地浏览器打开 `/styles`，点击“新建风格”后确认创建抽屉中展示“参考图”区域、“选择图片”按钮和创建态参考图说明。
 - Sprint 12 创建态上传投放区细化后，`npm run build` 和 `./scripts/check.sh` 通过；本地浏览器打开 `/styles`，点击“新建风格”后确认创建态参考图标题右侧不再显示小上传按钮，参考图区大空白框展示“点击这里上传参考图”并包含文件选择输入。
+- Sprint 13 SiliconFlow 生图模型路由实现后，使用后端虚拟环境运行单元级 smoke：确认 `Qwen/Qwen-Image-Edit-2509` payload 不传 `image_size` 且使用 `image/image2/image3`，确认 `Qwen/Qwen-Image` 使用 `928x1664` 等官方推荐尺寸和 `cfg=4`，确认 SiliconFlow `images[0].url` 会进入下载路径；随后 `backend/.venv/bin/python -m compileall backend/app` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 

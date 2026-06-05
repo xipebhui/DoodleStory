@@ -25,6 +25,28 @@ CHAT_IMAGE_REFERENCE_PATTERN = re.compile(
     r"!\[[^\]]*\]\((?P<markdown>(?:https?://|data:image/)[^)\s]+)\)|(?P<plain>(?:https?://|data:image/)[^\s)]+)"
 )
 APEXERAPI_CHAT_IMAGE_MODEL_PREFIXES = ("nano-banana", "nana-banana")
+SILICONFLOW_IMAGE_GENERATION_MODELS = {
+    "Qwen/Qwen-Image-Edit-2509",
+    "Qwen/Qwen-Image-Edit",
+    "baidu/ERNIE-Image-Turbo",
+    "Qwen/Qwen-Image",
+}
+SILICONFLOW_IMAGE_EDIT_2509_MODEL = "Qwen/Qwen-Image-Edit-2509"
+SILICONFLOW_QWEN_IMAGE_MODEL = "Qwen/Qwen-Image"
+SILICONFLOW_QWEN_IMAGE_SIZES = {
+    "1:1": "1328x1328",
+    "16:9": "1664x928",
+    "9:16": "928x1664",
+    "4:3": "1472x1140",
+    "3:4": "1140x1472",
+}
+SILICONFLOW_DEFAULT_IMAGE_SIZES = {
+    "1:1": "1024x1024",
+    "16:9": "1280x720",
+    "9:16": "720x1280",
+    "4:3": "1024x768",
+    "3:4": "768x1024",
+}
 
 
 class ImageProviderError(Exception):
@@ -141,6 +163,10 @@ def is_apexerapi_chat_image_model(image_model_name: str) -> bool:
     return any(normalized.startswith(prefix) for prefix in APEXERAPI_CHAT_IMAGE_MODEL_PREFIXES)
 
 
+def is_siliconflow_image_generation_model(image_model_name: str) -> bool:
+    return image_model_name.strip() in SILICONFLOW_IMAGE_GENERATION_MODELS
+
+
 def parse_image_b64(response_body: dict[str, Any]) -> bytes:
     data = response_body.get("data")
     if not isinstance(data, list) or not data:
@@ -180,6 +206,15 @@ def encode_reference_image(path: Path) -> dict[str, Any]:
     with path.open("rb") as file:
         encoded = base64.b64encode(file.read()).decode("ascii")
     return {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{encoded}"}}
+
+
+def encode_reference_image_data_url(path: Path) -> str:
+    if not path.exists() or not path.is_file():
+        raise ImageProviderConfigError(f"参考图文件不存在：{path}")
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    with path.open("rb") as file:
+        encoded = base64.b64encode(file.read()).decode("ascii")
+    return f"data:{content_type};base64,{encoded}"
 
 
 def parse_image_data_url(data_url: str) -> tuple[bytes, str]:
@@ -238,7 +273,12 @@ def parse_chat_image_reference(response_body: dict[str, Any]) -> str:
     return match.group("markdown") or match.group("plain")
 
 
-def download_generated_image(image_url: str, provider_request_id: str | None) -> tuple[bytes, str]:
+def download_generated_image(
+    image_url: str,
+    provider_request_id: str | None,
+    *,
+    provider_name: str = "ApexerAPI chat image",
+) -> tuple[bytes, str]:
     settings = get_settings()
     max_attempts = max(1, settings.xg_request_max_attempts)
     response: requests.Response | None = None
@@ -249,7 +289,8 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
             session = requests.Session()
             session.trust_env = False
             logger.info(
-                "ApexerAPI chat image download prepared url_host=%s attempt=%s/%s provider_request_id=%s timeout_seconds=%s",
+                "%s download prepared url_host=%s attempt=%s/%s provider_request_id=%s timeout_seconds=%s",
+                provider_name,
                 urlparse(image_url).hostname,
                 attempt,
                 max_attempts,
@@ -262,7 +303,8 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
             if attempt < max_attempts:
                 delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
                 logger.warning(
-                    "ApexerAPI chat image download exception will retry attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    "%s download exception will retry attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    provider_name,
                     attempt,
                     max_attempts,
                     elapsed_ms,
@@ -276,7 +318,8 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
 
         elapsed_ms = round((monotonic() - started_at) * 1000)
         logger.info(
-            "ApexerAPI chat image download response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+            "%s download response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+            provider_name,
             response.status_code,
             attempt,
             max_attempts,
@@ -289,7 +332,8 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
             break
         delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
         logger.warning(
-            "ApexerAPI chat image download retryable response will retry status_code=%s attempt=%s/%s retry_delay_seconds=%s provider_request_id=%s",
+            "%s download retryable response will retry status_code=%s attempt=%s/%s retry_delay_seconds=%s provider_request_id=%s",
+            provider_name,
             response.status_code,
             attempt,
             max_attempts,
@@ -305,6 +349,227 @@ def download_generated_image(image_url: str, provider_request_id: str | None) ->
     if not response.content:
         raise ImageProviderResponseError("图片 Provider 结果图下载内容为空")
     return response.content, detect_image_content_type(response.content)
+
+
+def siliconflow_image_size_for_model(image_model_name: str, aspect_ratio: str) -> str:
+    if image_model_name.strip() == SILICONFLOW_QWEN_IMAGE_MODEL:
+        size = SILICONFLOW_QWEN_IMAGE_SIZES.get(aspect_ratio)
+    else:
+        size = SILICONFLOW_DEFAULT_IMAGE_SIZES.get(aspect_ratio)
+    if not size:
+        raise ImageProviderConfigError(f"SiliconFlow 图片生成不支持画面比例：{aspect_ratio}")
+    return size
+
+
+def build_siliconflow_image_generation_payload(
+    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    model_name = image_model_name.strip()
+    reference_file_info = []
+    for path in reference_paths:
+        if not path.exists() or not path.is_file():
+            raise ImageProviderConfigError(f"参考图文件不存在：{path}")
+        reference_file_info.append(describe_reference_file(path))
+    payload: dict[str, Any] = {
+        "model": model_name,
+        "prompt": prompt,
+        "num_inference_steps": 20,
+    }
+
+    if model_name == SILICONFLOW_IMAGE_EDIT_2509_MODEL:
+        if len(reference_paths) > 3:
+            raise ImageProviderConfigError("Qwen/Qwen-Image-Edit-2509 最多支持 3 张参考图")
+        for index, path in enumerate(reference_paths):
+            field_name = "image" if index == 0 else f"image{index + 1}"
+            payload[field_name] = encode_reference_image_data_url(path)
+        payload["cfg"] = 4
+        return payload, reference_file_info
+
+    if model_name == "Qwen/Qwen-Image-Edit":
+        if len(reference_paths) > 1:
+            raise ImageProviderConfigError("Qwen/Qwen-Image-Edit 最多支持 1 张参考图")
+        if reference_paths:
+            payload["image"] = encode_reference_image_data_url(reference_paths[0])
+        payload["cfg"] = 4
+        return payload, reference_file_info
+
+    if len(reference_paths) > 1:
+        raise ImageProviderConfigError(f"{model_name} 最多支持 1 张参考图")
+    if reference_paths:
+        payload["image"] = encode_reference_image_data_url(reference_paths[0])
+    payload["image_size"] = siliconflow_image_size_for_model(model_name, aspect_ratio)
+    if model_name == SILICONFLOW_QWEN_IMAGE_MODEL:
+        payload["num_inference_steps"] = 50
+        payload["cfg"] = 4
+    return payload, reference_file_info
+
+
+def parse_siliconflow_image_url(response_body: dict[str, Any]) -> str:
+    images = response_body.get("images")
+    if not isinstance(images, list) or not images:
+        raise ImageProviderResponseError("SiliconFlow 图片生成返回中缺少 images[0].url")
+    first_item = images[0]
+    if not isinstance(first_item, dict):
+        raise ImageProviderResponseError("SiliconFlow 图片生成返回 images[0] 必须是对象")
+    image_url = first_item.get("url")
+    if not isinstance(image_url, str) or not image_url.strip():
+        raise ImageProviderResponseError("SiliconFlow 图片生成返回中缺少 images[0].url")
+    return image_url
+
+
+def request_siliconflow_image_generation(
+    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+) -> tuple[bytes, str, str | None]:
+    if not image_model_name.strip():
+        raise ImageProviderConfigError("风格未绑定生图模型名")
+
+    settings = get_settings()
+    api_key = settings.siliconflow_api_key.strip()
+    base_url = settings.siliconflow_base_url.strip()
+    if not api_key:
+        raise ImageProviderConfigError("SILICONFLOW_API_KEY 未配置")
+    if not base_url:
+        raise ImageProviderConfigError("SILICONFLOW_BASE_URL 未配置")
+
+    endpoint = f"{base_url.rstrip('/')}/images/generations"
+    payload, reference_file_info = build_siliconflow_image_generation_payload(
+        prompt=prompt,
+        reference_paths=reference_paths,
+        image_model_name=image_model_name,
+        aspect_ratio=aspect_ratio,
+    )
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    max_attempts = max(1, settings.xg_request_max_attempts)
+    response: requests.Response | None = None
+    request_started_at = monotonic()
+
+    for attempt in range(1, max_attempts + 1):
+        attempt_started_at = monotonic()
+        try:
+            logger.info(
+                "SiliconFlow image generation request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s timeout_seconds=%s",
+                endpoint,
+                image_model_name.strip(),
+                aspect_ratio,
+                attempt,
+                max_attempts,
+                len(reference_paths),
+                reference_file_info,
+                len(prompt),
+                300,
+            )
+            if settings.image_provider_debug_log_raw_io:
+                log_provider_raw_io(
+                    provider_name="SiliconFlow image generation",
+                    direction="request",
+                    payload=payload,
+                    max_chars=settings.image_provider_debug_log_raw_max_chars,
+                    sanitize_request=True,
+                )
+            session = requests.Session()
+            session.trust_env = False
+            response = session.post(endpoint, headers=headers, json=payload, timeout=300)
+        except requests.RequestException as exc:
+            elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
+            if attempt < max_attempts:
+                delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
+                logger.warning(
+                    "SiliconFlow image generation request exception will retry model=%s attempt=%s/%s elapsed_ms=%s exception_type=%s retry_delay_seconds=%s error=%s",
+                    image_model_name.strip(),
+                    attempt,
+                    max_attempts,
+                    elapsed_ms,
+                    exc.__class__.__name__,
+                    delay,
+                    exc,
+                )
+                sleep(delay)
+                continue
+            raise ImageProviderResponseError(f"图片 Provider 请求异常：{exc}") from exc
+
+        elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
+        provider_request_id = response.headers.get("x-siliconcloud-trace-id") or response.headers.get("x-request-id")
+        logger.info(
+            "SiliconFlow image generation response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+            response.status_code,
+            attempt,
+            max_attempts,
+            elapsed_ms,
+            len(response.content),
+            response.headers.get("content-type"),
+            provider_request_id,
+        )
+        if settings.image_provider_debug_log_raw_io:
+            log_provider_raw_io(
+                provider_name="SiliconFlow image generation",
+                direction="response",
+                payload=response.text,
+                max_chars=settings.image_provider_debug_log_raw_max_chars,
+                sanitize_request=False,
+            )
+        if response.status_code < 400 or not retryable_xg_status(response.status_code) or attempt == max_attempts:
+            break
+        delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
+        logger.warning(
+            "SiliconFlow image generation retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s retry_delay_seconds=%s response_preview=%s",
+            response.status_code,
+            attempt,
+            max_attempts,
+            provider_request_id,
+            delay,
+            response.text[:500],
+        )
+        sleep(delay)
+
+    if response is None:
+        raise ImageProviderResponseError("图片 Provider 请求未执行")
+
+    elapsed_ms = round((monotonic() - request_started_at) * 1000)
+    provider_request_id = response.headers.get("x-siliconcloud-trace-id") or response.headers.get("x-request-id")
+    logger.info(
+        "SiliconFlow image generation final response status_code=%s total_elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+        response.status_code,
+        elapsed_ms,
+        len(response.content),
+        response.headers.get("content-type"),
+        provider_request_id,
+    )
+    if response.status_code >= 400:
+        logger.warning(
+            "SiliconFlow image generation failed status_code=%s response_chars=%s provider_request_id=%s response_preview=%s",
+            response.status_code,
+            len(response.text),
+            provider_request_id,
+            response.text[:500],
+        )
+        raise ImageProviderResponseError(f"图片 Provider 请求失败：HTTP {response.status_code} {response.text}")
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise ImageProviderResponseError("图片 Provider 返回内容不是合法 JSON") from exc
+    if not isinstance(body, dict):
+        raise ImageProviderResponseError("图片 Provider 返回 JSON 必须是对象结构")
+
+    image_url = parse_siliconflow_image_url(body)
+    response_body_request_id = f"seed:{body['seed']}" if isinstance(body.get("seed"), int) else None
+    image_content, content_type = download_generated_image(
+        image_url,
+        response_body_request_id or provider_request_id,
+        provider_name="SiliconFlow image generation",
+    )
+    logger.info(
+        "SiliconFlow image generation returned downloadable image content_type=%s bytes=%s provider_request_id=%s response_body_request_id=%s",
+        content_type,
+        len(image_content),
+        provider_request_id,
+        response_body_request_id,
+    )
+    return image_content, content_type, response_body_request_id or provider_request_id
 
 
 def request_apexerapi_chat_image(
@@ -647,6 +912,13 @@ def request_xg_image_edit(
 def request_xg_image(
     *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
+    if is_siliconflow_image_generation_model(image_model_name):
+        return request_siliconflow_image_generation(
+            prompt=prompt,
+            reference_paths=reference_paths,
+            image_model_name=image_model_name,
+            aspect_ratio=aspect_ratio,
+        )
     if is_apexerapi_chat_image_model(image_model_name):
         return request_apexerapi_chat_image(
             prompt=prompt,
