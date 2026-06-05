@@ -2121,6 +2121,32 @@ textarea {
   backdrop-filter: blur(12px);
 }
 
+.task-create-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 5, 7, 0.74);
+  backdrop-filter: blur(12px);
+  padding: 18px;
+  overflow: auto;
+}
+
+.task-create-modal {
+  width: min(1040px, calc(100vw - 36px));
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(214, 162, 74, 0.055), transparent 30%),
+    #0d1015;
+  box-shadow: 0 32px 110px rgba(0, 0, 0, 0.52);
+  padding: 24px;
+  animation: modal-in 160ms ease-out;
+}
+
 .task-create-drawer {
   width: clamp(620px, 42vw, 860px);
   max-width: 100%;
@@ -2255,6 +2281,7 @@ textarea {
   color: #8791a1;
 }
 
+.task-create-modal .task-create-form,
 .task-create-drawer .task-create-form {
   display: grid;
   grid-template-columns: 1fr;
@@ -2262,6 +2289,7 @@ textarea {
   margin: 0;
 }
 
+.task-create-modal label,
 .task-create-drawer label {
   display: grid;
   gap: 8px;
@@ -2269,8 +2297,65 @@ textarea {
   font-weight: 700;
 }
 
+.task-create-modal textarea,
 .task-create-drawer textarea {
-  min-height: 220px;
+  min-height: 180px;
+}
+
+.mode-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mode-choice {
+  display: grid;
+  gap: 7px;
+  min-height: 104px;
+  align-content: start;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #eef2f7;
+  text-align: left;
+}
+
+.mode-choice.active {
+  border-color: rgba(214, 162, 74, 0.76);
+  background: rgba(214, 162, 74, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(214, 162, 74, 0.22);
+}
+
+.mode-choice strong {
+  font-size: 16px;
+}
+
+.mode-choice span {
+  color: #8d96a6;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.mode-choice.active span {
+  color: #d8c2a0;
+}
+
+.create-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.section-label {
+  color: #c8d0dc;
+  font-weight: 800;
+}
+
+.field-hint {
+  margin: 0;
+  color: #8791a1;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .style-picker {
@@ -2288,6 +2373,17 @@ textarea {
   font-weight: 800;
 }
 
+.style-picker-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.style-picker-head .secondary-button {
+  white-space: nowrap;
+}
+
 .style-picker p {
   margin: 0;
   color: #8791a1;
@@ -2303,6 +2399,19 @@ textarea {
   padding-right: 2px;
 }
 
+.style-picker-grid.compact {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.style-picker-grid.expanded {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  max-height: min(62vh, 620px);
+  overflow: auto;
+}
+
 .style-pick-card {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr) auto;
@@ -2316,10 +2425,30 @@ textarea {
   text-align: left;
 }
 
+.style-picker-grid.compact .style-pick-card,
+.style-picker-grid.expanded .style-pick-card {
+  grid-template-columns: 1fr;
+  align-content: start;
+  gap: 9px;
+}
+
+.style-picker-grid.compact .style-pick-card {
+  min-height: 184px;
+}
+
+.style-picker-grid.expanded .style-pick-card {
+  min-height: 230px;
+}
+
 .style-pick-card.selected {
   border-color: rgba(214, 162, 74, 0.76);
   background: rgba(214, 162, 74, 0.08);
   box-shadow: inset 3px 0 0 #d6a24a;
+}
+
+.style-picker-grid.compact .style-pick-card.selected,
+.style-picker-grid.expanded .style-pick-card.selected {
+  box-shadow: inset 0 0 0 1px rgba(214, 162, 74, 0.4);
 }
 
 .style-pick-images {
@@ -2327,6 +2456,16 @@ textarea {
   grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   height: 96px;
+}
+
+.style-picker-grid.compact .style-pick-images {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  height: 104px;
+}
+
+.style-picker-grid.expanded .style-pick-images {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  height: 132px;
 }
 
 .style-pick-images img,
@@ -2349,6 +2488,10 @@ textarea {
 .style-pick-card strong,
 .style-pick-card small {
   display: block;
+}
+
+.style-pick-card .status-pill {
+  justify-self: start;
 }
 
 .selected-style-preview {
@@ -2446,6 +2589,33 @@ textarea {
 .task-create-drawer .drawer-actions {
   justify-content: flex-end;
   margin-top: 8px;
+}
+
+.task-create-modal .drawer-actions {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.style-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 5, 7, 0.82);
+  padding: 18px;
+}
+
+.style-picker-modal {
+  width: min(1040px, calc(100vw - 36px));
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #0d1015;
+  box-shadow: 0 32px 110px rgba(0, 0, 0, 0.58);
+  padding: 24px;
+  animation: modal-in 160ms ease-out;
 }
 
 .image-preview-frame {
@@ -2727,6 +2897,17 @@ textarea {
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 

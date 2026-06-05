@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-15-unlimited-retry-image-concurrency.md`
+- `docs/contracts/sprint-16-task-create-modal-style-grid.md`
 
 ## 最近完成的工作
 
@@ -96,6 +96,7 @@
 - 开始并完成 Sprint 13 SiliconFlow 生图模型路由：新增合同 `docs/contracts/sprint-13-siliconflow-image-generation-routing.md`；`Qwen/Qwen-Image-Edit-2509`、`Qwen/Qwen-Image-Edit`、`baidu/ERNIE-Image-Turbo` 和 `Qwen/Qwen-Image` 已精确路由到 SiliconFlow `/v1/images/generations`，并保持返回 URL 立即下载入库；其它模型继续走原有 ApexerAPI 或 XG 路径。
 - 开始并完成 Sprint 14 任务详情稳定 URL 与本地打包下载：新增合同 `docs/contracts/sprint-14-task-detail-route-local-download.md`；任务详情 URL 使用 `/tasks/{task_id}`，任务图片下载按钮增加打包中状态，下载 zip 改为只读取服务器本地已有资产文件，zip 本身固定保存为本地资产；七牛新写入资产会同时保留服务器本地镜像，便于后续本地处理和打包。
 - 开始并完成 Sprint 15 取消任务重试上限与 panel 生图并发：新增合同 `docs/contracts/sprint-15-unlimited-retry-image-concurrency.md`；任务级手动重试不再受 `attempts >= max_attempts` 阻止，`attempts` 继续保留用于排查；任务 `generate_images` 阶段改为按 `IMAGE_GENERATION_CONCURRENCY` 有限并发提交 panel 生图请求，默认并发 3。
+- 开始并完成 Sprint 16 任务创建弹窗与风格宫格选择：新增合同 `docs/contracts/sprint-16-task-create-modal-style-grid.md`；任务创建从侧边抽屉改为居中弹窗，完整故事/故事方案改为带说明的点击选择，使用参考人物默认勾选并移动到风格前，图片数量也前置，风格选择改为紧凑宫格并支持展开二级弹窗选择更多风格。
 
 ## 验证记录
 
@@ -124,6 +125,7 @@
 - Sprint 13 SiliconFlow 生图模型路由实现后，使用后端虚拟环境运行单元级 smoke：确认 `Qwen/Qwen-Image-Edit-2509` payload 不传 `image_size` 且使用 `image/image2/image3`，确认 `Qwen/Qwen-Image` 使用 `928x1664` 等官方推荐尺寸和 `cfg=4`，确认 SiliconFlow `images[0].url` 会进入下载路径；随后 `backend/.venv/bin/python -m compileall backend/app` 和 `./scripts/check.sh` 通过。
 - Sprint 14 任务详情稳定 URL 与本地打包下载实现后，`npm run build`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；本地重启前后端后使用 Playwright 验证：点击任务行后地址进入 `/tasks/36b58bfb4a1642698b34b288e160bb1c`，刷新仍保持同一任务详情，关闭详情回到 `/tasks`；点击下载生成 `doodlestory-36b58bfb4a1642698b34b288e160bb1c.zip`，最新 `task_downloads` 记录对应 `file_assets.storage_backend=local`，zip 内包含 4 张 panel 图片，浏览器下载请求走本地后端 `/api/v1/assets/{asset_id}/content`。
 - Sprint 15 取消任务重试上限与 panel 生图并发实现后，`backend/.venv/bin/python -m compileall backend/app` 和 `./scripts/check.sh` 通过；静态检查确认后端已移除“任务已达到最大重试次数”错误分支；单元级 smoke 用 5 个模拟 panel 请求验证默认 `IMAGE_GENERATION_CONCURRENCY=3` 时最大同时执行请求数为 3，且不会触发真实图片 Provider。
+- Sprint 16 任务创建弹窗与风格宫格选择实现后，`npm run build`、`./scripts/check.sh` 和 `git diff --check` 通过；浏览器验证创建任务弹窗、默认参考人物勾选、紧凑风格宫格与二级风格选择弹窗。
 
 ## 已知缺口
 

@@ -549,6 +549,7 @@ function TasksView({
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createStyleId, setCreateStyleId] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
@@ -583,6 +584,9 @@ function TasksView({
       )
       .join("|") ?? "";
   const selectedCreateStyle = styles.find((style) => style.id === createStyleId) ?? styles[0] ?? null;
+  const createStylePreviewLimit = 8;
+  const visibleCreateStyles = styles.slice(0, createStylePreviewLimit);
+  const canExpandCreateStyles = styles.length > 0;
 
   useEffect(() => {
     refresh(undefined, { quiet: false });
@@ -664,6 +668,21 @@ function TasksView({
       setCreateStyleId(styles[0].id);
     }
   }, [createOpen, createStyleId, styles]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        if (stylePickerOpen) {
+          setStylePickerOpen(false);
+          return;
+        }
+        setCreateOpen(false);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [createOpen, stylePickerOpen]);
 
   async function refresh(preferredTaskId = selectedId, options: { quiet?: boolean } = {}) {
     try {
@@ -774,6 +793,7 @@ function TasksView({
       setStoryInputMode("original");
       setCreateStyleId(styles[0]?.id ?? "");
       setCreateOpen(false);
+      setStylePickerOpen(false);
       setMessage("任务已进入队列");
       onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(task.id)}`);
       await refresh(task.id);
@@ -1241,53 +1261,102 @@ function TasksView({
       ) : null}
 
       {createOpen ? (
-        <div className="drawer-backdrop" onClick={() => setCreateOpen(false)}>
-          <aside className="task-create-drawer" onClick={(event) => event.stopPropagation()}>
+        <div className="task-create-backdrop" onClick={() => setCreateOpen(false)}>
+          <section
+            className="task-create-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="task-create-title"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="drawer-head">
               <div>
-                <h2>创建任务</h2>
-                <p>原文会原样保存，提交后进入生成队列。</p>
+                <h2 id="task-create-title">创建任务</h2>
+                <p>选择输入方式、图片数量和风格后，任务会进入生成队列。</p>
               </div>
               <button type="button" className="icon-button" aria-label="关闭创建任务" onClick={() => setCreateOpen(false)}>
                 <X size={18} />
               </button>
             </div>
             <form className="task-create-form" onSubmit={createTask}>
-              <div className="segmented-control">
+              <div className="mode-choice-grid" role="group" aria-label="选择故事输入方式">
                 <button
                   type="button"
-                  className={storyInputMode === "original" ? "active" : ""}
+                  className={storyInputMode === "original" ? "mode-choice active" : "mode-choice"}
+                  aria-pressed={storyInputMode === "original"}
                   onClick={() => setStoryInputMode("original")}
                 >
-                  完整故事
+                  <strong>完整故事</strong>
+                  <span>保持故事不变，只按原文切分；请只提交故事本身，不要加入说明、标签或额外要求。</span>
                 </button>
                 <button
                   type="button"
-                  className={storyInputMode === "adapted" ? "active" : ""}
+                  className={storyInputMode === "adapted" ? "mode-choice active" : "mode-choice"}
+                  aria-pressed={storyInputMode === "adapted"}
                   onClick={() => setStoryInputMode("adapted")}
                 >
-                  故事方案
+                  <strong>故事方案</strong>
+                  <span>可以提交故事设计、人物设定、画面要求或简化想法，系统会规划封面和分镜。</span>
                 </button>
               </div>
               <label>
-                {storyInputMode === "adapted" ? "故事方案或简化故事" : "原始文本"}
+                {storyInputMode === "adapted" ? "故事方案或要求" : "完整故事正文"}
                 <textarea
                   name="original_text"
                   placeholder={
                     storyInputMode === "adapted"
-                      ? "输入故事设定、简短梗概或想法，系统会先整理成更抓人的故事"
-                      : "输入原始故事文本，系统会原样保存"
+                      ? "输入故事设定、简短梗概、人物关系、画面要求或其他创作方向"
+                      : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
                   }
                   required
                   autoFocus
                 />
                 {storyInputMode === "adapted" ? (
-                  <small>原始输入会保留，生成前会新增一步 LLM 故事增强，并自动生成封面。</small>
-                ) : null}
+                  <small>原始输入会保留，系统会直接根据方案规划图文分镜并自动生成封面。</small>
+                ) : (
+                  <small>完整故事模式会保持文本不变，所有 panel 拼接后必须逐字等于你提交的故事正文。</small>
+                )}
               </label>
+              <label className="character-reference-toggle">
+                <input name="use_character_references" type="checkbox" defaultChecked />
+                <span>
+                  <strong>使用参考人物</strong>
+                  <small>默认开启。系统会先识别主要人物并生成人物参考图，再用于后续分镜生图。</small>
+                </span>
+              </label>
+              <section className="create-section">
+                <div className="section-label">图片数量</div>
+                <div className="segmented-control">
+                  <button type="button" className={countMode === "auto" ? "active" : ""} onClick={() => setCountMode("auto")}>
+                    自动判断
+                  </button>
+                  <button type="button" className={countMode === "fixed" ? "active" : ""} onClick={() => setCountMode("fixed")}>
+                    固定数量
+                  </button>
+                </div>
+                {countMode === "fixed" ? (
+                  <label>
+                    图片数量
+                    <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
+                    {storyInputMode === "adapted" ? <small>固定数量包含封面，例如 8 张 = 1 张封面 + 7 张剧情图。</small> : null}
+                  </label>
+                ) : (
+                  <p className="field-hint">系统会根据故事长度和内容密度决定图片张数。</p>
+                )}
+              </section>
               <fieldset className="style-picker">
                 <legend>选择风格</legend>
-                <p>通过参考图判断视觉方向，提交后会使用该风格绑定的模型名生成图片。</p>
+                <div className="style-picker-head">
+                  <div>
+                    <p>通过参考图判断视觉方向，提交后会使用该风格绑定的模型名生成图片。</p>
+                  </div>
+                  {canExpandCreateStyles ? (
+                    <button type="button" className="secondary-button" onClick={() => setStylePickerOpen(true)}>
+                      <Images size={16} />
+                      展开更多风格
+                    </button>
+                  ) : null}
+                </div>
                 {styles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
                 {selectedCreateStyle ? (
                   <div className="selected-style-preview">
@@ -1312,18 +1381,19 @@ function TasksView({
                     </div>
                   </div>
                 ) : null}
-                <div className="style-picker-grid">
-                  {styles.map((style) => {
+                <div className="style-picker-grid compact">
+                  {visibleCreateStyles.map((style) => {
                     const assets = stylePreviewAssets(style);
                     return (
                       <button
                         type="button"
                         key={style.id}
                         className={`style-pick-card ${createStyleId === style.id ? "selected" : ""}`}
+                        aria-pressed={createStyleId === style.id}
                         onClick={() => setCreateStyleId(style.id)}
                       >
                         <div className="style-pick-images">
-                          {assets.slice(0, 4).map((asset) => (
+                          {assets.slice(0, 2).map((asset) => (
                             <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
                           ))}
                           {assets.length === 0 ? <span>模板比例</span> : null}
@@ -1338,28 +1408,6 @@ function TasksView({
                   })}
                 </div>
               </fieldset>
-              <div className="segmented-control">
-                <button type="button" className={countMode === "auto" ? "active" : ""} onClick={() => setCountMode("auto")}>
-                  自动
-                </button>
-                <button type="button" className={countMode === "fixed" ? "active" : ""} onClick={() => setCountMode("fixed")}>
-                  固定数量
-                </button>
-              </div>
-              {countMode === "fixed" ? (
-                <label>
-                  图片数量
-                  <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
-                  {storyInputMode === "adapted" ? <small>固定数量包含封面，例如 8 张 = 1 张封面 + 7 张剧情图。</small> : null}
-                </label>
-              ) : null}
-              <label className="character-reference-toggle">
-                <input name="use_character_references" type="checkbox" />
-                <span>
-                  <strong>使用参考人物</strong>
-                  <small>开启后会先识别主要人物并生成人物参考图，再用于后续分镜生图。</small>
-                </span>
-              </label>
               {message ? <p className="form-message">{message}</p> : null}
               <div className="drawer-actions">
                 <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>
@@ -1371,7 +1419,63 @@ function TasksView({
                 </button>
               </div>
             </form>
-          </aside>
+          </section>
+          {stylePickerOpen ? (
+            <div
+              className="style-picker-backdrop"
+              onClick={(event) => {
+                event.stopPropagation();
+                setStylePickerOpen(false);
+              }}
+            >
+              <section
+                className="style-picker-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="style-picker-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="drawer-head">
+                  <div>
+                    <h2 id="style-picker-title">选择风格</h2>
+                    <p>从全部启用风格中选择一个作为本次任务的视觉模板。</p>
+                  </div>
+                  <button type="button" className="icon-button" aria-label="关闭风格选择" onClick={() => setStylePickerOpen(false)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="style-picker-grid expanded">
+                  {styles.map((style) => {
+                    const assets = stylePreviewAssets(style);
+                    return (
+                      <button
+                        type="button"
+                        key={style.id}
+                        className={`style-pick-card ${createStyleId === style.id ? "selected" : ""}`}
+                        aria-pressed={createStyleId === style.id}
+                        onClick={() => {
+                          setCreateStyleId(style.id);
+                          setStylePickerOpen(false);
+                        }}
+                      >
+                        <div className="style-pick-images">
+                          {assets.slice(0, 3).map((asset) => (
+                            <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
+                          ))}
+                          {assets.length === 0 ? <span>模板比例</span> : null}
+                        </div>
+                        <div>
+                          <strong>{style.name}</strong>
+                          <small>{style.description || `${style.reference_images.length} 张参考图`} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
+                        </div>
+                        <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
