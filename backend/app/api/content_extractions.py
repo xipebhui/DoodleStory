@@ -403,6 +403,13 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
                     len(result.text),
                     round((monotonic() - page_started) * 1000),
                 )
+                logger.info(
+                    "content_extraction_ai_debug comic_page_saved content_id=%s media_id=%s page_number=%s extracted_text=%s",
+                    content.id,
+                    media.id,
+                    page_number,
+                    result.text,
+                )
                 if result.text.strip():
                     parts.append(result.text.strip())
             raw_pages_text = "\n\n".join(parts)
@@ -420,6 +427,12 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
                 normalized.model,
                 len(normalized.text),
                 round((monotonic() - started) * 1000),
+            )
+            logger.info(
+                "content_extraction_ai_debug final_extracted_text content_id=%s model=%s extracted_text=%s",
+                content.id,
+                normalized.model,
+                normalized.text,
             )
     except HTTPException:
         raise

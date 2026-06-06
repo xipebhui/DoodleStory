@@ -78,6 +78,61 @@ def create_multimodal_client():
     return OpenAI(api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url)
 
 
+def _data_url_summary(url: str) -> str:
+    if not url.startswith("data:"):
+        return url
+    header, separator, encoded = url.partition(",")
+    if not separator:
+        return f"{header},[invalid_data_url]"
+    return f"{header},[base64_chars={len(encoded)}]"
+
+
+def _safe_multimodal_content_for_log(content: list[dict[str, object]]) -> list[dict[str, object]]:
+    safe_parts: list[dict[str, object]] = []
+    for index, part in enumerate(content, start=1):
+        part_type = part.get("type")
+        if part_type == "text":
+            safe_parts.append(
+                {
+                    "index": index,
+                    "type": "text",
+                    "text": part.get("text"),
+                }
+            )
+            continue
+        if part_type == "image_url":
+            image_url = part.get("image_url")
+            if isinstance(image_url, dict):
+                raw_url = image_url.get("url")
+                safe_parts.append(
+                    {
+                        "index": index,
+                        "type": "image_url",
+                        "detail": image_url.get("detail"),
+                        "url": _data_url_summary(str(raw_url)) if raw_url else None,
+                    }
+                )
+            else:
+                safe_parts.append({"index": index, "type": "image_url", "image_url": str(image_url)})
+            continue
+        if part_type == "audio_url":
+            audio_url = part.get("audio_url")
+            if isinstance(audio_url, dict):
+                raw_url = audio_url.get("url")
+                safe_parts.append(
+                    {
+                        "index": index,
+                        "type": "audio_url",
+                        "url": _data_url_summary(str(raw_url)) if raw_url else None,
+                    }
+                )
+            else:
+                safe_parts.append({"index": index, "type": "audio_url", "audio_url": str(audio_url)})
+            continue
+        safe_parts.append({"index": index, "type": str(part_type), "part": str(part)})
+    return safe_parts
+
+
 def data_url(path: Path, content_type: str) -> str:
     content = path.read_bytes()
     if not content:
@@ -92,6 +147,12 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
     client = create_multimodal_client()
     trace_context = {"model": model, "prompt_name": prompt_name}
     started = monotonic()
+    logger.info(
+        "content_extraction_ai_debug multimodal_request prompt_name=%s model=%s content=%s",
+        prompt_name,
+        model,
+        json.dumps(_safe_multimodal_content_for_log(content), ensure_ascii=False, default=str),
+    )
     log_prompt_trace(
         logger,
         "content_extraction_multimodal_request",
@@ -122,6 +183,15 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
     if message_content is None:
         raise LLMResponseError("SiliconFlow 多模态模型返回内容为空")
     text = str(message_content).strip()
+    logger.info(
+        "content_extraction_ai_debug multimodal_response prompt_name=%s model=%s response_id=%s finish_reason=%s content_chars=%s content=%s",
+        prompt_name,
+        model,
+        getattr(response, "id", None),
+        getattr(response.choices[0], "finish_reason", None),
+        len(text),
+        text,
+    )
     log_prompt_trace(
         logger,
         "content_extraction_multimodal_response",
@@ -144,6 +214,14 @@ def _chat_text_llm(*, system_prompt: str, user_prompt: str, prompt_name: str) ->
     client = create_siliconflow_client()
     trace_context = {"model": model, "prompt_name": prompt_name}
     started = monotonic()
+    logger.info(
+        "content_extraction_ai_debug llm_request prompt_name=%s model=%s temperature=%s system_prompt=%s user_prompt=%s",
+        prompt_name,
+        model,
+        settings.siliconflow_temperature,
+        system_prompt,
+        user_prompt,
+    )
     log_prompt_trace(
         logger,
         "content_extraction_llm_request",
@@ -184,6 +262,15 @@ def _chat_text_llm(*, system_prompt: str, user_prompt: str, prompt_name: str) ->
     text = str(message_content).strip()
     if not text:
         raise LLMResponseError("SiliconFlow LLM 返回内容为空")
+    logger.info(
+        "content_extraction_ai_debug llm_response prompt_name=%s model=%s response_id=%s finish_reason=%s content_chars=%s content=%s",
+        prompt_name,
+        model,
+        getattr(response, "id", None),
+        getattr(response.choices[0], "finish_reason", None),
+        len(text),
+        text,
+    )
     log_prompt_trace(
         logger,
         "content_extraction_llm_response",
@@ -204,6 +291,14 @@ def extract_image_text(path: Path, content_type: str, *, page_number: int) -> Me
     settings = get_settings()
     model = settings.siliconflow_vision_model.strip()
     prompt = f"{COMIC_CONTENT_EXTRACTION_PROMPT}\n\n当前输入是第{page_number}页图片，请输出为“第{page_number}页：”。"
+    logger.info(
+        "content_extraction_ai_debug comic_page_prompt page_number=%s model=%s source_path=%s content_type=%s prompt=%s",
+        page_number,
+        model,
+        path,
+        content_type,
+        prompt,
+    )
     text = _chat_multimodal(
         model=model,
         prompt_name="content_extraction_comic_page_vision",
@@ -211,6 +306,13 @@ def extract_image_text(path: Path, content_type: str, *, page_number: int) -> Me
             {"type": "text", "text": prompt},
             {"type": "image_url", "image_url": {"url": data_url(path, content_type), "detail": "high"}},
         ],
+    )
+    logger.info(
+        "content_extraction_ai_debug comic_page_extracted page_number=%s model=%s text_chars=%s text=%s",
+        page_number,
+        model,
+        len(text),
+        text,
     )
     return MediaTextResult(text=text, model=model)
 
@@ -225,10 +327,23 @@ def normalize_comic_extraction_text(raw_text: str) -> MediaTextResult:
     )
     settings = get_settings()
     model = settings.siliconflow_model.strip()
+    logger.info(
+        "content_extraction_ai_debug comic_normalize_prompt model=%s raw_text_chars=%s system_prompt=%s user_prompt=%s",
+        model,
+        len(raw_text),
+        COMIC_CONTENT_EXTRACTION_PROMPT,
+        user_prompt,
+    )
     text = _chat_text_llm(
         system_prompt=COMIC_CONTENT_EXTRACTION_PROMPT,
         user_prompt=user_prompt,
         prompt_name="content_extraction_comic_text_llm",
+    )
+    logger.info(
+        "content_extraction_ai_debug comic_normalized_result model=%s text_chars=%s text=%s",
+        model,
+        len(text),
+        text,
     )
     return MediaTextResult(text=text, model=model)
 
