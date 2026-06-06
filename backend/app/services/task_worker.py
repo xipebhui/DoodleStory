@@ -355,9 +355,11 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
 
 
 def task_progress_total(task: GenerationTask) -> int:
-    total = 3
+    total = 1
     if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
         total += 1
+    else:
+        total += 2
     if task.use_character_references:
         total += 2
     return total
@@ -743,19 +745,25 @@ def process_task(task_id: str) -> None:
         if should_stop_for_cancel(db, task):
             return
 
+        planning_mode = task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}
         existing_panels = sorted(task.panels, key=lambda item: item.panel_order)
-        if existing_panels:
-            task.progress_current = max(
-                task.progress_current,
-                2 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 1,
+        if planning_mode:
+            if not existing_panels:
+                fail_step_and_task(db, task, GenerationStepName.adapt_story, LLMResponseError("分镜规划完成后没有生成 panels"))
+                return
+            logger.info(
+                "story_drawing_debug segmentation_not_applicable task_id=%s story_input_mode=%s existing_panel_count=%s",
+                task.id,
+                task.story_input_mode.value,
+                len(existing_panels),
             )
+        elif existing_panels:
+            task.progress_current = max(task.progress_current, 1)
             set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
             logger.info("story_drawing_debug segmentation_skipped task_id=%s existing_panel_count=%s", task.id, len(existing_panels))
         else:
             try:
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.running)
-                if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
-                    raise LLMResponseError("当前输入模式应在分镜规划步骤生成 panels")
                 step_started = monotonic()
                 logger.info(
                     "story_drawing_debug segmentation_start task_id=%s original_text_chars=%s image_count_mode=%s requested_image_count=%s",
@@ -790,7 +798,7 @@ def process_task(task_id: str) -> None:
                             ),
                         )
                     )
-                task.progress_current = 2 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 1
+                task.progress_current = 1
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
                 logger.info(
                     "story_drawing_debug segmentation_done task_id=%s panel_count=%s elapsed_ms=%s",
@@ -836,10 +844,7 @@ def process_task(task_id: str) -> None:
         if task.use_character_references:
             characters = load_task_characters(db, task.id)
             if characters:
-                task.progress_current = max(
-                    task.progress_current,
-                    3 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 2,
-                )
+                task.progress_current = max(task.progress_current, 2)
                 set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                 logger.info("story_drawing_debug character_extraction_skipped task_id=%s character_count=%s", task.id, len(characters))
             else:
@@ -870,7 +875,7 @@ def process_task(task_id: str) -> None:
                             task=task,
                             character_plans=character_result.characters,
                         )
-                    task.progress_current = 3 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 2
+                    task.progress_current = 2
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                     logger.info(
                         "story_drawing_debug character_extraction_done task_id=%s character_count=%s appearance_count=%s elapsed_ms=%s",
@@ -902,8 +907,6 @@ def process_task(task_id: str) -> None:
                     style_reference_paths=style_reference_paths,
                 )
                 task.progress_current = 3
-                if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
-                    task.progress_current = 4
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
                 logger.info(
                     "story_drawing_debug character_reference_done task_id=%s elapsed_ms=%s",
@@ -925,7 +928,19 @@ def process_task(task_id: str) -> None:
             for panel in task.panels
         )
         prompts_progress = task.progress_total - 1
-        if prompts_ready:
+        if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+            if not prompts_ready:
+                fail_step_and_task(db, task, GenerationStepName.adapt_story, LLMResponseError("分镜规划缺少可用于生图的画面提示词"))
+                return
+            task.progress_current = max(task.progress_current, prompts_progress)
+            db.commit()
+            logger.info(
+                "story_drawing_debug panel_prompts_not_applicable task_id=%s story_input_mode=%s existing_panel_count=%s",
+                task.id,
+                task.story_input_mode.value,
+                len(task.panels),
+            )
+        elif prompts_ready:
             task.progress_current = max(task.progress_current, prompts_progress)
             set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
             logger.info("story_drawing_debug panel_prompts_skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))

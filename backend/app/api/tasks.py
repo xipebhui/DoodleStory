@@ -208,10 +208,13 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
     step_names = []
     if payload.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
         step_names.append(GenerationStepName.adapt_story)
-    step_names.append(GenerationStepName.segment_story)
+    else:
+        step_names.append(GenerationStepName.segment_story)
     if payload.use_character_references:
         step_names.extend([GenerationStepName.extract_characters, GenerationStepName.generate_character_references])
-    step_names.extend([GenerationStepName.generate_panel_prompts, GenerationStepName.generate_images])
+    if payload.story_input_mode not in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+        step_names.append(GenerationStepName.generate_panel_prompts)
+    step_names.append(GenerationStepName.generate_images)
     for step_name in step_names:
         db.add(
             GenerationStep(

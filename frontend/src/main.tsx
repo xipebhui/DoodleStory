@@ -432,6 +432,22 @@ function storyInputModeLabel(mode: Task["story_input_mode"]) {
   return "完整故事";
 }
 
+function visibleTaskSteps(task: Task) {
+  if (task.story_input_mode !== "extracted_storyboard") return task.steps;
+  return task.steps.filter((step) => !["segment_story", "generate_panel_prompts"].includes(step.step_name));
+}
+
+function currentStepLabel(task: Task) {
+  if (
+    task.story_input_mode === "extracted_storyboard" &&
+    task.current_step &&
+    ["segment_story", "generate_panel_prompts"].includes(task.current_step)
+  ) {
+    return "分镜规划";
+  }
+  return task.current_step ? stepLabels[task.current_step] ?? task.current_step : "等待任务";
+}
+
 function imageStatusLabel(status: string) {
   const labels: Record<string, string> = {
     queued: "排队中",
@@ -577,6 +593,7 @@ function TasksView({
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
 
   const taskForDetail = selectedTask;
+  const taskStepsForDetail = useMemo(() => (taskForDetail ? visibleTaskSteps(taskForDetail) : []), [taskForDetail]);
   const panelImageMap = useMemo(() => imagesByPanel(taskForDetail), [taskForDetail]);
   const previewItems = useMemo(() => succeededImages(taskForDetail), [taskForDetail]);
   const previewIndex = previewItems.findIndex((image) => image.id === previewImageId);
@@ -1144,7 +1161,7 @@ function TasksView({
 
               <section className="progress-panel">
                 <div>
-                  <strong>{taskForDetail.current_step ? stepLabels[taskForDetail.current_step] ?? taskForDetail.current_step : "等待任务"}</strong>
+                  <strong>{currentStepLabel(taskForDetail)}</strong>
                   <span>{taskProgress(taskForDetail)}%</span>
                 </div>
                 <div className="progress-line large">
@@ -1152,9 +1169,9 @@ function TasksView({
                 </div>
               </section>
 
-              {taskForDetail.steps.length > 0 ? (
+              {taskStepsForDetail.length > 0 ? (
                 <section className="step-strip">
-                  {taskForDetail.steps.map((step) => (
+                  {taskStepsForDetail.map((step) => (
                     <div key={step.id} className={`step-chip ${step.status}`}>
                       {step.status === "succeeded" ? <CheckCircle2 size={17} /> : null}
                       {step.status === "running" ? <Loader2 size={17} className="spin" /> : null}
