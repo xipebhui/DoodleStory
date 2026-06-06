@@ -1533,7 +1533,6 @@ function ContentExtractionView({ user }: { user: User }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [extracting, setExtracting] = useState(false);
-  const [summarizing, setSummarizing] = useState(false);
   const [mediaExpanded, setMediaExpanded] = useState(false);
   const [previewMediaId, setPreviewMediaId] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -1553,9 +1552,8 @@ function ContentExtractionView({ user }: { user: User }) {
   const visibleMedia = mediaExpanded ? sourceMedia : sourceMedia.slice(0, 3);
   const previewIndex = imageMedia.findIndex((item) => item.id === previewMediaId);
   const previewMedia = previewIndex >= 0 ? imageMedia[previewIndex] : null;
-  const isGallery = current?.media_type === "gallery" || sourceMedia.some((item) => item.media_kind === "image");
+  const isGallery = current?.media_type === "gallery" || imageMedia.length > 0;
   const isVideo = current?.media_type === "video" || sourceMedia.some((item) => item.media_kind === "video");
-  const hasStorySummary = Boolean(current?.story_content || current?.story_highlight || current?.target_audience);
   const currentProcessing = current?.processing_status === "processing";
   const currentFailed = current?.processing_status === "failed";
 
@@ -1633,7 +1631,7 @@ function ContentExtractionView({ user }: { user: User }) {
     }
     try {
       setProcessing(true);
-      setMessage("任务已提交，正在解析下载、逐页提取漫画内容并总结故事...");
+      setMessage("任务已提交，正在解析下载并按图片顺序提取漫画内容...");
       setCreateOpen(false);
       await api.processContentExtraction({ raw_input: value });
       setCursor(null);
@@ -1663,7 +1661,7 @@ function ContentExtractionView({ user }: { user: User }) {
     }
     try {
       setExtracting(true);
-      setMessage("正在逐页提取漫画内容，请稍候...");
+      setMessage("正在按图片顺序提交给 AI 提取漫画内容，请稍候...");
       const result = await api.extractContentText(current.id);
       setCurrent(result);
       setMessage("内容提取完成");
@@ -1672,25 +1670,6 @@ function ContentExtractionView({ user }: { user: User }) {
       setMessage(error instanceof Error ? error.message : "提取文案失败");
     } finally {
       setExtracting(false);
-    }
-  }
-
-  async function summarizeStory() {
-    if (!current) {
-      setMessage("请先打开一条内容提取记录");
-      return;
-    }
-    try {
-      setSummarizing(true);
-      setMessage("正在按图片顺序总结故事，请稍候...");
-      const result = await api.summarizeContentStory(current.id);
-      setCurrent(result);
-      setMessage("故事总结完成");
-      await refreshRecords();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "故事总结失败");
-    } finally {
-      setSummarizing(false);
     }
   }
 
@@ -1715,19 +1694,6 @@ function ContentExtractionView({ user }: { user: User }) {
     if (!current?.extracted_text) return;
     await navigator.clipboard.writeText(current.extracted_text);
     setMessage("内容提取结果已复制");
-  }
-
-  async function copyStorySummary() {
-    if (!current || !hasStorySummary) return;
-    const text = [
-      current.story_content ? `故事内容：${current.story_content}` : "",
-      current.story_highlight ? `故事爆点：${current.story_highlight}` : "",
-      current.target_audience ? `目标观众：${current.target_audience}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-    await navigator.clipboard.writeText(text);
-    setMessage("故事总结已复制");
   }
 
   function applyRecordSearch(event: React.FormEvent<HTMLFormElement>) {
@@ -1781,7 +1747,6 @@ function ContentExtractionView({ user }: { user: User }) {
   function recordStatusLabel(record: ContentExtractionSummary) {
     if (record.processing_status === "processing") return "处理中";
     if (record.processing_status === "failed") return "失败";
-    if (record.has_story_summary) return "已总结";
     if (record.has_extracted_text) return "已提取";
     return "已下载";
   }
@@ -1789,7 +1754,6 @@ function ContentExtractionView({ user }: { user: User }) {
   function recordStatusClass(record: ContentExtractionSummary) {
     if (record.processing_status === "processing") return "running";
     if (record.processing_status === "failed") return "failed";
-    if (record.has_story_summary) return "done";
     if (record.has_extracted_text) return "active";
     return "";
   }
@@ -1799,7 +1763,7 @@ function ContentExtractionView({ user }: { user: User }) {
       <header className="page-header">
         <div>
           <h1>内容提取</h1>
-          <p>列表查看历史任务，创建时一键完成解析下载、漫画内容提取和图文故事总结。</p>
+          <p>列表查看历史任务，创建时一键完成解析下载，并把图文图片按顺序提交给 AI 提取连续漫画内容。</p>
         </div>
         <div className="content-header-actions">
           <div className={`health-pill ${health?.ok ? "ok" : ""}`}>
@@ -1819,7 +1783,7 @@ function ContentExtractionView({ user }: { user: User }) {
         <form className="content-list-toolbar" onSubmit={applyRecordSearch}>
           <div className="content-search-control">
             <Search size={16} />
-            <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索链接、原始分享文本、内容提取结果或故事总结" />
+            <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索链接、原始分享文本或内容提取结果" />
           </div>
           <select value={mediaTypeFilter} onChange={(event) => { setCursor(null); setCursorStack([]); setMediaTypeFilter(event.target.value); }}>
             <option value="">全部类型</option>
@@ -1830,7 +1794,6 @@ function ContentExtractionView({ user }: { user: User }) {
             <option value="">全部结果</option>
             <option value="processing">处理中</option>
             <option value="failed">失败</option>
-            <option value="summarized">已总结</option>
             <option value="extracted">已提取</option>
             <option value="downloaded">仅下载</option>
           </select>
@@ -1872,9 +1835,9 @@ function ContentExtractionView({ user }: { user: User }) {
                     ? "正在处理，完成后可打开详情"
                     : record.processing_status === "failed"
                       ? record.processing_error_message || "处理失败"
-                      : record.story_content_preview || record.extracted_text_preview || "暂无结果摘要"}
+                      : record.extracted_text_preview || "暂无结果摘要"}
                 </strong>
-                <em>{record.story_highlight_preview || record.target_audience_preview || "打开详情查看完整内容"}</em>
+                <em>打开详情查看完整内容</em>
               </span>
               <span>{record.media_type === "pending" ? "待识别" : record.media_type === "gallery" ? "图文" : record.media_type === "video" ? "视频" : record.media_type}</span>
               <span>
@@ -1921,9 +1884,9 @@ function ContentExtractionView({ user }: { user: User }) {
               <div className="content-action-row">
                 <button type="submit" disabled={processing}>
                   {processing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                  一键解析下载并提取总结
+                  一键解析下载并提取内容
                 </button>
-                <span>下载完成后会先显示媒体；图文逐页识别漫画内容，再用 AI 总结故事。</span>
+                <span>下载完成后会先显示媒体；图文会整组按顺序提交给 AI，输出连贯的逐页内容。</span>
               </div>
             </form>
           </section>
@@ -1943,10 +1906,6 @@ function ContentExtractionView({ user }: { user: User }) {
                   {extracting ? <Loader2 size={16} className="spin" /> : <FileText size={16} />}
                   重新提取
                 </button>
-                <button type="button" className="secondary-button" disabled={currentProcessing || !isGallery || summarizing} onClick={summarizeStory}>
-                  {summarizing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                  重新总结
-                </button>
                 <button type="button" className="icon-button" aria-label="关闭详情" onClick={() => setDetailOpen(false)}>
                   <X size={18} />
                 </button>
@@ -1955,39 +1914,6 @@ function ContentExtractionView({ user }: { user: User }) {
 
             <div className="content-detail-grid">
               <section className="content-detail-main">
-                <div className="content-section-title">
-                  <h3>故事总结</h3>
-                  <button type="button" className="secondary-button" disabled={!hasStorySummary} onClick={copyStorySummary}>
-                    复制总结
-                  </button>
-                </div>
-                {hasStorySummary ? (
-                  <div className="story-summary-grid">
-                    <article>
-                      <span>故事内容</span>
-                      <p>{current.story_content || "暂无"}</p>
-                    </article>
-                    <article>
-                      <span>故事爆点</span>
-                      <p>{current.story_highlight || "暂无"}</p>
-                    </article>
-                    <article>
-                      <span>目标观众</span>
-                      <p>{current.target_audience || "暂无"}</p>
-                    </article>
-                  </div>
-                ) : (
-                  <div className="empty mini">
-                    {currentProcessing
-                      ? "任务正在处理，完成后会显示故事总结"
-                      : currentFailed
-                        ? current.processing_error_message || "任务处理失败"
-                        : isVideo
-                          ? "视频记录暂不生成故事总结"
-                          : "暂无故事总结"}
-                  </div>
-                )}
-
                 <div className="content-section-title">
                   <h3>内容提取</h3>
                   <button type="button" className="secondary-button" disabled={!current.extracted_text} onClick={copyExtractedText}>

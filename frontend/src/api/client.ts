@@ -431,8 +431,4 @@ export const api = {
     request<ApiData<ContentExtraction>>(`/content-extractions/${id}/extract`, { method: "POST" }).then(
       (result) => result.data,
     ),
-  summarizeContentStory: (id: string) =>
-    request<ApiData<ContentExtraction>>(`/content-extractions/${id}/summarize-story`, { method: "POST" }).then(
-      (result) => result.data,
-    ),
 };

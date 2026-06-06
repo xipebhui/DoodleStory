@@ -7,8 +7,8 @@
 ## 范围内
 
 - 内容提取流程增加 `content_extraction_debug` 日志前缀。
-- 内容提取 AI 交互增加 `content_extraction_ai_debug` 日志前缀，记录发送给模型的文本 prompt、图片/音频输入摘要、模型返回内容、逐页提取结果和最终整理结果。
-- 记录内容提取任务创建、抖音下载开始与结果、媒体登记、图文逐页识别、二次 LLM 整理、视频转写、故事总结、后台任务提交点和失败信息。
+- 内容提取 AI 交互增加 `content_extraction_ai_debug` 日志前缀，记录发送给模型的文本 prompt、整组图片/音频输入摘要、模型返回内容和最终提取结果。
+- 记录内容提取任务创建、抖音下载开始与结果、媒体登记、图文整组顺序提取、视频转写、后台任务提交点和失败信息。
 - 故事画图流程增加 `story_drawing_debug` 日志前缀。
 - 记录生成任务开始、故事方案规划、完整故事分段、风格参考图准备、人物识别、人物参考图生成、panel prompt 采纳、final prompt 准备、图片 Provider 请求、单图成功/失败和任务完成。
 - 日志使用现有 Python logging 输出到 `backend/logs/local-backend.log`，不新增环境变量、不新增数据库字段。

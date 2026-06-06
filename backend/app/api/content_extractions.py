@@ -1,7 +1,6 @@
 import logging
 import mimetypes
 import re
-from datetime import datetime
 from pathlib import Path
 from time import monotonic
 
@@ -31,9 +30,7 @@ from app.services.douyin_import_service import (
 from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError
 from app.services.media_text_extraction import (
     MAX_CONTENT_EXTRACTION_IMAGES,
-    extract_image_text,
-    normalize_comic_extraction_text,
-    summarize_images_story,
+    extract_ordered_gallery_comic_content,
     transcribe_video_audio,
 )
 from app.services.storage import save_binary_file
@@ -378,61 +375,36 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}",
                 )
-            parts: list[str] = []
-            for page_number, media in enumerate(image_media, start=1):
-                asset = media.asset
-                image_path = source_media_path(media)
-                page_started = monotonic()
-                logger.info(
-                    "content_extraction_debug comic_page_extract_start content_id=%s media_id=%s page_number=%s source_path=%s content_type=%s byte_size=%s",
-                    content.id,
-                    media.id,
-                    page_number,
-                    image_path,
-                    asset.content_type,
-                    asset.byte_size,
-                )
-                result = extract_image_text(image_path, asset.content_type, page_number=page_number)
-                media.extracted_text = result.text
-                logger.info(
-                    "content_extraction_debug comic_page_extract_done content_id=%s media_id=%s page_number=%s model=%s text_chars=%s elapsed_ms=%s",
-                    content.id,
-                    media.id,
-                    page_number,
-                    result.model,
-                    len(result.text),
-                    round((monotonic() - page_started) * 1000),
-                )
-                logger.info(
-                    "content_extraction_ai_debug comic_page_saved content_id=%s media_id=%s page_number=%s extracted_text=%s",
-                    content.id,
-                    media.id,
-                    page_number,
-                    result.text,
-                )
-                if result.text.strip():
-                    parts.append(result.text.strip())
-            raw_pages_text = "\n\n".join(parts)
+            images = [
+                (source_media_path(media), media.asset.content_type)
+                for media in image_media
+            ]
             logger.info(
-                "content_extraction_debug comic_normalize_start content_id=%s page_count=%s raw_text_chars=%s",
+                "content_extraction_debug ordered_gallery_extract_start content_id=%s image_count=%s source_paths=%s",
                 content.id,
-                len(image_media),
-                len(raw_pages_text),
+                len(images),
+                [str(path) for path, _content_type in images],
             )
-            normalized = normalize_comic_extraction_text(raw_pages_text)
-            content.extracted_text = normalized.text
+            result = extract_ordered_gallery_comic_content(images)
+            content.extracted_text = result.text
+            content.story_content = None
+            content.story_highlight = None
+            content.target_audience = None
+            content.story_summary_model = None
+            content.story_summarized_at = None
             logger.info(
-                "content_extraction_debug comic_normalize_done content_id=%s model=%s final_text_chars=%s elapsed_ms=%s",
+                "content_extraction_debug ordered_gallery_extract_done content_id=%s model=%s image_count=%s final_text_chars=%s elapsed_ms=%s",
                 content.id,
-                normalized.model,
-                len(normalized.text),
+                result.model,
+                len(images),
+                len(result.text),
                 round((monotonic() - started) * 1000),
             )
             logger.info(
                 "content_extraction_ai_debug final_extracted_text content_id=%s model=%s extracted_text=%s",
                 content.id,
-                normalized.model,
-                normalized.text,
+                result.model,
+                result.text,
             )
     except HTTPException:
         raise
@@ -449,52 +421,16 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
 
 
 def apply_content_story_summary(content: ContentExtraction, *, skip_video: bool = False) -> None:
-    started = monotonic()
     image_media, video_media = media_by_kind(content)
     logger.info(
-        "content_extraction_debug story_summary_start content_id=%s media_type=%s image_count=%s video_count=%s skip_video=%s",
+        "content_extraction_debug story_summary_replaced content_id=%s media_type=%s image_count=%s video_count=%s skip_video=%s",
         content.id,
         content.media_type,
         len(image_media),
         len(video_media),
         skip_video,
     )
-    if content.media_type == "video" or (video_media and not image_media):
-        if skip_video:
-            logger.info("content_extraction_debug story_summary_skipped_video content_id=%s", content.id)
-            return
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="故事总结仅支持图文图片")
-    if not image_media:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="没有可总结的图文图片")
-    if len(image_media) > MAX_CONTENT_EXTRACTION_IMAGES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}",
-        )
-
-    try:
-        images = [
-            (source_media_path(media), media.asset.content_type)
-            for media in image_media
-        ]
-        summary = summarize_images_story(images)
-    except (LLMConfigError, LLMProviderError, LLMResponseError) as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-
-    content.story_content = summary.story_content
-    content.story_highlight = summary.story_highlight
-    content.target_audience = summary.target_audience
-    content.story_summary_model = summary.model
-    content.story_summarized_at = datetime.utcnow()
-    logger.info(
-        "content_extraction_debug story_summary_done content_id=%s model=%s story_content_chars=%s story_highlight_chars=%s target_audience_chars=%s elapsed_ms=%s",
-        content.id,
-        summary.model,
-        len(summary.story_content),
-        len(summary.story_highlight),
-        len(summary.target_audience),
-        round((monotonic() - started) * 1000),
-    )
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="故事总结步骤已被整组图片内容提取替代")
 
 
 def run_content_extraction_processing(content_id: str) -> None:
@@ -519,7 +455,6 @@ def run_content_extraction_processing(content_id: str) -> None:
             db.commit()
             logger.info("content_extraction_debug background_step_committed content_id=%s step=text_extraction", content_id)
             content = load_content_extraction(db, content_id)
-            apply_content_story_summary(content, skip_video=True)
             content.processing_status = "succeeded"
             content.processing_error_message = None
             db.commit()
