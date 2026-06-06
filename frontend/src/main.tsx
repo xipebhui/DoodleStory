@@ -1240,6 +1240,7 @@ function TasksView({
                     const canEditPanel = Boolean(panel.generated_prompt) && !activeVersion;
                     const imageText = imageTextSummary(image?.image_text_json ?? panel.image_text_json);
                     const textLayout = image?.text_layout ?? panel.text_layout;
+                    const currentImageIsUserEdit = image?.source_type === "user_edit";
                     return (
                       <article key={panel.id} className="panel-card">
                         <div className="poster">
@@ -1268,8 +1269,8 @@ function TasksView({
                           </small>
                         ) : null}
                         {image?.image_prompt || panel.generated_prompt ? <small>{image?.image_prompt ?? panel.generated_prompt}</small> : null}
-                        {image?.user_instruction ? <small>修改方向：{image.user_instruction}</small> : null}
-                        {image?.prompt_change_summary ? <small>修改摘要：{image.prompt_change_summary}</small> : null}
+                        {currentImageIsUserEdit && image?.user_instruction ? <small>修改方向：{image.user_instruction}</small> : null}
+                        {currentImageIsUserEdit && image?.prompt_change_summary ? <small>修改摘要：{image.prompt_change_summary}</small> : null}
                         {image?.error_message ? <small className="error">{image.error_message}</small> : null}
                         <div className="panel-edit-box">
                           <textarea
@@ -1292,14 +1293,19 @@ function TasksView({
                         </div>
                         {versions.length > 0 ? (
                           <div className="panel-version-list">
-                            {versions.slice(0, 4).map((version) => (
-                              <div key={version.id} className={`panel-version-item ${version.status}`}>
-                                <span>v{version.generation_number}</span>
-                                <strong>{imageSourceLabel(version.source_type)}</strong>
-                                <em>{imageWorkflowLabel(version.workflow_step)}</em>
-                                <small>{imageStatusLabel(version.status)}{version.is_current ? " · 当前" : ""}</small>
-                              </div>
-                            ))}
+                            {versions.slice(0, 4).map((version) => {
+                              const versionIsUserEdit = version.source_type === "user_edit";
+                              return (
+                                <div key={version.id} className={`panel-version-item ${version.status}`}>
+                                  <span>v{version.generation_number}</span>
+                                  <strong>{imageSourceLabel(version.source_type)}</strong>
+                                  <em>{imageWorkflowLabel(version.workflow_step)}</em>
+                                  <small>{imageStatusLabel(version.status)}{version.is_current ? " · 当前" : ""}</small>
+                                  {versionIsUserEdit && version.user_instruction ? <small>修改方向：{version.user_instruction}</small> : null}
+                                  {versionIsUserEdit && version.prompt_change_summary ? <small>修改摘要：{version.prompt_change_summary}</small> : null}
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : null}
                       </article>
