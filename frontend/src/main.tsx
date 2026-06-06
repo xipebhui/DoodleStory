@@ -82,8 +82,11 @@ type ImageTextPayload = {
   title?: string | null;
   narration?: string | null;
   dialogue?: string | null;
+  inner_os?: string | null;
   emphasis?: string | null;
 };
+
+const CONTENT_EXTRACTION_TASK_DRAFT_KEY = "doodlestory.contentExtractionTaskDraft";
 
 function parseImageText(value: string | null | undefined): ImageTextPayload | null {
   if (!value) return null;
@@ -102,6 +105,7 @@ function imageTextSummary(value: string | null | undefined) {
     parsed.title ? `标题：${parsed.title}` : "",
     parsed.narration ? `旁白：${parsed.narration}` : "",
     parsed.dialogue ? `对白：${parsed.dialogue}` : "",
+    parsed.inner_os ? `内心OS：${parsed.inner_os}` : "",
     parsed.emphasis ? `强调：${parsed.emphasis}` : "",
   ]
     .filter(Boolean)
@@ -244,7 +248,7 @@ function App() {
   return (
     <Shell user={user} view={view} onNavigate={navigateToView} onLogout={() => setUser(null)}>
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
-      {view === "content" ? <ContentExtractionView user={user} /> : null}
+      {view === "content" ? <ContentExtractionView user={user} onNavigatePath={navigateToPath} /> : null}
       {view === "styles" ? <StylesView user={user} /> : null}
       {view === "settings" ? <SettingsView user={user} onLogout={() => setUser(null)} /> : null}
     </Shell>
@@ -409,7 +413,7 @@ const taskStatusOptions: Array<{ value: Task["status"] | "all"; label: string }>
 ];
 
 const stepLabels: Record<string, string> = {
-  adapt_story: "故事增强",
+  adapt_story: "分镜规划",
   segment_story: "故事切分",
   extract_characters: "人物识别",
   generate_character_references: "人物参考图",
@@ -420,6 +424,12 @@ const stepLabels: Record<string, string> = {
 
 function taskStatusLabel(status: Task["status"]) {
   return taskStatusOptions.find((item) => item.value === status)?.label ?? status;
+}
+
+function storyInputModeLabel(mode: Task["story_input_mode"]) {
+  if (mode === "adapted") return "故事方案";
+  if (mode === "extracted_storyboard") return "提取分镜";
+  return "完整故事";
 }
 
 function imageStatusLabel(status: string) {
@@ -555,7 +565,8 @@ function TasksView({
   const [creating, setCreating] = useState(false);
   const [createStyleId, setCreateStyleId] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
-  const [storyInputMode, setStoryInputMode] = useState<"original" | "adapted">("original");
+  const [storyInputMode, setStoryInputMode] = useState<Task["story_input_mode"]>("original");
+  const [createOriginalText, setCreateOriginalText] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -672,6 +683,24 @@ function TasksView({
   }, [createOpen, createStyleId, styles]);
 
   useEffect(() => {
+    const rawDraft = window.sessionStorage.getItem(CONTENT_EXTRACTION_TASK_DRAFT_KEY);
+    if (!rawDraft) return;
+    window.sessionStorage.removeItem(CONTENT_EXTRACTION_TASK_DRAFT_KEY);
+    try {
+      const draft = JSON.parse(rawDraft) as { original_text?: string };
+      if (draft.original_text?.trim()) {
+        setCreateOriginalText(draft.original_text);
+        setStoryInputMode("extracted_storyboard");
+        setCountMode("auto");
+        setCreateOpen(true);
+        setMessage("已从内容提取带入提取分镜任务");
+      }
+    } catch {
+      setMessage("内容提取任务草稿读取失败");
+    }
+  }, []);
+
+  useEffect(() => {
     if (!createOpen) return;
     function handleKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -773,24 +802,28 @@ function TasksView({
 
   async function createTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
     const formData = new FormData(event.currentTarget);
     const requested = Number(formData.get("requested_image_count"));
+    const originalText = createOriginalText.trim();
     if (!createStyleId) {
       setMessage("请选择一个风格");
+      return;
+    }
+    if (!originalText) {
+      setMessage("请输入任务内容");
       return;
     }
     try {
       setCreating(true);
       const task = await api.createTask({
-        original_text: String(formData.get("original_text") ?? ""),
+        original_text: originalText,
         story_input_mode: storyInputMode,
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
         use_character_references: formData.get("use_character_references") === "on",
       });
-      form.reset();
+      setCreateOriginalText("");
       setCountMode("auto");
       setStoryInputMode("original");
       setCreateStyleId(styles[0]?.id ?? "");
@@ -1017,7 +1050,7 @@ function TasksView({
                   <div className="task-style-cell">
                     <strong>{task.style_name_snapshot}</strong>
                     <small>
-                      {task.story_input_mode === "adapted" ? "故事增强" : "完整故事"}
+                      {storyInputModeLabel(task.story_input_mode)}
                       {" · "}
                       {task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}
                       {" · "}
@@ -1165,12 +1198,12 @@ function TasksView({
                 <p>{taskForDetail.original_text}</p>
               </section>
 
-              {taskForDetail.story_input_mode === "adapted" ? (
+              {taskForDetail.story_input_mode !== "original" ? (
                 <section className="story-panel adapted-story-panel">
-                  <h2>增强故事</h2>
+                  <h2>{taskForDetail.story_input_mode === "extracted_storyboard" ? "提取分镜概要" : "增强故事"}</h2>
                   {taskForDetail.adapted_story_title ? <strong>{taskForDetail.adapted_story_title}</strong> : null}
                   {taskForDetail.adapted_story_hook ? <small>{taskForDetail.adapted_story_hook}</small> : null}
-                  <p>{taskForDetail.adapted_story_text ?? "等待 LLM 故事增强"}</p>
+                  <p>{taskForDetail.adapted_story_text ?? (taskForDetail.story_input_mode === "extracted_storyboard" ? "等待内容提取分镜结构化" : "等待 LLM 故事增强")}</p>
                 </section>
               ) : null}
 
@@ -1300,14 +1333,27 @@ function TasksView({
                   <strong>故事方案</strong>
                   <span>可以提交故事设计、人物设定、画面要求或简化想法，系统会规划封面和分镜。</span>
                 </button>
+                <button
+                  type="button"
+                  className={storyInputMode === "extracted_storyboard" ? "mode-choice active" : "mode-choice"}
+                  aria-pressed={storyInputMode === "extracted_storyboard"}
+                  onClick={() => setStoryInputMode("extracted_storyboard")}
+                >
+                  <strong>提取分镜</strong>
+                  <span>适合从内容提取结果直接生图，保留页序、旁白、对白、内心 OS 和分格布局。</span>
+                </button>
               </div>
               <label>
-                {storyInputMode === "adapted" ? "故事方案或要求" : "完整故事正文"}
+                {storyInputMode === "adapted" ? "故事方案或要求" : storyInputMode === "extracted_storyboard" ? "提取分镜内容" : "完整故事正文"}
                 <textarea
                   name="original_text"
+                  value={createOriginalText}
+                  onChange={(event) => setCreateOriginalText(event.target.value)}
                   placeholder={
                     storyInputMode === "adapted"
                       ? "输入故事设定、简短梗概、人物关系、画面要求或其他创作方向"
+                      : storyInputMode === "extracted_storyboard"
+                        ? "粘贴或编辑内容提取结果，例如第1页、第2页、画面、旁白、对话、内心OS和分格信息"
                       : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
                   }
                   required
@@ -1315,6 +1361,8 @@ function TasksView({
                 />
                 {storyInputMode === "adapted" ? (
                   <small>原始输入会保留，系统会直接根据方案规划图文分镜并自动生成封面。</small>
+                ) : storyInputMode === "extracted_storyboard" ? (
+                  <small>系统只做分镜结构化，不扩写、不总结、不合并页；会把旁白、对白和内心 OS 区分成不同画面呈现形式。</small>
                 ) : (
                   <small>完整故事模式会保持文本不变，所有 panel 拼接后必须逐字等于你提交的故事正文。</small>
                 )}
@@ -1341,6 +1389,7 @@ function TasksView({
                     图片数量
                     <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
                     {storyInputMode === "adapted" ? <small>固定数量包含封面，例如 8 张 = 1 张封面 + 7 张剧情图。</small> : null}
+                    {storyInputMode === "extracted_storyboard" ? <small>固定数量必须和提取分镜页数一致，不会自动合并或补页。</small> : null}
                   </label>
                 ) : (
                   <p className="field-hint">系统会根据故事长度和内容密度决定图片张数。</p>
@@ -1517,7 +1566,13 @@ function TasksView({
   );
 }
 
-function ContentExtractionView({ user }: { user: User }) {
+function ContentExtractionView({
+  user,
+  onNavigatePath,
+}: {
+  user: User;
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
+}) {
   const [rawInput, setRawInput] = useState("");
   const [current, setCurrent] = useState<ContentExtraction | null>(null);
   const [records, setRecords] = useState<ContentExtractionSummary[]>([]);
@@ -1694,6 +1749,21 @@ function ContentExtractionView({ user }: { user: User }) {
     if (!current?.extracted_text) return;
     await navigator.clipboard.writeText(current.extracted_text);
     setMessage("内容提取结果已复制");
+  }
+
+  function submitExtractedAsTask() {
+    if (!current?.extracted_text?.trim()) {
+      setMessage("暂无内容提取结果可提交");
+      return;
+    }
+    window.sessionStorage.setItem(
+      CONTENT_EXTRACTION_TASK_DRAFT_KEY,
+      JSON.stringify({
+        content_extraction_id: current.id,
+        original_text: current.extracted_text,
+      }),
+    );
+    onNavigatePath(viewRoutes.tasks);
   }
 
   function applyRecordSearch(event: React.FormEvent<HTMLFormElement>) {
@@ -1916,9 +1986,15 @@ function ContentExtractionView({ user }: { user: User }) {
               <section className="content-detail-main">
                 <div className="content-section-title">
                   <h3>内容提取</h3>
-                  <button type="button" className="secondary-button" disabled={!current.extracted_text} onClick={copyExtractedText}>
-                    复制内容
-                  </button>
+                  <div className="content-detail-actions">
+                    <button type="button" className="secondary-button" disabled={!current.extracted_text} onClick={copyExtractedText}>
+                      复制内容
+                    </button>
+                    <button type="button" disabled={!current.extracted_text} onClick={submitExtractedAsTask}>
+                      <Plus size={16} />
+                      提交任务
+                    </button>
+                  </div>
                 </div>
                 <div className="extracted-text-box detail">
                   {current.extracted_text ? (

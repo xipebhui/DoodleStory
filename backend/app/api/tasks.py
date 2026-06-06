@@ -206,7 +206,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
     db.add(task)
     db.flush()
     step_names = []
-    if payload.story_input_mode == StoryInputMode.adapted:
+    if payload.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
         step_names.append(GenerationStepName.adapt_story)
     step_names.append(GenerationStepName.segment_story)
     if payload.use_character_references:

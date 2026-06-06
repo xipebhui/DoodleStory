@@ -52,6 +52,7 @@ class ImageTextPlan(BaseModel):
     title: str | None = None
     narration: str | None = None
     dialogue: str | None = None
+    inner_os: str | None = None
     emphasis: str | None = None
 
 
@@ -733,6 +734,84 @@ def plan_storyboard_from_brief(
     log_prompt_trace(
         logger,
         "storyboard_planning_result",
+        context=trace_context or {},
+        image_count_mode=image_count_mode.value,
+        requested_image_count=requested_image_count,
+        story_title=result.story_title,
+        story_hook=result.story_hook,
+        story_outline=result.story_outline,
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
+    )
+    return result
+
+
+def parse_extracted_storyboard(
+    *,
+    extracted_text: str,
+    style_prompt: str,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+    trace_context: dict[str, Any] | None = None,
+) -> StoryboardPlanningResult:
+    if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
+        raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
+
+    system_prompt = system_prompt_with_style(read_prompt("parse_extracted_storyboard_v1.md"), style_prompt)
+    count_instruction = (
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels；如果输入页数不匹配，必须明确失败，不要合并或补页。"
+        if image_count_mode == ImageCountMode.fixed
+        else "图片数量：自动判断。默认按输入中的第X页逐页输出 panels，不新增封面。"
+    )
+    user_prompt = json.dumps(
+        {
+            "count_instruction": count_instruction,
+            "extracted_text": extracted_text,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="parse_extracted_storyboard_v1.md",
+        trace_context={**(trace_context or {}), "operation": "parse_extracted_storyboard"},
+    )
+    try:
+        result = StoryboardPlanningResult.model_validate(raw)
+    except ValidationError as exc:
+        logger.warning(
+            "extracted storyboard validation failed errors=%s raw_keys=%s",
+            exc.errors(),
+            sorted(raw.keys()),
+        )
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="parse_extracted_storyboard_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        first_error = exc.errors()[0] if exc.errors() else {}
+        location = ".".join(str(item) for item in first_error.get("loc", []))
+        message = first_error.get("msg", "未知结构错误")
+        raise LLMResponseError(f"LLM 内容提取分镜 JSON 结构不符合要求：{location} {message}") from exc
+
+    ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
+    if any(panel.panel_type == PanelType.cover for panel in result.panels):
+        raise LLMResponseError("内容提取分镜模式不应自动生成封面 panel")
+    if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
+        raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
+    logger.info(
+        "extracted storyboard parsing succeeded image_count_mode=%s requested_image_count=%s panel_count=%s title=%s",
+        image_count_mode.value,
+        requested_image_count,
+        len(result.panels),
+        result.story_title,
+    )
+    log_prompt_trace(
+        logger,
+        "extracted_storyboard_parse_result",
         context=trace_context or {},
         image_count_mode=image_count_mode.value,
         requested_image_count=requested_image_count,

@@ -42,6 +42,7 @@ class ImageCountMode(StrEnum):
 class StoryInputMode(StrEnum):
     original = "original"
     adapted = "adapted"
+    extracted_storyboard = "extracted_storyboard"
 
 
 class PanelType(StrEnum):

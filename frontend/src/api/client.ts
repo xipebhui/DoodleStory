@@ -62,7 +62,7 @@ export type Task = {
   owner_user_id: string;
   display_title: string;
   original_text: string;
-  story_input_mode: "original" | "adapted";
+  story_input_mode: "original" | "adapted" | "extracted_storyboard";
   adapted_story_title: string | null;
   adapted_story_hook: string | null;
   adapted_story_text: string | null;
@@ -380,7 +380,7 @@ export const api = {
   task: (id: string) => request<ApiData<Task>>(`/tasks/${id}`).then((result) => result.data),
   createTask: (payload: {
     original_text: string;
-    story_input_mode?: "original" | "adapted";
+    story_input_mode?: Task["story_input_mode"];
     image_count_mode: "auto" | "fixed";
     requested_image_count?: number | null;
     style_id: string;

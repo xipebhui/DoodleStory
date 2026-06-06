@@ -61,6 +61,7 @@ from app.services.llm import (
     generate_panel_prompts,
     generate_panel_prompts_with_characters,
     ImageTextPlan,
+    parse_extracted_storyboard,
     plan_storyboard_from_brief,
     revise_panel_prompt,
     segment_story,
@@ -355,7 +356,7 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
 
 def task_progress_total(task: GenerationTask) -> int:
     total = 3
-    if task.story_input_mode == StoryInputMode.adapted:
+    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
         total += 1
     if task.use_character_references:
         total += 2
@@ -381,18 +382,21 @@ def panel_story_segments(task: GenerationTask) -> list[StorySegment]:
 def story_text_for_generation(task: GenerationTask) -> str:
     if task.story_input_mode == StoryInputMode.adapted and task.adapted_story_text:
         return f"用户原始方案：\n{task.original_text}\n\n图文分镜概要：\n{task.adapted_story_text}"
+    if task.story_input_mode == StoryInputMode.extracted_storyboard and task.adapted_story_text:
+        return f"内容提取原文：\n{task.original_text}\n\n提取分镜概要：\n{task.adapted_story_text}"
     return task.original_text
 
 
 def image_text_to_dict(image_text: ImageTextPlan | dict[str, str | None] | None) -> dict[str, str | None]:
     if image_text is None:
-        return {"title": None, "narration": None, "dialogue": None, "emphasis": None}
+        return {"title": None, "narration": None, "dialogue": None, "inner_os": None, "emphasis": None}
     if isinstance(image_text, ImageTextPlan):
         return image_text.model_dump()
     return {
         "title": image_text.get("title"),
         "narration": image_text.get("narration"),
         "dialogue": image_text.get("dialogue"),
+        "inner_os": image_text.get("inner_os"),
         "emphasis": image_text.get("emphasis"),
     }
 
@@ -411,6 +415,7 @@ def parse_image_text_json(value: str | None) -> dict[str, str | None] | None:
         "title": parsed.get("title"),
         "narration": parsed.get("narration"),
         "dialogue": parsed.get("dialogue"),
+        "inner_os": parsed.get("inner_os"),
         "emphasis": parsed.get("emphasis"),
     }
 
@@ -420,10 +425,16 @@ def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None, p
     lines = []
     title = values.get("title")
     narration = values.get("narration")
+    inner_os = values.get("inner_os")
+    emphasis = values.get("emphasis")
     if title:
-        lines.append(f"「{title.strip()}」")
+        lines.append(f"标题：「{title.strip()}」")
     if narration:
-        lines.append(f"「{narration.strip()}」")
+        lines.append(f"旁白：「{narration.strip()}」")
+    if inner_os:
+        lines.append(f"内心OS：「{inner_os.strip()}」")
+    if emphasis:
+        lines.append(f"强调：「{emphasis.strip()}」")
     return "\n".join(lines)
 
 
@@ -468,12 +479,16 @@ def visual_prompt_has_dialogue(visual_prompt: str) -> bool:
 
 def text_rules_block(visual_prompt: str, image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
     common_rule = "不要添加指定文字之外的任何文字、Logo 或水印。"
+    values = image_text_to_dict(image_text)
+    rules = ["所有图片内文字必须字号偏大、清晰可读，不能挤压变形，优先保证文字可读性。"]
+    if values.get("narration"):
+        rules.append("旁白必须用漫画旁白框或字幕框呈现，放在画面上方、下方或格子边缘，不要画成对白气泡。")
     if dialogue_block(image_text) or visual_prompt_has_dialogue(visual_prompt):
-        return (
-            "画面里的对白要自然出现在对应人物附近的气泡中，气泡里只写人物说出的句子，"
-            f"不写说话人名字和冒号。{common_rule}"
-        )
-    return common_rule
+        rules.append("对白必须出现在对应人物附近的对白气泡中，气泡尾巴指向说话人物；气泡里只写人物说出的句子，不写说话人名字和冒号。")
+    if values.get("inner_os"):
+        rules.append("内心OS必须用思想气泡、虚线气泡或半透明心理独白框呈现，明显区别于对白，不能画成说出口的台词。")
+    rules.append(common_rule)
+    return "".join(rules)
 
 
 def split_dialogue_speaker(line: str) -> tuple[str | None, str | None]:
@@ -534,6 +549,7 @@ def build_adapted_story_final_prompt(
     panel_type: PanelType = PanelType.scene,
     image_text: ImageTextPlan | dict[str, str | None] | None = None,
     reference_notes: list[str] | None = None,
+    text_layout: str | None = None,
 ) -> str:
     lines = [
         "参考：",
@@ -547,12 +563,20 @@ def build_adapted_story_final_prompt(
         "画面：",
         visual_prompt.strip(),
     ]
+    if text_layout:
+        lines.extend(
+            [
+                "",
+                "分格/多栏布局：",
+                text_layout.strip(),
+            ]
+        )
     image_text_lines = image_text_block(image_text, panel_type)
     if image_text_lines:
         lines.extend(
             [
                 "",
-                "需要写入图片的文字只包括以下内容，不要写字段名或标签：",
+                "需要写入图片的文字和表现形式如下；只把引号内文字画进图片，冒号前的类型说明不要画进图片：",
                 image_text_lines,
             ]
         )
@@ -583,6 +607,7 @@ def build_panel_final_prompt(
         panel_type=panel.panel_type,
         image_text=image_text,
         reference_notes=reference_notes,
+        text_layout=panel.text_layout,
     )
 
 
@@ -642,7 +667,7 @@ def process_task(task_id: str) -> None:
         task.progress_total = task_progress_total(task)
         db.commit()
 
-        if task.story_input_mode == StoryInputMode.adapted:
+        if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
             if task.adapted_story_text and task.panels and all(panel.generated_prompt for panel in task.panels):
                 task.progress_current = max(task.progress_current, 1)
                 set_step(db, task, GenerationStepName.adapt_story, StepStatus.succeeded)
@@ -652,19 +677,29 @@ def process_task(task_id: str) -> None:
                     set_step(db, task, GenerationStepName.adapt_story, StepStatus.running)
                     step_started = monotonic()
                     logger.info(
-                        "story_drawing_debug storyboard_start task_id=%s requested_image_count=%s image_count_mode=%s brief_chars=%s",
+                        "story_drawing_debug storyboard_start task_id=%s story_input_mode=%s requested_image_count=%s image_count_mode=%s brief_chars=%s",
                         task.id,
+                        task.story_input_mode.value,
                         task.requested_image_count,
                         task.image_count_mode.value,
                         len(task.original_text or ""),
                     )
-                    storyboard = plan_storyboard_from_brief(
-                        brief_text=task.original_text,
-                        style_prompt=task.style_prompt_snapshot,
-                        image_count_mode=task.image_count_mode,
-                        requested_image_count=task.requested_image_count,
-                        trace_context=task_trace_context(task, "adapt_story"),
-                    )
+                    if task.story_input_mode == StoryInputMode.extracted_storyboard:
+                        storyboard = parse_extracted_storyboard(
+                            extracted_text=task.original_text,
+                            style_prompt=task.style_prompt_snapshot,
+                            image_count_mode=task.image_count_mode,
+                            requested_image_count=task.requested_image_count,
+                            trace_context=task_trace_context(task, "adapt_story"),
+                        )
+                    else:
+                        storyboard = plan_storyboard_from_brief(
+                            brief_text=task.original_text,
+                            style_prompt=task.style_prompt_snapshot,
+                            image_count_mode=task.image_count_mode,
+                            requested_image_count=task.requested_image_count,
+                            trace_context=task_trace_context(task, "adapt_story"),
+                        )
                     task.adapted_story_title = storyboard.story_title
                     task.adapted_story_hook = storyboard.story_hook
                     task.adapted_story_text = storyboard.story_outline
@@ -710,14 +745,17 @@ def process_task(task_id: str) -> None:
 
         existing_panels = sorted(task.panels, key=lambda item: item.panel_order)
         if existing_panels:
-            task.progress_current = max(task.progress_current, 2 if task.story_input_mode == StoryInputMode.adapted else 1)
+            task.progress_current = max(
+                task.progress_current,
+                2 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 1,
+            )
             set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
             logger.info("story_drawing_debug segmentation_skipped task_id=%s existing_panel_count=%s", task.id, len(existing_panels))
         else:
             try:
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.running)
-                if task.story_input_mode == StoryInputMode.adapted:
-                    raise LLMResponseError("故事方案模式应在方案规划步骤生成 panels")
+                if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+                    raise LLMResponseError("当前输入模式应在分镜规划步骤生成 panels")
                 step_started = monotonic()
                 logger.info(
                     "story_drawing_debug segmentation_start task_id=%s original_text_chars=%s image_count_mode=%s requested_image_count=%s",
@@ -746,12 +784,13 @@ def process_task(task_id: str) -> None:
                                     "title": None,
                                     "narration": panel.text,
                                     "dialogue": None,
+                                    "inner_os": None,
                                     "emphasis": None,
                                 }
                             ),
                         )
                     )
-                task.progress_current = 2 if task.story_input_mode == StoryInputMode.adapted else 1
+                task.progress_current = 2 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 1
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
                 logger.info(
                     "story_drawing_debug segmentation_done task_id=%s panel_count=%s elapsed_ms=%s",
@@ -797,7 +836,10 @@ def process_task(task_id: str) -> None:
         if task.use_character_references:
             characters = load_task_characters(db, task.id)
             if characters:
-                task.progress_current = max(task.progress_current, 3 if task.story_input_mode == StoryInputMode.adapted else 2)
+                task.progress_current = max(
+                    task.progress_current,
+                    3 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 2,
+                )
                 set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                 logger.info("story_drawing_debug character_extraction_skipped task_id=%s character_count=%s", task.id, len(characters))
             else:
@@ -819,7 +861,7 @@ def process_task(task_id: str) -> None:
                     if not character_result.characters:
                         raise LLMResponseError("未识别到可用于参考图的主要人物")
                     persist_character_plans(db, task, character_result.characters)
-                    if task.story_input_mode == StoryInputMode.adapted:
+                    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
                         task = load_task(db, task_id)
                         if task is None:
                             return
@@ -828,7 +870,7 @@ def process_task(task_id: str) -> None:
                             task=task,
                             character_plans=character_result.characters,
                         )
-                    task.progress_current = 3 if task.story_input_mode == StoryInputMode.adapted else 2
+                    task.progress_current = 3 if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard} else 2
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                     logger.info(
                         "story_drawing_debug character_extraction_done task_id=%s character_count=%s appearance_count=%s elapsed_ms=%s",
@@ -860,7 +902,7 @@ def process_task(task_id: str) -> None:
                     style_reference_paths=style_reference_paths,
                 )
                 task.progress_current = 3
-                if task.story_input_mode == StoryInputMode.adapted:
+                if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
                     task.progress_current = 4
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
                 logger.info(
@@ -926,6 +968,7 @@ def process_task(task_id: str) -> None:
                                 "title": None,
                                 "narration": panel.original_text_segment,
                                 "dialogue": None,
+                                "inner_os": None,
                                 "emphasis": None,
                             }
                         )
@@ -1050,6 +1093,7 @@ def process_task(task_id: str) -> None:
                         "title": None,
                         "narration": panel.narration_text,
                         "dialogue": panel.dialogue_text,
+                        "inner_os": None,
                         "emphasis": None,
                     },
                     reference_notes=reference_notes,
@@ -1320,6 +1364,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                         "title": None,
                         "narration": panel.original_text_segment,
                         "dialogue": None,
+                        "inner_os": None,
                         "emphasis": None,
                     }
                 )
@@ -1412,6 +1457,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                     "title": None,
                     "narration": panel.narration_text,
                     "dialogue": panel.dialogue_text,
+                    "inner_os": None,
                     "emphasis": None,
                 },
                 reference_notes=reference_notes,
@@ -1447,6 +1493,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                     "title": None,
                     "narration": panel.narration_text,
                     "dialogue": panel.dialogue_text,
+                    "inner_os": None,
                     "emphasis": None,
                 },
                 reference_notes=reference_notes,
