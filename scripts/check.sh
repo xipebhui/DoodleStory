@@ -25,6 +25,11 @@ if [ -f "$ROOT_DIR/backend/requirements.txt" ]; then
   python3.11 -m compileall "$ROOT_DIR/backend/app"
 fi
 
+if [ -d "$ROOT_DIR/backend/tests" ]; then
+  echo "[check] backend unit tests"
+  PYTHONPATH="$ROOT_DIR/backend" "$ROOT_DIR/backend/.venv/bin/python" -m unittest discover -s "$ROOT_DIR/backend/tests"
+fi
+
 if [ -x "$ROOT_DIR/backend/.venv/bin/alembic" ]; then
   echo "[check] backend alembic migration"
   tmp_dir="$(mktemp -d)"

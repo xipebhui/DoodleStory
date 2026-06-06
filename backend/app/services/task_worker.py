@@ -431,6 +431,9 @@ def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None, p
         lines.append(f"标题：「{title.strip()}」")
     if narration:
         lines.append(f"旁白：「{narration.strip()}」")
+    dialogue = values.get("dialogue")
+    if dialogue:
+        lines.append(f"对白：「{dialogue.strip()}」")
     if inner_os:
         lines.append(f"内心OS：「{inner_os.strip()}」")
     if emphasis:
