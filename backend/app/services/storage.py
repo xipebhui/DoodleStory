@@ -31,16 +31,20 @@ class QiniuConfig:
     access_key: str
     secret_key: str
     bucket: str
-    bucket_domain: str
+    public_base_url: str
+    use_https: bool
 
 
 def qiniu_config() -> QiniuConfig:
     settings = get_settings()
+    qiniu_public_base_url = settings.qiniu_bucket_domain.strip()
+    qny_public_base_url = settings.qny_public_base_url.strip() or settings.qny_domain.strip()
     return QiniuConfig(
         access_key=settings.qiniu_access_key.strip() or settings.qny_access_key.strip(),
         secret_key=settings.qiniu_secret_key.strip() or settings.qny_secret_key.strip(),
         bucket=settings.qiniu_bucket.strip() or settings.qny_bucket.strip(),
-        bucket_domain=settings.qiniu_bucket_domain.strip() or settings.qny_domain.strip(),
+        public_base_url=qiniu_public_base_url or qny_public_base_url,
+        use_https=True if qiniu_public_base_url else settings.qny_use_https,
     )
 
 
@@ -79,7 +83,7 @@ def qiniu_auth():
             "QINIU_ACCESS_KEY 或 QNY_ACCESS_KEY": config.access_key,
             "QINIU_SECRET_KEY 或 QNY_SECRET_KEY": config.secret_key,
             "QINIU_BUCKET 或 QNY_BUCKET": config.bucket,
-            "QINIU_BUCKET_DOMAIN 或 QNY_DOMAIN": config.bucket_domain,
+            "QINIU_BUCKET_DOMAIN、QNY_PUBLIC_BASE_URL 或 QNY_DOMAIN": config.public_base_url,
         }.items()
         if not value
     ]
@@ -96,12 +100,14 @@ def qiniu_auth():
 
 
 def qiniu_base_url(storage_key: str) -> str:
-    domain = qiniu_config().bucket_domain.rstrip("/")
-    if not domain:
+    config = qiniu_config()
+    public_base_url = config.public_base_url.rstrip("/")
+    if not public_base_url:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="七牛 Bucket 域名未配置")
-    if not domain.startswith(("http://", "https://")):
-        domain = f"https://{domain}"
-    return f"{domain}/{quote(storage_key, safe='/')}"
+    if not public_base_url.startswith(("http://", "https://")):
+        scheme = "https" if config.use_https else "http"
+        public_base_url = f"{scheme}://{public_base_url}"
+    return f"{public_base_url}/{quote(storage_key, safe='/')}"
 
 
 def qiniu_asset_url(storage_key: str, variant: str) -> str:

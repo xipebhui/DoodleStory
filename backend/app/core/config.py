@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     qny_access_key: str = ""
     qny_secret_key: str = ""
     qny_bucket: str = ""
+    qny_public_base_url: str = ""
+    qny_use_https: bool = True
     qny_domain: str = ""
     local_thumbnail_width: int = 320
     local_thumbnail_height: int = 568
