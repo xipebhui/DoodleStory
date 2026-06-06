@@ -481,16 +481,14 @@ def visual_prompt_has_dialogue(visual_prompt: str) -> bool:
 
 
 def text_rules_block(visual_prompt: str, image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
-    common_rule = "不要添加指定文字之外的任何文字、Logo 或水印。"
     values = image_text_to_dict(image_text)
-    rules = ["所有图片内文字必须字号偏大、清晰可读，不能挤压变形，优先保证文字可读性。"]
+    rules = ["图片内文字字号偏大、清晰可读，保留足够留白，优先保证文字可读性。"]
     if values.get("narration"):
-        rules.append("旁白必须用漫画旁白框或字幕框呈现，放在画面上方、下方或格子边缘，不要画成对白气泡。")
+        rules.append("旁白使用漫画旁白框或字幕框呈现，可放在画面上方、下方或格子边缘，并与对白气泡明确区分。")
     if dialogue_block(image_text) or visual_prompt_has_dialogue(visual_prompt):
-        rules.append("对白必须出现在对应人物附近的对白气泡中，气泡尾巴指向说话人物；气泡里只写人物说出的句子，不写说话人名字和冒号。")
+        rules.append("对白出现在对应人物附近的对白气泡中，气泡尾巴指向说话人物；气泡里呈现人物说出的句子。")
     if values.get("inner_os"):
-        rules.append("内心OS必须用思想气泡、虚线气泡或半透明心理独白框呈现，明显区别于对白，不能画成说出口的台词。")
-    rules.append(common_rule)
+        rules.append("内心OS使用思想气泡、虚线气泡或半透明心理独白框呈现，明显区别于对白。")
     return "".join(rules)
 
 
@@ -570,7 +568,7 @@ def build_adapted_story_final_prompt(
         lines.extend(
             [
                 "",
-                "需要写入图片的文字和表现形式如下；只把引号内文字画进图片，冒号前的类型说明不要画进图片：",
+                "需要写入图片的文字和表现形式如下；类型说明用于区分呈现方式，画面中呈现引号内文字：",
                 image_text_lines,
             ]
         )

@@ -24,7 +24,10 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         self.assertIn("旁白：「我急得朝他吼了一下\n他吓的哭了出来\n去喊我老婆」", final_prompt)
         self.assertIn("对白：「你个熊孩子\n别拿这个乱玩\n拿过来\n呜哇」", final_prompt)
-        self.assertIn("对白必须出现在对应人物附近的对白气泡中", final_prompt)
+        self.assertIn("对白出现在对应人物附近的对白气泡中", final_prompt)
+        self.assertNotIn("不要添加指定文字之外", final_prompt)
+        self.assertNotIn("Logo 或水印", final_prompt)
+        self.assertNotIn("不要画成对白气泡", final_prompt)
 
 
 if __name__ == "__main__":
