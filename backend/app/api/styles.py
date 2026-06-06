@@ -26,7 +26,7 @@ from app.services.image_generation import (
     generate_xg_image,
 )
 from app.services.prompt_templates import render_prompt_template
-from app.services.storage import materialize_asset_to_local, save_upload_file
+from app.services.storage import save_upload_file
 
 router = APIRouter(prefix="/styles", tags=["styles"])
 logger = logging.getLogger(__name__)
@@ -240,9 +240,6 @@ def create_style_test(
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
-    if not style.reference_images:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格测试至少需要一张参考图")
-
     composed_prompt = render_prompt_template(
         "style_test_image_prompt_v1.md",
         {
@@ -267,19 +264,19 @@ def create_style_test(
     db.commit()
     db.refresh(style_test)
     logger.info(
-        "style test started style_test_id=%s style_id=%s image_model=%s test_text_chars=%s reference_count=%s",
+        "style test started style_test_id=%s style_id=%s image_model=%s test_text_chars=%s provider_reference_count=%s preview_reference_count=%s",
         style_test.id,
         style.id,
         style.image_model_name,
         len(payload.test_text),
+        0,
         len(style.reference_images),
     )
 
     try:
-        reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         generated = generate_xg_image(
             prompt=composed_prompt,
-            reference_paths=reference_paths,
+            reference_paths=[],
             image_model_name=style.image_model_name,
             aspect_ratio=style.aspect_ratio,
         )

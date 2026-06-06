@@ -19,7 +19,6 @@ from app.models.entities import (
     GenerationStep,
     GenerationTask,
     Style,
-    StyleReferenceImage,
     TaskCharacter,
     TaskCharacterAppearance,
     TaskPanel,
@@ -67,7 +66,6 @@ from app.services.llm import (
     segment_story,
 )
 from app.services.prompt_logging import log_prompt_trace
-from app.services.storage import materialize_asset_to_local
 
 _queue: asyncio.Queue[str] | None = None
 _worker_tasks: list[asyncio.Task[None]] = []
@@ -511,15 +509,6 @@ def reference_notes_block(reference_notes: list[str] | None) -> str:
     return "\n".join(reference_notes)
 
 
-def style_reference_notes(start_index: int, reference_count: int) -> list[str]:
-    if reference_count <= 0:
-        return []
-    end_index = start_index + reference_count - 1
-    if start_index == end_index:
-        return [f"风格参考（参考图{start_index}）"]
-    return [f"风格参考（参考图{start_index}-{end_index}）"]
-
-
 def build_original_story_final_prompt(
     aspect_ratio: str,
     visual_prompt: str,
@@ -816,28 +805,23 @@ def process_task(task_id: str) -> None:
         if should_stop_for_cancel(db, task):
             return
 
-        style = db.scalar(
-            select(Style)
-            .where(Style.id == task.style_id)
-            .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
-        )
-        if style is None or not style.reference_images:
+        style = db.scalar(select(Style).where(Style.id == task.style_id))
+        if style is None:
             fail_step_and_task(
                 db,
                 task,
                 GenerationStepName.generate_character_references
                 if task.use_character_references
                 else GenerationStepName.generate_images,
-                ImageProviderConfigError("风格至少需要一张参考图"),
+                ImageProviderConfigError("风格不存在"),
             )
             return
 
-        style_reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         story_segments = panel_story_segments(task)
         logger.info(
-            "story_drawing_debug references_ready task_id=%s style_reference_count=%s story_segment_count=%s",
+            "story_drawing_debug prompt_style_ready task_id=%s provider_style_reference_count=%s story_segment_count=%s",
             task.id,
-            len(style_reference_paths),
+            0,
             len(story_segments),
         )
 
@@ -897,14 +881,13 @@ def process_task(task_id: str) -> None:
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.running)
                 step_started = monotonic()
                 logger.info(
-                    "story_drawing_debug character_reference_start task_id=%s style_reference_count=%s",
+                    "story_drawing_debug character_reference_start task_id=%s provider_style_reference_count=%s",
                     task.id,
-                    len(style_reference_paths),
+                    0,
                 )
                 ensure_character_reference_images(
                     db=db,
                     task=task,
-                    style_reference_paths=style_reference_paths,
                 )
                 task.progress_current = 3
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
@@ -1052,22 +1035,17 @@ def process_task(task_id: str) -> None:
             return
 
         set_step(db, task, GenerationStepName.generate_images, StepStatus.running)
-        style = db.scalar(
-            select(Style)
-            .where(Style.id == task.style_id)
-            .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
-        )
-        if style is None or not style.reference_images:
-            fail_step_and_task(db, task, GenerationStepName.generate_images, ImageProviderConfigError("风格至少需要一张参考图"))
+        style = db.scalar(select(Style).where(Style.id == task.style_id))
+        if style is None:
+            fail_step_and_task(db, task, GenerationStepName.generate_images, ImageProviderConfigError("风格不存在"))
             return
 
-        reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         image_step_started = monotonic()
         logger.info(
-            "story_drawing_debug image_generation_start task_id=%s panel_count=%s reference_count=%s image_model=%s aspect_ratio=%s",
+            "story_drawing_debug image_generation_start task_id=%s panel_count=%s provider_style_reference_count=%s image_model=%s aspect_ratio=%s",
             task.id,
             len(task.panels),
-            len(reference_paths),
+            0,
             task.image_model_name_snapshot,
             task.style_aspect_ratio_snapshot,
         )
@@ -1091,13 +1069,13 @@ def process_task(task_id: str) -> None:
                 continue
             try:
                 if task.use_character_references:
-                    reference_pack = build_panel_reference_pack(panel=panel, style_reference_paths=reference_paths)
+                    reference_pack = build_panel_reference_pack(panel=panel)
                     panel_reference_paths = reference_pack.paths
                     reference_notes = reference_pack.notes
                     character_reference_count = reference_pack.character_count
                 else:
-                    panel_reference_paths = reference_paths
-                    reference_notes = style_reference_notes(1, len(reference_paths))
+                    panel_reference_paths = []
+                    reference_notes = []
                     character_reference_count = 0
                 final_prompt = build_panel_final_prompt(
                     task=task,
@@ -1436,13 +1414,9 @@ def process_panel_edit(generated_image_id: str) -> None:
             db.commit()
             return
 
-        style = db.scalar(
-            select(Style)
-            .where(Style.id == task.style_id)
-            .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
-        )
-        if style is None or not style.reference_images:
-            exc = ImageProviderConfigError("风格至少需要一张参考图")
+        style = db.scalar(select(Style).where(Style.id == task.style_id))
+        if style is None:
+            exc = ImageProviderConfigError("风格不存在")
             image.status = GeneratedImageStatus.failed
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
@@ -1450,10 +1424,9 @@ def process_panel_edit(generated_image_id: str) -> None:
             db.commit()
             return
 
-        style_reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         if task.use_character_references:
             try:
-                reference_pack = build_panel_reference_pack(panel=panel, style_reference_paths=style_reference_paths)
+                reference_pack = build_panel_reference_pack(panel=panel)
             except ImageProviderConfigError as exc:
                 image.status = GeneratedImageStatus.failed
                 image.error_code = exc.__class__.__name__
@@ -1497,8 +1470,8 @@ def process_panel_edit(generated_image_id: str) -> None:
             )
             db.commit()
         else:
-            reference_paths = style_reference_paths
-            reference_notes = style_reference_notes(1, len(style_reference_paths))
+            reference_paths = []
+            reference_notes = []
             image.final_prompt = build_panel_final_prompt(
                 task=task,
                 panel=panel,

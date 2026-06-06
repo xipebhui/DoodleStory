@@ -48,7 +48,7 @@ SiliconFlow 文档显示其文本生成支持 OpenAI SDK 调用方式，示例 b
 - header：`Authorization: Bearer <XG_API_KEY>`
 - content type：`multipart/form-data`
 - 模型：`gpt-image-2`
-- 参考图字段：重复字段 `image[]`
+- 参考图字段：统一 Gateway 使用 `images` 数组，当前只用于人物参考图
 - prompt 字段：`prompt`
 - 比例：`aspect_ratio=9:16`
 - 返回：`response_format=url`
@@ -57,7 +57,7 @@ SiliconFlow 文档显示其文本生成支持 OpenAI SDK 调用方式，示例 b
 
 - 单个 panel 调一次图片接口。
 - 每个 panel 只保留一张生成图。
-- 将风格参考图作为多图参考传入 `image[]`。
+- 不把风格参考图作为模型输入；未开启人物参考时不传参考图，开启人物参考时只传当前 panel 绑定的人物参考图。
 - 如果接口返回 URL，后端必须下载图片并写入 `file_assets`，不能只保存远程 URL。
 - provider 请求失败写入 `generated_images.error_code/error_message` 和 `generation_tasks.error_message`，不能静默忽略。
 
@@ -234,9 +234,9 @@ QINIU_THUMBNAIL_FOP=imageView2/1/w/320/h/568/format/webp/q/75
    - 不改写原始故事。
    - 写入 `task_panels.generated_prompt`。
 3. `generate_images`
-   - 对每个 panel 调 XG `/v1/images/edits`。
-   - prompt = 风格强约束 + panel prompt。
-   - 传入风格参考图 `image[]`。
+   - 对每个 panel 调统一生图 Gateway `/v1/images/generations`。
+   - prompt = 已吸收风格提示词的 panel prompt。
+   - 未开启人物参考时不传参考图；开启人物参考时只传当前 panel 绑定的人物参考图。
    - 固定 `aspect_ratio=9:16`。
    - 下载返回 URL 到本地或七牛。
    - 写入 `generated_images` 和 `file_assets`。

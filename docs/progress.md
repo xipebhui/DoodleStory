@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-27-unified-image-gateway.md`
+- `docs/contracts/sprint-28-prompt-style-control.md`
 
 ## 最近完成的工作
 
@@ -108,6 +108,7 @@
 - 开始并完成 Sprint 25 内容提取整组图文顺序理解：新增合同 `docs/contracts/sprint-25-content-extraction-ordered-gallery.md`；纠正 Sprint 23 的逐张视觉调用方案，图文内容提取改为把同一作品全部图片按 `display_order` 顺序一次性提交给 SiliconFlow 视觉模型，要求模型结合前后页上下文并按页输出旁白、对话、内心 OS、画面描述和分格信息；该步骤替代旧的图文故事总结步骤，后台处理不再生成 `故事内容`、`故事爆点`、`目标观众`，前端详情只展示 `内容提取` 主结果。
 - 开始 Sprint 26 内容提取结果提交为分镜生图任务：新增合同 `docs/contracts/sprint-26-content-extraction-to-task.md`；内容提取详情增加 `提交任务`，跳转任务创建并预填内容提取结果；任务创建增加第三种 `提取分镜` 模式，后端只把内容提取结果结构化为 panels，不走故事方案的二次创作。
 - 开始 Sprint 27 统一生图 Gateway 接入：新增合同 `docs/contracts/sprint-27-unified-image-gateway.md`；根据 `docs/api_v3.md` 把已同意的 10 个当前可用生图模型统一接入 OpenAI Images 兼容 `/v1/images/generations`，新增 `IMAGE_GATEWAY_BASE_URL` 和 `IMAGE_GATEWAY_API_KEY` 配置，响应同时兼容 `data[0].url` 和 `data[0].b64_json`，未列入清单的模型改为明确配置错误，不再默认走旧 XG、ApexerAPI Chat 或 SiliconFlow 直连接口。
+- 开始 Sprint 28 提示词风格控制与参考图展示化：新增合同 `docs/contracts/sprint-28-prompt-style-control.md`；风格参考图继续保留为风格样张、封面和管理资产，但不再作为风格测试、人物参考图生成、任务 panel 生图或单 panel 修改的 provider 输入；实际风格控制由风格模板提示词承担，开启人物参考时 provider 请求只携带人物参考图。
 
 ## 验证记录
 
@@ -148,6 +149,7 @@
 - Sprint 25 内容提取整组图文顺序理解实现后，`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本次完成本地服务重启前的静态与构建验证，尚未用真实抖音漫画链接调用 SiliconFlow 做端到端验证。
 - Sprint 26 内容提取结果提交为分镜生图任务实现后，`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地前后端已重启，后端 `/health` 返回 `{"status":"ok"}`，前端 `127.0.0.1:3000` 返回 `200 OK`；尝试用 Playwright 做浏览器自动化烟测时当前 Node REPL 环境缺少 `playwright` 包，因此未完成真实浏览器点击验证。
 - Sprint 27 统一生图 Gateway 接入后，单元级 smoke 验证 `gpt-image-2` payload 会使用 `1024x1792` 和 `images` data URL，`data[0].b64_json` 与 data URL 形式的 `data[0].url` 均可解析为图片字节，未列入清单的 `nano-banana` 会明确返回“未接入统一 Gateway”；随后 `backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。本次未调用真实远端生图接口，避免在未显式配置运行时 API Key 时产生外部调用。
+- Sprint 28 提示词风格控制实现后，`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；单元级 smoke 确认 `gpt-image-2` 无参考图 payload 不包含 `images` 字段，空 panel 参考包返回空路径和空说明。本次未调用真实远端生图接口，避免消耗外部额度。
 
 ## 已知缺口
 

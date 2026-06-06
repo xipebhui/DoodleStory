@@ -28,7 +28,6 @@ class PanelReferencePack:
     paths: list[Path]
     notes: list[str]
     character_count: int
-    style_count: int
 
 
 def load_task_characters(db: Session, task_id: str) -> list[TaskCharacter]:
@@ -113,7 +112,6 @@ def ensure_character_reference_images(
     *,
     db: Session,
     task: GenerationTask,
-    style_reference_paths: list[Path],
 ) -> None:
     characters = load_task_characters(db, task.id)
     for character in characters:
@@ -148,21 +146,21 @@ def ensure_character_reference_images(
                 visual_prompt=appearance.visual_prompt,
                 reference_prompt_chars=len(appearance.reference_prompt or ""),
                 reference_prompt=appearance.reference_prompt,
-                style_reference_count=len(style_reference_paths),
+                reference_count=0,
             )
             db.commit()
             try:
                 logger.info(
-                    "character reference image request task_id=%s character_key=%s appearance_key=%s prompt_chars=%s style_reference_count=%s",
+                    "character reference image request task_id=%s character_key=%s appearance_key=%s prompt_chars=%s reference_count=%s",
                     task.id,
                     character.character_key,
                     appearance.appearance_key,
                     len(appearance.reference_prompt or ""),
-                    len(style_reference_paths),
+                    0,
                 )
                 generated = generate_xg_image(
                     prompt=appearance.reference_prompt or "",
-                    reference_paths=style_reference_paths,
+                    reference_paths=[],
                     image_model_name=task.image_model_name_snapshot,
                     aspect_ratio=task.style_aspect_ratio_snapshot,
                 )
@@ -283,7 +281,6 @@ def save_character_plan_panel_links(
 def build_panel_reference_pack(
     *,
     panel: TaskPanel,
-    style_reference_paths: list[Path],
 ) -> PanelReferencePack:
     character_paths: list[Path] = []
     notes: list[str] = []
@@ -296,17 +293,8 @@ def build_panel_reference_pack(
         character_paths.append(materialize_asset_to_local(appearance.reference_image))
         notes.append(f"{character.name}参考（参考图{index}）")
 
-    paths = [*character_paths, *style_reference_paths]
-    if character_paths and style_reference_paths:
-        start = len(character_paths) + 1
-        end = len(character_paths) + len(style_reference_paths)
-        if start == end:
-            notes.append(f"风格参考（参考图{start}）")
-        else:
-            notes.append(f"风格参考（参考图{start}-{end}）")
     return PanelReferencePack(
-        paths=paths,
+        paths=character_paths,
         notes=notes,
         character_count=len(character_paths),
-        style_count=len(style_reference_paths),
     )

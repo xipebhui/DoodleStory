@@ -87,7 +87,7 @@ file_assets 1--N task_downloads
 说明：
 
 - `image_model_name` 是调用统一生图平台时传入的模型名，例如 `gpt-image-2`。
-- XG API key、base url、LLM API key 和 LLM 模型保存在环境变量中，不进入数据库和普通用户 API。
+- 统一生图 Gateway API key、base url、LLM API key 和 LLM 模型保存在环境变量中，不进入数据库和普通用户 API。
 - 普通用户可以看到模型名以理解风格差异，但不接触密钥或 provider 配置。
 
 ### `file_assets`
@@ -486,7 +486,7 @@ Worker 执行：
 - 支持用户提交单 panel 画面修改方向；系统调用 LLM 生成新的 `image_prompt`，再为该 panel 生成新的图片版本。
 - 任务级重试和单 panel 修改都会保留历史图片版本，当前展示和下载只使用当前成功版本。
 - 开启人物参考时，人物阶段参考图独立保存在 `task_character_appearances.reference_image_id`，panel 生图只引用当前 panel 绑定的人物阶段。
-- 人物参考图顺序由 `task_panel_character_appearances.reference_order` 决定；panel 生图请求必须先传人物图，再传风格参考图。
+- 人物参考图顺序由 `task_panel_character_appearances.reference_order` 决定；panel 生图请求只传当前 panel 绑定的人物参考图，不传风格样张参考图。
 - 如果开启人物参考但没有识别到主要人物，任务失败并记录明确错误，不静默降级。
 - `error_message` 保存用户可读错误；`internal_error_ref` 保存内部细节引用。
 - 大型 provider 响应和原始日志不放入主工作流表。

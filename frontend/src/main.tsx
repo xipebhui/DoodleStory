@@ -2380,7 +2380,7 @@ function StylesView({ user }: { user: User }) {
               <div className="editor-title">
                 <div>
                   <h2>测试结果</h2>
-                  <p>测试图仅用于校准风格提示词和参考图方向。</p>
+                  <p>测试图仅用于校准风格提示词；参考图只作为样张查看。</p>
                 </div>
                 {styleTest ? <span className={`status-pill ${styleTest.status}`}>{styleTest.status}</span> : null}
               </div>
@@ -2408,7 +2408,7 @@ function StylesView({ user }: { user: User }) {
       <header className="page-header">
         <div>
           <h1>风格</h1>
-          <p>共 {styles.length} 个风格，{activeCount} 个启用。参考图会作为后续生图的视觉锚点，比例由风格模板控制。</p>
+          <p>共 {styles.length} 个风格，{activeCount} 个启用。生图风格由模板提示词控制，参考图只作为样张展示。</p>
         </div>
         <button onClick={startCreate}>
           <Plus size={18} />
@@ -2488,7 +2488,7 @@ function StylesView({ user }: { user: User }) {
             <div className="editor-title">
               <div>
                 <h2>基础信息</h2>
-                <p>风格提示词、描述和参考图会用于任务生图。</p>
+                <p>风格提示词用于任务生图；描述和参考图用于管理与样张展示。</p>
               </div>
               {styleFormMode === "edit" && formStyle ? (
                 <button type="button" className="danger-button" onClick={() => deleteStyle(formStyle)}>
@@ -2527,7 +2527,7 @@ function StylesView({ user }: { user: User }) {
               <div className="editor-title">
                 <div>
                   <h2>参考图</h2>
-                  <p>{formStyle ? "参考图会作为图生图参考，生成比例由风格模板控制。" : "创建时选择的参考图会在风格创建成功后自动上传。"}</p>
+                  <p>{formStyle ? "参考图只作为风格样张展示，不会传入生图模型。" : "创建时选择的参考图会在风格创建成功后自动上传为样张。"}</p>
                 </div>
                 {formStyle ? (
                   <label className="upload-button">

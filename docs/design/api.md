@@ -206,7 +206,7 @@ PATCH /api/v1/styles/{style_id}
 规则：
 
 - `image_model_name` 是风格内部配置，保存模型名，不保存密钥。
-- XG API key、XG base url、SiliconFlow API key 和 LLM 模型保存在环境变量中。
+- 统一生图 Gateway API key、base url、SiliconFlow API key 和 LLM 模型保存在环境变量中。
 - 修改 `image_model_name` 只影响未来风格测试和未来任务。已有任务保留创建时的 `image_model_name` 快照。
 
 ### 删除风格
