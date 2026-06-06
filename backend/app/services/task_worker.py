@@ -1270,13 +1270,17 @@ def process_task(task_id: str) -> None:
             GenerationStepName.generate_images,
             StepStatus.succeeded if success_count == panel_count else StepStatus.failed,
         )
-        task.progress_current = task.progress_total
         task.finished_at = datetime.utcnow()
         if success_count == panel_count:
+            task.progress_current = task.progress_total
             task.status = TaskStatus.succeeded
         elif success_count > 0:
+            task.progress_current = max(task.progress_total - 1, 0)
             task.status = TaskStatus.partial_succeeded
+            task.error_code = "ImageGenerationPartialFailed"
+            task.error_message = f"部分分镜图片生成失败：成功 {success_count} / 共 {panel_count} 张"
         else:
+            task.progress_current = max(task.progress_total - 1, 0)
             task.status = TaskStatus.failed
             task.error_code = "ImageGenerationFailed"
             task.error_message = "所有分镜图片生成失败"

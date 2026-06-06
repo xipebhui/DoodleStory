@@ -531,6 +531,11 @@ function succeededImages(task: Task | null | undefined) {
     .sort((a, b) => (panelMap.get(a.panel_id) ?? 0) - (panelMap.get(b.panel_id) ?? 0));
 }
 
+function hasAllPanelImages(task: Task | null | undefined) {
+  const panelCount = sortedPanels(task).length;
+  return Boolean(task && task.status === "succeeded" && panelCount > 0 && succeededImages(task).length === panelCount);
+}
+
 function panelImageVersions(task: Task | null | undefined, panelId: string) {
   return [...(task?.generated_images ?? [])]
     .filter((image) => image.panel_id === panelId)
@@ -922,6 +927,10 @@ function TasksView({
 
   async function downloadSelectedTask() {
     if (!selectedTask) return;
+    if (!hasAllPanelImages(taskForDetail)) {
+      setMessage("所有分镜图片生成成功后才能下载");
+      return;
+    }
     try {
       setDownloadingTaskId(selectedTask.id);
       const result = await api.createTaskDownload(selectedTask.id);
@@ -940,9 +949,7 @@ function TasksView({
 
   const canCancel =
     taskForDetail?.status === "queued" || taskForDetail?.status === "running" || taskForDetail?.status === "retrying";
-  const canDownload = Boolean(
-    succeededImages(taskForDetail).length && taskForDetail?.id !== downloadingTaskId,
-  );
+  const canDownload = Boolean(hasAllPanelImages(taskForDetail) && taskForDetail?.id !== downloadingTaskId);
   const isDownloadingSelectedTask = Boolean(taskForDetail?.id && taskForDetail.id === downloadingTaskId);
   const canRetry = taskForDetail?.status === "failed" || taskForDetail?.status === "partial_succeeded";
 
@@ -1087,7 +1094,7 @@ function TasksView({
                     <span>{imageCount} 张</span>
                     <span>{formatDateTime(task.created_at)}</span>
                     <span className="row-actions">
-	                      {rowImages.length > 0 ? (
+                      {task.status === "succeeded" && rowImages.length > 0 ? (
                         <span className="mini-action">
                           <Download size={15} />
                         </span>

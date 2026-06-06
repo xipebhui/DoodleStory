@@ -152,6 +152,7 @@
 - Sprint 28 提示词风格控制实现后，`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；单元级 smoke 确认 `gpt-image-2` 无参考图 payload 不包含 `images` 字段，空 panel 参考包返回空路径和空说明。本次未调用真实远端生图接口，避免消耗外部额度。
 - 统一生图 Gateway 非 Gemini 模型真实远端验证后，使用 `docs/api_v3.md` 中的统一入口和测试 Key，按当前代码路径分别调用 `gpt-image-2`、`Tongyi-MAI/Z-Image`、`Qwen/Qwen-Image` 和 `baidu/ERNIE-Image-Turbo`，四个模型均成功返回 `image/png` 图片字节；实测耗时分别约 43.23 秒、15.87 秒、41.73 秒和 9.80 秒，响应均带 provider request id。本次未打印 API Key、完整图片 URL 或 base64 内容，也未把生成图片保存到仓库。
 - 修复提取分镜/故事方案最终生图 prompt 遗漏对白内容的问题：`image_text.dialogue` 现在会进入“需要写入图片的文字”块，和旁白、内心 OS 分开标注，确保图片模型收到具体对白文本而不只是对白气泡规则；新增后端单测覆盖“旁白 + 多行对白”的 final prompt 组装，并接入 `./scripts/check.sh`。
+- 收紧任务完成和下载状态：图片生成只有所有 panel 都生成当前成功图时才保持 `succeeded` 并允许打包下载；部分成功会停留在 `partial_succeeded`，进度不再显示满格，并记录“成功 X / 共 Y 张”的错误信息。下载接口现在重新校验每个 panel 的当前成功图，前端下载按钮也只在全部分镜图片生成后启用。
 
 ## 已知缺口
 

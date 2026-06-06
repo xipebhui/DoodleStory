@@ -80,6 +80,25 @@ def current_or_latest_image_for_panel(task: GenerationTask, panel_id: str) -> Ge
     return sorted(panel_images, key=lambda image: image.generation_number, reverse=True)[0] if panel_images else None
 
 
+def current_succeeded_images_for_panels(task: GenerationTask) -> list[GeneratedImage]:
+    images_by_panel: dict[str, GeneratedImage] = {}
+    for image in task.generated_images:
+        if not image.is_current or image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
+            continue
+        existing = images_by_panel.get(image.panel_id)
+        if existing is None or image.generation_number > existing.generation_number:
+            images_by_panel[image.panel_id] = image
+    return [
+        images_by_panel[panel.id]
+        for panel in sorted(task.panels, key=lambda item: item.panel_order)
+        if panel.id in images_by_panel
+    ]
+
+
+def task_has_all_panel_images(task: GenerationTask) -> bool:
+    return bool(task.panels) and len(current_succeeded_images_for_panels(task)) == len(task.panels)
+
+
 def task_original_text_preview(task: GenerationTask) -> str:
     text = task.original_text.strip().replace("\n", " ")
     return text[:160]
@@ -406,13 +425,11 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
     )
     task = ensure_task_access(task, user)
 
-    images = [
-        image
-        for image in sorted(task.generated_images, key=lambda item: item.panel.panel_order if item.panel else 0)
-        if image.is_current and image.status == GeneratedImageStatus.succeeded and image.asset is not None
-    ]
-    if not images:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务暂无可下载的成功图片")
+    images = current_succeeded_images_for_panels(task)
+    if task.status != TaskStatus.succeeded or len(images) != len(task.panels):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="所有分镜图片生成成功后才能下载")
+    if any(image.asset is None for image in images):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="下载资产尚未准备完成")
 
     filename = f"doodlestory-{task.id}.zip"
     download = TaskDownload(
