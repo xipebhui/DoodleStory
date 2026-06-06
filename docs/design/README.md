@@ -7,7 +7,7 @@
 - [UI 设计](ui.md)：产品导航、页面结构、交互状态和生成流程体验。
 - [后端 API 设计](api.md)：REST 资源、请求与响应结构、分页、错误和工作流动作。
 - [数据库设计](database.md)：初始关系型 schema、约束、索引和工作流状态模型。
-- [内容提取设计](content-extraction.md)：抖音链接同步下载、图文 OCR、视频音频转写和内容提取 tab 的页面设计。
+- [内容提取设计](content-extraction.md)：抖音链接同步下载、图文漫画逐页识别、视频音频转写和内容提取 tab 的页面设计。
 - [内容提取列表化 UI 设计](content-extraction-list-redesign.md)：内容提取任务列表、创建弹窗、详情弹窗和故事总结展示设计。
   - 效果图：`content-extraction-list-redesign-list.png`、`content-extraction-list-redesign-create.png`、`content-extraction-list-redesign-detail.png`。
 

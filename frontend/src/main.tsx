@@ -1633,7 +1633,7 @@ function ContentExtractionView({ user }: { user: User }) {
     }
     try {
       setProcessing(true);
-      setMessage("任务已提交，正在解析下载、提取文案并总结故事...");
+      setMessage("任务已提交，正在解析下载、逐页提取漫画内容并总结故事...");
       setCreateOpen(false);
       await api.processContentExtraction({ raw_input: value });
       setCursor(null);
@@ -1663,10 +1663,10 @@ function ContentExtractionView({ user }: { user: User }) {
     }
     try {
       setExtracting(true);
-      setMessage("正在提取文案，请稍候...");
+      setMessage("正在逐页提取漫画内容，请稍候...");
       const result = await api.extractContentText(current.id);
       setCurrent(result);
-      setMessage("文案提取完成");
+      setMessage("内容提取完成");
       await refreshRecords();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "提取文案失败");
@@ -1714,7 +1714,7 @@ function ContentExtractionView({ user }: { user: User }) {
   async function copyExtractedText() {
     if (!current?.extracted_text) return;
     await navigator.clipboard.writeText(current.extracted_text);
-    setMessage("文案已复制");
+    setMessage("内容提取结果已复制");
   }
 
   async function copyStorySummary() {
@@ -1799,7 +1799,7 @@ function ContentExtractionView({ user }: { user: User }) {
       <header className="page-header">
         <div>
           <h1>内容提取</h1>
-          <p>列表查看历史任务，创建时一键完成解析下载、文案提取和图文故事总结。</p>
+          <p>列表查看历史任务，创建时一键完成解析下载、漫画内容提取和图文故事总结。</p>
         </div>
         <div className="content-header-actions">
           <div className={`health-pill ${health?.ok ? "ok" : ""}`}>
@@ -1819,7 +1819,7 @@ function ContentExtractionView({ user }: { user: User }) {
         <form className="content-list-toolbar" onSubmit={applyRecordSearch}>
           <div className="content-search-control">
             <Search size={16} />
-            <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索链接、原始分享文本、提取文案或故事总结" />
+            <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索链接、原始分享文本、内容提取结果或故事总结" />
           </div>
           <select value={mediaTypeFilter} onChange={(event) => { setCursor(null); setCursorStack([]); setMediaTypeFilter(event.target.value); }}>
             <option value="">全部类型</option>
@@ -1923,7 +1923,7 @@ function ContentExtractionView({ user }: { user: User }) {
                   {processing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
                   一键解析下载并提取总结
                 </button>
-                <span>下载完成后会先显示媒体；图文用本地 OCR 提取图片文字，再用 AI 总结故事。</span>
+                <span>下载完成后会先显示媒体；图文逐页识别漫画内容，再用 AI 总结故事。</span>
               </div>
             </form>
           </section>
@@ -1989,9 +1989,9 @@ function ContentExtractionView({ user }: { user: User }) {
                 )}
 
                 <div className="content-section-title">
-                  <h3>提取文案</h3>
+                  <h3>内容提取</h3>
                   <button type="button" className="secondary-button" disabled={!current.extracted_text} onClick={copyExtractedText}>
-                    复制文案
+                    复制内容
                   </button>
                 </div>
                 <div className="extracted-text-box detail">
@@ -1999,7 +1999,7 @@ function ContentExtractionView({ user }: { user: User }) {
                     <p>{current.extracted_text}</p>
                   ) : (
                     <div className="empty mini">
-                      {currentProcessing ? "任务正在处理，完成后会显示提取文案" : currentFailed ? current.processing_error_message || "任务处理失败" : "暂无文案结果"}
+                      {currentProcessing ? "任务正在处理，完成后会显示内容提取结果" : currentFailed ? current.processing_error_message || "任务处理失败" : "暂无内容提取结果"}
                     </div>
                   )}
                 </div>

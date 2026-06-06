@@ -30,6 +30,7 @@ from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError
 from app.services.media_text_extraction import (
     MAX_CONTENT_EXTRACTION_IMAGES,
     extract_image_text,
+    normalize_comic_extraction_text,
     summarize_images_story,
     transcribe_video_audio,
 )
@@ -299,14 +300,14 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
                     detail=f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}",
                 )
             parts: list[str] = []
-            for media in image_media:
+            for page_number, media in enumerate(image_media, start=1):
                 asset = media.asset
                 image_path = source_media_path(media)
-                result = extract_image_text(image_path, asset.content_type)
+                result = extract_image_text(image_path, asset.content_type, page_number=page_number)
                 media.extracted_text = result.text
                 if result.text.strip():
                     parts.append(result.text.strip())
-            content.extracted_text = "\n\n".join(parts)
+            content.extracted_text = normalize_comic_extraction_text("\n\n".join(parts)).text
     except HTTPException:
         raise
     except (LLMConfigError, LLMProviderError, LLMResponseError) as exc:

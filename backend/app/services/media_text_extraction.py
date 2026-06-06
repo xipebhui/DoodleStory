@@ -2,13 +2,12 @@ import base64
 import json
 import subprocess
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import monotonic
 
 from app.core.config import get_settings
-from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError
+from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError, create_siliconflow_client
 from app.services.prompt_logging import log_prompt_trace
 
 import logging
@@ -16,7 +15,22 @@ import logging
 logger = logging.getLogger(__name__)
 
 MAX_CONTENT_EXTRACTION_IMAGES = 40
-LOCAL_OCR_MODEL_NAME = "rapidocr-onnxruntime"
+
+COMIC_CONTENT_EXTRACTION_PROMPT = """逐页完整提取漫画内容，严格按以下要求输出：
+
+1、旁白文字：原文旁白必须逐字照抄，一字不改、一字不漏。
+2、对话文字：原文对话必须逐字照抄，保留标点和语气，一字不改。
+3、人物内心OS/独白/心里话：完整逐字照抄，标注为【内心OS】。
+4、画面描述：客观描述每页画面内容（人物动作、神态、环境、道具），不做删减。
+5、分格信息：如果是分格漫画，明确标注【上格】【中格】【下格】及各格内容。
+
+输出格式：
+第X页：
+【分格】单页 / 上中下三格等
+画面：（客观描述画面内容）
+旁白：（逐字照抄原文旁白）
+对话：（逐字照抄原文对话）
+内心OS：（逐字照抄，无则写"无"）"""
 
 AUDIO_TRANSCRIPTION_PROMPT = """请转录这段音频中的原始口播、旁白或对白。
 保持原始语气词、停顿和句子顺序，尽量不要改写。
@@ -72,38 +86,6 @@ def data_url(path: Path, content_type: str) -> str:
     return f"data:{content_type};base64,{encoded}"
 
 
-@lru_cache
-def local_ocr_engine():
-    try:
-        from rapidocr_onnxruntime import RapidOCR
-    except ImportError as exc:
-        raise LLMConfigError("缺少 rapidocr-onnxruntime 依赖，请安装 backend/requirements.txt") from exc
-    return RapidOCR()
-
-
-def _ocr_text_lines(path: Path) -> list[str]:
-    try:
-        result, _elapsed = local_ocr_engine()(str(path))
-    except Exception as exc:
-        raise LLMProviderError(f"本地 OCR 识别失败：{exc}") from exc
-    if result is None:
-        return []
-    if not isinstance(result, list):
-        raise LLMResponseError("本地 OCR 返回内容格式不正确")
-
-    lines: list[str] = []
-    for item in result:
-        if not isinstance(item, list) or len(item) < 2:
-            raise LLMResponseError("本地 OCR 返回行格式不正确")
-        text = item[1]
-        if not isinstance(text, str):
-            raise LLMResponseError("本地 OCR 返回文字格式不正确")
-        value = text.strip()
-        if value:
-            lines.append(value)
-    return lines
-
-
 def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
     if not model.strip():
         raise LLMConfigError("SiliconFlow 多模态模型未配置")
@@ -154,11 +136,101 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
     return text
 
 
-def extract_image_text(path: Path, content_type: str) -> MediaTextResult:
+def _chat_text_llm(*, system_prompt: str, user_prompt: str, prompt_name: str) -> str:
+    settings = get_settings()
+    model = settings.siliconflow_model.strip()
+    if not model:
+        raise LLMConfigError("SILICONFLOW_MODEL 未配置")
+    client = create_siliconflow_client()
+    trace_context = {"model": model, "prompt_name": prompt_name}
+    started = monotonic()
+    log_prompt_trace(
+        logger,
+        "content_extraction_llm_request",
+        context=trace_context,
+        provider="siliconflow",
+        model=model,
+        temperature=settings.siliconflow_temperature,
+        system_prompt_chars=len(system_prompt),
+        user_prompt_chars=len(user_prompt),
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=settings.siliconflow_temperature,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except Exception as exc:
+        log_prompt_trace(
+            logger,
+            "content_extraction_llm_exception",
+            context=trace_context,
+            elapsed_ms=round((monotonic() - started) * 1000),
+            exception_type=exc.__class__.__name__,
+            error=str(exc),
+        )
+        raise LLMProviderError(str(exc)) from exc
+
+    if not response.choices:
+        raise LLMResponseError("SiliconFlow LLM 没有返回 choices")
+    message_content = response.choices[0].message.content
+    if message_content is None:
+        raise LLMResponseError("SiliconFlow LLM 返回内容为空")
+    text = str(message_content).strip()
+    if not text:
+        raise LLMResponseError("SiliconFlow LLM 返回内容为空")
+    log_prompt_trace(
+        logger,
+        "content_extraction_llm_response",
+        context=trace_context,
+        elapsed_ms=round((monotonic() - started) * 1000),
+        response_id=getattr(response, "id", None),
+        finish_reason=getattr(response.choices[0], "finish_reason", None),
+        usage=getattr(response, "usage", None),
+        content_chars=len(text),
+        raw_content=text,
+    )
+    return text
+
+
+def extract_image_text(path: Path, content_type: str, *, page_number: int) -> MediaTextResult:
     if not path.exists() or not path.is_file() or path.stat().st_size <= 0:
         raise LLMResponseError(f"媒体文件为空：{path}")
-    lines = _ocr_text_lines(path)
-    return MediaTextResult(text="\n".join(lines), model=LOCAL_OCR_MODEL_NAME)
+    settings = get_settings()
+    model = settings.siliconflow_vision_model.strip()
+    prompt = f"{COMIC_CONTENT_EXTRACTION_PROMPT}\n\n当前输入是第{page_number}页图片，请输出为“第{page_number}页：”。"
+    text = _chat_multimodal(
+        model=model,
+        prompt_name="content_extraction_comic_page_vision",
+        content=[
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": data_url(path, content_type), "detail": "high"}},
+        ],
+    )
+    return MediaTextResult(text=text, model=model)
+
+
+def normalize_comic_extraction_text(raw_text: str) -> MediaTextResult:
+    if not raw_text.strip():
+        raise LLMResponseError("图片识别结果为空，无法继续调用 SiliconFlow LLM")
+    user_prompt = (
+        "以下是上一轮按图片顺序识别得到的漫画内容。请严格按系统提示词的格式重新整理为最终内容提取结果；"
+        "不要新增图片中没有的信息，不要删除已识别出的旁白、对话、内心OS、画面描述或分格信息。\n\n"
+        f"{raw_text.strip()}"
+    )
+    settings = get_settings()
+    model = settings.siliconflow_model.strip()
+    text = _chat_text_llm(
+        system_prompt=COMIC_CONTENT_EXTRACTION_PROMPT,
+        user_prompt=user_prompt,
+        prompt_name="content_extraction_comic_text_llm",
+    )
+    return MediaTextResult(text=text, model=model)
 
 
 def _json_object_from_text(text: str) -> dict[str, object]:
