@@ -1,7 +1,9 @@
+import logging
 import mimetypes
 import re
 from datetime import datetime
 from pathlib import Path
+from time import monotonic
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from PIL import Image, UnidentifiedImageError
@@ -37,6 +39,7 @@ from app.services.media_text_extraction import (
 from app.services.storage import save_binary_file
 
 router = APIRouter(prefix="/content-extractions", tags=["content-extractions"])
+logger = logging.getLogger(__name__)
 
 DOUYIN_URL_PATTERN = re.compile(
     r"https?://(?:v\.douyin\.com/[A-Za-z0-9_.~%-]+/?|www\.douyin\.com/(?:video|note)/[A-Za-z0-9_.~%-]+(?:\?[^\s，,。！!？?；;]*)?)"
@@ -181,10 +184,24 @@ def create_pending_content_extraction(
     )
     db.add(content)
     db.flush()
+    logger.info(
+        "content_extraction_debug created content_id=%s owner_user_id=%s source_url=%s processing_status=%s raw_input_chars=%s",
+        content.id,
+        user.id,
+        source_url,
+        processing_status,
+        len(payload.raw_input),
+    )
     return content
 
 
 def attach_douyin_download_result(content: ContentExtraction, db: Session) -> None:
+    started = monotonic()
+    logger.info(
+        "content_extraction_debug download_start content_id=%s source_url=%s",
+        content.id,
+        content.source_url,
+    )
     try:
         result = download_douyin_content(content.source_url)
     except DouyinImportConfigError as exc:
@@ -196,6 +213,17 @@ def attach_douyin_download_result(content: ContentExtraction, db: Session) -> No
     content.aweme_id = result.aweme_id
     content.output_dir = str(result.output_dir)
     content.manifest_path = str(result.manifest_path) if result.manifest_path else None
+    logger.info(
+        "content_extraction_debug download_result content_id=%s media_type=%s aweme_id=%s media_file_count=%s metadata_file_count=%s output_dir=%s manifest_path=%s elapsed_ms=%s",
+        content.id,
+        result.media_type,
+        result.aweme_id,
+        len(result.media_files),
+        len(result.metadata_files),
+        result.output_dir,
+        result.manifest_path,
+        round((monotonic() - started) * 1000),
+    )
 
     display_order = 1
     for path in result.media_files:
@@ -203,6 +231,18 @@ def attach_douyin_download_result(content: ContentExtraction, db: Session) -> No
         asset = save_path_as_asset(path, media_kind)
         db.add(asset)
         db.flush()
+        logger.info(
+            "content_extraction_debug media_registered content_id=%s display_order=%s media_kind=%s source_path=%s asset_id=%s storage_backend=%s storage_key=%s byte_size=%s content_type=%s",
+            content.id,
+            display_order,
+            media_kind.value,
+            path,
+            asset.id,
+            asset.storage_backend.value,
+            asset.storage_key,
+            asset.byte_size,
+            asset.content_type,
+        )
         db.add(
             ContentExtractionMedia(
                 content_extraction=content,
@@ -218,6 +258,16 @@ def attach_douyin_download_result(content: ContentExtraction, db: Session) -> No
         asset = save_path_as_asset(path, ContentExtractionMediaKind.metadata)
         db.add(asset)
         db.flush()
+        logger.info(
+            "content_extraction_debug metadata_registered content_id=%s display_order=%s source_path=%s asset_id=%s storage_backend=%s storage_key=%s byte_size=%s",
+            content.id,
+            display_order,
+            path,
+            asset.id,
+            asset.storage_backend.value,
+            asset.storage_key,
+            asset.byte_size,
+        )
         db.add(
             ContentExtractionMedia(
                 content_extraction=content,
@@ -231,6 +281,12 @@ def attach_douyin_download_result(content: ContentExtraction, db: Session) -> No
 
     db.flush()
     content.media.sort(key=lambda item: (item.display_order, item.media_kind.value))
+    logger.info(
+        "content_extraction_debug download_attached content_id=%s media_count=%s elapsed_ms=%s",
+        content.id,
+        len(content.media),
+        round((monotonic() - started) * 1000),
+    )
 
 
 def create_content_from_douyin_download(
@@ -258,13 +314,27 @@ def source_media_path(media: ContentExtractionMedia) -> Path:
 
 
 def apply_content_text_extraction(content: ContentExtraction, db: Session) -> None:
+    started = monotonic()
     image_media, video_media = media_by_kind(content)
+    logger.info(
+        "content_extraction_debug text_extraction_start content_id=%s media_type=%s image_count=%s video_count=%s",
+        content.id,
+        content.media_type,
+        len(image_media),
+        len(video_media),
+    )
 
     try:
         if content.media_type == "video" or (video_media and not image_media):
             if not video_media:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="没有可提取的视频文件")
             video_path = source_media_path(video_media[0])
+            logger.info(
+                "content_extraction_debug video_transcription_start content_id=%s media_id=%s source_path=%s",
+                content.id,
+                video_media[0].id,
+                video_path,
+            )
             transcription = transcribe_video_audio(video_path)
             audio_stored = save_binary_file(FileAssetPurpose.douyin_audio.value, transcription.audio_bytes, ".mp3")
             audio_asset = FileAsset(
@@ -291,6 +361,15 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
             )
             video_media[0].extracted_text = transcription.text
             content.extracted_text = transcription.text
+            logger.info(
+                "content_extraction_debug video_transcription_done content_id=%s media_id=%s model=%s text_chars=%s audio_bytes=%s elapsed_ms=%s",
+                content.id,
+                video_media[0].id,
+                transcription.model,
+                len(transcription.text),
+                len(transcription.audio_bytes),
+                round((monotonic() - started) * 1000),
+            )
         else:
             if not image_media:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="没有可提取的图文图片")
@@ -303,23 +382,73 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
             for page_number, media in enumerate(image_media, start=1):
                 asset = media.asset
                 image_path = source_media_path(media)
+                page_started = monotonic()
+                logger.info(
+                    "content_extraction_debug comic_page_extract_start content_id=%s media_id=%s page_number=%s source_path=%s content_type=%s byte_size=%s",
+                    content.id,
+                    media.id,
+                    page_number,
+                    image_path,
+                    asset.content_type,
+                    asset.byte_size,
+                )
                 result = extract_image_text(image_path, asset.content_type, page_number=page_number)
                 media.extracted_text = result.text
+                logger.info(
+                    "content_extraction_debug comic_page_extract_done content_id=%s media_id=%s page_number=%s model=%s text_chars=%s elapsed_ms=%s",
+                    content.id,
+                    media.id,
+                    page_number,
+                    result.model,
+                    len(result.text),
+                    round((monotonic() - page_started) * 1000),
+                )
                 if result.text.strip():
                     parts.append(result.text.strip())
-            content.extracted_text = normalize_comic_extraction_text("\n\n".join(parts)).text
+            raw_pages_text = "\n\n".join(parts)
+            logger.info(
+                "content_extraction_debug comic_normalize_start content_id=%s page_count=%s raw_text_chars=%s",
+                content.id,
+                len(image_media),
+                len(raw_pages_text),
+            )
+            normalized = normalize_comic_extraction_text(raw_pages_text)
+            content.extracted_text = normalized.text
+            logger.info(
+                "content_extraction_debug comic_normalize_done content_id=%s model=%s final_text_chars=%s elapsed_ms=%s",
+                content.id,
+                normalized.model,
+                len(normalized.text),
+                round((monotonic() - started) * 1000),
+            )
     except HTTPException:
         raise
     except (LLMConfigError, LLMProviderError, LLMResponseError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     db.flush()
+    logger.info(
+        "content_extraction_debug text_extraction_done content_id=%s final_text_chars=%s elapsed_ms=%s",
+        content.id,
+        len(content.extracted_text or ""),
+        round((monotonic() - started) * 1000),
+    )
 
 
 def apply_content_story_summary(content: ContentExtraction, *, skip_video: bool = False) -> None:
+    started = monotonic()
     image_media, video_media = media_by_kind(content)
+    logger.info(
+        "content_extraction_debug story_summary_start content_id=%s media_type=%s image_count=%s video_count=%s skip_video=%s",
+        content.id,
+        content.media_type,
+        len(image_media),
+        len(video_media),
+        skip_video,
+    )
     if content.media_type == "video" or (video_media and not image_media):
         if skip_video:
+            logger.info("content_extraction_debug story_summary_skipped_video content_id=%s", content.id)
             return
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="故事总结仅支持图文图片")
     if not image_media:
@@ -344,28 +473,48 @@ def apply_content_story_summary(content: ContentExtraction, *, skip_video: bool 
     content.target_audience = summary.target_audience
     content.story_summary_model = summary.model
     content.story_summarized_at = datetime.utcnow()
+    logger.info(
+        "content_extraction_debug story_summary_done content_id=%s model=%s story_content_chars=%s story_highlight_chars=%s target_audience_chars=%s elapsed_ms=%s",
+        content.id,
+        summary.model,
+        len(summary.story_content),
+        len(summary.story_highlight),
+        len(summary.target_audience),
+        round((monotonic() - started) * 1000),
+    )
 
 
 def run_content_extraction_processing(content_id: str) -> None:
+    started = monotonic()
+    logger.info("content_extraction_debug background_start content_id=%s", content_id)
     with SessionLocal() as db:
         content = load_content_extraction(db, content_id)
         if not content:
+            logger.warning("content_extraction_debug background_missing_content content_id=%s", content_id)
             return
         try:
             content.processing_status = "processing"
             content.processing_error_message = None
             db.commit()
+            logger.info("content_extraction_debug background_step_committed content_id=%s step=mark_processing", content_id)
             content = load_content_extraction(db, content_id)
             attach_douyin_download_result(content, db)
             db.commit()
+            logger.info("content_extraction_debug background_step_committed content_id=%s step=download", content_id)
             content = load_content_extraction(db, content_id)
             apply_content_text_extraction(content, db)
             db.commit()
+            logger.info("content_extraction_debug background_step_committed content_id=%s step=text_extraction", content_id)
             content = load_content_extraction(db, content_id)
             apply_content_story_summary(content, skip_video=True)
             content.processing_status = "succeeded"
             content.processing_error_message = None
             db.commit()
+            logger.info(
+                "content_extraction_debug background_done content_id=%s elapsed_ms=%s",
+                content_id,
+                round((monotonic() - started) * 1000),
+            )
         except HTTPException as exc:
             db.rollback()
             failed = load_content_extraction(db, content_id)
@@ -373,6 +522,13 @@ def run_content_extraction_processing(content_id: str) -> None:
                 failed.processing_status = "failed"
                 failed.processing_error_message = str(exc.detail)
                 db.commit()
+            logger.warning(
+                "content_extraction_debug background_failed content_id=%s error_type=HTTPException status_code=%s detail=%s elapsed_ms=%s",
+                content_id,
+                exc.status_code,
+                exc.detail,
+                round((monotonic() - started) * 1000),
+            )
         except Exception as exc:
             db.rollback()
             failed = load_content_extraction(db, content_id)
@@ -380,6 +536,11 @@ def run_content_extraction_processing(content_id: str) -> None:
                 failed.processing_status = "failed"
                 failed.processing_error_message = str(exc)
                 db.commit()
+            logger.exception(
+                "content_extraction_debug background_unexpected_failed content_id=%s elapsed_ms=%s",
+                content_id,
+                round((monotonic() - started) * 1000),
+            )
 
 
 @router.get("/douyin-health", response_model=ApiData[ContentExtractionHealthRead])

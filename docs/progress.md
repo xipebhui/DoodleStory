@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-23-content-extraction-comic-vision-llm.md`
+- `docs/contracts/sprint-24-debug-process-logs.md`
 
 ## 最近完成的工作
 
@@ -104,6 +104,7 @@
 - 开始并完成 Sprint 21 故事方案用户要求优先级：新增合同 `docs/contracts/sprint-21-story-brief-priority.md`；故事方案 storyboard prompt 明确 `brief_text` 是最高创作约束，用户要求与风格规则、默认分镜方法或剧情增强建议冲突时优先满足用户需求，并强化上下分区、左右分区、分屏、单页构图、字体大小、必须出现和不要出现等要求必须进入对应 panel 设计。
 - 开始并完成 Sprint 22 QNY 公开访问域名配置：新增合同 `docs/contracts/sprint-22-qny-public-base-url.md`；对象存储新增 `QNY_PUBLIC_BASE_URL` 和 `QNY_USE_HTTPS` 配置，本地 `.env` 切换到 `QNY_BUCKET=video-space001`、`QNY_PUBLIC_BASE_URL=http://tg721n1on.hn-bkt.clouddn.com`、`QNY_USE_HTTPS=false`，同时保留 `QINIU_BUCKET_DOMAIN` 和历史 `QNY_DOMAIN` 兼容。
 - 开始并完成 Sprint 23 内容提取漫画逐页识别：新增合同 `docs/contracts/sprint-23-content-extraction-comic-vision-llm.md`；图文内容提取从本地 OCR 改为 SiliconFlow 视觉模型逐页提取漫画页内容，提示词要求逐字保留旁白、对话和内心 OS，并输出画面描述与分格信息；全部逐页结果合并后再调用 SiliconFlow 文本 LLM 做最终整理，最终写入详情弹窗的 `内容提取` 主结果区。
+- 开始并完成 Sprint 24 调试过程日志：新增合同 `docs/contracts/sprint-24-debug-process-logs.md`；内容提取链路增加 `content_extraction_debug` 日志，覆盖任务创建、抖音下载、媒体登记、逐页识别、二次 LLM 整理、视频转写、故事总结和后台失败；故事画图链路增加 `story_drawing_debug` 日志，覆盖任务开始、分镜、人物识别、人物参考、panel prompt、final prompt、Provider 请求、单图结果和任务完成。
 
 ## 验证记录
 
@@ -140,6 +141,7 @@
 - Sprint 21 故事方案用户要求优先级实现后，`./scripts/check.sh` 和 `git diff --check` 通过；静态检查确认故事方案 prompt 已把用户输入提升为最高创作约束，并声明用户需求与风格或默认创作建议冲突时优先用户需求。
 - Sprint 22 QNY 公开访问域名配置实现后，`./scripts/check.sh` 和 `git diff --check` 通过；本地使用新 `video-space001` Bucket 做真实七牛烟测，上传测试 PNG 成功，固定 HTTP 原图 URL 返回 `200 image/png`；固定 HTTP `imageView2` 和 `imageMogr2` 处理 URL 也返回 `200`，但新公开域名当前返回的仍是原始 `image/png`，未应用 WebP 或缩放处理，测试对象随后已从七牛删除。
 - Sprint 23 内容提取漫画逐页识别实现后，`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本次未调用真实 SiliconFlow/抖音下载服务做端到端验证。
+- Sprint 24 调试过程日志实现后，`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；本次未调用真实内容提取或故事生图任务。
 
 ## 已知缺口
 

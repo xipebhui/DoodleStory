@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from time import monotonic
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -99,13 +100,16 @@ def generate_panel_image_request(
     aspect_ratio: str,
     request: PreparedPanelImageRequest,
 ) -> PanelImageGenerationResult:
+    started = monotonic()
     try:
         logger.info(
-            "task panel image request task_id=%s panel_id=%s panel_order=%s image_id=%s prompt_chars=%s reference_count=%s character_reference_count=%s",
+            "story_drawing_debug provider_request_start task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s aspect_ratio=%s prompt_chars=%s reference_count=%s character_reference_count=%s",
             task_id,
             request.panel_id,
             request.panel_order,
             request.image_id,
+            image_model_name,
+            aspect_ratio,
             len(request.final_prompt),
             request.reference_count,
             request.character_reference_count,
@@ -116,15 +120,38 @@ def generate_panel_image_request(
             image_model_name=image_model_name,
             aspect_ratio=aspect_ratio,
         )
+        logger.info(
+            "story_drawing_debug provider_request_done task_id=%s panel_id=%s panel_order=%s image_id=%s provider_request_id=%s storage_backend=%s storage_key=%s byte_size=%s elapsed_ms=%s",
+            task_id,
+            request.panel_id,
+            request.panel_order,
+            request.image_id,
+            generated.provider_request_id,
+            generated.storage_backend.value,
+            generated.storage_key,
+            generated.byte_size,
+            round((monotonic() - started) * 1000),
+        )
         return PanelImageGenerationResult(request=request, generated=generated)
     except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+        logger.warning(
+            "story_drawing_debug provider_request_failed task_id=%s panel_id=%s panel_order=%s image_id=%s error_type=%s error=%s elapsed_ms=%s",
+            task_id,
+            request.panel_id,
+            request.panel_order,
+            request.image_id,
+            exc.__class__.__name__,
+            exc,
+            round((monotonic() - started) * 1000),
+        )
         return PanelImageGenerationResult(request=request, error=exc)
     except Exception as exc:
         logger.exception(
-            "task panel image unexpected failure task_id=%s panel_id=%s image_id=%s",
+            "story_drawing_debug provider_request_unexpected_failed task_id=%s panel_id=%s image_id=%s elapsed_ms=%s",
             task_id,
             request.panel_id,
             request.image_id,
+            round((monotonic() - started) * 1000),
         )
         return PanelImageGenerationResult(request=request, error=exc)
 
@@ -589,6 +616,7 @@ def should_stop_for_cancel(db: Session, task: GenerationTask) -> bool:
 
 
 def process_task(task_id: str) -> None:
+    task_started = monotonic()
     with SessionLocal() as db:
         task = load_task(db, task_id)
         if task is None or task.status in {TaskStatus.cancelled, TaskStatus.cancel_requested}:
@@ -596,12 +624,17 @@ def process_task(task_id: str) -> None:
             return
 
         logger.info(
-            "task started task_id=%s owner_user_id=%s style_id=%s image_count_mode=%s requested_image_count=%s",
+            "story_drawing_debug task_start task_id=%s owner_user_id=%s style_id=%s story_input_mode=%s image_count_mode=%s requested_image_count=%s use_character_references=%s image_model=%s style_prompt_chars=%s original_text_chars=%s",
             task.id,
             task.owner_user_id,
             task.style_id,
+            task.story_input_mode.value,
             task.image_count_mode.value,
             task.requested_image_count,
+            task.use_character_references,
+            task.image_model_name_snapshot,
+            len(task.style_prompt_snapshot or ""),
+            len(task.original_text or ""),
         )
         task.status = TaskStatus.running
         task.started_at = task.started_at or datetime.utcnow()
@@ -613,10 +646,18 @@ def process_task(task_id: str) -> None:
             if task.adapted_story_text and task.panels and all(panel.generated_prompt for panel in task.panels):
                 task.progress_current = max(task.progress_current, 1)
                 set_step(db, task, GenerationStepName.adapt_story, StepStatus.succeeded)
-                logger.info("task storyboard planning skipped task_id=%s", task.id)
+                logger.info("story_drawing_debug storyboard_skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))
             else:
                 try:
                     set_step(db, task, GenerationStepName.adapt_story, StepStatus.running)
+                    step_started = monotonic()
+                    logger.info(
+                        "story_drawing_debug storyboard_start task_id=%s requested_image_count=%s image_count_mode=%s brief_chars=%s",
+                        task.id,
+                        task.requested_image_count,
+                        task.image_count_mode.value,
+                        len(task.original_text or ""),
+                    )
                     storyboard = plan_storyboard_from_brief(
                         brief_text=task.original_text,
                         style_prompt=task.style_prompt_snapshot,
@@ -650,10 +691,12 @@ def process_task(task_id: str) -> None:
                     task.progress_current = 1
                     set_step(db, task, GenerationStepName.adapt_story, StepStatus.succeeded)
                     logger.info(
-                        "task storyboard planning completed task_id=%s title=%s panel_count=%s",
+                        "story_drawing_debug storyboard_done task_id=%s title=%s panel_count=%s outline_chars=%s elapsed_ms=%s",
                         task.id,
                         storyboard.story_title,
                         len(storyboard.panels),
+                        len(storyboard.story_outline),
+                        round((monotonic() - step_started) * 1000),
                     )
                 except LLMProviderError as exc:
                     fail_step_and_task(db, task, GenerationStepName.adapt_story, exc)
@@ -669,12 +712,20 @@ def process_task(task_id: str) -> None:
         if existing_panels:
             task.progress_current = max(task.progress_current, 2 if task.story_input_mode == StoryInputMode.adapted else 1)
             set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
-            logger.info("task segmentation skipped task_id=%s existing_panel_count=%s", task.id, len(existing_panels))
+            logger.info("story_drawing_debug segmentation_skipped task_id=%s existing_panel_count=%s", task.id, len(existing_panels))
         else:
             try:
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.running)
                 if task.story_input_mode == StoryInputMode.adapted:
                     raise LLMResponseError("故事方案模式应在方案规划步骤生成 panels")
+                step_started = monotonic()
+                logger.info(
+                    "story_drawing_debug segmentation_start task_id=%s original_text_chars=%s image_count_mode=%s requested_image_count=%s",
+                    task.id,
+                    len(task.original_text or ""),
+                    task.image_count_mode.value,
+                    task.requested_image_count,
+                )
                 segmentation = segment_story(
                     original_text=task.original_text,
                     image_count_mode=task.image_count_mode,
@@ -702,7 +753,12 @@ def process_task(task_id: str) -> None:
                     )
                 task.progress_current = 2 if task.story_input_mode == StoryInputMode.adapted else 1
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
-                logger.info("task segmentation completed task_id=%s panel_count=%s", task.id, len(segmentation.panels))
+                logger.info(
+                    "story_drawing_debug segmentation_done task_id=%s panel_count=%s elapsed_ms=%s",
+                    task.id,
+                    len(segmentation.panels),
+                    round((monotonic() - step_started) * 1000),
+                )
             except LLMProviderError as exc:
                 fail_step_and_task(db, task, GenerationStepName.segment_story, exc)
                 return
@@ -731,16 +787,29 @@ def process_task(task_id: str) -> None:
 
         style_reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
         story_segments = panel_story_segments(task)
+        logger.info(
+            "story_drawing_debug references_ready task_id=%s style_reference_count=%s story_segment_count=%s",
+            task.id,
+            len(style_reference_paths),
+            len(story_segments),
+        )
 
         if task.use_character_references:
             characters = load_task_characters(db, task.id)
             if characters:
                 task.progress_current = max(task.progress_current, 3 if task.story_input_mode == StoryInputMode.adapted else 2)
                 set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
-                logger.info("task character extraction skipped task_id=%s character_count=%s", task.id, len(characters))
+                logger.info("story_drawing_debug character_extraction_skipped task_id=%s character_count=%s", task.id, len(characters))
             else:
                 try:
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.running)
+                    step_started = monotonic()
+                    logger.info(
+                        "story_drawing_debug character_extraction_start task_id=%s story_chars=%s panel_count=%s",
+                        task.id,
+                        len(story_text_for_generation(task)),
+                        len(story_segments),
+                    )
                     character_result = extract_task_characters(
                         original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
@@ -762,9 +831,11 @@ def process_task(task_id: str) -> None:
                     task.progress_current = 3 if task.story_input_mode == StoryInputMode.adapted else 2
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                     logger.info(
-                        "task character extraction completed task_id=%s character_count=%s",
+                        "story_drawing_debug character_extraction_done task_id=%s character_count=%s appearance_count=%s elapsed_ms=%s",
                         task.id,
                         len(character_result.characters),
+                        sum(len(character.appearances) for character in character_result.characters),
+                        round((monotonic() - step_started) * 1000),
                     )
                 except LLMProviderError as exc:
                     fail_step_and_task(db, task, GenerationStepName.extract_characters, exc)
@@ -777,6 +848,12 @@ def process_task(task_id: str) -> None:
                 return
             try:
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.running)
+                step_started = monotonic()
+                logger.info(
+                    "story_drawing_debug character_reference_start task_id=%s style_reference_count=%s",
+                    task.id,
+                    len(style_reference_paths),
+                )
                 ensure_character_reference_images(
                     db=db,
                     task=task,
@@ -786,7 +863,11 @@ def process_task(task_id: str) -> None:
                 if task.story_input_mode == StoryInputMode.adapted:
                     task.progress_current = 4
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
-                logger.info("task character reference images completed task_id=%s", task.id)
+                logger.info(
+                    "story_drawing_debug character_reference_done task_id=%s elapsed_ms=%s",
+                    task.id,
+                    round((monotonic() - step_started) * 1000),
+                )
             except (ImageProviderConfigError, ImageProviderResponseError) as exc:
                 fail_step_and_task(db, task, GenerationStepName.generate_character_references, exc)
                 return
@@ -805,10 +886,18 @@ def process_task(task_id: str) -> None:
         if prompts_ready:
             task.progress_current = max(task.progress_current, prompts_progress)
             set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
-            logger.info("task panel prompts skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))
+            logger.info("story_drawing_debug panel_prompts_skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))
         else:
             try:
                 set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.running)
+                step_started = monotonic()
+                logger.info(
+                    "story_drawing_debug panel_prompts_start task_id=%s panel_count=%s use_character_references=%s story_chars=%s",
+                    task.id,
+                    len(story_segments),
+                    task.use_character_references,
+                    len(story_text_for_generation(task)),
+                )
                 if task.use_character_references:
                     character_plans = characters_to_plans(load_task_characters(db, task.id))
                     prompt_result = generate_panel_prompts_with_characters(
@@ -874,9 +963,22 @@ def process_task(task_id: str) -> None:
                         appearance_keys=getattr(prompt_item, "appearance_keys", []),
                         usage_notes=getattr(prompt_item, "usage_notes", {}),
                     )
+                    logger.info(
+                        "story_drawing_debug panel_prompt_adopted task_id=%s panel_id=%s panel_order=%s visual_prompt_chars=%s image_text_chars=%s",
+                        task.id,
+                        panel.id,
+                        panel.panel_order,
+                        len(panel.generated_prompt or ""),
+                        len(panel.image_text_json or ""),
+                    )
                 task.progress_current = prompts_progress
                 set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
-                logger.info("task panel prompts completed task_id=%s panel_count=%s", task.id, len(story_segments))
+                logger.info(
+                    "story_drawing_debug panel_prompts_done task_id=%s panel_count=%s elapsed_ms=%s",
+                    task.id,
+                    len(story_segments),
+                    round((monotonic() - step_started) * 1000),
+                )
             except LLMProviderError as exc:
                 for panel in task.panels:
                     panel.prompt_status = PromptStatus.failed
@@ -902,12 +1004,14 @@ def process_task(task_id: str) -> None:
             return
 
         reference_paths = [materialize_asset_to_local(reference.asset) for reference in style.reference_images]
+        image_step_started = monotonic()
         logger.info(
-            "task image generation started task_id=%s panel_count=%s reference_count=%s image_model=%s",
+            "story_drawing_debug image_generation_start task_id=%s panel_count=%s reference_count=%s image_model=%s aspect_ratio=%s",
             task.id,
             len(task.panels),
             len(reference_paths),
             task.image_model_name_snapshot,
+            task.style_aspect_ratio_snapshot,
         )
         success_count = 0
         skipped_count = 0
@@ -967,6 +1071,16 @@ def process_task(task_id: str) -> None:
                     final_prompt_chars=len(final_prompt),
                     final_prompt=final_prompt,
                 )
+                logger.info(
+                    "story_drawing_debug final_prompt_ready task_id=%s panel_id=%s panel_order=%s reference_count=%s character_reference_count=%s visual_prompt_chars=%s final_prompt_chars=%s",
+                    task.id,
+                    panel.id,
+                    panel.panel_order,
+                    len(panel_reference_paths),
+                    character_reference_count,
+                    len(panel.generated_prompt or ""),
+                    len(final_prompt),
+                )
             except ImageProviderConfigError as exc:
                 fail_step_and_task(db, task, GenerationStepName.generate_images, exc)
                 return
@@ -988,6 +1102,15 @@ def process_task(task_id: str) -> None:
             db.add(image)
             db.commit()
             db.refresh(image)
+            logger.info(
+                "story_drawing_debug generated_image_record_created task_id=%s panel_id=%s panel_order=%s image_id=%s generation_number=%s source_type=%s",
+                task.id,
+                panel.id,
+                panel.panel_order,
+                image.id,
+                image.generation_number,
+                image.source_type.value,
+            )
             prepared_requests.append(
                 PreparedPanelImageRequest(
                     panel_id=panel.id,
@@ -1003,7 +1126,7 @@ def process_task(task_id: str) -> None:
         image_generation_concurrency = get_settings().image_generation_concurrency
         image_generation_concurrency = min(image_generation_concurrency, len(prepared_requests) or 1)
         logger.info(
-            "task image generation provider batch prepared task_id=%s request_count=%s concurrency=%s skipped_existing_success_count=%s",
+            "story_drawing_debug provider_batch_ready task_id=%s request_count=%s concurrency=%s skipped_existing_success_count=%s",
             task.id,
             len(prepared_requests),
             image_generation_concurrency,
@@ -1034,9 +1157,10 @@ def process_task(task_id: str) -> None:
                         continue
                     if result.error is not None:
                         logger.warning(
-                            "task panel image failed task_id=%s panel_id=%s image_id=%s error_type=%s error=%s",
+                            "story_drawing_debug panel_image_failed task_id=%s panel_id=%s panel_order=%s image_id=%s error_type=%s error=%s",
                             task.id,
                             result.request.panel_id,
+                            result.request.panel_order,
                             result.request.image_id,
                             result.error.__class__.__name__,
                             result.error,
@@ -1049,6 +1173,13 @@ def process_task(task_id: str) -> None:
                         continue
                     generated = result.generated
                     if generated is None:
+                        logger.warning(
+                            "story_drawing_debug panel_image_empty_result task_id=%s panel_id=%s panel_order=%s image_id=%s",
+                            task.id,
+                            result.request.panel_id,
+                            result.request.panel_order,
+                            result.request.image_id,
+                        )
                         image.status = GeneratedImageStatus.failed
                         image.error_code = "ImageGenerationFailed"
                         image.error_message = "图片 Provider 未返回生成结果"
@@ -1074,12 +1205,15 @@ def process_task(task_id: str) -> None:
                     image.finished_at = datetime.utcnow()
                     success_count += 1
                     logger.info(
-                        "task panel image succeeded task_id=%s panel_id=%s image_id=%s asset_storage_key=%s bytes=%s",
+                        "story_drawing_debug panel_image_succeeded task_id=%s panel_id=%s panel_order=%s image_id=%s asset_id=%s asset_storage_key=%s bytes=%s provider_request_id=%s",
                         task.id,
                         result.request.panel_id,
+                        result.request.panel_order,
                         result.request.image_id,
+                        asset.id,
                         generated.storage_key,
                         generated.byte_size,
+                        generated.provider_request_id,
                     )
                     db.commit()
                     if should_stop_for_cancel(db, task):
@@ -1108,12 +1242,14 @@ def process_task(task_id: str) -> None:
             task.error_message = "所有分镜图片生成失败"
         db.commit()
         logger.info(
-            "task finished task_id=%s status=%s success_count=%s skipped_existing_success_count=%s panel_count=%s",
+            "story_drawing_debug task_done task_id=%s status=%s success_count=%s skipped_existing_success_count=%s panel_count=%s elapsed_ms=%s image_step_elapsed_ms=%s",
             task.id,
             task.status.value,
             success_count,
             skipped_count,
             panel_count,
+            round((monotonic() - task_started) * 1000),
+            round((monotonic() - image_step_started) * 1000),
         )
 
 
