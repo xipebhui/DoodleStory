@@ -112,7 +112,7 @@
 - 前端：具体框架未选择。产品 UI 设计见 `docs/design/ui.md`。
 - 后端：具体框架未选择。初始 REST API 设计见 `docs/design/api.md`。
 - 存储：关系型 OLTP 数据库设计见 `docs/design/database.md`。
-- 外部集成：LLM 固定使用 SiliconFlow 配置；生图 API key、base url 和代理地址从 env 读取。`Qwen/Qwen-Image-Edit-2509`、`Qwen/Qwen-Image-Edit`、`baidu/ERNIE-Image-Turbo` 和 `Qwen/Qwen-Image` 使用 SiliconFlow `/v1/images/generations`，返回的短期图片 URL 必须立即下载保存为 DoodleStory 资产。`/v1/images/edits` 类模型继续使用 XG 配置，Google/Gemini 图片模型和 `nano-banana`/`nana-banana` 类 Chat 生图模型使用 ApexerAPI 的 `/v1/chat/completions`，ApexerAPI 请求可通过 `APEXERAPI_PROXY_URL` 单独配置代理。
+- 外部集成：LLM 固定使用 SiliconFlow 配置；生图使用 `docs/api_v3.md` 中已同意的 OpenAI Images 兼容统一服务，生图 API key 和 base url 从 `IMAGE_GATEWAY_API_KEY`、`IMAGE_GATEWAY_BASE_URL` 读取。当前可用生图模型精确限定为 `gpt-image-2`、`Tongyi-MAI/Z-Image`、`Qwen/Qwen-Image`、`baidu/ERNIE-Image-Turbo`、`gemini_3.1_flash_image_preview`、`gemini_3.0_pro_image_preview`、`gemini_3.1_flash_image_preview_4K`、`gemini_3.0_pro_image_preview_4K`、`gemini-3.1-flash-image-preview` 和 `gemini-3-pro-image-preview`。统一请求 `/v1/images/generations`，返回的 `data[0].url` 或 `data[0].b64_json` 必须立即下载或解码并保存为 DoodleStory 资产；未列入清单的模型必须明确报错，不能自动回退到旧 XG、ApexerAPI Chat 或 SiliconFlow 直连接口。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
 - 图片生成并发：任务队列由进程内 worker 池领取任务，默认 `TASK_WORKER_CONCURRENCY=3`；单个任务的 panel 图片 Provider 请求在 `generate_images` 阶段按 `IMAGE_GENERATION_CONCURRENCY` 做有限并发，默认 3。

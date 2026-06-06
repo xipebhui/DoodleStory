@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-26-content-extraction-to-task.md`
+- `docs/contracts/sprint-27-unified-image-gateway.md`
 
 ## 最近完成的工作
 
@@ -107,6 +107,7 @@
 - 开始并完成 Sprint 24 调试过程日志：新增合同 `docs/contracts/sprint-24-debug-process-logs.md`；内容提取链路增加 `content_extraction_debug` 日志，覆盖任务创建、抖音下载、媒体登记、图文提取、视频转写和后台失败；内容提取 AI 交互增加 `content_extraction_ai_debug` 日志，记录模型 prompt、图片/音频输入摘要、AI 返回内容和最终提取结果，并固定写入 `backend/logs/local-backend.log`；故事画图链路增加 `story_drawing_debug` 日志，覆盖任务开始、分镜、人物识别、人物参考、panel prompt、final prompt、Provider 请求、单图结果和任务完成。
 - 开始并完成 Sprint 25 内容提取整组图文顺序理解：新增合同 `docs/contracts/sprint-25-content-extraction-ordered-gallery.md`；纠正 Sprint 23 的逐张视觉调用方案，图文内容提取改为把同一作品全部图片按 `display_order` 顺序一次性提交给 SiliconFlow 视觉模型，要求模型结合前后页上下文并按页输出旁白、对话、内心 OS、画面描述和分格信息；该步骤替代旧的图文故事总结步骤，后台处理不再生成 `故事内容`、`故事爆点`、`目标观众`，前端详情只展示 `内容提取` 主结果。
 - 开始 Sprint 26 内容提取结果提交为分镜生图任务：新增合同 `docs/contracts/sprint-26-content-extraction-to-task.md`；内容提取详情增加 `提交任务`，跳转任务创建并预填内容提取结果；任务创建增加第三种 `提取分镜` 模式，后端只把内容提取结果结构化为 panels，不走故事方案的二次创作。
+- 开始 Sprint 27 统一生图 Gateway 接入：新增合同 `docs/contracts/sprint-27-unified-image-gateway.md`；根据 `docs/api_v3.md` 把已同意的 10 个当前可用生图模型统一接入 OpenAI Images 兼容 `/v1/images/generations`，新增 `IMAGE_GATEWAY_BASE_URL` 和 `IMAGE_GATEWAY_API_KEY` 配置，响应同时兼容 `data[0].url` 和 `data[0].b64_json`，未列入清单的模型改为明确配置错误，不再默认走旧 XG、ApexerAPI Chat 或 SiliconFlow 直连接口。
 
 ## 验证记录
 
@@ -146,6 +147,7 @@
 - Sprint 24 调试过程日志实现后，`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；本地重启后端确认 `backend/logs/local-backend.log` 会写入启动日志。本次未调用真实内容提取或故事生图任务。
 - Sprint 25 内容提取整组图文顺序理解实现后，`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本次完成本地服务重启前的静态与构建验证，尚未用真实抖音漫画链接调用 SiliconFlow 做端到端验证。
 - Sprint 26 内容提取结果提交为分镜生图任务实现后，`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地前后端已重启，后端 `/health` 返回 `{"status":"ok"}`，前端 `127.0.0.1:3000` 返回 `200 OK`；尝试用 Playwright 做浏览器自动化烟测时当前 Node REPL 环境缺少 `playwright` 包，因此未完成真实浏览器点击验证。
+- Sprint 27 统一生图 Gateway 接入后，单元级 smoke 验证 `gpt-image-2` payload 会使用 `1024x1792` 和 `images` data URL，`data[0].b64_json` 与 data URL 形式的 `data[0].url` 均可解析为图片字节，未列入清单的 `nano-banana` 会明确返回“未接入统一 Gateway”；随后 `backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。本次未调用真实远端生图接口，避免在未显式配置运行时 API Key 时产生外部调用。
 
 ## 已知缺口
 
@@ -153,9 +155,9 @@
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试真实生图尚未实现，当前仍会明确返回 Provider 未接入错误，避免产生 Mock 结果。
 - LLM 客户端和 prompts 已实现，但尚未接入任务 worker 流程。
-- 任务 worker 已接入 LLM 和 XG 客户端，基础任务详情、批量下载和预览已完成；更精细的运行中恢复策略、单图下载入口和更系统的组件拆分仍可继续完善。
+- 任务 worker 已接入 LLM 和统一生图 Gateway 客户端，基础任务详情、批量下载和预览已完成；更精细的运行中恢复策略、单图下载入口和更系统的组件拆分仍可继续完善。
 - 历史本地资产尚未迁移到七牛；七牛对象存储已通过独立上传/访问烟测，仍建议用真实任务生成链路做一次端到端验证。
-- 旧的多 profile registry 已移除；SiliconFlow、XG 图片编辑接口与 ApexerAPI Chat 生图接口按固定平台配置接入。
+- 旧的多 profile registry 已移除；生图链路已收敛到 `docs/api_v3.md` 对应的统一 OpenAI Images 兼容 Gateway，旧 SiliconFlow 直连、XG edits 和 ApexerAPI Chat 不再作为默认生图路由。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
 - 内容提取已完成同机 `127.0.0.1:8010` 可达时的真实图文下载、旧版图文 OCR、故事总结、列表和详情弹窗验证；Sprint 25 已把图文内容提取切换为 SiliconFlow 视觉模型整组图片顺序理解，仍建议用真实漫画图文链接做一次端到端验证。视频音频转写仍需用真实视频链接单独端到端验证。
 
