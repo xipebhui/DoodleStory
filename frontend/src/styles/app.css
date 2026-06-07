@@ -71,6 +71,14 @@ textarea::placeholder {
     #171a21;
 }
 
+.lazy-asset-image.is-idle,
+.lazy-asset-image.is-loading,
+.lazy-asset-image.is-error {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent 38%),
+    #171a21;
+}
+
 textarea {
   min-height: 96px;
   resize: vertical;

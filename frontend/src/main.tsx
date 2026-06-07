@@ -129,6 +129,8 @@ function LazyAssetImage({
 }) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(eager);
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded" | "error">(eager ? "loading" : "idle");
+  const resolvedSrc = asset ? assetUrl(asset, variant) : api.assetContentUrl(assetId, variant);
 
   useEffect(() => {
     if (eager) {
@@ -157,16 +159,21 @@ function LazyAssetImage({
     return () => observer.disconnect();
   }, [assetId, eager]);
 
-  const resolvedSrc = asset ? assetUrl(asset, variant) : api.assetContentUrl(assetId, variant);
+  useEffect(() => {
+    setLoadState(shouldLoad ? "loading" : "idle");
+  }, [resolvedSrc, shouldLoad]);
 
   return (
     <img
+      key={shouldLoad ? resolvedSrc : `${assetId}-${variant}-pending`}
       ref={imageRef}
-      className={["lazy-asset-image", className].filter(Boolean).join(" ")}
+      className={["lazy-asset-image", `is-${loadState}`, className].filter(Boolean).join(" ")}
       src={shouldLoad ? resolvedSrc : undefined}
       alt={alt}
       loading={eager ? "eager" : "lazy"}
       decoding="async"
+      onLoad={() => setLoadState("loaded")}
+      onError={() => setLoadState("error")}
     />
   );
 }
@@ -2267,7 +2274,7 @@ function StylesView({ user }: { user: User }) {
   }
 
   async function deleteStyle(style: Style) {
-    if (!window.confirm(`删除风格「${style.name}」？已被任务引用的风格会被后端拒绝删除。`)) {
+    if (!window.confirm(`删除风格「${style.name}」？历史任务会保留已保存的风格快照。`)) {
       return;
     }
     try {

@@ -76,6 +76,7 @@ def list_styles(
         statement = statement.where(or_(Style.name.contains(query), Style.description.contains(query)))
     if status_filter:
         statement = statement.where(Style.status == status_filter)
+    statement = statement.where(Style.deleted_at.is_(None))
 
     styles = db.scalars(statement).all()
     visible_styles = styles[: pagination.limit]
@@ -102,7 +103,7 @@ def create_style(payload: StyleCreate, user: User = Depends(current_user), db: S
 def get_style(style_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[StyleRead]:
     style = db.scalar(
         select(Style)
-        .where(Style.id == style_id)
+        .where(Style.id == style_id, Style.deleted_at.is_(None))
         .options(*style_load_options())
     )
     if not style:
@@ -112,7 +113,7 @@ def get_style(style_id: str, user: User = Depends(current_user), db: Session = D
 
 @router.patch("/{style_id}", response_model=ApiData[StyleRead])
 def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[StyleRead]:
-    style = db.scalar(select(Style).where(Style.id == style_id))
+    style = db.scalar(select(Style).where(Style.id == style_id, Style.deleted_at.is_(None)))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
@@ -126,7 +127,7 @@ def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(curre
         setattr(style, key, value)
 
     db.commit()
-    style = db.scalar(select(Style).where(Style.id == style_id).options(*style_load_options()))
+    style = db.scalar(select(Style).where(Style.id == style_id, Style.deleted_at.is_(None)).options(*style_load_options()))
     return ApiData(data=style_to_read(style))
 
 
@@ -135,10 +136,17 @@ def delete_style(style_id: str, _: User = Depends(current_user), db: Session = D
     style = db.scalar(select(Style).where(Style.id == style_id))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
+    if style.deleted_at is not None:
+        return ApiData(data={"deleted": True})
 
     task_count = db.query(GenerationTask).filter(GenerationTask.style_id == style_id).count()
-    if task_count > 0:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="已有任务引用该风格，不能删除")
+    test_count = db.query(StyleTest).filter(StyleTest.style_id == style_id).count()
+    if task_count > 0 or test_count > 0:
+        style.deleted_at = datetime.utcnow()
+        style.status = StyleStatus.disabled
+        style.name = f"{style.name[:56]} [deleted:{style.id[:8]}]"
+        db.commit()
+        return ApiData(data={"deleted": True})
 
     db.delete(style)
     db.commit()
@@ -152,7 +160,7 @@ async def upload_reference_image(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[StyleReferenceImageRead]:
-    style = db.scalar(select(Style).where(Style.id == style_id))
+    style = db.scalar(select(Style).where(Style.id == style_id, Style.deleted_at.is_(None)))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
@@ -190,7 +198,7 @@ def delete_reference_image(
     _: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[dict[str, bool]]:
-    style = db.scalar(select(Style).where(Style.id == style_id))
+    style = db.scalar(select(Style).where(Style.id == style_id, Style.deleted_at.is_(None)))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
@@ -234,7 +242,7 @@ def create_style_test(
 ) -> ApiData[StyleTestRead]:
     style = db.scalar(
         select(Style)
-        .where(Style.id == style_id)
+        .where(Style.id == style_id, Style.deleted_at.is_(None))
         .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
     )
     if not style:

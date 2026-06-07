@@ -192,7 +192,7 @@ def list_tasks(
 
 @router.post("", response_model=ApiData[TaskRead], status_code=status.HTTP_202_ACCEPTED)
 async def create_task(payload: TaskCreate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
-    style = db.scalar(select(Style).where(Style.id == payload.style_id))
+    style = db.scalar(select(Style).where(Style.id == payload.style_id, Style.deleted_at.is_(None)))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
     if style.status != StyleStatus.active:
@@ -265,7 +265,7 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     if task.status not in {TaskStatus.failed, TaskStatus.partial_succeeded}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败或部分完成的任务可以重试")
 
-    style = db.scalar(select(Style).where(Style.id == task.style_id))
+    style = db.scalar(select(Style).where(Style.id == task.style_id, Style.deleted_at.is_(None)))
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务绑定的风格不存在")
     if style.status != StyleStatus.active:

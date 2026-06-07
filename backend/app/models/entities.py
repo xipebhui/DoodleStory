@@ -78,6 +78,7 @@ class Style(Base, TimestampMixin):
     style_prompt: Mapped[str] = mapped_column(Text)
     cover_asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
     last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
     cover_asset: Mapped[Optional["FileAsset"]] = relationship(foreign_keys=[cover_asset_id])
     reference_images: Mapped[list["StyleReferenceImage"]] = relationship(back_populates="style", cascade="all, delete-orphan")
