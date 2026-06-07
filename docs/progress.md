@@ -154,8 +154,8 @@
 - 修复提取分镜/故事方案最终生图 prompt 遗漏对白内容的问题：`image_text.dialogue` 现在会进入“需要写入图片的文字”块，和旁白、内心 OS 分开标注，确保图片模型收到具体对白文本而不只是对白气泡规则；新增后端单测覆盖“旁白 + 多行对白”的 final prompt 组装，并接入 `./scripts/check.sh`。
 - 收紧任务完成和下载状态：图片生成只有所有 panel 都生成当前成功图时才保持 `succeeded` 并允许打包下载；部分成功会停留在 `partial_succeeded`，进度不再显示满格，并记录“成功 X / 共 Y 张”的错误信息。下载接口现在重新校验每个 panel 的当前成功图，前端下载按钮也只在全部分镜图片生成后启用。
 - 调整正式 panel 最终生图 prompt 的文字规则块：去掉代码固定拼接的“不要添加指定文字之外的任何文字、Logo 或水印”等硬禁止项，保留旁白、对白和内心 OS 的正向呈现说明，减少规则块压制画面风格和场景灵活性的情况。
-- 完成 Sprint 29 Gateway 失败后的 XG 备用生图：新增合同 `docs/contracts/sprint-29-xg-image-fallback.md`；统一生图 Gateway 仍是主路径，Provider 响应错误在既有重试耗尽后会显式切到 XG 备用 provider；无参考图调用 XG `/v1/images/generations`，有参考图调用 XG `/v1/images/edits`，多参考图按数组上传，备用模型由 `XG_FALLBACK_IMAGE_MODEL` 配置。
-- Sprint 29 XG 备用生图实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；单元测试确认 Gateway Provider 响应错误会进入 XG fallback，Gateway 配置错误不会进入 XG fallback，无参考图 payload 使用 XG generations 的 JSON `response_format=url`，多参考图 edit 使用数组字段 `image[]`。
+- 完成 Sprint 29 Gateway 失败后的 XG 备用生图：新增合同 `docs/contracts/sprint-29-xg-image-fallback.md`；统一生图 Gateway 仍是主路径，Provider 响应错误在既有重试耗尽后会显式切到 XG 备用 provider；无参考图调用 XG `/v1/images/generations`，有参考图调用 XG `/v1/images/edits`，多参考图按重复 `image` form part 上传，备用模型由 `XG_FALLBACK_IMAGE_MODEL` 配置。
+- Sprint 29 XG 备用生图实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；单元测试确认 Gateway Provider 响应错误会进入 XG fallback，Gateway 配置错误不会进入 XG fallback，无参考图 payload 使用 XG generations 的 JSON `response_format=url`，多参考图 edit 使用重复 `image` form part。
 
 ## 已知缺口
 

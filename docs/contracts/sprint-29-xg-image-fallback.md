@@ -11,7 +11,7 @@
 - XG 备用 provider：
   - 没有参考图时调用 `POST /v1/images/generations`。
   - 有参考图时调用 `POST /v1/images/edits`。
-  - 多张参考图按数组字段上传。
+  - 多张参考图按重复 `image` form part 上传，保持和 XG 单图 `image=@...` 字段一致。
   - 请求 `response_format=url`，返回图片 URL 后立即下载并保存为 DoodleStory 资产。
 - 新增 `XG_FALLBACK_IMAGE_MODEL` 环境变量，默认 `gemini-3.1-flash-image-preview`。
 - 保留现有 `XG_API_KEY`、`XG_API_BASE_URL`、`XG_PROXY_URL`、`XG_REQUEST_MAX_ATTEMPTS` 和 `XG_REQUEST_RETRY_BACKOFF_SECONDS` 配置。
@@ -29,5 +29,5 @@
 
 - Gateway Provider 响应错误会进入 XG 备用生图。
 - Gateway 配置错误不会进入 XG 备用生图。
-- 无参考图走 XG `generations`，有参考图走 XG `edits`，多图使用数组字段。
+- 无参考图走 XG `generations`，有参考图走 XG `edits`，多图使用重复 `image` form part。
 - `backend/.venv/bin/python -m unittest discover -s backend/tests`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。

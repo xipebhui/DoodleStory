@@ -74,14 +74,14 @@ class ImageGenerationXgFallbackTest(unittest.TestCase):
             payload,
         )
 
-    def test_xg_edit_uses_array_field_for_multiple_images(self) -> None:
+    def test_xg_edit_uses_repeated_image_field_for_multiple_images(self) -> None:
         with patch("app.services.image_generation.xg_fallback_model_name", return_value="gemini-3.1-flash-image-preview"):
             data = build_xg_fallback_edit_data(prompt="改成漫画", aspect_ratio="3:4")
 
         self.assertEqual("gemini-3.1-flash-image-preview", data["model"])
         self.assertEqual("url", data["response_format"])
         self.assertEqual("image", xg_edit_image_field_name(1))
-        self.assertEqual("image[]", xg_edit_image_field_name(2))
+        self.assertEqual("image", xg_edit_image_field_name(2))
 
 
 if __name__ == "__main__":

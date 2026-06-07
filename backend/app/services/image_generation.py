@@ -689,7 +689,7 @@ def build_xg_fallback_edit_data(*, prompt: str, aspect_ratio: str) -> dict[str, 
 
 
 def xg_edit_image_field_name(reference_count: int) -> str:
-    return "image[]" if reference_count > 1 else "image"
+    return "image"
 
 
 def xg_response_request_id(response: requests.Response, response_body: dict[str, Any] | None = None) -> str | None:
