@@ -10,8 +10,8 @@
 - 保留 QY adapter 的公网 URL + `image`、`image2`、`image3` 请求格式。
 - 新增 xgapi adapter：
   - 无参考图走 `/v1/images/generations` JSON。
-  - 有参考图走 `/v1/images/edits` multipart。
-  - 多张参考图使用重复 `image` form part，字段值直接使用公网 URL。
+  - 有参考图走 `/v1/images/edits` JSON。
+  - 多张参考图使用 `image: [url1, url2]` 公网 URL 数组。
 - 人物参考图打包只向 provider 传递公网 URL，不下载本地文件，不转 base64。
 - 新增 `scripts/switch-image-provider.sh qy|xgapi`，只切换 provider 标记，不写入密钥。
 - 增加单元测试覆盖 provider routing 和 xgapi 多图提交格式。
@@ -29,5 +29,5 @@
 - `IMAGE_PROVIDER=qy` 时只调用 QY adapter。
 - `IMAGE_PROVIDER=xgapi` 时只调用 xgapi adapter。
 - xgapi 无参考图请求体是 JSON generations。
-- xgapi 多参考图请求体是 multipart edits，且包含重复 `image` URL form part。
+- xgapi 多参考图请求体是 JSON edits，且包含 `image` 公网 URL 数组。
 - 单元测试、后端编译、前端构建、`git diff --check` 和 `./scripts/check.sh` 通过。

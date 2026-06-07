@@ -153,7 +153,7 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         self.assertEqual("1k", payload["quality"])
         self.assertEqual("url", payload["response_format"])
 
-    def test_xgapi_reference_images_use_repeated_image_url_form_parts(self) -> None:
+    def test_xgapi_reference_images_use_json_image_url_array(self) -> None:
         FakeSession.calls = []
         with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")), patch(
             "app.services.image_generation.requests.Session",
@@ -177,10 +177,13 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         self.assertEqual("xg-request", request_id)
         endpoint, kwargs = FakeSession.calls[0]
         self.assertEqual("https://api.xgapi.top/v1/images/edits", endpoint)
-        self.assertEqual("gemini-3.1-flash-image-preview", kwargs["data"]["model"])
-        self.assertEqual(["image", "image"], [part[0] for part in kwargs["files"]])
-        self.assertEqual([(None, "https://cdn.example.com/first.png"), (None, "https://cdn.example.com/second.png")], [part[1] for part in kwargs["files"]])
-        self.assertNotIn("json", kwargs)
+        self.assertEqual("gemini-3.1-flash-image-preview", kwargs["json"]["model"])
+        self.assertEqual(
+            ["https://cdn.example.com/first.png", "https://cdn.example.com/second.png"],
+            kwargs["json"]["image"],
+        )
+        self.assertEqual("application/json", kwargs["headers"]["Content-Type"])
+        self.assertNotIn("files", kwargs)
 
     def test_xgapi_without_reference_uses_generation_json(self) -> None:
         FakeSession.calls = []

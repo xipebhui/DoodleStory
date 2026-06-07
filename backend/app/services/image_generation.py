@@ -479,12 +479,13 @@ def xgapi_reference_urls(references: list[ImageReference]) -> list[str]:
     return urls
 
 
-def build_xgapi_edit_data(
-    *, prompt: str, image_model_name: str, aspect_ratio: str
-) -> dict[str, str]:
+def build_xgapi_edit_payload(
+    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
+) -> dict[str, Any]:
     return {
         "model": xgapi_model_name(image_model_name),
         "prompt": prompt,
+        "image": reference_urls,
         "aspect_ratio": aspect_ratio,
         "quality": get_settings().xg_image_quality.strip() or "1k",
         "response_format": "url",
@@ -741,19 +742,18 @@ def request_xgapi_image(
             session = requests.Session()
             session.trust_env = False
             if has_references:
-                data = build_xgapi_edit_data(
+                reference_urls = xgapi_reference_urls(references)
+                payload = build_xgapi_edit_payload(
                     prompt=prompt,
+                    reference_urls=reference_urls,
                     image_model_name=image_model_name,
                     aspect_ratio=aspect_ratio,
                 )
-                reference_urls = xgapi_reference_urls(references)
-                files = []
-                for url in reference_urls:
-                    files.append(("image", (None, url)))
+                headers["Content-Type"] = "application/json"
                 logger.info(
                     "xgapi image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s timeout_seconds=%s",
                     endpoint,
-                    data.get("model"),
+                    payload.get("model"),
                     aspect_ratio,
                     attempt,
                     max_attempts,
@@ -766,11 +766,11 @@ def request_xgapi_image(
                     log_provider_raw_io(
                         provider_name="xgapi image provider",
                         direction="request",
-                        payload={**data, "image": reference_urls},
+                        payload=payload,
                         max_chars=settings.image_provider_debug_log_raw_max_chars,
                         sanitize_request=True,
                     )
-                response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300)
+                response = session.post(endpoint, headers=headers, json=payload, timeout=300)
             else:
                 payload = build_xgapi_generation_payload(
                     prompt=prompt,
