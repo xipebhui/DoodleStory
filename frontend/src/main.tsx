@@ -2157,7 +2157,7 @@ function StylesView({ user }: { user: User }) {
   const [styles, setStyles] = useState<Style[]>([]);
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<Style["status"] | "all">("all");
+  const [status, setStatus] = useState<Style["status"] | "all">("active");
   const [styleDrawerOpen, setStyleDrawerOpen] = useState(false);
   const [styleFormMode, setStyleFormMode] = useState<"create" | "edit">("create");
   const [editingStyleId, setEditingStyleId] = useState("");
