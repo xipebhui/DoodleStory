@@ -284,7 +284,7 @@ def create_style_test(
     try:
         generated = generate_xg_image(
             prompt=composed_prompt,
-            reference_paths=[],
+            reference_urls=[],
             image_model_name=style.image_model_name,
             aspect_ratio=style.aspect_ratio,
         )

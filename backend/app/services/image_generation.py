@@ -80,13 +80,12 @@ class GeneratedImageFile:
     public_url: str | None = None
 
 
-def describe_reference_file(path: Path) -> dict[str, Any]:
-    stat = path.stat()
+def describe_reference_url(url: str) -> dict[str, Any]:
+    parsed = urlparse(url)
     return {
-        "name": path.name,
-        "suffix": path.suffix,
-        "bytes": stat.st_size,
-        "content_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+        "scheme": parsed.scheme,
+        "host": parsed.hostname,
+        "path_suffix": Path(parsed.path).suffix,
     }
 
 
@@ -102,14 +101,14 @@ def sanitize_provider_log_value(value: Any) -> Any:
         if separator == ",":
             return f"{header},<base64 omitted chars={len(encoded)}>"
         return "<data image omitted>"
+    if isinstance(value, str) and value.startswith(("http://", "https://")):
+        parsed = urlparse(value)
+        return f"<image url omitted host={parsed.hostname or 'unknown'}>"
     if isinstance(value, dict):
         sanitized = {}
         for key, item in value.items():
             if key == "b64_json" and isinstance(item, str):
                 sanitized[key] = f"<base64 omitted chars={len(item)}>"
-            elif key == "url" and isinstance(item, str) and item.startswith(("http://", "https://")):
-                parsed = urlparse(item)
-                sanitized[key] = f"<image url omitted host={parsed.hostname or 'unknown'}>"
             else:
                 sanitized[key] = sanitize_provider_log_value(item)
         return sanitized
@@ -248,15 +247,6 @@ def detect_image_content_type(content: bytes) -> str:
     raise ImageProviderResponseError("图片 Provider 返回的图片格式不是 PNG、JPEG 或 WebP")
 
 
-def encode_reference_image_data_url(path: Path) -> str:
-    if not path.exists() or not path.is_file():
-        raise ImageProviderConfigError(f"参考图文件不存在：{path}")
-    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    with path.open("rb") as file:
-        encoded = base64.b64encode(file.read()).decode("ascii")
-    return f"data:{content_type};base64,{encoded}"
-
-
 def parse_image_data_url(data_url: str) -> tuple[bytes, str]:
     header, separator, encoded = data_url.partition(",")
     if separator != "," or not header.startswith("data:image/") or ";base64" not in header:
@@ -376,13 +366,25 @@ def image_gateway_reference_limit(image_model_name: str) -> int:
     model_name = image_model_name.strip()
     if model_name in IMAGE_GATEWAY_APEXER_MODELS:
         return 1
-    if model_name in IMAGE_GATEWAY_SILICONFLOW_MODELS:
-        return 3
-    return 4
+    return 3
+
+
+def validate_reference_url(url: str) -> str:
+    cleaned = url.strip()
+    parsed = urlparse(cleaned)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ImageProviderConfigError("参考图必须提供可公开访问的 HTTP(S) URL")
+    return cleaned
+
+
+def add_image_gateway_reference_fields(payload: dict[str, Any], reference_urls: list[str]) -> None:
+    for index, url in enumerate(reference_urls, start=1):
+        key = "image" if index == 1 else f"image{index}"
+        payload[key] = url
 
 
 def build_image_gateway_generation_payload(
-    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     model_name = image_model_name.strip()
     if model_name not in IMAGE_GATEWAY_GENERATION_MODELS:
@@ -390,16 +392,15 @@ def build_image_gateway_generation_payload(
         raise ImageProviderConfigError(f"生图模型未接入统一 Gateway：{model_name}。当前可用模型：{supported}")
 
     reference_limit = image_gateway_reference_limit(model_name)
-    if len(reference_paths) > reference_limit:
+    if len(reference_urls) > reference_limit:
         raise ImageProviderConfigError(f"{model_name} 最多支持 {reference_limit} 张参考图")
 
     reference_file_info = []
-    reference_images = []
-    for path in reference_paths:
-        if not path.exists() or not path.is_file():
-            raise ImageProviderConfigError(f"参考图文件不存在：{path}")
-        reference_file_info.append(describe_reference_file(path))
-        reference_images.append(encode_reference_image_data_url(path))
+    validated_reference_urls = []
+    for url in reference_urls:
+        validated_url = validate_reference_url(url)
+        reference_file_info.append(describe_reference_url(validated_url))
+        validated_reference_urls.append(validated_url)
 
     payload: dict[str, Any] = {
         "model": model_name,
@@ -407,8 +408,7 @@ def build_image_gateway_generation_payload(
         "n": 1,
         "size": image_gateway_size_for_aspect_ratio(aspect_ratio),
     }
-    if reference_images:
-        payload["images"] = reference_images
+    add_image_gateway_reference_fields(payload, validated_reference_urls)
 
     if model_name in IMAGE_GATEWAY_APEXER_MODELS:
         image_size = "4K" if model_name.endswith("_4K") else "1K"
@@ -475,7 +475,7 @@ def read_image_gateway_generation_result(
 
 
 def request_image_gateway_generation(
-    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
     if not image_model_name.strip():
         raise ImageProviderConfigError("风格未绑定生图模型名")
@@ -491,7 +491,7 @@ def request_image_gateway_generation(
     endpoint = f"{base_url.rstrip('/')}/images/generations"
     payload, reference_file_info = build_image_gateway_generation_payload(
         prompt=prompt,
-        reference_paths=reference_paths,
+        reference_urls=reference_urls,
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
     )
@@ -516,7 +516,7 @@ def request_image_gateway_generation(
                 payload.get("size"),
                 attempt,
                 max_attempts,
-                len(reference_paths),
+                len(reference_urls),
                 reference_file_info,
                 len(prompt),
                 300,
@@ -646,12 +646,12 @@ def request_image_gateway_generation(
 
 
 def request_xg_image(
-    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
     if is_image_gateway_generation_model(image_model_name):
         return request_image_gateway_generation(
             prompt=prompt,
-            reference_paths=reference_paths,
+            reference_urls=reference_urls,
             image_model_name=image_model_name,
             aspect_ratio=aspect_ratio,
         )
@@ -660,11 +660,11 @@ def request_xg_image(
 
 
 def generate_xg_image(
-    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
+    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
 ) -> GeneratedImageFile:
     content, content_type, provider_request_id = request_xg_image(
         prompt=prompt,
-        reference_paths=reference_paths,
+        reference_urls=reference_urls,
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
     )
@@ -691,11 +691,11 @@ def generate_xg_image(
 
 
 def generate_xg_image_edit(
-    *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str = "9:16"
+    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str = "9:16"
 ) -> GeneratedImageFile:
     return generate_xg_image(
         prompt=prompt,
-        reference_paths=reference_paths,
+        reference_urls=reference_urls,
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
     )
