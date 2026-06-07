@@ -163,6 +163,7 @@
 - 开始并完成 Sprint 34 QY 参考图公网 URL 字段格式：新增合同 `docs/contracts/sprint-34-qy-reference-url-fields.md`；统一生图 Gateway 的人物参考图请求改为直接提交资产公网 URL，并按 `image`、`image2`、`image3` 独立字段组织，不再把参考图转成 base64 data URL 或放入 `images` 数组；`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 开始并完成 Sprint 35 显式生图 Provider 切换：新增合同 `docs/contracts/sprint-35-explicit-image-provider-switch.md`；通过 `IMAGE_PROVIDER=qy|xgapi` 显式选择生图 provider，QY 保持公网 URL + `image/image2/image3` 逻辑，xgapi 使用独立 adapter，无参考图走 generations JSON，有参考图走 edits JSON，参考图使用 `image` 公网 URL 数组；两边参考图都直接使用资产公网 URL，不下载本地文件也不转 base64；新增 `scripts/switch-image-provider.sh` 用于隔离切换配置；`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 修复 xgapi 多参考图公网 URL 提交方式：本地真实请求验证 `multipart image`、`image[]`、`image[0]/image[1]`、`images[]`、`image/image2` 以及 form URL 均返回 500，`/v1/images/edits` JSON `image: [url1, url2]` 返回 200；后端已改为该格式，单元测试同步覆盖。
+- 调整内容提取分镜解析策略：`parse_extracted_storyboard_v1.md` 不再诱导 LLM 在 `visual_prompt` 或 `text_layout` 中输出画面比例，分镜解析只负责画面与分格信息，最终画面比例继续由风格 `aspect_ratio` 统一控制。
 
 ## 已知缺口
 
