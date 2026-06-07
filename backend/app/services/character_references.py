@@ -23,7 +23,7 @@ from app.services.image_generation import (
 from app.services.llm import LLMResponseError, TaskCharacterPlan
 from app.services.prompt_logging import log_prompt_trace
 from app.services.prompt_templates import render_prompt_template
-from app.services.storage import asset_content_url, existing_local_asset_path
+from app.services.storage import asset_content_url
 
 logger = logging.getLogger(__name__)
 
@@ -293,14 +293,6 @@ def reference_asset_public_url(asset: FileAsset) -> str | None:
         return None
 
 
-def reference_asset_local_path(asset: FileAsset):
-    try:
-        return existing_local_asset_path(asset)
-    except HTTPException as exc:
-        logger.info("character reference asset has no local file asset_id=%s reason=%s", asset.id, exc.detail)
-        return None
-
-
 def build_panel_reference_pack(
     *,
     panel: TaskPanel,
@@ -316,7 +308,6 @@ def build_panel_reference_pack(
         character_references.append(
             ImageReference(
                 url=reference_asset_public_url(appearance.reference_image),
-                local_path=reference_asset_local_path(appearance.reference_image),
             )
         )
         notes.append(f"{character.name}参考（参考图{index}）")

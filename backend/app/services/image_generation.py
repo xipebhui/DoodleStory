@@ -83,7 +83,6 @@ class GeneratedImageFile:
 @dataclass(frozen=True)
 class ImageReference:
     url: str | None = None
-    local_path: Path | None = None
 
 
 def describe_reference_url(url: str) -> dict[str, Any]:
@@ -99,11 +98,6 @@ def describe_reference(reference: ImageReference) -> dict[str, Any]:
     info: dict[str, Any] = {}
     if reference.url:
         info.update(describe_reference_url(reference.url))
-    if reference.local_path:
-        info["local_name"] = reference.local_path.name
-        info["local_suffix"] = reference.local_path.suffix
-        if reference.local_path.exists():
-            info["local_bytes"] = reference.local_path.stat().st_size
     return info
 
 
@@ -476,15 +470,13 @@ def build_xgapi_generation_payload(
     }
 
 
-def xgapi_reference_paths(references: list[ImageReference]) -> list[Path]:
-    paths: list[Path] = []
+def xgapi_reference_urls(references: list[ImageReference]) -> list[str]:
+    urls: list[str] = []
     for reference in references:
-        if reference.local_path is None:
-            raise ImageProviderConfigError("xgapi 带参考图生图必须提供本地参考图文件")
-        if not reference.local_path.exists() or not reference.local_path.is_file():
-            raise ImageProviderConfigError(f"xgapi 参考图文件不存在：{reference.local_path}")
-        paths.append(reference.local_path)
-    return paths
+        if not reference.url:
+            raise ImageProviderConfigError("xgapi 带参考图生图必须提供公网 URL")
+        urls.append(validate_reference_url(reference.url))
+    return urls
 
 
 def build_xgapi_edit_data(
@@ -754,43 +746,31 @@ def request_xgapi_image(
                     image_model_name=image_model_name,
                     aspect_ratio=aspect_ratio,
                 )
-                reference_paths = xgapi_reference_paths(references)
-                opened_files = []
+                reference_urls = xgapi_reference_urls(references)
                 files = []
-                try:
-                    for path in reference_paths:
-                        file = path.open("rb")
-                        opened_files.append(file)
-                        files.append(
-                            (
-                                "image",
-                                (path.name, file, mimetypes.guess_type(path.name)[0] or "application/octet-stream"),
-                            )
-                        )
-                    logger.info(
-                        "xgapi image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s timeout_seconds=%s",
-                        endpoint,
-                        data.get("model"),
-                        aspect_ratio,
-                        attempt,
-                        max_attempts,
-                        len(references),
-                        reference_file_info,
-                        len(prompt),
-                        300,
+                for url in reference_urls:
+                    files.append(("image", (None, url)))
+                logger.info(
+                    "xgapi image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s timeout_seconds=%s",
+                    endpoint,
+                    data.get("model"),
+                    aspect_ratio,
+                    attempt,
+                    max_attempts,
+                    len(references),
+                    reference_file_info,
+                    len(prompt),
+                    300,
+                )
+                if settings.image_provider_debug_log_raw_io:
+                    log_provider_raw_io(
+                        provider_name="xgapi image provider",
+                        direction="request",
+                        payload={**data, "image": reference_urls},
+                        max_chars=settings.image_provider_debug_log_raw_max_chars,
+                        sanitize_request=True,
                     )
-                    if settings.image_provider_debug_log_raw_io:
-                        log_provider_raw_io(
-                            provider_name="xgapi image provider",
-                            direction="request",
-                            payload={**data, "image": [str(path.name) for path in reference_paths]},
-                            max_chars=settings.image_provider_debug_log_raw_max_chars,
-                            sanitize_request=True,
-                        )
-                    response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300)
-                finally:
-                    for file in opened_files:
-                        file.close()
+                response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300)
             else:
                 payload = build_xgapi_generation_payload(
                     prompt=prompt,
