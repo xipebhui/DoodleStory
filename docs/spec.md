@@ -114,7 +114,7 @@
 - 前端：具体框架未选择。产品 UI 设计见 `docs/design/ui.md`。
 - 后端：具体框架未选择。初始 REST API 设计见 `docs/design/api.md`。
 - 存储：关系型 OLTP 数据库设计见 `docs/design/database.md`。
-- 外部集成：LLM 固定使用 SiliconFlow 配置；生图只使用 `docs/api_v4.md` 中已同意的 OpenAI Images 兼容统一服务，生图 API key 和 base url 从 `IMAGE_GATEWAY_API_KEY`、`IMAGE_GATEWAY_BASE_URL` 读取。当前可用生图模型精确限定为 `gpt-image-2`、`gpt-image-2(线路XF)`、`gr-image-2`、`nano-banana`、`nano-banana-hd`、`nano-banana-pro`、`Tongyi-MAI/Z-Image`、`Qwen/Qwen-Image`、`baidu/ERNIE-Image-Turbo`、`gemini_3.1_flash_image_preview`、`gemini_3.0_pro_image_preview`、`gemini_3.1_flash_image_preview_4K`、`gemini_3.0_pro_image_preview_4K`、`gemini-3.1-flash-image-preview` 和 `gemini-3-pro-image-preview`。所有模型统一请求 `/v1/images/generations`，返回的 `data[0].url` 或 `data[0].b64_json` 必须立即下载或解码并保存为 DoodleStory 资产；未列入清单的模型必须明确报错。DoodleStory 后端不再直连 XG、生图别名对应的供应商选择由统一生图平台内部路由负责。
+- 外部集成：LLM 固定使用 SiliconFlow 配置；生图默认使用 `docs/api_v4.md` 中已同意的 OpenAI Images 兼容统一服务（`IMAGE_PROVIDER=qy`），生图 API key 和 base url 从 `IMAGE_GATEWAY_API_KEY`、`IMAGE_GATEWAY_BASE_URL` 读取。为临时排查内部 QY 多图不稳定，允许通过 `IMAGE_PROVIDER=xgapi` 显式切到 xgapi 直连；该切换不是 fallback，所选 provider 失败时任务必须明确失败，不自动切换到另一个 provider。当前 QY 可用生图模型精确限定为 `gpt-image-2`、`gpt-image-2(线路XF)`、`gr-image-2`、`nano-banana`、`nano-banana-hd`、`nano-banana-pro`、`Tongyi-MAI/Z-Image`、`Qwen/Qwen-Image`、`baidu/ERNIE-Image-Turbo`、`gemini_3.1_flash_image_preview`、`gemini_3.0_pro_image_preview`、`gemini_3.1_flash_image_preview_4K`、`gemini_3.0_pro_image_preview_4K`、`gemini-3.1-flash-image-preview` 和 `gemini-3-pro-image-preview`。QY 请求 `/v1/images/generations`；xgapi 无参考图请求 `/v1/images/generations` JSON，有参考图请求 `/v1/images/edits` multipart。返回的 `data[0].url` 或 `data[0].b64_json` 必须立即下载或解码并保存为 DoodleStory 资产；未列入清单或未配置所选 provider 的模型/API key 必须明确报错。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
 - 图片生成并发：任务队列由进程内 worker 池领取任务，默认 `TASK_WORKER_CONCURRENCY=3`；单个任务的 panel 图片 Provider 请求在 `generate_images` 阶段按 `IMAGE_GENERATION_CONCURRENCY` 做有限并发，默认 3。
@@ -151,7 +151,7 @@
 - 用户显式点击任务重试时不限制重试次数；`attempts` 只用于排查和标记重试来源，不作为阻止用户操作的上限。
 - 任务队列支持最多按 `TASK_WORKER_CONCURRENCY` 并发执行多个生成任务，默认 3；同一进程内同一个任务 ID 不允许并发执行两次。
 - 任务 `generate_images` 阶段支持同一任务内 panel 生图并发提交，默认 `IMAGE_GENERATION_CONCURRENCY=3`；单个任务的数据库状态写入仍在该任务 worker 线程内完成。
-- 任务生图请求和结果图下载遇到 timeout 时自动重试 3 次；非 timeout 的配置错误和校验错误不得因为该规则被隐藏。统一生图 Gateway 的 Provider 响应错误在既有重试耗尽后必须明确失败，不得在 DoodleStory 后端静默切换到 XG 或其它 provider。
+- 任务生图请求和结果图下载遇到 timeout 时自动重试 3 次；非 timeout 的配置错误和校验错误不得因为该规则被隐藏。所选生图 Provider 的响应错误在既有重试耗尽后必须明确失败，不得在 DoodleStory 后端静默切换到 XG、QY 或其它 provider。
 - 开启人物参考的任务如果没有识别到可用于参考图的主要人物，任务应失败并显示明确错误，不能静默降级为普通生图。
 - 单 panel 修改在人物参考任务中必须继续携带该 panel 已绑定的人物参考图。
 - 技术选型仍未确定。未来实现代码前，应先通过 sprint contract 选择具体技术栈。

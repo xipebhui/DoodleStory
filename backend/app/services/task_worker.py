@@ -47,6 +47,7 @@ from app.services.character_references import (
 )
 from app.services.image_generation import (
     GeneratedImageFile,
+    ImageReference,
     ImageProviderConfigError,
     ImageProviderResponseError,
     generate_xg_image,
@@ -79,7 +80,7 @@ class PreparedPanelImageRequest:
     panel_order: int
     image_id: str
     final_prompt: str
-    reference_urls: list[str]
+    references: list[ImageReference]
     reference_count: int
     character_reference_count: int
 
@@ -114,7 +115,7 @@ def generate_panel_image_request(
         )
         generated = generate_xg_image(
             prompt=request.final_prompt,
-            reference_urls=request.reference_urls,
+            references=request.references,
             image_model_name=image_model_name,
             aspect_ratio=aspect_ratio,
         )
@@ -1094,11 +1095,11 @@ def process_task(task_id: str) -> None:
             try:
                 if task.use_character_references:
                     reference_pack = build_panel_reference_pack(panel=panel)
-                    panel_reference_urls = reference_pack.urls
+                    panel_references = reference_pack.references
                     reference_notes = reference_pack.notes
                     character_reference_count = reference_pack.character_count
                 else:
-                    panel_reference_urls = []
+                    panel_references = []
                     reference_notes = []
                     character_reference_count = 0
                 final_prompt = build_panel_final_prompt(
@@ -1125,7 +1126,7 @@ def process_task(task_id: str) -> None:
                         panel_order=panel.panel_order,
                     ),
                     reference_notes=reference_notes,
-                    reference_count=len(panel_reference_urls),
+                    reference_count=len(panel_references),
                     character_reference_count=character_reference_count,
                     visual_prompt=panel.generated_prompt,
                     image_text_json=panel.image_text_json,
@@ -1137,7 +1138,7 @@ def process_task(task_id: str) -> None:
                     task.id,
                     panel.id,
                     panel.panel_order,
-                    len(panel_reference_urls),
+                    len(panel_references),
                     character_reference_count,
                     len(panel.generated_prompt or ""),
                     len(final_prompt),
@@ -1178,8 +1179,8 @@ def process_task(task_id: str) -> None:
                     panel_order=panel.panel_order,
                     image_id=image.id,
                     final_prompt=final_prompt,
-                    reference_urls=panel_reference_urls,
-                    reference_count=len(panel_reference_urls),
+                    references=panel_references,
+                    reference_count=len(panel_references),
                     character_reference_count=character_reference_count,
                 )
             )
@@ -1462,7 +1463,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                 image.finished_at = datetime.utcnow()
                 db.commit()
                 return
-            reference_urls = reference_pack.urls
+            references = reference_pack.references
             reference_notes = reference_pack.notes
             image.final_prompt = build_panel_final_prompt(
                 task=task,
@@ -1490,7 +1491,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                     generation_number=image.generation_number,
                 ),
                 reference_notes=reference_notes,
-                reference_count=len(reference_urls),
+                reference_count=len(references),
                 visual_prompt=image.image_prompt,
                 image_text_json=image.image_text_json,
                 final_prompt_chars=len(image.final_prompt or ""),
@@ -1498,7 +1499,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             )
             db.commit()
         else:
-            reference_urls = []
+            references = []
             reference_notes = []
             image.final_prompt = build_panel_final_prompt(
                 task=task,
@@ -1526,7 +1527,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                     generation_number=image.generation_number,
                 ),
                 reference_notes=reference_notes,
-                reference_count=len(reference_urls),
+                reference_count=len(references),
                 visual_prompt=image.image_prompt,
                 image_text_json=image.image_text_json,
                 final_prompt_chars=len(image.final_prompt or ""),
@@ -1540,11 +1541,11 @@ def process_panel_edit(generated_image_id: str) -> None:
                 task.id,
                 panel.id,
                 len(image.final_prompt or ""),
-                len(reference_urls),
+                len(references),
             )
             generated = generate_xg_image(
                 prompt=image.final_prompt or "",
-                reference_urls=reference_urls,
+                references=references,
                 image_model_name=image.image_model_name_snapshot,
                 aspect_ratio=task.style_aspect_ratio_snapshot,
             )

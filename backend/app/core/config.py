@@ -35,8 +35,13 @@ class Settings(BaseSettings):
     siliconflow_model: str = ""
     siliconflow_temperature: float = 0.8
     prompt_trace_log_max_chars: int = 60000
+    image_provider: str = "qy"
     image_gateway_api_key: str = ""
     image_gateway_base_url: str = "http://192.129.209.36:3001/v1"
+    xg_api_key: str = ""
+    xg_base_url: str = "https://api.xgapi.top"
+    xg_image_model: str = "gemini-3.1-flash-image-preview"
+    xg_image_quality: str = "1k"
     apexerapi_api_key: str = ""
     apexerapi_base: str = ""
     apexerapi_proxy_url: str = ""

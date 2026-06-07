@@ -1,44 +1,93 @@
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.services.image_generation import (
+    ImageReference,
     ImageProviderConfigError,
     ImageProviderResponseError,
     build_image_gateway_generation_payload,
+    build_xgapi_generation_payload,
     request_xg_image,
 )
+
+
+def image_provider_settings(provider: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        image_provider=provider,
+        image_gateway_api_key="qy-key",
+        image_gateway_base_url="https://qy.example.com/v1",
+        xg_api_key="xg-key",
+        xg_base_url="https://api.xgapi.top",
+        xg_image_model="gemini-3.1-flash-image-preview",
+        xg_image_quality="1k",
+        xg_request_max_attempts=1,
+        image_provider_timeout_retry_attempts=0,
+        xg_request_retry_backoff_seconds=0,
+        image_provider_debug_log_raw_io=False,
+        image_provider_debug_log_raw_max_chars=20000,
+    )
+
+
+class FakeResponse:
+    status_code = 200
+    content = b'{"data":[{"url":"https://cdn.example.com/out.png"}]}'
+    text = '{"data":[{"url":"https://cdn.example.com/out.png"}]}'
+    headers = {"content-type": "application/json", "x-request-id": "xg-request"}
+
+    def json(self) -> dict[str, object]:
+        return {"data": [{"url": "https://cdn.example.com/out.png"}]}
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.trust_env = False
+
+    def post(self, endpoint: str, **kwargs):
+        FakeSession.calls.append((endpoint, kwargs))
+        return FakeResponse()
+
+
+FakeSession.calls = []
 
 
 class ImageGenerationGatewayOnlyTest(unittest.TestCase):
     def test_gateway_response_error_is_not_fallback(self) -> None:
         with patch(
+            "app.services.image_generation.get_settings",
+            return_value=image_provider_settings("qy"),
+        ), patch(
             "app.services.image_generation.request_image_gateway_generation",
             side_effect=ImageProviderResponseError("gateway failed"),
         ) as gateway_request:
             with self.assertRaisesRegex(ImageProviderResponseError, "gateway failed"):
                 request_xg_image(
                     prompt="画一只猫",
-                    reference_urls=["https://cdn.example.com/reference.png"],
+                    references=[ImageReference(url="https://cdn.example.com/reference.png")],
                     image_model_name="gpt-image-2",
                     aspect_ratio="3:4",
                 )
 
         gateway_request.assert_called_once_with(
             prompt="画一只猫",
-            reference_urls=["https://cdn.example.com/reference.png"],
+            references=[ImageReference(url="https://cdn.example.com/reference.png")],
             image_model_name="gpt-image-2",
             aspect_ratio="3:4",
         )
 
     def test_gateway_config_error_is_not_fallback(self) -> None:
         with patch(
+            "app.services.image_generation.get_settings",
+            return_value=image_provider_settings("qy"),
+        ), patch(
             "app.services.image_generation.request_image_gateway_generation",
             side_effect=ImageProviderConfigError("IMAGE_GATEWAY_API_KEY 未配置"),
         ) as gateway_request:
             with self.assertRaisesRegex(ImageProviderConfigError, "IMAGE_GATEWAY_API_KEY"):
                 request_xg_image(
                     prompt="画一只猫",
-                    reference_urls=[],
+                    references=[],
                     image_model_name="gpt-image-2",
                     aspect_ratio="3:4",
                 )
@@ -47,12 +96,15 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
 
     def test_gateway_success_returns_result_directly(self) -> None:
         with patch(
+            "app.services.image_generation.get_settings",
+            return_value=image_provider_settings("qy"),
+        ), patch(
             "app.services.image_generation.request_image_gateway_generation",
             return_value=(b"\x89PNG\r\n\x1a\nimage", "image/png", "gateway-request"),
         ) as gateway_request:
             content, content_type, request_id = request_xg_image(
                 prompt="画一只猫",
-                reference_urls=[],
+                references=[],
                 image_model_name="gpt-image-2",
                 aspect_ratio="3:4",
             )
@@ -65,9 +117,9 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
     def test_gateway_payload_uses_qy_public_url_reference_fields(self) -> None:
         payload, reference_info = build_image_gateway_generation_payload(
             prompt="画一张连续漫画分镜",
-            reference_urls=[
-                "https://cdn.example.com/template.png",
-                "https://cdn.example.com/person.png",
+            references=[
+                ImageReference(url="https://cdn.example.com/template.png"),
+                ImageReference(url="https://cdn.example.com/person.png"),
             ],
             image_model_name="gpt-image-2",
             aspect_ratio="3:4",
@@ -84,10 +136,80 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         with self.assertRaisesRegex(ImageProviderConfigError, "HTTP\\(S\\) URL"):
             build_image_gateway_generation_payload(
                 prompt="画一张连续漫画分镜",
-                reference_urls=["data:image/png;base64,abc"],
+                references=[ImageReference(url="data:image/png;base64,abc")],
                 image_model_name="gpt-image-2",
                 aspect_ratio="3:4",
             )
+
+    def test_xgapi_generation_payload_uses_env_model(self) -> None:
+        with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")):
+            payload = build_xgapi_generation_payload(
+                prompt="画一张连续漫画分镜",
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+            )
+
+        self.assertEqual("gemini-3.1-flash-image-preview", payload["model"])
+        self.assertEqual("3:4", payload["aspect_ratio"])
+        self.assertEqual("1k", payload["quality"])
+        self.assertEqual("url", payload["response_format"])
+
+    def test_xgapi_reference_images_use_repeated_image_form_parts(self) -> None:
+        first_path = Path("/tmp/doodlestory-xgapi-test-1.png")
+        second_path = Path("/tmp/doodlestory-xgapi-test-2.png")
+        first_path.write_bytes(b"\x89PNG\r\n\x1a\nfirst")
+        second_path.write_bytes(b"\x89PNG\r\n\x1a\nsecond")
+        FakeSession.calls = []
+        try:
+            with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")), patch(
+                "app.services.image_generation.requests.Session",
+                side_effect=FakeSession,
+            ), patch(
+                "app.services.image_generation.read_image_gateway_generation_result",
+                return_value=(b"\x89PNG\r\n\x1a\nimage", "image/png", "xg-request"),
+            ):
+                content, content_type, request_id = request_xg_image(
+                    prompt="画一张连续漫画分镜",
+                    references=[
+                        ImageReference(url="https://cdn.example.com/first.png", local_path=first_path),
+                        ImageReference(url="https://cdn.example.com/second.png", local_path=second_path),
+                    ],
+                    image_model_name="gpt-image-2",
+                    aspect_ratio="3:4",
+                )
+        finally:
+            first_path.unlink(missing_ok=True)
+            second_path.unlink(missing_ok=True)
+
+        self.assertEqual(b"\x89PNG\r\n\x1a\nimage", content)
+        self.assertEqual("image/png", content_type)
+        self.assertEqual("xg-request", request_id)
+        endpoint, kwargs = FakeSession.calls[0]
+        self.assertEqual("https://api.xgapi.top/v1/images/edits", endpoint)
+        self.assertEqual("gemini-3.1-flash-image-preview", kwargs["data"]["model"])
+        self.assertEqual(["image", "image"], [part[0] for part in kwargs["files"]])
+        self.assertNotIn("json", kwargs)
+
+    def test_xgapi_without_reference_uses_generation_json(self) -> None:
+        FakeSession.calls = []
+        with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")), patch(
+            "app.services.image_generation.requests.Session",
+            side_effect=FakeSession,
+        ), patch(
+            "app.services.image_generation.read_image_gateway_generation_result",
+            return_value=(b"\x89PNG\r\n\x1a\nimage", "image/png", "xg-request"),
+        ):
+            request_xg_image(
+                prompt="画一只猫",
+                references=[],
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+            )
+
+        endpoint, kwargs = FakeSession.calls[0]
+        self.assertEqual("https://api.xgapi.top/v1/images/generations", endpoint)
+        self.assertEqual("gemini-3.1-flash-image-preview", kwargs["json"]["model"])
+        self.assertNotIn("files", kwargs)
 
 
 if __name__ == "__main__":

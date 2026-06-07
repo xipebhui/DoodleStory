@@ -80,6 +80,12 @@ class GeneratedImageFile:
     public_url: str | None = None
 
 
+@dataclass(frozen=True)
+class ImageReference:
+    url: str | None = None
+    local_path: Path | None = None
+
+
 def describe_reference_url(url: str) -> dict[str, Any]:
     parsed = urlparse(url)
     return {
@@ -87,6 +93,18 @@ def describe_reference_url(url: str) -> dict[str, Any]:
         "host": parsed.hostname,
         "path_suffix": Path(parsed.path).suffix,
     }
+
+
+def describe_reference(reference: ImageReference) -> dict[str, Any]:
+    info: dict[str, Any] = {}
+    if reference.url:
+        info.update(describe_reference_url(reference.url))
+    if reference.local_path:
+        info["local_name"] = reference.local_path.name
+        info["local_suffix"] = reference.local_path.suffix
+        if reference.local_path.exists():
+            info["local_bytes"] = reference.local_path.stat().st_size
+    return info
 
 
 def truncate_raw_log_text(value: str, max_chars: int) -> str:
@@ -377,6 +395,15 @@ def validate_reference_url(url: str) -> str:
     return cleaned
 
 
+def qy_reference_urls(references: list[ImageReference]) -> list[str]:
+    urls = []
+    for reference in references:
+        if not reference.url:
+            raise ImageProviderConfigError("QY 生图参考图必须提供公网 URL")
+        urls.append(validate_reference_url(reference.url))
+    return urls
+
+
 def add_image_gateway_reference_fields(payload: dict[str, Any], reference_urls: list[str]) -> None:
     for index, url in enumerate(reference_urls, start=1):
         key = "image" if index == 1 else f"image{index}"
@@ -384,13 +411,14 @@ def add_image_gateway_reference_fields(payload: dict[str, Any], reference_urls: 
 
 
 def build_image_gateway_generation_payload(
-    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
+    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     model_name = image_model_name.strip()
     if model_name not in IMAGE_GATEWAY_GENERATION_MODELS:
         supported = "、".join(sorted(IMAGE_GATEWAY_GENERATION_MODELS))
         raise ImageProviderConfigError(f"生图模型未接入统一 Gateway：{model_name}。当前可用模型：{supported}")
 
+    reference_urls = qy_reference_urls(references)
     reference_limit = image_gateway_reference_limit(model_name)
     if len(reference_urls) > reference_limit:
         raise ImageProviderConfigError(f"{model_name} 最多支持 {reference_limit} 张参考图")
@@ -422,6 +450,53 @@ def build_image_gateway_generation_payload(
         }
 
     return payload, reference_file_info
+
+
+def xgapi_endpoint(base_url: str, path: str) -> str:
+    cleaned = base_url.rstrip("/")
+    if cleaned.endswith("/v1"):
+        return f"{cleaned}{path}"
+    return f"{cleaned}/v1{path}"
+
+
+def xgapi_model_name(image_model_name: str) -> str:
+    configured = get_settings().xg_image_model.strip()
+    return configured or image_model_name.strip()
+
+
+def build_xgapi_generation_payload(
+    *, prompt: str, image_model_name: str, aspect_ratio: str
+) -> dict[str, Any]:
+    return {
+        "prompt": prompt,
+        "model": xgapi_model_name(image_model_name),
+        "aspect_ratio": aspect_ratio,
+        "quality": get_settings().xg_image_quality.strip() or "1k",
+        "response_format": "url",
+    }
+
+
+def xgapi_reference_paths(references: list[ImageReference]) -> list[Path]:
+    paths: list[Path] = []
+    for reference in references:
+        if reference.local_path is None:
+            raise ImageProviderConfigError("xgapi 带参考图生图必须提供本地参考图文件")
+        if not reference.local_path.exists() or not reference.local_path.is_file():
+            raise ImageProviderConfigError(f"xgapi 参考图文件不存在：{reference.local_path}")
+        paths.append(reference.local_path)
+    return paths
+
+
+def build_xgapi_edit_data(
+    *, prompt: str, image_model_name: str, aspect_ratio: str
+) -> dict[str, str]:
+    return {
+        "model": xgapi_model_name(image_model_name),
+        "prompt": prompt,
+        "aspect_ratio": aspect_ratio,
+        "quality": get_settings().xg_image_quality.strip() or "1k",
+        "response_format": "url",
+    }
 
 
 def parse_openai_image_generation_item(response_body: dict[str, Any]) -> dict[str, Any]:
@@ -475,7 +550,7 @@ def read_image_gateway_generation_result(
 
 
 def request_image_gateway_generation(
-    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
+    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
     if not image_model_name.strip():
         raise ImageProviderConfigError("风格未绑定生图模型名")
@@ -491,7 +566,7 @@ def request_image_gateway_generation(
     endpoint = f"{base_url.rstrip('/')}/images/generations"
     payload, reference_file_info = build_image_gateway_generation_payload(
         prompt=prompt,
-        reference_urls=reference_urls,
+        references=references,
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
     )
@@ -516,7 +591,7 @@ def request_image_gateway_generation(
                 payload.get("size"),
                 attempt,
                 max_attempts,
-                len(reference_urls),
+                len(references),
                 reference_file_info,
                 len(prompt),
                 300,
@@ -645,13 +720,238 @@ def request_image_gateway_generation(
     return image_content, content_type, result_request_id
 
 
-def request_xg_image(
-    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
+def request_xgapi_image(
+    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
+    settings = get_settings()
+    api_key = settings.xg_api_key.strip()
+    base_url = settings.xg_base_url.strip()
+    if not api_key:
+        raise ImageProviderConfigError("XG_API_KEY 未配置")
+    if not base_url:
+        raise ImageProviderConfigError("XG_BASE_URL 未配置")
+
+    has_references = bool(references)
+    endpoint = xgapi_endpoint(base_url, "/images/edits" if has_references else "/images/generations")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+    }
+    standard_max_attempts, timeout_max_attempts = image_provider_attempt_limits()
+    max_attempts = max(standard_max_attempts, timeout_max_attempts)
+    response: requests.Response | None = None
+    request_started_at = monotonic()
+    reference_file_info = [describe_reference(reference) for reference in references]
+
+    for attempt in range(1, max_attempts + 1):
+        attempt_started_at = monotonic()
+        try:
+            session = requests.Session()
+            session.trust_env = False
+            if has_references:
+                data = build_xgapi_edit_data(
+                    prompt=prompt,
+                    image_model_name=image_model_name,
+                    aspect_ratio=aspect_ratio,
+                )
+                reference_paths = xgapi_reference_paths(references)
+                opened_files = []
+                files = []
+                try:
+                    for path in reference_paths:
+                        file = path.open("rb")
+                        opened_files.append(file)
+                        files.append(
+                            (
+                                "image",
+                                (path.name, file, mimetypes.guess_type(path.name)[0] or "application/octet-stream"),
+                            )
+                        )
+                    logger.info(
+                        "xgapi image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s timeout_seconds=%s",
+                        endpoint,
+                        data.get("model"),
+                        aspect_ratio,
+                        attempt,
+                        max_attempts,
+                        len(references),
+                        reference_file_info,
+                        len(prompt),
+                        300,
+                    )
+                    if settings.image_provider_debug_log_raw_io:
+                        log_provider_raw_io(
+                            provider_name="xgapi image provider",
+                            direction="request",
+                            payload={**data, "image": [str(path.name) for path in reference_paths]},
+                            max_chars=settings.image_provider_debug_log_raw_max_chars,
+                            sanitize_request=True,
+                        )
+                    response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300)
+                finally:
+                    for file in opened_files:
+                        file.close()
+            else:
+                payload = build_xgapi_generation_payload(
+                    prompt=prompt,
+                    image_model_name=image_model_name,
+                    aspect_ratio=aspect_ratio,
+                )
+                headers["Content-Type"] = "application/json"
+                logger.info(
+                    "xgapi image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s prompt_chars=%s timeout_seconds=%s",
+                    endpoint,
+                    payload.get("model"),
+                    aspect_ratio,
+                    attempt,
+                    max_attempts,
+                    0,
+                    len(prompt),
+                    300,
+                )
+                if settings.image_provider_debug_log_raw_io:
+                    log_provider_raw_io(
+                        provider_name="xgapi image provider",
+                        direction="request",
+                        payload=payload,
+                        max_chars=settings.image_provider_debug_log_raw_max_chars,
+                        sanitize_request=True,
+                    )
+                response = session.post(endpoint, headers=headers, json=payload, timeout=300)
+        except requests.RequestException as exc:
+            elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
+            if should_retry_provider_exception(
+                exc,
+                attempt=attempt,
+                standard_max_attempts=standard_max_attempts,
+                timeout_max_attempts=timeout_max_attempts,
+            ):
+                delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
+                logger.warning(
+                    "xgapi image request exception will retry model=%s attempt=%s/%s elapsed_ms=%s exception_type=%s timeout_retry=%s retry_delay_seconds=%s error=%s",
+                    xgapi_model_name(image_model_name),
+                    attempt,
+                    max_attempts,
+                    elapsed_ms,
+                    exc.__class__.__name__,
+                    is_timeout_exception(exc),
+                    delay,
+                    exc,
+                )
+                sleep(delay)
+                continue
+            raise ImageProviderResponseError(f"图片 Provider 请求异常：{exc}") from exc
+
+        elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
+        provider_request_id = (
+            response.headers.get("x-oneapi-request-id")
+            or response.headers.get("x-request-id")
+            or response.headers.get("x-siliconcloud-trace-id")
+        )
+        logger.info(
+            "xgapi image response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+            response.status_code,
+            attempt,
+            max_attempts,
+            elapsed_ms,
+            len(response.content),
+            response.headers.get("content-type"),
+            provider_request_id,
+        )
+        if settings.image_provider_debug_log_raw_io:
+            log_provider_raw_io(
+                provider_name="xgapi image provider",
+                direction="response",
+                payload=response.text,
+                max_chars=settings.image_provider_debug_log_raw_max_chars,
+                sanitize_request=False,
+            )
+        if not should_retry_provider_response(
+            response,
+            attempt=attempt,
+            standard_max_attempts=standard_max_attempts,
+            timeout_max_attempts=timeout_max_attempts,
+        ):
+            break
+        delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
+        logger.warning(
+            "xgapi image retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s timeout_retry=%s retry_delay_seconds=%s response_preview=%s",
+            response.status_code,
+            attempt,
+            max_attempts,
+            provider_request_id,
+            is_timeout_response(response),
+            delay,
+            response.text[:500],
+        )
+        sleep(delay)
+
+    if response is None:
+        raise ImageProviderResponseError("图片 Provider 请求未执行")
+
+    elapsed_ms = round((monotonic() - request_started_at) * 1000)
+    provider_request_id = (
+        response.headers.get("x-oneapi-request-id")
+        or response.headers.get("x-request-id")
+        or response.headers.get("x-siliconcloud-trace-id")
+    )
+    logger.info(
+        "xgapi image final response status_code=%s total_elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
+        response.status_code,
+        elapsed_ms,
+        len(response.content),
+        response.headers.get("content-type"),
+        provider_request_id,
+    )
+    if response.status_code >= 400:
+        logger.warning(
+            "xgapi image failed status_code=%s response_chars=%s provider_request_id=%s response_preview=%s",
+            response.status_code,
+            len(response.text),
+            provider_request_id,
+            response.text[:500],
+        )
+        raise ImageProviderResponseError(f"图片 Provider 请求失败：HTTP {response.status_code} {response.text}")
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise ImageProviderResponseError("图片 Provider 返回内容不是合法 JSON") from exc
+    if not isinstance(body, dict):
+        raise ImageProviderResponseError("图片 Provider 返回 JSON 必须是对象结构")
+
+    image_content, content_type, result_request_id = read_image_gateway_generation_result(
+        body,
+        provider_request_id,
+        provider_name="xgapi image provider",
+    )
+    logger.info(
+        "xgapi image returned image content_type=%s bytes=%s provider_request_id=%s result_request_id=%s",
+        content_type,
+        len(image_content),
+        provider_request_id,
+        result_request_id,
+    )
+    return image_content, content_type, result_request_id
+
+
+def request_xg_image(
+    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str
+) -> tuple[bytes, str, str | None]:
+    provider = get_settings().image_provider.strip().lower()
+    if provider == "xgapi":
+        return request_xgapi_image(
+            prompt=prompt,
+            references=references,
+            image_model_name=image_model_name,
+            aspect_ratio=aspect_ratio,
+        )
+    if provider not in {"", "qy"}:
+        raise ImageProviderConfigError(f"IMAGE_PROVIDER 不支持：{provider}，可用值：qy、xgapi")
     if is_image_gateway_generation_model(image_model_name):
         return request_image_gateway_generation(
             prompt=prompt,
-            reference_urls=reference_urls,
+            references=references,
             image_model_name=image_model_name,
             aspect_ratio=aspect_ratio,
         )
@@ -660,11 +960,11 @@ def request_xg_image(
 
 
 def generate_xg_image(
-    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str
+    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str
 ) -> GeneratedImageFile:
     content, content_type, provider_request_id = request_xg_image(
         prompt=prompt,
-        reference_urls=reference_urls,
+        references=references,
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
     )
@@ -691,11 +991,11 @@ def generate_xg_image(
 
 
 def generate_xg_image_edit(
-    *, prompt: str, reference_urls: list[str], image_model_name: str, aspect_ratio: str = "9:16"
+    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str = "9:16"
 ) -> GeneratedImageFile:
     return generate_xg_image(
         prompt=prompt,
-        reference_urls=reference_urls,
+        references=references,
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
     )

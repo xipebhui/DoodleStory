@@ -14,18 +14,23 @@ from app.models.entities import (
     TaskPanelCharacterAppearance,
 )
 from app.models.enums import FileAssetPurpose, WorkflowStatus
-from app.services.image_generation import ImageProviderConfigError, ImageProviderResponseError, generate_xg_image
+from app.services.image_generation import (
+    ImageProviderConfigError,
+    ImageProviderResponseError,
+    ImageReference,
+    generate_xg_image,
+)
 from app.services.llm import LLMResponseError, TaskCharacterPlan
 from app.services.prompt_logging import log_prompt_trace
 from app.services.prompt_templates import render_prompt_template
-from app.services.storage import asset_content_url
+from app.services.storage import asset_content_url, existing_local_asset_path
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class PanelReferencePack:
-    urls: list[str]
+    references: list[ImageReference]
     notes: list[str]
     character_count: int
 
@@ -160,7 +165,7 @@ def ensure_character_reference_images(
                 )
                 generated = generate_xg_image(
                     prompt=appearance.reference_prompt or "",
-                    reference_urls=[],
+                    references=[],
                     image_model_name=task.image_model_name_snapshot,
                     aspect_ratio=task.style_aspect_ratio_snapshot,
                 )
@@ -278,20 +283,29 @@ def save_character_plan_panel_links(
             reference_order += 1
 
 
-def reference_asset_public_url(asset: FileAsset) -> str:
+def reference_asset_public_url(asset: FileAsset) -> str | None:
     if asset.public_url and asset.public_url.strip():
         return asset.public_url.strip()
     try:
         return asset_content_url(asset)
     except HTTPException as exc:
-        raise ImageProviderConfigError(f"人物参考图缺少公网 URL：{exc.detail}") from exc
+        logger.info("character reference asset has no public url asset_id=%s reason=%s", asset.id, exc.detail)
+        return None
+
+
+def reference_asset_local_path(asset: FileAsset):
+    try:
+        return existing_local_asset_path(asset)
+    except HTTPException as exc:
+        logger.info("character reference asset has no local file asset_id=%s reason=%s", asset.id, exc.detail)
+        return None
 
 
 def build_panel_reference_pack(
     *,
     panel: TaskPanel,
 ) -> PanelReferencePack:
-    character_urls: list[str] = []
+    character_references: list[ImageReference] = []
     notes: list[str] = []
     sorted_links = sorted(panel.character_appearances, key=lambda item: item.reference_order)
     for index, link in enumerate(sorted_links, start=1):
@@ -299,11 +313,16 @@ def build_panel_reference_pack(
         character = appearance.character
         if appearance.status != WorkflowStatus.succeeded or appearance.reference_image is None:
             raise ImageProviderConfigError(f"人物参考图尚未生成成功：{character.name}")
-        character_urls.append(reference_asset_public_url(appearance.reference_image))
+        character_references.append(
+            ImageReference(
+                url=reference_asset_public_url(appearance.reference_image),
+                local_path=reference_asset_local_path(appearance.reference_image),
+            )
+        )
         notes.append(f"{character.name}参考（参考图{index}）")
 
     return PanelReferencePack(
-        urls=character_urls,
+        references=character_references,
         notes=notes,
-        character_count=len(character_urls),
+        character_count=len(character_references),
     )
