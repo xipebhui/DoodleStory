@@ -29,6 +29,20 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertNotIn("Logo 或水印", final_prompt)
         self.assertNotIn("不要画成对白气泡", final_prompt)
 
+    def test_final_prompt_includes_style_prompt_when_provided(self) -> None:
+        final_prompt = build_adapted_story_final_prompt(
+            aspect_ratio="3:4",
+            visual_prompt="一家人坐在餐桌边，画面温暖。",
+            story_beat="家庭日常对话。",
+            panel_type=PanelType.scene,
+            image_text={"narration": "晚饭时间到了"},
+            style_prompt="低饱和手绘漫画风，细线条，浅色水彩，中文手写字要清晰偏大。",
+        )
+
+        self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
+        self.assertIn("低饱和手绘漫画风，细线条，浅色水彩，中文手写字要清晰偏大。", final_prompt)
+        self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("画面比例：3:4"))
+
 
 if __name__ == "__main__":
     unittest.main()

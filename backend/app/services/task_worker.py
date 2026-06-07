@@ -510,16 +510,31 @@ def reference_notes_block(reference_notes: list[str] | None) -> str:
     return "\n".join(reference_notes)
 
 
+def style_prompt_block(style_prompt: str | None) -> list[str]:
+    cleaned = (style_prompt or "").strip()
+    if not cleaned:
+        return []
+    return [
+        "",
+        "风格提示词（必须直接用于本张图的画风、人物比例、线条、色彩、构图、文字呈现和整体质感）：",
+        cleaned,
+    ]
+
+
 def build_original_story_final_prompt(
     aspect_ratio: str,
     visual_prompt: str,
     reference_notes: list[str] | None = None,
     exact_text: str = "",
+    style_prompt: str | None = None,
 ) -> str:
-    return "\n".join(
+    lines = [
+        "参考：",
+        reference_notes_block(reference_notes),
+    ]
+    lines.extend(style_prompt_block(style_prompt))
+    lines.extend(
         [
-            "参考：",
-            reference_notes_block(reference_notes),
             "",
             f"画面比例：{aspect_ratio}",
             "",
@@ -531,7 +546,8 @@ def build_original_story_final_prompt(
             "",
             "不要添加这段原文之外的任何文字、Logo 或水印。",
         ]
-    ).strip()
+    )
+    return "\n".join(lines).strip()
 
 
 def build_adapted_story_final_prompt(
@@ -542,19 +558,25 @@ def build_adapted_story_final_prompt(
     image_text: ImageTextPlan | dict[str, str | None] | None = None,
     reference_notes: list[str] | None = None,
     text_layout: str | None = None,
+    style_prompt: str | None = None,
 ) -> str:
     lines = [
         "参考：",
         reference_notes_block(reference_notes),
-        "",
-        f"画面比例：{aspect_ratio}",
-        "",
-        "剧情意图：",
-        story_beat.strip(),
-        "",
-        "画面：",
-        visual_prompt.strip(),
     ]
+    lines.extend(style_prompt_block(style_prompt))
+    lines.extend(
+        [
+            "",
+            f"画面比例：{aspect_ratio}",
+            "",
+            "剧情意图：",
+            story_beat.strip(),
+            "",
+            "画面：",
+            visual_prompt.strip(),
+        ]
+    )
     if text_layout:
         lines.extend(
             [
@@ -591,6 +613,7 @@ def build_panel_final_prompt(
             visual_prompt=visual_prompt,
             reference_notes=reference_notes,
             exact_text=panel.original_text_segment,
+            style_prompt=task.style_prompt_snapshot,
         )
     return build_adapted_story_final_prompt(
         aspect_ratio=task.style_aspect_ratio_snapshot,
@@ -600,6 +623,7 @@ def build_panel_final_prompt(
         image_text=image_text,
         reference_notes=reference_notes,
         text_layout=panel.text_layout,
+        style_prompt=task.style_prompt_snapshot,
     )
 
 

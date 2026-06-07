@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-30-unified-image-platform-only.md`
+- `docs/contracts/sprint-31-final-prompt-style-injection.md`
 
 ## 最近完成的工作
 
@@ -157,6 +157,7 @@
 - 完成 Sprint 29 Gateway 失败后的 XG 备用生图：新增合同 `docs/contracts/sprint-29-xg-image-fallback.md`；统一生图 Gateway 仍是主路径，Provider 响应错误在既有重试耗尽后会显式切到 XG 备用 provider；无参考图调用 XG `/v1/images/generations`，有参考图调用 XG `/v1/images/edits`，多参考图按重复 `image` form part 上传，备用模型由 `XG_FALLBACK_IMAGE_MODEL` 配置。
 - Sprint 29 XG 备用生图实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；单元测试确认 Gateway Provider 响应错误会进入 XG fallback，Gateway 配置错误不会进入 XG fallback，无参考图 payload 使用 XG generations 的 JSON `response_format=url`，多参考图 edit 使用重复 `image` form part。
 - 开始并完成 Sprint 30 生图只使用统一平台：新增合同 `docs/contracts/sprint-30-unified-image-platform-only.md`；根据 `docs/api_v4.md` 扩展统一平台模型白名单，新增 `gpt-image-2(线路XF)`、`gr-image-2`、`nano-banana`、`nano-banana-hd` 和 `nano-banana-pro`；移除 DoodleStory 后端 Gateway 失败后直连 XG 的兜底逻辑，Provider 响应错误在统一平台重试耗尽后直接失败并暴露原因。
+- 开始并完成 Sprint 31 最终生图 Prompt 拼接风格提示词：新增合同 `docs/contracts/sprint-31-final-prompt-style-injection.md`；正式任务 panel 生图和单 panel 修改的 final prompt 现在都会把任务保存的 `style_prompt_snapshot` 作为独立风格提示词段拼接到参考图说明之后、画面比例之前，增强图片模型端的直接风格约束。
 
 ## 已知缺口
 
