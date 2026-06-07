@@ -4,7 +4,6 @@ import copy
 import json
 import logging
 import mimetypes
-from contextlib import ExitStack
 from time import monotonic, sleep
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +30,11 @@ IMAGE_GATEWAY_GENERATION_MODELS = {
     "gemini_3.0_pro_image_preview_4K",
     "gemini-3.1-flash-image-preview",
     "gemini-3-pro-image-preview",
+    "gpt-image-2(线路XF)",
+    "gr-image-2",
+    "nano-banana",
+    "nano-banana-hd",
+    "nano-banana-pro",
 }
 IMAGE_GATEWAY_SILICONFLOW_MODELS = {
     "Tongyi-MAI/Z-Image",
@@ -50,7 +54,6 @@ IMAGE_GATEWAY_OPENAI_SIZE_BY_ASPECT_RATIO = {
     "4:3": "1152x864",
     "3:4": "864x1152",
 }
-XG_FALLBACK_IMAGE_QUALITY = "1k"
 
 
 class ImageProviderError(Exception):
@@ -75,17 +78,6 @@ class GeneratedImageFile:
     original_filename: str
     provider_request_id: str | None
     public_url: str | None = None
-
-
-def describe_proxy_url(proxy_url: str) -> str:
-    if not proxy_url:
-        return ""
-    parsed = urlparse(proxy_url)
-    if not parsed.scheme or not parsed.hostname:
-        return "invalid-proxy-url"
-    host = parsed.hostname
-    port = f":{parsed.port}" if parsed.port else ""
-    return f"{parsed.scheme}://{host}{port}"
 
 
 def describe_reference_file(path: Path) -> dict[str, Any]:
@@ -653,427 +645,16 @@ def request_image_gateway_generation(
     return image_content, content_type, result_request_id
 
 
-def xg_fallback_model_name() -> str:
-    model_name = get_settings().xg_fallback_image_model.strip()
-    if not model_name:
-        raise ImageProviderConfigError("XG_FALLBACK_IMAGE_MODEL 未配置")
-    return model_name
-
-
-def xg_fallback_endpoint(path: str) -> str:
-    settings = get_settings()
-    base_url = settings.xg_api_base_url.strip()
-    if not base_url:
-        raise ImageProviderConfigError("XG_API_BASE_URL 未配置")
-    return f"{base_url.rstrip('/')}{path}"
-
-
-def build_xg_fallback_generation_payload(*, prompt: str, aspect_ratio: str) -> dict[str, Any]:
-    return {
-        "model": xg_fallback_model_name(),
-        "prompt": prompt,
-        "aspect_ratio": aspect_ratio,
-        "quality": XG_FALLBACK_IMAGE_QUALITY,
-        "response_format": "url",
-    }
-
-
-def build_xg_fallback_edit_data(*, prompt: str, aspect_ratio: str) -> dict[str, str]:
-    return {
-        "model": xg_fallback_model_name(),
-        "prompt": prompt,
-        "aspect_ratio": aspect_ratio,
-        "quality": XG_FALLBACK_IMAGE_QUALITY,
-        "response_format": "url",
-    }
-
-
-def xg_edit_image_field_name(reference_count: int) -> str:
-    return "image"
-
-
-def xg_response_request_id(response: requests.Response, response_body: dict[str, Any] | None = None) -> str | None:
-    response_id = response.headers.get("x-oneapi-request-id") or response.headers.get("x-request-id")
-    if response_id:
-        return response_id
-    if response_body is None:
-        return None
-    body_id = response_body.get("id")
-    return body_id if isinstance(body_id, str) and body_id.strip() else None
-
-
-def xg_proxy_config() -> tuple[dict[str, str] | None, str]:
-    proxy_url = get_settings().xg_proxy_url.strip()
-    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
-    return proxies, describe_proxy_url(proxy_url)
-
-
-def parse_xg_image_response(response: requests.Response, *, provider_name: str) -> tuple[bytes, str, str | None]:
-    provider_request_id = xg_response_request_id(response)
-    try:
-        body = response.json()
-    except ValueError as exc:
-        logger.warning(
-            "%s invalid JSON response status_code=%s response_bytes=%s provider_request_id=%s response_preview=%s",
-            provider_name,
-            response.status_code,
-            len(response.content),
-            provider_request_id,
-            response.text[:500],
-        )
-        raise ImageProviderResponseError("XG 图片 Provider 返回内容不是合法 JSON") from exc
-    if not isinstance(body, dict):
-        raise ImageProviderResponseError("XG 图片 Provider 返回 JSON 必须是对象结构")
-
-    provider_request_id = xg_response_request_id(response, body)
-    image_content, content_type, result_request_id = read_image_gateway_generation_result(
-        body,
-        provider_request_id,
-        provider_name=provider_name,
-    )
-    logger.info(
-        "%s returned image content_type=%s bytes=%s provider_request_id=%s result_request_id=%s",
-        provider_name,
-        content_type,
-        len(image_content),
-        provider_request_id,
-        result_request_id,
-    )
-    return image_content, content_type, result_request_id
-
-
-def request_xg_fallback_generation(*, prompt: str, aspect_ratio: str) -> tuple[bytes, str, str | None]:
-    settings = get_settings()
-    api_key = settings.xg_api_key.strip()
-    if not api_key:
-        raise ImageProviderConfigError("XG_API_KEY 未配置")
-
-    endpoint = xg_fallback_endpoint("/v1/images/generations")
-    payload = build_xg_fallback_generation_payload(prompt=prompt, aspect_ratio=aspect_ratio)
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
-    standard_max_attempts, timeout_max_attempts = image_provider_attempt_limits()
-    max_attempts = max(standard_max_attempts, timeout_max_attempts)
-    proxies, proxy_description = xg_proxy_config()
-    response: requests.Response | None = None
-    request_started_at = monotonic()
-
-    for attempt in range(1, max_attempts + 1):
-        attempt_started_at = monotonic()
-        try:
-            logger.info(
-                "XG fallback image generation request prepared endpoint=%s model=%s aspect_ratio=%s quality=%s attempt=%s/%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
-                endpoint,
-                payload["model"],
-                aspect_ratio,
-                payload["quality"],
-                attempt,
-                max_attempts,
-                len(prompt),
-                bool(proxies),
-                proxy_description,
-                300,
-            )
-            if settings.image_provider_debug_log_raw_io:
-                log_provider_raw_io(
-                    provider_name="XG fallback image generation",
-                    direction="request",
-                    payload=payload,
-                    max_chars=settings.image_provider_debug_log_raw_max_chars,
-                    sanitize_request=True,
-                )
-            session = requests.Session()
-            session.trust_env = False
-            response = session.post(endpoint, headers=headers, json=payload, timeout=300, proxies=proxies)
-        except requests.RequestException as exc:
-            elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
-            if should_retry_provider_exception(
-                exc,
-                attempt=attempt,
-                standard_max_attempts=standard_max_attempts,
-                timeout_max_attempts=timeout_max_attempts,
-            ):
-                delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
-                logger.warning(
-                    "XG fallback image generation request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s timeout_retry=%s retry_delay_seconds=%s error=%s",
-                    payload["model"],
-                    attempt,
-                    max_attempts,
-                    bool(proxies),
-                    proxy_description,
-                    elapsed_ms,
-                    exc.__class__.__name__,
-                    is_timeout_exception(exc),
-                    delay,
-                    exc,
-                )
-                sleep(delay)
-                continue
-            raise ImageProviderResponseError(f"XG 图片 Provider 请求异常：{exc}") from exc
-
-        elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
-        provider_request_id = xg_response_request_id(response)
-        logger.info(
-            "XG fallback image generation response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
-            response.status_code,
-            attempt,
-            max_attempts,
-            elapsed_ms,
-            len(response.content),
-            response.headers.get("content-type"),
-            provider_request_id,
-        )
-        if settings.image_provider_debug_log_raw_io:
-            log_provider_raw_io(
-                provider_name="XG fallback image generation",
-                direction="response",
-                payload=response.text,
-                max_chars=settings.image_provider_debug_log_raw_max_chars,
-                sanitize_request=False,
-            )
-        if not should_retry_provider_response(
-            response,
-            attempt=attempt,
-            standard_max_attempts=standard_max_attempts,
-            timeout_max_attempts=timeout_max_attempts,
-        ):
-            break
-        delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
-        logger.warning(
-            "XG fallback image generation retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s timeout_retry=%s retry_delay_seconds=%s response_preview=%s",
-            response.status_code,
-            attempt,
-            max_attempts,
-            provider_request_id,
-            is_timeout_response(response),
-            delay,
-            response.text[:500],
-        )
-        sleep(delay)
-
-    if response is None:
-        raise ImageProviderResponseError("XG 图片 Provider 请求未执行")
-
-    elapsed_ms = round((monotonic() - request_started_at) * 1000)
-    provider_request_id = xg_response_request_id(response)
-    logger.info(
-        "XG fallback image generation final response status_code=%s total_elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
-        response.status_code,
-        elapsed_ms,
-        len(response.content),
-        response.headers.get("content-type"),
-        provider_request_id,
-    )
-    if response.status_code >= 400:
-        logger.warning(
-            "XG fallback image generation failed status_code=%s response_chars=%s provider_request_id=%s response_preview=%s",
-            response.status_code,
-            len(response.text),
-            provider_request_id,
-            response.text[:500],
-        )
-        raise ImageProviderResponseError(f"XG 图片 Provider 请求失败：HTTP {response.status_code} {response.text}")
-
-    return parse_xg_image_response(response, provider_name="XG fallback image generation")
-
-
-def request_xg_fallback_edit(
-    *, prompt: str, reference_paths: list[Path], aspect_ratio: str
-) -> tuple[bytes, str, str | None]:
-    settings = get_settings()
-    api_key = settings.xg_api_key.strip()
-    if not api_key:
-        raise ImageProviderConfigError("XG_API_KEY 未配置")
-    if not reference_paths:
-        raise ImageProviderConfigError("XG 图片编辑接口至少需要一张参考图")
-
-    endpoint = xg_fallback_endpoint("/v1/images/edits")
-    data = build_xg_fallback_edit_data(prompt=prompt, aspect_ratio=aspect_ratio)
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
-    standard_max_attempts, timeout_max_attempts = image_provider_attempt_limits()
-    max_attempts = max(standard_max_attempts, timeout_max_attempts)
-    proxies, proxy_description = xg_proxy_config()
-    response: requests.Response | None = None
-    request_started_at = monotonic()
-
-    for attempt in range(1, max_attempts + 1):
-        attempt_started_at = monotonic()
-        with ExitStack() as stack:
-            files = []
-            reference_file_info = []
-            image_field_name = xg_edit_image_field_name(len(reference_paths))
-            for path in reference_paths:
-                if not path.exists() or not path.is_file():
-                    raise ImageProviderConfigError(f"参考图文件不存在：{path}")
-                reference_file_info.append(describe_reference_file(path))
-                content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-                files.append((image_field_name, (path.name, stack.enter_context(path.open("rb")), content_type)))
-
-            try:
-                logger.info(
-                    "XG fallback image edit request prepared endpoint=%s model=%s aspect_ratio=%s quality=%s attempt=%s/%s reference_count=%s reference_field=%s reference_files=%s prompt_chars=%s proxy_enabled=%s proxy=%s timeout_seconds=%s",
-                    endpoint,
-                    data["model"],
-                    aspect_ratio,
-                    data["quality"],
-                    attempt,
-                    max_attempts,
-                    len(reference_paths),
-                    image_field_name,
-                    reference_file_info,
-                    len(prompt),
-                    bool(proxies),
-                    proxy_description,
-                    300,
-                )
-                if settings.image_provider_debug_log_raw_io:
-                    log_provider_raw_io(
-                        provider_name="XG fallback image edit",
-                        direction="request",
-                        payload={**data, "reference_files": reference_file_info, "reference_field": image_field_name},
-                        max_chars=settings.image_provider_debug_log_raw_max_chars,
-                        sanitize_request=True,
-                    )
-                session = requests.Session()
-                session.trust_env = False
-                response = session.post(endpoint, headers=headers, data=data, files=files, timeout=300, proxies=proxies)
-            except requests.RequestException as exc:
-                elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
-                if should_retry_provider_exception(
-                    exc,
-                    attempt=attempt,
-                    standard_max_attempts=standard_max_attempts,
-                    timeout_max_attempts=timeout_max_attempts,
-                ):
-                    delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
-                    logger.warning(
-                        "XG fallback image edit request exception will retry model=%s attempt=%s/%s proxy_enabled=%s proxy=%s elapsed_ms=%s exception_type=%s timeout_retry=%s retry_delay_seconds=%s error=%s",
-                        data["model"],
-                        attempt,
-                        max_attempts,
-                        bool(proxies),
-                        proxy_description,
-                        elapsed_ms,
-                        exc.__class__.__name__,
-                        is_timeout_exception(exc),
-                        delay,
-                        exc,
-                    )
-                    sleep(delay)
-                    continue
-                raise ImageProviderResponseError(f"XG 图片 Provider 请求异常：{exc}") from exc
-
-        elapsed_ms = round((monotonic() - attempt_started_at) * 1000)
-        provider_request_id = xg_response_request_id(response)
-        logger.info(
-            "XG fallback image edit response received status_code=%s attempt=%s/%s elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
-            response.status_code,
-            attempt,
-            max_attempts,
-            elapsed_ms,
-            len(response.content),
-            response.headers.get("content-type"),
-            provider_request_id,
-        )
-        if settings.image_provider_debug_log_raw_io:
-            log_provider_raw_io(
-                provider_name="XG fallback image edit",
-                direction="response",
-                payload=response.text,
-                max_chars=settings.image_provider_debug_log_raw_max_chars,
-                sanitize_request=False,
-            )
-        if not should_retry_provider_response(
-            response,
-            attempt=attempt,
-            standard_max_attempts=standard_max_attempts,
-            timeout_max_attempts=timeout_max_attempts,
-        ):
-            break
-        delay = retry_delay_seconds(settings.xg_request_retry_backoff_seconds, attempt)
-        logger.warning(
-            "XG fallback image edit retryable response will retry status_code=%s attempt=%s/%s provider_request_id=%s timeout_retry=%s retry_delay_seconds=%s response_preview=%s",
-            response.status_code,
-            attempt,
-            max_attempts,
-            provider_request_id,
-            is_timeout_response(response),
-            delay,
-            response.text[:500],
-        )
-        sleep(delay)
-
-    if response is None:
-        raise ImageProviderResponseError("XG 图片 Provider 请求未执行")
-
-    elapsed_ms = round((monotonic() - request_started_at) * 1000)
-    provider_request_id = xg_response_request_id(response)
-    logger.info(
-        "XG fallback image edit final response status_code=%s total_elapsed_ms=%s response_bytes=%s content_type=%s provider_request_id=%s",
-        response.status_code,
-        elapsed_ms,
-        len(response.content),
-        response.headers.get("content-type"),
-        provider_request_id,
-    )
-    if response.status_code >= 400:
-        logger.warning(
-            "XG fallback image edit failed status_code=%s response_chars=%s provider_request_id=%s response_preview=%s",
-            response.status_code,
-            len(response.text),
-            provider_request_id,
-            response.text[:500],
-        )
-        raise ImageProviderResponseError(f"XG 图片 Provider 请求失败：HTTP {response.status_code} {response.text}")
-
-    return parse_xg_image_response(response, provider_name="XG fallback image edit")
-
-
-def request_xg_fallback_image(
-    *, prompt: str, reference_paths: list[Path], aspect_ratio: str
-) -> tuple[bytes, str, str | None]:
-    if reference_paths:
-        return request_xg_fallback_edit(prompt=prompt, reference_paths=reference_paths, aspect_ratio=aspect_ratio)
-    return request_xg_fallback_generation(prompt=prompt, aspect_ratio=aspect_ratio)
-
-
 def request_xg_image(
     *, prompt: str, reference_paths: list[Path], image_model_name: str, aspect_ratio: str
 ) -> tuple[bytes, str, str | None]:
     if is_image_gateway_generation_model(image_model_name):
-        try:
-            return request_image_gateway_generation(
-                prompt=prompt,
-                reference_paths=reference_paths,
-                image_model_name=image_model_name,
-                aspect_ratio=aspect_ratio,
-            )
-        except ImageProviderResponseError as gateway_exc:
-            fallback_model = get_settings().xg_fallback_image_model.strip() or "<未配置>"
-            logger.warning(
-                "Unified image gateway exhausted retries; switching to XG fallback model=%s fallback_model=%s aspect_ratio=%s reference_count=%s error=%s",
-                image_model_name.strip(),
-                fallback_model,
-                aspect_ratio,
-                len(reference_paths),
-                gateway_exc,
-            )
-            try:
-                return request_xg_fallback_image(
-                    prompt=prompt,
-                    reference_paths=reference_paths,
-                    aspect_ratio=aspect_ratio,
-                )
-            except (ImageProviderConfigError, ImageProviderResponseError) as xg_exc:
-                raise ImageProviderResponseError(
-                    f"统一生图 Gateway 重试后失败，XG 备用生图也失败：Gateway={gateway_exc}；XG={xg_exc}"
-                ) from xg_exc
+        return request_image_gateway_generation(
+            prompt=prompt,
+            reference_paths=reference_paths,
+            image_model_name=image_model_name,
+            aspect_ratio=aspect_ratio,
+        )
     supported = "、".join(sorted(IMAGE_GATEWAY_GENERATION_MODELS))
     raise ImageProviderConfigError(f"生图模型未接入统一 Gateway：{image_model_name.strip()}。当前可用模型：{supported}")
 

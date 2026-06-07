@@ -37,13 +37,9 @@ class Settings(BaseSettings):
     prompt_trace_log_max_chars: int = 60000
     image_gateway_api_key: str = ""
     image_gateway_base_url: str = "http://192.129.209.36:3001/v1"
-    xg_api_key: str = ""
-    xg_api_base_url: str = "https://api.xgapi.top"
-    xg_fallback_image_model: str = "gemini-3.1-flash-image-preview"
     apexerapi_api_key: str = ""
     apexerapi_base: str = ""
     apexerapi_proxy_url: str = ""
-    xg_proxy_url: str = ""
     xg_request_max_attempts: int = 3
     xg_request_retry_backoff_seconds: float = 2.0
     image_provider_timeout_retry_attempts: int = Field(default=3, ge=0)
