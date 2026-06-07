@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-32-style-delete-and-preview-loading.md`
+- `docs/contracts/sprint-33-character-reference-style-injection.md`
 
 ## 最近完成的工作
 
@@ -159,6 +159,7 @@
 - 开始并完成 Sprint 30 生图只使用统一平台：新增合同 `docs/contracts/sprint-30-unified-image-platform-only.md`；根据 `docs/api_v4.md` 扩展统一平台模型白名单，新增 `gpt-image-2(线路XF)`、`gr-image-2`、`nano-banana`、`nano-banana-hd` 和 `nano-banana-pro`；移除 DoodleStory 后端 Gateway 失败后直连 XG 的兜底逻辑，Provider 响应错误在统一平台重试耗尽后直接失败并暴露原因。
 - 开始并完成 Sprint 31 最终生图 Prompt 拼接风格提示词：新增合同 `docs/contracts/sprint-31-final-prompt-style-injection.md`；正式任务 panel 生图和单 panel 修改的 final prompt 现在都会把任务保存的 `style_prompt_snapshot` 作为独立风格提示词段拼接到参考图说明之后、画面比例之前，增强图片模型端的直接风格约束。
 - 开始并完成 Sprint 32 风格删除与图片预览加载态：新增合同 `docs/contracts/sprint-32-style-delete-and-preview-loading.md`；风格删除改为无历史引用时物理删除、有历史任务或测试引用时软删除并从列表隐藏；图片懒加载组件在 URL 切换时重置为空白加载态，避免预览文字已切换但图片仍显示上一张。核对发现本地已使用国内对象存储 `video-space001`，远程仍是旧 bucket/domain，本次部署时同步切到国内对象存储。
+- 开始并完成 Sprint 33 人物参考图拼接风格提示词：新增合同 `docs/contracts/sprint-33-character-reference-style-injection.md`；人物参考图 prompt 将任务保存的 `style_prompt_snapshot` 作为独立风格提示词段放在人物比例和外观设定之前，强化角色参考图自身的画风一致性；`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 
