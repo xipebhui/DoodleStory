@@ -113,10 +113,7 @@ def qiniu_base_url(storage_key: str) -> str:
 def qiniu_asset_url(storage_key: str, variant: str) -> str:
     base_url = qiniu_base_url(storage_key)
     if variant == ASSET_URL_VARIANT_THUMBNAIL:
-        thumbnail_fop = get_settings().qiniu_thumbnail_fop.strip()
-        if not thumbnail_fop:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="七牛缩略图处理参数未配置")
-        base_url = f"{base_url}?{thumbnail_fop}"
+        return base_url
     return base_url
 
 

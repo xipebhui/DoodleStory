@@ -119,7 +119,7 @@
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
 - 图片生成并发：任务队列由进程内 worker 池领取任务，默认 `TASK_WORKER_CONCURRENCY=3`；单个任务的 panel 图片 Provider 请求在 `generate_images` 阶段按 `IMAGE_GENERATION_CONCURRENCY` 做有限并发，默认 3。
 - 图片 Provider timeout 重试：生图请求和结果图下载如果出现 timeout，会自动重试 `IMAGE_PROVIDER_TIMEOUT_RETRY_ATTEMPTS` 次，默认 3 次；任一重试成功即停止，最终仍失败时必须写入明确错误。
-- 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。QNY 公开访问域名优先使用 `QNY_PUBLIC_BASE_URL`，历史 `QNY_DOMAIN` 继续兼容；当 QNY 域名没有显式 `http://` 或 `https://` 时，由 `QNY_USE_HTTPS` 决定协议。七牛资产使用固定公开 CDN URL，任务列表和小尺寸预览默认使用 `imageView2` 缩略图 URL，本地资产由后端按需生成 WebP 缩略图。
+- 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。QNY 公开访问域名优先使用 `QNY_PUBLIC_BASE_URL`，历史 `QNY_DOMAIN` 继续兼容；当 QNY 域名没有显式 `http://` 或 `https://` 时，由 `QNY_USE_HTTPS` 决定协议。七牛资产使用固定公开 CDN 原图 URL；为避免 CDN 忽略 query string 时用 `imageView2` 缩略图污染原图缓存，七牛任务列表、小尺寸预览和原图展示均直接使用无 query 的对象原图 URL。本地资产由后端按需生成 WebP 缩略图。
 - 使用七牛对象存储时，新写入资产必须在服务器存储根目录保留本地镜像；后端处理流程需要把七牛资产转成本地文件时，必须优先使用本地镜像或已有本地缓存，不能为了读取刚生成的资产从公开 CDN 回拉；任务批量下载只使用本地镜像或已有本地缓存打包，缺少本地文件时明确失败，不自动从公网回源下载；下载 zip 固定保存为本地资产，不上传到七牛。
 - 抖音素材导入：已完成通过本地 `jiji262/douyin-downloader` 仓库运行的最小 adapter 和命令行验证入口；后续 `内容提取` tab 改为由 DoodleStory 后端调用同机抖音下载服务 `127.0.0.1:8010`，前端不得直接请求该本地服务。下载后的服务器绝对路径不能暴露给浏览器，必须登记为 DoodleStory 资产后再展示。
 - 内容提取模型：图文图片内容提取使用 SiliconFlow 多模态视觉模型，通过 `/chat/completions` 在同一次请求中按顺序传入全部 `image_url` 内容，要求模型结合前后图片保持叙事连贯，并按输入图片顺序逐页输出旁白、对话、内心 OS、画面描述和分格信息；视频音频转写继续使用 SiliconFlow 多模态模型。内容提取和视频转写必须使用抖音下载服务返回的本地原始媒体路径，不应为了处理流程从对象存储公开 CDN 回拉刚下载的媒体。

@@ -1,7 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field, computed_field
 
-from app.core.config import get_settings
 from app.models.enums import StyleStatus, WorkflowStatus
 from app.schemas.common import TimestampFields
 
@@ -51,10 +50,6 @@ class FileAssetRead(TimestampFields):
     @property
     def thumbnail_url(self) -> str:
         if self.is_qiniu_asset():
-            thumbnail_fop = get_settings().qiniu_thumbnail_fop.strip()
-            if thumbnail_fop:
-                separator = "&" if "?" in (self.public_url or "") else "?"
-                return f"{self.public_url}{separator}{thumbnail_fop}"
             return self.public_url or ""
         return f"/api/v1/assets/{self.id}/content?variant=thumbnail"
 
