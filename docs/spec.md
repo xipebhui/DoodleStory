@@ -154,7 +154,7 @@
 - 任务队列支持最多按 `TASK_WORKER_CONCURRENCY` 并发执行多个生成任务，默认 3；同一进程内同一个任务 ID 不允许并发执行两次。
 - 任务 `generate_images` 阶段支持同一任务内 panel 生图并发提交，默认 `IMAGE_GENERATION_CONCURRENCY=3`；单个任务的数据库状态写入仍在该任务 worker 线程内完成。
 - 任务生图请求和结果图下载遇到 timeout 时自动重试 3 次；非 timeout 的配置错误和校验错误不得因为该规则被隐藏。所选生图 Provider 的响应错误在既有重试耗尽后必须明确失败，不得在 DoodleStory 后端静默切换到 XG、QY 或其它 provider。
-- 当图片 Provider 明确返回 Google policy blocked 类错误，例如 `Unable to show the generated image`、`Generative AI Prohibited Use policy` 或 `filtered out`，说明当前 prompt 被上游策略拦截；此时按用户授权将该张图改用 `baidu/ERNIE-Image-Turbo` 重新生成一次，并且不提交参考图，因为该模型不支持参考图。该逻辑只适用于明确 policy blocked 错误，不适用于普通 Provider 响应错误。
+- 当图片 Provider 明确返回 Google policy blocked 类错误，例如 `Unable to show the generated image`、`Generative AI Prohibited Use policy` 或 `filtered out`，说明当前 prompt 被上游策略拦截；此时先调用 LLM 改写最终生图提示词中的敏感动作意图表达，在不改变画面效果、主体、构图、风格、图片内文字和参考图关系的前提下，把疼痛、伤害、惩罚、触碰、危险意图等表达改为更中性客观的视觉状态，然后使用原图片模型和原参考图重新提交一次。该逻辑只适用于明确 policy blocked 错误，不适用于普通 Provider 响应错误。
 - 开启人物参考的任务如果没有识别到可用于参考图的主要人物，任务应失败并显示明确错误，不能静默降级为普通生图。
 - 单 panel 修改在人物参考任务中必须继续携带该 panel 已绑定的人物参考图。
 - 技术选型仍未确定。未来实现代码前，应先通过 sprint contract 选择具体技术栈。

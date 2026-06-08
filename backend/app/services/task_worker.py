@@ -63,6 +63,7 @@ from app.services.llm import (
     parse_extracted_storyboard,
     plan_storyboard_from_brief,
     revise_panel_prompt,
+    rewrite_policy_blocked_image_prompt,
     segment_story,
 )
 from app.services.prompt_logging import log_prompt_trace
@@ -72,7 +73,6 @@ _worker_tasks: list[asyncio.Task[None]] = []
 _running_task_ids: set[str] = set()
 _running_task_ids_lock: asyncio.Lock | None = None
 logger = logging.getLogger(__name__)
-POLICY_BLOCKED_IMAGE_MODEL = "baidu/ERNIE-Image-Turbo"
 POLICY_BLOCKED_ERROR_MARKERS = (
     "Unable to show the generated image",
     "Generative AI Prohibited Use policy",
@@ -97,7 +97,8 @@ class PanelImageGenerationResult:
     request: PreparedPanelImageRequest
     generated: GeneratedImageFile | None = None
     error: Exception | None = None
-    image_model_name: str | None = None
+    final_prompt: str | None = None
+    prompt_change_summary: str | None = None
 
 
 def is_policy_blocked_image_error(exc: Exception) -> bool:
@@ -109,7 +110,7 @@ def is_policy_blocked_image_error(exc: Exception) -> bool:
     )
 
 
-def generate_image_with_policy_model_switch(
+def generate_image_with_policy_prompt_rewrite(
     *,
     prompt: str,
     references: list[ImageReference],
@@ -119,7 +120,7 @@ def generate_image_with_policy_model_switch(
     panel_id: str,
     image_id: str,
     panel_order: int | None = None,
-) -> tuple[GeneratedImageFile, str]:
+) -> tuple[GeneratedImageFile, str, str | None]:
     try:
         return (
             generate_xg_image(
@@ -128,44 +129,69 @@ def generate_image_with_policy_model_switch(
                 image_model_name=image_model_name,
                 aspect_ratio=aspect_ratio,
             ),
-            image_model_name,
+            prompt,
+            None,
         )
     except ImageProviderResponseError as exc:
-        if image_model_name == POLICY_BLOCKED_IMAGE_MODEL or not is_policy_blocked_image_error(exc):
+        if not is_policy_blocked_image_error(exc):
             raise
         logger.warning(
-            "story_drawing_debug policy_blocked_image_model_switch task_id=%s panel_id=%s panel_order=%s image_id=%s original_model=%s fallback_model=%s original_reference_count=%s fallback_reference_count=0 error=%s",
+            "story_drawing_debug policy_blocked_image_prompt_rewrite_start task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s reference_count=%s error=%s",
             task_id,
             panel_id,
             panel_order,
             image_id,
             image_model_name,
-            POLICY_BLOCKED_IMAGE_MODEL,
             len(references),
             exc,
+        )
+        revision = rewrite_policy_blocked_image_prompt(
+            final_prompt=prompt,
+            provider_error=str(exc),
+            trace_context={
+                "task_id": task_id,
+                "step": "policy_blocked_image_prompt_rewrite",
+                "panel_id": panel_id,
+                "panel_order": panel_order,
+                "generated_image_id": image_id,
+                "image_model_name": image_model_name,
+                "reference_count": len(references),
+            },
+        )
+        logger.info(
+            "story_drawing_debug policy_blocked_image_prompt_rewrite_done task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s original_prompt_chars=%s rewritten_prompt_chars=%s change_summary=%s",
+            task_id,
+            panel_id,
+            panel_order,
+            image_id,
+            image_model_name,
+            len(prompt),
+            len(revision.final_prompt),
+            revision.change_summary,
         )
         try:
             return (
                 generate_xg_image(
-                    prompt=prompt,
-                    references=[],
-                    image_model_name=POLICY_BLOCKED_IMAGE_MODEL,
+                    prompt=revision.final_prompt,
+                    references=references,
+                    image_model_name=image_model_name,
                     aspect_ratio=aspect_ratio,
                 ),
-                POLICY_BLOCKED_IMAGE_MODEL,
+                revision.final_prompt,
+                revision.change_summary,
             )
-        except (ImageProviderConfigError, ImageProviderResponseError) as fallback_exc:
+        except (ImageProviderConfigError, ImageProviderResponseError) as rewritten_exc:
             logger.warning(
-                "story_drawing_debug policy_blocked_image_model_switch_failed task_id=%s panel_id=%s panel_order=%s image_id=%s fallback_model=%s error_type=%s error=%s",
+                "story_drawing_debug policy_blocked_image_prompt_rewrite_failed task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s error_type=%s error=%s",
                 task_id,
                 panel_id,
                 panel_order,
                 image_id,
-                POLICY_BLOCKED_IMAGE_MODEL,
-                fallback_exc.__class__.__name__,
-                fallback_exc,
+                image_model_name,
+                rewritten_exc.__class__.__name__,
+                rewritten_exc,
             )
-            raise fallback_exc from exc
+            raise rewritten_exc from exc
 
 
 def generate_panel_image_request(
@@ -189,7 +215,7 @@ def generate_panel_image_request(
             request.reference_count,
             request.character_reference_count,
         )
-        generated, actual_model_name = generate_image_with_policy_model_switch(
+        generated, actual_final_prompt, prompt_change_summary = generate_image_with_policy_prompt_rewrite(
             prompt=request.final_prompt,
             references=request.references,
             image_model_name=image_model_name,
@@ -200,19 +226,25 @@ def generate_panel_image_request(
             image_id=request.image_id,
         )
         logger.info(
-            "story_drawing_debug provider_request_done task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s provider_request_id=%s storage_backend=%s storage_key=%s byte_size=%s elapsed_ms=%s",
+            "story_drawing_debug provider_request_done task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s prompt_rewritten=%s provider_request_id=%s storage_backend=%s storage_key=%s byte_size=%s elapsed_ms=%s",
             task_id,
             request.panel_id,
             request.panel_order,
             request.image_id,
-            actual_model_name,
+            image_model_name,
+            actual_final_prompt != request.final_prompt,
             generated.provider_request_id,
             generated.storage_backend.value,
             generated.storage_key,
             generated.byte_size,
             round((monotonic() - started) * 1000),
         )
-        return PanelImageGenerationResult(request=request, generated=generated, image_model_name=actual_model_name)
+        return PanelImageGenerationResult(
+            request=request,
+            generated=generated,
+            final_prompt=actual_final_prompt,
+            prompt_change_summary=prompt_change_summary if actual_final_prompt != request.final_prompt else None,
+        )
     except (ImageProviderConfigError, ImageProviderResponseError) as exc:
         logger.warning(
             "story_drawing_debug provider_request_failed task_id=%s panel_id=%s panel_order=%s image_id=%s error_type=%s error=%s elapsed_ms=%s",
@@ -1343,8 +1375,9 @@ def process_task(task_id: str) -> None:
                     db.flush()
                     image.asset_id = asset.id
                     image.provider_request_id = generated.provider_request_id
-                    if result.image_model_name:
-                        image.image_model_name_snapshot = result.image_model_name
+                    if result.final_prompt and result.final_prompt != image.final_prompt:
+                        image.final_prompt = result.final_prompt
+                        image.prompt_change_summary = result.prompt_change_summary
                     image.status = GeneratedImageStatus.succeeded
                     mark_image_current(db, image)
                     image.finished_at = datetime.utcnow()
@@ -1626,7 +1659,8 @@ def process_panel_edit(generated_image_id: str) -> None:
                 len(image.final_prompt or ""),
                 len(references),
             )
-            generated, actual_model_name = generate_image_with_policy_model_switch(
+            original_final_prompt = image.final_prompt or ""
+            generated, actual_final_prompt, prompt_change_summary = generate_image_with_policy_prompt_rewrite(
                 prompt=image.final_prompt or "",
                 references=references,
                 image_model_name=image.image_model_name_snapshot,
@@ -1648,7 +1682,9 @@ def process_panel_edit(generated_image_id: str) -> None:
             )
             db.add(asset)
             db.flush()
-            image.image_model_name_snapshot = actual_model_name
+            if actual_final_prompt != original_final_prompt:
+                image.final_prompt = actual_final_prompt
+                image.prompt_change_summary = prompt_change_summary
             image.asset_id = asset.id
             image.provider_request_id = generated.provider_request_id
             image.status = GeneratedImageStatus.succeeded

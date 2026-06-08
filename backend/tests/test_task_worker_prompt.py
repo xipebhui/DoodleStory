@@ -1,10 +1,10 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import call, patch
 
 from app.models.enums import PanelType, StorageBackend
 from app.services.image_generation import GeneratedImageFile, ImageReference, ImageProviderResponseError
 from app.services.task_worker import (
-    POLICY_BLOCKED_IMAGE_MODEL,
     PreparedPanelImageRequest,
     build_adapted_story_final_prompt,
     generate_panel_image_request,
@@ -51,7 +51,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("低饱和手绘漫画风，细线条，浅色水彩，中文手写字要清晰偏大。", final_prompt)
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("画面比例：3:4"))
 
-    def test_google_policy_blocked_error_switches_to_baidu_without_references(self) -> None:
+    def test_google_policy_blocked_error_rewrites_prompt_with_same_model_and_references(self) -> None:
         blocked_error = ImageProviderResponseError(
             "图片 Provider 请求失败：HTTP 400 {\"error\":{\"message\":\"Unable to show the generated image. "
             "The image was filtered out because it violated Google's Generative AI Prohibited Use policy\"}}"
@@ -76,10 +76,13 @@ class TaskWorkerPromptTest(unittest.TestCase):
             character_reference_count=1,
         )
 
-        with patch(
-            "app.services.task_worker.generate_xg_image",
-            side_effect=[blocked_error, generated],
-        ) as generate:
+        with patch("app.services.task_worker.generate_xg_image", side_effect=[blocked_error, generated]) as generate, patch(
+            "app.services.task_worker.rewrite_policy_blocked_image_prompt",
+            return_value=SimpleNamespace(
+                final_prompt="画一个眼眶含泪但倔强微笑的小女孩，避免描述伤害动作",
+                change_summary="把疼痛表达改成眼眶含泪和倔强微笑的中性视觉状态",
+            ),
+        ) as rewrite:
             result = generate_panel_image_request(
                 task_id="task-1",
                 image_model_name="gpt-image-2",
@@ -89,7 +92,9 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         self.assertIs(result.generated, generated)
         self.assertIsNone(result.error)
-        self.assertEqual(POLICY_BLOCKED_IMAGE_MODEL, result.image_model_name)
+        self.assertEqual("画一个眼眶含泪但倔强微笑的小女孩，避免描述伤害动作", result.final_prompt)
+        self.assertEqual("把疼痛表达改成眼眶含泪和倔强微笑的中性视觉状态", result.prompt_change_summary)
+        rewrite.assert_called_once()
         self.assertEqual(
             [
                 call(
@@ -99,9 +104,9 @@ class TaskWorkerPromptTest(unittest.TestCase):
                     aspect_ratio="3:4",
                 ),
                 call(
-                    prompt="画一个倔强说不疼的小女孩",
-                    references=[],
-                    image_model_name=POLICY_BLOCKED_IMAGE_MODEL,
+                    prompt="画一个眼眶含泪但倔强微笑的小女孩，避免描述伤害动作",
+                    references=[ImageReference(url="https://cdn.example.com/person.jpg")],
+                    image_model_name="gpt-image-2",
                     aspect_ratio="3:4",
                 ),
             ],
@@ -120,7 +125,9 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
         error = ImageProviderResponseError("图片 Provider 请求失败：HTTP 400 bad request")
 
-        with patch("app.services.task_worker.generate_xg_image", side_effect=error) as generate:
+        with patch("app.services.task_worker.generate_xg_image", side_effect=error) as generate, patch(
+            "app.services.task_worker.rewrite_policy_blocked_image_prompt"
+        ) as rewrite:
             result = generate_panel_image_request(
                 task_id="task-1",
                 image_model_name="gpt-image-2",
@@ -131,6 +138,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIs(result.error, error)
         self.assertTrue(is_policy_blocked_image_error(ImageProviderResponseError(str(error))) is False)
         generate.assert_called_once()
+        rewrite.assert_not_called()
 
 
 if __name__ == "__main__":

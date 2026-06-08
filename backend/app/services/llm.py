@@ -117,6 +117,11 @@ class RevisedPanelPrompt(BaseModel):
     change_summary: str = Field(min_length=1)
 
 
+class PolicyRewrittenImagePrompt(BaseModel):
+    final_prompt: str = Field(min_length=1)
+    change_summary: str = Field(min_length=1)
+
+
 AGE_STAGE_SPECS = [
     (("童年", "儿童", "幼年", "小孩"), "child", "童年"),
     (("少年", "青少年"), "teen", "少年"),
@@ -1173,5 +1178,52 @@ def revise_panel_prompt(
         "panel_prompt_revision_result",
         context=trace_context or {},
         result=result,
+    )
+    return result
+
+
+def rewrite_policy_blocked_image_prompt(
+    *,
+    final_prompt: str,
+    provider_error: str,
+    trace_context: dict[str, Any] | None = None,
+) -> PolicyRewrittenImagePrompt:
+    user_prompt = json.dumps(
+        {
+            "final_prompt": final_prompt,
+            "provider_error": provider_error,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(
+        system_prompt=read_prompt("rewrite_policy_blocked_image_prompt_v1.md"),
+        user_prompt=user_prompt,
+        prompt_name="rewrite_policy_blocked_image_prompt_v1.md",
+        trace_context={**(trace_context or {}), "operation": "rewrite_policy_blocked_image_prompt"},
+    )
+    try:
+        result = PolicyRewrittenImagePrompt.model_validate(raw)
+    except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="rewrite_policy_blocked_image_prompt_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        raise LLMResponseError("LLM Policy 拦截提示词改写 JSON 结构不符合要求") from exc
+    logger.info(
+        "policy blocked image prompt rewritten prompt_chars=%s change_summary_chars=%s",
+        len(result.final_prompt),
+        len(result.change_summary),
+    )
+    log_prompt_trace(
+        logger,
+        "policy_blocked_image_prompt_rewrite_result",
+        context=trace_context or {},
+        rewritten_prompt_chars=len(result.final_prompt),
+        change_summary=result.change_summary,
+        final_prompt=result.final_prompt,
     )
     return result
