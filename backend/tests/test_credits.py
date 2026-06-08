@@ -5,7 +5,8 @@ from unittest.mock import patch
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.api.credits import usage_points_for_user
+from app.api.credits import my_credits, transaction_rows_for_user, usage_points_for_user
+from app.api.pagination import Pagination
 from app.api.styles import create_style_test
 from app.core.database import Base
 from app.models.entities import CreditTransaction, Style, User
@@ -106,6 +107,49 @@ class CreditsTest(unittest.TestCase):
         self.assertEqual(1, sum(point.spent_credits for point in usage_points_for_user(db, user.id, 7)))
         self.assertEqual(30, len(usage_points_for_user(db, user.id, 30)))
         self.assertEqual(2, sum(point.spent_credits for point in usage_points_for_user(db, user.id, 30)))
+
+    def test_credit_transactions_are_lazy_paginated_and_filterable(self) -> None:
+        db = self.Session()
+        admin = User(email="admin@example.com", password_hash="hash", role=UserRole.admin)
+        user = User(email="transactions@example.com", password_hash="hash")
+        db.add_all([admin, user])
+        db.flush()
+        grant_initial_credits(db, user, amount=5)
+        adjust_user_credits_by_admin(db, user_id=user.id, admin_user_id=admin.id, amount=5, note="重置积分")
+        reserve_image_credit(db, user_id=user.id, note="占用")
+        charge_reserved_image_credit(db, user_id=user.id, note="成功扣费")
+        reserve_image_credit(db, user_id=user.id, note="临时占用")
+        release_reserved_image_credit(db, user_id=user.id, note="失败释放")
+        db.commit()
+
+        overview = my_credits(user=user, db=db)
+        self.assertEqual([], overview.data.recent_transactions)
+
+        first_page, row_count = transaction_rows_for_user(
+            db,
+            user_id=user.id,
+            pagination=Pagination(limit=2, offset=0),
+        )
+        self.assertEqual(2, len(first_page))
+        self.assertEqual(3, row_count)
+
+        spent_rows, spent_count = transaction_rows_for_user(
+            db,
+            user_id=user.id,
+            pagination=Pagination(limit=10, offset=0),
+            transaction_filter="spent",
+        )
+        self.assertEqual(1, spent_count)
+        self.assertEqual([CreditTransactionType.image_generation_charge], [row.transaction_type for row in spent_rows])
+
+        reset_rows, reset_count = transaction_rows_for_user(
+            db,
+            user_id=user.id,
+            pagination=Pagination(limit=10, offset=0),
+            transaction_filter="reset",
+        )
+        self.assertEqual(1, reset_count)
+        self.assertEqual([CreditTransactionType.admin_adjustment], [row.transaction_type for row in reset_rows])
 
     def test_admin_adjustment_and_activation_code_redeem(self) -> None:
         db = self.Session()

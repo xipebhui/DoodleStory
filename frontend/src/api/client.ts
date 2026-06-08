@@ -32,6 +32,8 @@ export type CreditTransaction = {
   updated_at: string;
 };
 
+export type CreditTransactionFilter = "all" | "spent" | "reset";
+
 export type CreditAccount = {
   user_id: string;
   balance: number;
@@ -432,6 +434,14 @@ export const api = {
     }).then((result) => result.data),
   creditUsage: (params: { days: 1 | 7 | 30 }) =>
     request<ApiData<CreditUsagePoint[]>>(`/credits/usage?days=${params.days}`).then((result) => result.data),
+  creditTransactions: (params?: { filter?: CreditTransactionFilter; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.filter && params.filter !== "all") search.set("filter", params.filter);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<CreditTransaction>>(`/credits/transactions${suffix}`);
+  },
   adminUsers: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
     const search = new URLSearchParams();
     if (params?.query) search.set("query", params.query);

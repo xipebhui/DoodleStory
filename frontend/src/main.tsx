@@ -42,6 +42,7 @@ import {
   type ContentExtractionSummary,
   type CreditOverview,
   type CreditTransaction,
+  type CreditTransactionFilter,
   type CreditUsagePoint,
   type FileAsset,
   type Style,
@@ -2839,6 +2840,12 @@ const creditTransactionLabels: Record<CreditTransaction["transaction_type"], str
   image_generation_release: "失败释放",
 };
 
+const creditTransactionFilterLabels: Record<CreditTransactionFilter, string> = {
+  all: "全部流水",
+  spent: "消耗积分",
+  reset: "重置积分",
+};
+
 function SettingsView({
   user,
   creditOverview,
@@ -2854,6 +2861,13 @@ function SettingsView({
   const [usageDays, setUsageDays] = useState<1 | 7 | 30>(7);
   const [usagePoints, setUsagePoints] = useState<CreditUsagePoint[]>([]);
   const [usageLoading, setUsageLoading] = useState(false);
+  const [transactionsOpen, setTransactionsOpen] = useState(false);
+  const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionFilter, setTransactionFilter] = useState<CreditTransactionFilter>("all");
+  const [transactionCursor, setTransactionCursor] = useState<string | null>(null);
+  const [transactionCursorStack, setTransactionCursorStack] = useState<string[]>([]);
+  const [transactionPageInfo, setTransactionPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
 
   async function logout() {
     await api.logout();
@@ -2875,12 +2889,51 @@ function SettingsView({
     void refreshUsage(usageDays);
   }, [usageDays]);
 
+  async function refreshTransactions(nextCursor = transactionCursor, nextFilter = transactionFilter) {
+    setTransactionsLoading(true);
+    try {
+      const result = await api.creditTransactions({
+        filter: nextFilter,
+        cursor: nextCursor,
+        limit: 10,
+      });
+      setTransactions(result.items);
+      setTransactionPageInfo({ next_cursor: result.page.next_cursor, has_more: result.page.has_more });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "积分流水加载失败");
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!transactionsOpen) return;
+    void refreshTransactions(transactionCursor, transactionFilter);
+  }, [transactionsOpen, transactionCursor, transactionFilter]);
+
+  function openTransactions() {
+    setTransactionsOpen(true);
+    setTransactionCursor(null);
+    setTransactionCursorStack([]);
+  }
+
+  function selectTransactionFilter(nextFilter: CreditTransactionFilter) {
+    setTransactionFilter(nextFilter);
+    setTransactionCursor(null);
+    setTransactionCursorStack([]);
+  }
+
   async function redeemCode(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     try {
       const overview = await api.redeemCreditCode({ code: String(formData.get("code") ?? "") });
       onCreditsChanged(overview);
+      if (transactionsOpen) {
+        setTransactionCursor(null);
+        setTransactionCursorStack([]);
+        void refreshTransactions(null, transactionFilter);
+      }
       setMessage("激活码已兑换");
       event.currentTarget.reset();
     } catch (error) {
@@ -2989,10 +3042,62 @@ function SettingsView({
               <Clock3 size={22} />
               <div>
                 <h2>最近积分流水</h2>
-                <p>占用、成功扣费、失败释放和人工调整都会记录。</p>
+                <p>默认不加载明细，点击后分页查看占用、扣费、释放和调整记录。</p>
               </div>
             </div>
-            <TransactionList transactions={creditOverview?.recent_transactions ?? []} />
+            {!transactionsOpen ? (
+              <div className="transaction-lazy-panel">
+                <span>流水明细会按需加载，避免进入设置页时拉取完整记录。</span>
+                <button type="button" onClick={openTransactions}>
+                  查看明细
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="transaction-detail-toolbar">
+                  <div className="segmented-control transaction-filter-control">
+                    {(["all", "spent", "reset"] as CreditTransactionFilter[]).map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        className={transactionFilter === filter ? "active" : ""}
+                        onClick={() => selectTransactionFilter(filter)}
+                      >
+                        {creditTransactionFilterLabels[filter]}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="secondary-button" disabled={transactionsLoading} onClick={() => refreshTransactions()}>
+                    刷新
+                  </button>
+                </div>
+                <TransactionList transactions={transactions} loading={transactionsLoading} />
+                <div className="pagination-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={transactionCursorStack.length === 0 || transactionsLoading}
+                    onClick={() => {
+                      const previous = transactionCursorStack[transactionCursorStack.length - 1] ?? null;
+                      setTransactionCursorStack((stack) => stack.slice(0, -1));
+                      setTransactionCursor(previous);
+                    }}
+                  >
+                    上一页
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!transactionPageInfo?.has_more || transactionsLoading}
+                    onClick={() => {
+                      setTransactionCursorStack((stack) => [...stack, transactionCursor ?? ""]);
+                      setTransactionCursor(transactionPageInfo?.next_cursor ?? null);
+                    }}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </>
+            )}
           </section>
         </div>
       </div>
@@ -3312,7 +3417,10 @@ function UsersView({ user, onCreditsChanged }: { user: User; onCreditsChanged: (
   );
 }
 
-function TransactionList({ transactions }: { transactions: CreditTransaction[] }) {
+function TransactionList({ transactions, loading = false }: { transactions: CreditTransaction[]; loading?: boolean }) {
+  if (loading) {
+    return <div className="empty mini">正在加载积分流水</div>;
+  }
   if (transactions.length === 0) {
     return <div className="empty mini">暂无积分流水</div>;
   }

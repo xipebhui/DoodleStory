@@ -3009,6 +3009,31 @@ textarea {
   margin-top: 16px;
 }
 
+.transaction-lazy-panel,
+.transaction-detail-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+}
+
+.transaction-lazy-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #151820;
+  padding: 14px;
+}
+
+.transaction-lazy-panel span {
+  color: #8d96a6;
+  font-size: 13px;
+}
+
+.transaction-filter-control {
+  flex-wrap: wrap;
+}
+
 .admin-user-row span,
 .transaction-row span {
   display: grid;
@@ -3579,6 +3604,12 @@ textarea {
   .drawer-actions,
   .account-actions {
     display: grid;
+  }
+
+  .transaction-lazy-panel,
+  .transaction-detail-toolbar {
+    display: grid;
+    justify-content: stretch;
   }
 
   .style-reference-mode-options {

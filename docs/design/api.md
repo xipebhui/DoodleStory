@@ -128,7 +128,7 @@ GET /api/v1/auth/me
 GET /api/v1/credits/me
 ```
 
-响应包含当前积分账户和最近积分流水：
+响应只用于当前积分账户概览，不默认加载流水明细：
 
 ```json
 {
@@ -170,6 +170,20 @@ POST /api/v1/credits/redeem
 - 激活码存在、未过期、未禁用且未兑换时，为当前用户增加对应积分。
 - 兑换成功写入 `activation_code_redeem` 积分流水。
 - 已兑换、过期、禁用或不存在的激活码必须明确失败。
+
+### 分页查看当前用户积分流水
+
+```http
+GET /api/v1/credits/transactions?filter=spent&limit=10&cursor=...
+```
+
+规则：
+
+- 用户在设置页点击 `查看明细` 后才调用该接口；进入设置页默认不加载流水。
+- `filter` 可选 `all`、`spent`、`reset`，默认 `all`。
+- `spent` 只返回成功出图扣费流水，即 `image_generation_charge`。
+- `reset` 返回管理员调整流水，即 `admin_adjustment`，用于快速查看重置或人工调整积分记录。
+- 使用标准分页响应，`page.next_cursor` 存在时可以请求下一页。
 
 ### 查看当前用户积分消耗趋势
 

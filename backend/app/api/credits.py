@@ -55,6 +55,36 @@ def recent_transactions_for_user(db: Session, user_id: str, limit: int = 20) -> 
     ).all()
 
 
+def transaction_filter_condition(transaction_filter: str):
+    if transaction_filter == "spent":
+        return CreditTransaction.transaction_type == CreditTransactionType.image_generation_charge
+    if transaction_filter == "reset":
+        return CreditTransaction.transaction_type == CreditTransactionType.admin_adjustment
+    if transaction_filter != "all":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="积分流水筛选不合法")
+    return None
+
+
+def transaction_rows_for_user(
+    db: Session,
+    *,
+    user_id: str,
+    pagination: Pagination,
+    transaction_filter: str = "all",
+) -> tuple[list[CreditTransaction], int]:
+    statement = select(CreditTransaction).where(CreditTransaction.user_id == user_id)
+    condition = transaction_filter_condition(transaction_filter)
+    if condition is not None:
+        statement = statement.where(condition)
+    transactions = db.scalars(
+        statement
+        .order_by(CreditTransaction.created_at.desc(), CreditTransaction.id.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit + 1)
+    ).all()
+    return transactions[: pagination.limit], len(transactions)
+
+
 def usage_points_for_user(db: Session, user_id: str, days: int) -> list[CreditUsagePointRead]:
     now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
     if days == 1:
@@ -190,10 +220,7 @@ def my_credits(user: User = Depends(current_user), db: Session = Depends(get_db)
     return ApiData(
         data=CreditOverviewRead(
             account=account,
-            recent_transactions=[
-                CreditTransactionRead.model_validate(transaction)
-                for transaction in recent_transactions_for_user(db, user.id)
-            ],
+            recent_transactions=[],
         )
     )
 
@@ -221,6 +248,25 @@ def my_credit_usage(
     if days not in {1, 7, 30}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只支持查看最近 1 天、7 天或 30 天")
     return ApiData(data=usage_points_for_user(db, user.id, days))
+
+
+@router.get("/credits/transactions", response_model=ApiList[CreditTransactionRead])
+def my_credit_transactions(
+    transaction_filter: str = Query(default="all", alias="filter"),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    pagination: Pagination = Depends(get_pagination),
+) -> ApiList[CreditTransactionRead]:
+    transactions, row_count = transaction_rows_for_user(
+        db,
+        user_id=user.id,
+        pagination=pagination,
+        transaction_filter=transaction_filter,
+    )
+    return ApiList(
+        items=[CreditTransactionRead.model_validate(transaction) for transaction in transactions],
+        page=build_page(pagination.limit, pagination.offset, row_count),
+    )
 
 
 @router.get("/admin/users", response_model=ApiList[AdminUserCreditSummary])
