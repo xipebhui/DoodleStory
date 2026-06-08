@@ -1,9 +1,11 @@
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
+from app.api.credits import usage_points_for_user
 from app.api.styles import create_style_test
 from app.core.database import Base
 from app.models.entities import CreditTransaction, Style, User
@@ -80,6 +82,30 @@ class CreditsTest(unittest.TestCase):
 
         with self.assertRaises(InsufficientCreditsError):
             reserve_image_credit(db, user_id=user.id)
+
+    def test_usage_points_only_count_successful_charges(self) -> None:
+        db = self.Session()
+        user = User(email="usage@example.com", password_hash="hash")
+        db.add(user)
+        db.flush()
+        grant_initial_credits(db, user, amount=5)
+
+        reserve_image_credit(db, user_id=user.id, note="占用")
+        recent_charge = charge_reserved_image_credit(db, user_id=user.id, note="扣费")
+        reserve_image_credit(db, user_id=user.id, note="占用")
+        old_charge = charge_reserved_image_credit(db, user_id=user.id, note="旧扣费")
+        reserve_image_credit(db, user_id=user.id, note="临时占用")
+        release_reserved_image_credit(db, user_id=user.id, note="释放")
+        old_charge.created_at = datetime.utcnow() - timedelta(days=10)
+        recent_charge.created_at = datetime.utcnow()
+        db.commit()
+
+        self.assertEqual(24, len(usage_points_for_user(db, user.id, 1)))
+        self.assertEqual(1, sum(point.spent_credits for point in usage_points_for_user(db, user.id, 1)))
+        self.assertEqual(7, len(usage_points_for_user(db, user.id, 7)))
+        self.assertEqual(1, sum(point.spent_credits for point in usage_points_for_user(db, user.id, 7)))
+        self.assertEqual(30, len(usage_points_for_user(db, user.id, 30)))
+        self.assertEqual(2, sum(point.spent_credits for point in usage_points_for_user(db, user.id, 30)))
 
     def test_admin_adjustment_and_activation_code_redeem(self) -> None:
         db = self.Session()

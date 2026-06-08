@@ -42,6 +42,7 @@ import {
   type ContentExtractionSummary,
   type CreditOverview,
   type CreditTransaction,
+  type CreditUsagePoint,
   type FileAsset,
   type Style,
   type StyleTest,
@@ -51,7 +52,7 @@ import {
 } from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "content" | "styles" | "settings";
+type View = "tasks" | "content" | "styles" | "users" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const imageModelNamePlaceholder = "生图模型名，例如 gpt-image-2";
@@ -63,6 +64,7 @@ const viewRoutes: Record<View, string> = {
   tasks: "/tasks",
   content: "/content-extractions",
   styles: "/styles",
+  users: "/users",
   settings: "/settings",
 };
 
@@ -75,6 +77,7 @@ function viewFromPathname(pathname: string): View | null {
   if (path === "/" || path === viewRoutes.tasks || path.startsWith(`${viewRoutes.tasks}/`)) return "tasks";
   if (path === viewRoutes.content) return "content";
   if (path === viewRoutes.styles) return "styles";
+  if (path === viewRoutes.users) return "users";
   if (path === viewRoutes.settings) return "settings";
   return null;
 }
@@ -322,6 +325,7 @@ function App() {
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "content" ? <ContentExtractionView user={user} onNavigatePath={navigateToPath} /> : null}
       {view === "styles" ? <StylesView user={user} onCreditsChanged={refreshCredits} /> : null}
+      {view === "users" ? <UsersView user={user} onCreditsChanged={refreshCredits} /> : null}
       {view === "settings" ? (
         <SettingsView
           user={user}
@@ -426,6 +430,7 @@ function Shell({
     { key: "tasks" as const, label: "任务", icon: Images, path: viewRoutes.tasks },
     { key: "content" as const, label: "内容提取", icon: FileText, path: viewRoutes.content },
     { key: "styles" as const, label: "风格", icon: Sparkles, path: viewRoutes.styles },
+    ...(user.role === "admin" ? [{ key: "users" as const, label: "用户管理", icon: Users, path: viewRoutes.users }] : []),
     { key: "settings" as const, label: "设置", icon: Settings, path: viewRoutes.settings },
   ];
 
@@ -2846,39 +2851,29 @@ function SettingsView({
   onLogout: () => void;
 }) {
   const [message, setMessage] = useState("");
-  const [adminUsers, setAdminUsers] = useState<AdminUserCreditSummary[]>([]);
-  const [adminUsersLoading, setAdminUsersLoading] = useState(false);
-  const [adminQuery, setAdminQuery] = useState("");
-  const [selectedUser, setSelectedUser] = useState<AdminUserCreditDetail | null>(null);
-  const [activationCodes, setActivationCodes] = useState<ActivationCode[]>([]);
-  const [createdCodes, setCreatedCodes] = useState<ActivationCodeCreated[]>([]);
-
-  useEffect(() => {
-    if (user.role !== "admin") return;
-    void refreshAdminData();
-  }, [user.role]);
+  const [usageDays, setUsageDays] = useState<1 | 7 | 30>(7);
+  const [usagePoints, setUsagePoints] = useState<CreditUsagePoint[]>([]);
+  const [usageLoading, setUsageLoading] = useState(false);
 
   async function logout() {
     await api.logout();
     onLogout();
   }
 
-  async function refreshAdminData(query = adminQuery) {
-    if (user.role !== "admin") return;
-    setAdminUsersLoading(true);
+  async function refreshUsage(days = usageDays) {
+    setUsageLoading(true);
     try {
-      const [usersResult, codesResult] = await Promise.all([
-        api.adminUsers({ query: query.trim() || undefined, limit: 20 }),
-        api.activationCodes({ limit: 20 }),
-      ]);
-      setAdminUsers(usersResult.items);
-      setActivationCodes(codesResult.items);
+      setUsagePoints(await api.creditUsage({ days }));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "管理员数据加载失败");
+      setMessage(error instanceof Error ? error.message : "积分消耗趋势加载失败");
     } finally {
-      setAdminUsersLoading(false);
+      setUsageLoading(false);
     }
   }
+
+  useEffect(() => {
+    void refreshUsage(usageDays);
+  }, [usageDays]);
 
   async function redeemCode(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2893,54 +2888,6 @@ function SettingsView({
     }
   }
 
-  async function openUserDetail(userId: string) {
-    try {
-      setSelectedUser(await api.adminUserDetail(userId));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "用户详情加载失败");
-    }
-  }
-
-  async function adjustCredits(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedUser) return;
-    const formData = new FormData(event.currentTarget);
-    const amount = Number(formData.get("amount") ?? 0);
-    const note = String(formData.get("note") ?? "");
-    try {
-      const detail = await api.adjustAdminUserCredits(selectedUser.user.id, { amount, note });
-      setSelectedUser(detail);
-      await refreshAdminData();
-      if (detail.user.id === user.id) {
-        onCreditsChanged(null);
-      }
-      setMessage("积分已调整");
-      event.currentTarget.reset();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "积分调整失败");
-    }
-  }
-
-  async function createCodes(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const expiresAt = String(formData.get("expires_at") ?? "");
-    try {
-      const codes = await api.createActivationCodes({
-        credit_amount: Number(formData.get("credit_amount") ?? 0),
-        count: Number(formData.get("count") ?? 1),
-        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
-        note: String(formData.get("note") ?? "") || null,
-      });
-      setCreatedCodes(codes);
-      await refreshAdminData();
-      setMessage("激活码已生成，明文只显示本次");
-      event.currentTarget.reset();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "激活码生成失败");
-    }
-  }
-
   const account = creditOverview?.account;
 
   return (
@@ -2948,13 +2895,13 @@ function SettingsView({
       <header className="page-header">
         <div>
           <h1>设置</h1>
-          <p>管理账号、积分、激活码和管理员用户操作。</p>
+          <p>管理账号、积分兑换和个人积分消耗趋势。</p>
         </div>
       </header>
 
       {message ? <p className="form-message">{message}</p> : null}
 
-      <div className="settings-layout">
+      <div className="settings-layout single-column-settings">
         <div className="settings-stack">
           <section className="settings-section account-section">
             <div className="section-title">
@@ -3018,6 +2965,29 @@ function SettingsView({
             <div className="section-title">
               <Clock3 size={22} />
               <div>
+                <h2>积分消耗趋势</h2>
+                <p>查看最近 1 天、7 天或 30 天的成功出图积分消耗。</p>
+              </div>
+            </div>
+            <div className="segmented-control usage-range-control">
+              {[1, 7, 30].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className={usageDays === days ? "active" : ""}
+                  onClick={() => setUsageDays(days as 1 | 7 | 30)}
+                >
+                  {days === 1 ? "1 天" : `${days} 天`}
+                </button>
+              ))}
+            </div>
+            <CreditUsageChart points={usagePoints} loading={usageLoading} />
+          </section>
+
+          <section className="settings-section">
+            <div className="section-title">
+              <Clock3 size={22} />
+              <div>
                 <h2>最近积分流水</h2>
                 <p>占用、成功扣费、失败释放和人工调整都会记录。</p>
               </div>
@@ -3025,81 +2995,279 @@ function SettingsView({
             <TransactionList transactions={creditOverview?.recent_transactions ?? []} />
           </section>
         </div>
+      </div>
+    </section>
+  );
+}
 
-        {user.role === "admin" ? (
-          <aside className="admin-settings-column">
-            <section className="settings-section">
-              <div className="section-title">
-                <Users size={22} />
-                <div>
-                  <h2>用户管理</h2>
-                  <p>查看用户积分、任务和成功图片数量。</p>
-                </div>
-              </div>
-              <form
-                className="admin-search"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void refreshAdminData(adminQuery);
-                }}
-              >
-                <input value={adminQuery} onChange={(event) => setAdminQuery(event.target.value)} placeholder="搜索邮箱或昵称" />
-                <button type="submit" disabled={adminUsersLoading}>
-                  <Search size={16} />
-                  搜索
-                </button>
-              </form>
-              <div className="admin-user-list">
-                {adminUsers.map((item) => (
-                  <button type="button" key={item.id} className="admin-user-row" onClick={() => openUserDetail(item.id)}>
-                    <span>
-                      <strong>{item.display_name || item.email}</strong>
-                      <small>{item.email}</small>
-                    </span>
-                    <b>{item.balance}</b>
-                    <small>{item.task_count} 任务 · {item.succeeded_image_count} 图</small>
-                  </button>
-                ))}
-                {adminUsers.length === 0 ? <div className="empty mini">暂无用户</div> : null}
-              </div>
-            </section>
+function CreditUsageChart({ points, loading }: { points: CreditUsagePoint[]; loading: boolean }) {
+  const width = 720;
+  const height = 220;
+  const padding = 28;
+  const maxSpent = Math.max(1, ...points.map((point) => point.spent_credits));
+  const path = points
+    .map((point, index) => {
+      const x = points.length <= 1 ? padding : padding + (index / (points.length - 1)) * (width - padding * 2);
+      const y = height - padding - (point.spent_credits / maxSpent) * (height - padding * 2);
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(" ");
+  const total = points.reduce((sum, point) => sum + point.spent_credits, 0);
 
-            <section className="settings-section">
-              <div className="section-title">
-                <Ticket size={22} />
-                <div>
-                  <h2>生成激活码</h2>
-                  <p>明文激活码只在生成后显示一次。</p>
-                </div>
+  return (
+    <div className="credit-chart">
+      <div className="credit-chart-summary">
+        <strong>{total}</strong>
+        <span>{loading ? "正在加载" : "本周期消耗积分"}</span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="积分消耗折线图">
+        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} />
+        <line x1={padding} y1={padding} x2={padding} y2={height - padding} />
+        {path ? <path d={path} /> : null}
+        {points.map((point, index) => {
+          const x = points.length <= 1 ? padding : padding + (index / (points.length - 1)) * (width - padding * 2);
+          const y = height - padding - (point.spent_credits / maxSpent) * (height - padding * 2);
+          const showLabel = points.length <= 8 || index === 0 || index === points.length - 1 || index % 5 === 0;
+          return (
+            <g key={`${point.started_at}-${point.label}`}>
+              <circle cx={x} cy={y} r={4} />
+              {showLabel ? <text x={x} y={height - 7}>{point.label}</text> : null}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function UsersView({ user, onCreditsChanged }: { user: User; onCreditsChanged: () => Promise<CreditOverview | null> }) {
+  const [message, setMessage] = useState("");
+  const [adminUsers, setAdminUsers] = useState<AdminUserCreditSummary[]>([]);
+  const [adminUsersLoading, setAdminUsersLoading] = useState(false);
+  const [adminQueryInput, setAdminQueryInput] = useState("");
+  const [adminQuery, setAdminQuery] = useState("");
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
+  const [selectedUser, setSelectedUser] = useState<AdminUserCreditDetail | null>(null);
+  const [activationCodes, setActivationCodes] = useState<ActivationCode[]>([]);
+  const [createdCodes, setCreatedCodes] = useState<ActivationCodeCreated[]>([]);
+
+  async function refreshUsers(nextCursor = cursor, query = adminQuery) {
+    if (user.role !== "admin") return;
+    setAdminUsersLoading(true);
+    try {
+      const result = await api.adminUsers({
+        query: query.trim() || undefined,
+        cursor: nextCursor,
+        limit: 10,
+      });
+      setAdminUsers(result.items);
+      setPageInfo({ next_cursor: result.page.next_cursor, has_more: result.page.has_more });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "用户列表加载失败");
+    } finally {
+      setAdminUsersLoading(false);
+    }
+  }
+
+  async function refreshActivationCodes() {
+    if (user.role !== "admin") return;
+    try {
+      const result = await api.activationCodes({ limit: 20 });
+      setActivationCodes(result.items);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "激活码列表加载失败");
+    }
+  }
+
+  useEffect(() => {
+    void refreshUsers(cursor, adminQuery);
+  }, [cursor, adminQuery, user.role]);
+
+  useEffect(() => {
+    void refreshActivationCodes();
+  }, [user.role]);
+
+  async function openUserDetail(userId: string) {
+    try {
+      setSelectedUser(await api.adminUserDetail(userId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "用户详情加载失败");
+    }
+  }
+
+  async function adjustCredits(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedUser) return;
+    const formData = new FormData(event.currentTarget);
+    const amount = Number(formData.get("amount") ?? 0);
+    const note = String(formData.get("note") ?? "");
+    try {
+      const detail = await api.adjustAdminUserCredits(selectedUser.user.id, { amount, note });
+      setSelectedUser(detail);
+      await refreshUsers(cursor, adminQuery);
+      if (detail.user.id === user.id) {
+        await onCreditsChanged();
+      }
+      setMessage("积分已调整");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "积分调整失败");
+    }
+  }
+
+  async function createCodes(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const expiresAt = String(formData.get("expires_at") ?? "");
+    try {
+      const codes = await api.createActivationCodes({
+        credit_amount: Number(formData.get("credit_amount") ?? 0),
+        count: Number(formData.get("count") ?? 1),
+        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+        note: String(formData.get("note") ?? "") || null,
+      });
+      setCreatedCodes(codes);
+      await refreshActivationCodes();
+      setMessage("激活码已生成，明文只显示本次");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "激活码生成失败");
+    }
+  }
+
+  function submitSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCursorStack([]);
+    setCursor(null);
+    setAdminQuery(adminQueryInput);
+  }
+
+  if (user.role !== "admin") {
+    return (
+      <section className="page">
+        <header className="page-header">
+          <div>
+            <h1>用户管理</h1>
+            <p>当前账号没有访问用户管理的权限。</p>
+          </div>
+        </header>
+      </section>
+    );
+  }
+
+  return (
+    <section className="page users-page">
+      <header className="page-header">
+        <div>
+          <h1>用户管理</h1>
+          <p>分页查看用户积分、使用情况，并生成可发放给用户的激活码。</p>
+        </div>
+      </header>
+
+      {message ? <p className="form-message">{message}</p> : null}
+
+      <div className="users-management-layout">
+        <section className="settings-section">
+          <div className="section-title">
+            <Users size={22} />
+            <div>
+              <h2>用户列表</h2>
+              <p>每页显示 10 个用户，支持按邮箱或昵称搜索。</p>
+            </div>
+          </div>
+          <form className="admin-search" onSubmit={submitSearch}>
+            <input value={adminQueryInput} onChange={(event) => setAdminQueryInput(event.target.value)} placeholder="搜索邮箱或昵称" />
+            <button type="submit" disabled={adminUsersLoading}>
+              <Search size={16} />
+              搜索
+            </button>
+          </form>
+          <div className="admin-user-table">
+            <div className="admin-user-table-head">
+              <span>用户</span>
+              <span>积分</span>
+              <span>任务</span>
+              <span>成功图</span>
+              <span>已消耗</span>
+            </div>
+            {adminUsers.map((item) => (
+              <button type="button" key={item.id} className="admin-user-table-row" onClick={() => openUserDetail(item.id)}>
+                <span>
+                  <strong>{item.display_name || item.email}</strong>
+                  <small>{item.email}</small>
+                </span>
+                <b>{item.balance}</b>
+                <span>{item.task_count}</span>
+                <span>{item.succeeded_image_count}</span>
+                <span>{item.spent_credits}</span>
+              </button>
+            ))}
+            {adminUsers.length === 0 ? <div className="empty mini">暂无用户</div> : null}
+          </div>
+          <div className="pagination-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={cursorStack.length === 0 || adminUsersLoading}
+              onClick={() => {
+                const previous = cursorStack[cursorStack.length - 1] ?? null;
+                setCursorStack((stack) => stack.slice(0, -1));
+                setCursor(previous);
+              }}
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              disabled={!pageInfo?.has_more || adminUsersLoading}
+              onClick={() => {
+                setCursorStack((stack) => [...stack, cursor ?? ""]);
+                setCursor(pageInfo?.next_cursor ?? null);
+              }}
+            >
+              下一页
+            </button>
+          </div>
+        </section>
+
+        <aside className="admin-settings-column">
+          <section className="settings-section activation-code-manager">
+            <div className="section-title">
+              <Ticket size={22} />
+              <div>
+                <h2>生成激活码</h2>
+                <p>生成后把明文码发给用户；数据库只保留哈希。</p>
               </div>
-              <form className="activation-form" onSubmit={createCodes}>
-                <input name="credit_amount" type="number" min={1} max={100000} placeholder="每个码的积分" required />
-                <input name="count" type="number" min={1} max={200} defaultValue={1} placeholder="数量" required />
-                <input name="expires_at" type="datetime-local" />
-                <input name="note" placeholder="备注" />
-                <button type="submit">
-                  <Plus size={16} />
-                  生成
-                </button>
-              </form>
-              {createdCodes.length > 0 ? (
-                <div className="generated-code-list">
-                  {createdCodes.map((code) => (
-                    <code key={code.id}>{code.code}</code>
-                  ))}
-                </div>
-              ) : null}
-              <div className="activation-code-list">
-                {activationCodes.map((code) => (
-                  <div key={code.id}>
-                    <strong>{code.code_prefix}...</strong>
-                    <span>{code.credit_amount} 分 · {code.redeemed_at ? "已兑换" : code.disabled_at ? "已禁用" : "可用"}</span>
-                  </div>
+            </div>
+            <form className="activation-form" onSubmit={createCodes}>
+              <input name="credit_amount" type="number" min={1} max={100000} placeholder="每个码的积分" required />
+              <input name="count" type="number" min={1} max={200} defaultValue={1} placeholder="数量" required />
+              <input name="expires_at" type="datetime-local" />
+              <input name="note" placeholder="备注" />
+              <button type="submit">
+                <Plus size={16} />
+                生成激活码
+              </button>
+            </form>
+            {createdCodes.length > 0 ? (
+              <div className="generated-code-list">
+                {createdCodes.map((code) => (
+                  <code key={code.id}>{code.code}</code>
                 ))}
               </div>
-            </section>
-          </aside>
-        ) : null}
+            ) : null}
+            <div className="activation-code-list">
+              {activationCodes.map((code) => (
+                <div key={code.id}>
+                  <strong>{code.code_prefix}...</strong>
+                  <span>{code.credit_amount} 分 · {code.redeemed_at ? "已兑换" : code.disabled_at ? "已禁用" : "可用"}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
       </div>
 
       {selectedUser ? (

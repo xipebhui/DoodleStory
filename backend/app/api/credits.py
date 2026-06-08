@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
@@ -25,6 +27,7 @@ from app.schemas.credits import (
     CreditOverviewRead,
     CreditRedeemRequest,
     CreditTransactionRead,
+    CreditUsagePointRead,
 )
 from app.services.credits import (
     ActivationCodeError,
@@ -50,6 +53,45 @@ def recent_transactions_for_user(db: Session, user_id: str, limit: int = 20) -> 
         .order_by(CreditTransaction.created_at.desc())
         .limit(limit)
     ).all()
+
+
+def usage_points_for_user(db: Session, user_id: str, days: int) -> list[CreditUsagePointRead]:
+    now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    if days == 1:
+        bucket_count = 24
+        bucket_delta = timedelta(hours=1)
+        start = now - timedelta(hours=bucket_count - 1)
+    else:
+        bucket_count = days
+        bucket_delta = timedelta(days=1)
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        start = today - timedelta(days=bucket_count - 1)
+
+    buckets = {start + bucket_delta * index: 0 for index in range(bucket_count)}
+    transactions = db.scalars(
+        select(CreditTransaction).where(
+            CreditTransaction.user_id == user_id,
+            CreditTransaction.transaction_type == CreditTransactionType.image_generation_charge,
+            CreditTransaction.created_at >= start,
+        )
+    ).all()
+    for transaction in transactions:
+        created_at = transaction.created_at.replace(tzinfo=None)
+        if days == 1:
+            bucket_start = created_at.replace(minute=0, second=0, microsecond=0)
+        else:
+            bucket_start = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        if bucket_start in buckets:
+            buckets[bucket_start] += max(0, -transaction.amount)
+
+    return [
+        CreditUsagePointRead(
+            label=bucket_start.strftime("%H:00") if days == 1 else bucket_start.strftime("%m-%d"),
+            spent_credits=spent,
+            started_at=bucket_start,
+        )
+        for bucket_start, spent in buckets.items()
+    ]
 
 
 def user_summary_rows(
@@ -168,6 +210,17 @@ def redeem_my_activation_code(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.commit()
     return my_credits(user=user, db=db)
+
+
+@router.get("/credits/usage", response_model=ApiData[list[CreditUsagePointRead]])
+def my_credit_usage(
+    days: int = Query(default=7),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[list[CreditUsagePointRead]]:
+    if days not in {1, 7, 30}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只支持查看最近 1 天、7 天或 30 天")
+    return ApiData(data=usage_points_for_user(db, user.id, days))
 
 
 @router.get("/admin/users", response_model=ApiList[AdminUserCreditSummary])

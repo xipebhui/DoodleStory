@@ -171,6 +171,32 @@ POST /api/v1/credits/redeem
 - 兑换成功写入 `activation_code_redeem` 积分流水。
 - 已兑换、过期、禁用或不存在的激活码必须明确失败。
 
+### 查看当前用户积分消耗趋势
+
+```http
+GET /api/v1/credits/usage?days=7
+```
+
+规则：
+
+- `days` 只支持 `1`、`7` 和 `30`。
+- `days=1` 返回最近 24 个小时桶；`days=7` 和 `days=30` 返回自然日桶。
+- 只统计 `image_generation_charge` 成功扣费流水，不统计占用、释放、激活码兑换或管理员调整。
+
+响应：
+
+```json
+{
+  "data": [
+    {
+      "label": "06-08",
+      "spent_credits": 12,
+      "started_at": "2026-06-08T00:00:00"
+    }
+  ]
+}
+```
+
 ## 管理员积分与用户管理
 
 ### 用户列表

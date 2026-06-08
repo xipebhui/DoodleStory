@@ -40,6 +40,12 @@ class CreditOverviewRead(BaseModel):
     recent_transactions: list[CreditTransactionRead]
 
 
+class CreditUsagePointRead(BaseModel):
+    label: str
+    spent_credits: int
+    started_at: datetime
+
+
 class CreditRedeemRequest(BaseModel):
     code: str = Field(min_length=6, max_length=80)
 

@@ -45,6 +45,12 @@ export type CreditOverview = {
   recent_transactions: CreditTransaction[];
 };
 
+export type CreditUsagePoint = {
+  label: string;
+  spent_credits: number;
+  started_at: string;
+};
+
 export type AdminUserCreditSummary = {
   id: string;
   email: string;
@@ -424,6 +430,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }).then((result) => result.data),
+  creditUsage: (params: { days: 1 | 7 | 30 }) =>
+    request<ApiData<CreditUsagePoint[]>>(`/credits/usage?days=${params.days}`).then((result) => result.data),
   adminUsers: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
     const search = new URLSearchParams();
     if (params?.query) search.set("query", params.query);
