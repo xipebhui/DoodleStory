@@ -713,6 +713,13 @@ textarea {
   color: #e0b15d;
 }
 
+.panel-card .panel-generated-prompt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
 .task-create-form label small {
   display: block;
   margin-top: 6px;
@@ -2665,8 +2672,9 @@ textarea {
   gap: 22px;
   max-width: min(1120px, 92vw);
   max-height: 92vh;
-  align-items: end;
+  align-items: stretch;
   margin: 0;
+  min-height: 0;
 }
 
 .image-preview-frame img {
@@ -2680,11 +2688,19 @@ textarea {
 
 .image-preview-frame figcaption {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 16px;
   align-self: stretch;
-  align-content: end;
+  max-height: 92vh;
+  min-height: 0;
+  overflow: hidden;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   padding-left: 22px;
+}
+
+.image-preview-frame figcaption > div:first-child {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .image-preview-frame figcaption strong {
@@ -2694,6 +2710,13 @@ textarea {
 .image-preview-frame figcaption p {
   color: #a7afbd;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.image-preview-frame .preview-prompt {
+  max-height: calc(92vh - 86px);
+  overflow: auto;
+  white-space: pre-wrap;
 }
 
 .content-preview-frame figcaption p {

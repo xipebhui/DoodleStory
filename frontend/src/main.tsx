@@ -1282,7 +1282,9 @@ function TasksView({
                             {imageWorkflowLabel(image.workflow_step)} · {imageStatusLabel(image.status)}
                           </small>
                         ) : null}
-                        {image?.image_prompt || panel.generated_prompt ? <small>{image?.image_prompt ?? panel.generated_prompt}</small> : null}
+                        {image?.image_prompt || panel.generated_prompt ? (
+                          <small className="panel-generated-prompt">{image?.image_prompt ?? panel.generated_prompt}</small>
+                        ) : null}
                         {currentImageIsUserEdit && image?.user_instruction ? <small>修改方向：{image.user_instruction}</small> : null}
                         {currentImageIsUserEdit && image?.prompt_change_summary ? <small>修改摘要：{image.prompt_change_summary}</small> : null}
                         {image?.error_message ? <small className="error">{image.error_message}</small> : null}
@@ -1580,7 +1582,7 @@ function TasksView({
             <figcaption>
               <div>
                 <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
-                <p>{previewImage.final_prompt ?? previewImage.image_prompt ?? ""}</p>
+                <p className="preview-prompt">{previewImage.final_prompt ?? previewImage.image_prompt ?? ""}</p>
               </div>
               <div className="preview-actions">
                 <button type="button" className="secondary-button" onClick={downloadPreviewImage}>
