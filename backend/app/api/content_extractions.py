@@ -47,6 +47,7 @@ DOUYIN_URL_PATTERN = re.compile(
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_SUFFIXES = {".mp4"}
 ASSET_UPLOAD_CONCURRENCY = 6
+CONTENT_EXTRACTION_INTERRUPTED_MESSAGE = "内容提取任务在后端重启或进程中断时停止，已标记为失败；请重新提取以使用当前处理链路"
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,32 @@ def load_content_extraction(db: Session, content_id: str) -> ContentExtraction |
         .where(ContentExtraction.id == content_id)
         .options(*content_extraction_options())
     )
+
+
+def mark_content_extraction_interrupted(content: ContentExtraction) -> None:
+    content.processing_status = "failed"
+    content.processing_error_message = CONTENT_EXTRACTION_INTERRUPTED_MESSAGE
+
+
+def recover_interrupted_content_extractions() -> int:
+    with SessionLocal() as db:
+        interrupted = db.scalars(
+            select(ContentExtraction).where(ContentExtraction.processing_status == "processing")
+        ).all()
+        if not interrupted:
+            logger.info("content_extraction_debug startup_recovery_noop")
+            return 0
+
+        for content in interrupted:
+            mark_content_extraction_interrupted(content)
+
+        db.commit()
+        logger.warning(
+            "content_extraction_debug startup_recovered_interrupted count=%s content_ids=%s",
+            len(interrupted),
+            [content.id for content in interrupted],
+        )
+        return len(interrupted)
 
 
 def list_item_for_content(content: ContentExtraction, media_count: int) -> ContentExtractionListItemRead:

@@ -5,7 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.api.content_extractions import (
+    CONTENT_EXTRACTION_INTERRUPTED_MESSAGE,
     DownloadedAssetCandidate,
+    mark_content_extraction_interrupted,
     save_downloaded_assets_parallel,
 )
 from app.models.enums import ContentExtractionMediaKind
@@ -76,6 +78,14 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
             ["stored/1.jpg", "stored/2.jpg", "stored/meta.json"],
             [item.asset.storage_key for item in saved],
         )
+
+    def test_interrupted_processing_content_is_marked_failed(self) -> None:
+        content = SimpleNamespace(processing_status="processing", processing_error_message=None)
+
+        mark_content_extraction_interrupted(content)
+
+        self.assertEqual("failed", content.processing_status)
+        self.assertEqual(CONTENT_EXTRACTION_INTERRUPTED_MESSAGE, content.processing_error_message)
 
 
 if __name__ == "__main__":

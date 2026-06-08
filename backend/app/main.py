@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup() -> None:
+        content_extractions.recover_interrupted_content_extractions()
         init_task_queue()
         await recover_queued_tasks()
 
