@@ -125,3 +125,12 @@ class DownloadStatus(StrEnum):
     running = "running"
     ready = "ready"
     failed = "failed"
+
+
+class CreditTransactionType(StrEnum):
+    initial_grant = "initial_grant"
+    admin_adjustment = "admin_adjustment"
+    activation_code_redeem = "activation_code_redeem"
+    image_generation_reserve = "image_generation_reserve"
+    image_generation_charge = "image_generation_charge"
+    image_generation_release = "image_generation_release"

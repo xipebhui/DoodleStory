@@ -3,7 +3,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import assets, auth, content_extractions, style_tests, styles, tasks
+from app.api import assets, auth, content_extractions, credits, style_tests, styles, tasks
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router, prefix="/api/v1")
     app.include_router(content_extractions.router, prefix="/api/v1")
     app.include_router(assets.router, prefix="/api/v1")
+    app.include_router(credits.router, prefix="/api/v1")
 
     @app.get("/health")
     def health() -> dict[str, str]:

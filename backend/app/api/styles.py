@@ -25,6 +25,13 @@ from app.services.image_generation import (
     ImageProviderResponseError,
     generate_xg_image,
 )
+from app.services.credits import (
+    CreditError,
+    InsufficientCreditsError,
+    charge_reserved_image_credit,
+    release_reserved_image_credit,
+    reserve_image_credit,
+)
 from app.services.prompt_templates import render_prompt_template
 from app.services.style_references import build_style_reference_pack_from_style, is_image_reference_mode
 from app.services.storage import save_upload_file
@@ -244,7 +251,7 @@ def delete_reference_image(
 def create_style_test(
     style_id: str,
     payload: StyleTestCreate,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[StyleTestRead]:
     style = db.scalar(
@@ -291,6 +298,13 @@ def create_style_test(
     )
 
     try:
+        reserve_image_credit(
+            db,
+            user_id=user.id,
+            style_test_id=style_test.id,
+            note=f"风格测试 {style.name} 生图占用",
+        )
+        db.commit()
         style_reference_pack = build_style_reference_pack_from_style(style)
         generated = generate_xg_image(
             prompt=composed_prompt,
@@ -312,6 +326,12 @@ def create_style_test(
         db.flush()
         style_test.output_asset_id = asset.id
         style_test.provider_request_id = generated.provider_request_id
+        charge_reserved_image_credit(
+            db,
+            user_id=user.id,
+            style_test_id=style_test.id,
+            note=f"风格测试 {style.name} 成功产出扣费",
+        )
         style_test.status = WorkflowStatus.succeeded
         style_test.finished_at = datetime.utcnow()
         style.last_tested_at = style_test.finished_at
@@ -322,6 +342,17 @@ def create_style_test(
             generated.storage_key,
             generated.byte_size,
         )
+    except InsufficientCreditsError as exc:
+        logger.warning(
+            "style test credit insufficient style_test_id=%s style_id=%s error=%s",
+            style_test.id,
+            style.id,
+            exc,
+        )
+        style_test.status = WorkflowStatus.failed
+        style_test.error_code = exc.__class__.__name__
+        style_test.error_message = str(exc)
+        style_test.finished_at = datetime.utcnow()
     except (ImageProviderConfigError, ImageProviderResponseError) as exc:
         logger.warning(
             "style test failed style_test_id=%s style_id=%s error_type=%s error=%s",
@@ -334,6 +365,15 @@ def create_style_test(
         style_test.error_code = exc.__class__.__name__
         style_test.error_message = str(exc)
         style_test.finished_at = datetime.utcnow()
+        try:
+            release_reserved_image_credit(
+                db,
+                user_id=user.id,
+                style_test_id=style_test.id,
+                note=f"风格测试 {style.name} 失败释放积分占用",
+            )
+        except CreditError:
+            logger.info("style test release skipped no reserved credit style_test_id=%s", style_test.id)
 
     db.commit()
     style_test = db.scalar(

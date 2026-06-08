@@ -10,6 +10,9 @@
 
 ```text
 users 1--N generation_tasks
+users 1--1 user_credit_accounts
+users 1--N credit_transactions
+users 1--N credit_activation_code_redemptions
 styles 1--N style_reference_images N--1 file_assets
 styles 1--N style_tests
 styles 1--N generation_tasks
@@ -21,6 +24,7 @@ task_panels 1--N task_panel_character_appearances N--1 task_character_appearance
 file_assets 1--N generated_images
 file_assets 1--N task_character_appearances
 file_assets 1--N task_downloads
+credit_activation_codes 1--0..1 credit_activation_code_redemptions
 ```
 
 ## 数据表
@@ -57,6 +61,92 @@ file_assets 1--N task_downloads
 - session 的表结构和 token 机制高度依赖认证模块。
 - 提前设计自定义 session 表会限制后续认证选型。
 - 当前业务数据库只需要保存用户资料和角色。
+
+### `user_credit_accounts`
+
+保存用户当前积分账户。数据库是积分余额的事实来源，前端不能自行维护余额。
+
+字段：
+
+- `id` 主键
+- `user_id` 外键到 `users.id`，not null，唯一
+- `balance` integer not null，当前可用积分
+- `reserved_balance` integer not null，生图请求已占用但尚未最终扣费或释放的积分
+- `created_at` timestamptz not null
+- `updated_at` timestamptz not null
+
+约束：
+
+- `balance >= 0`
+- `reserved_balance >= 0`
+- 每个用户最多一个积分账户。
+
+说明：
+
+- Sprint 44 上线时，已有用户统一初始化为 `1000` 积分。
+- 新注册用户默认获得 `30` 积分。
+
+### `credit_transactions`
+
+保存所有积分变动流水，用于审计和用户使用明细。
+
+字段：
+
+- `id` 主键
+- `user_id` 外键到 `users.id`，not null
+- `transaction_type` text not null，取值 `initial_grant`、`admin_adjustment`、`activation_code_redeem`、`image_generation_reserve`、`image_generation_charge`、`image_generation_release`
+- `amount` integer not null
+- `balance_before` / `balance_after` integer not null
+- `reserved_balance_before` / `reserved_balance_after` integer not null
+- `admin_user_id` 外键到 `users.id`，null，用于管理员调整
+- `task_id`、`panel_id`、`generated_image_id`、`style_test_id`、`character_appearance_id`、`activation_code_id` 可选外键，用于追踪扣费来源
+- `note` text null
+- `created_at` timestamptz not null
+- `updated_at` timestamptz not null
+
+索引：
+
+- `idx_credit_transactions_user_id`：用户流水列表。
+- `idx_credit_transactions_transaction_type`：按类型统计消耗。
+- 各关联外键索引用于从任务、生图版本、风格测试、人物参考或激活码追溯流水。
+
+### `credit_activation_codes`
+
+保存管理员生成的单次兑换激活码。数据库只保存激活码哈希和前缀，明文只在生成接口响应中返回一次。
+
+字段：
+
+- `id` 主键
+- `code_hash` text not null，唯一
+- `code_prefix` text not null
+- `credit_amount` integer not null
+- `note` text null
+- `expires_at` timestamptz null
+- `disabled_at` timestamptz null
+- `created_by_admin_id` 外键到 `users.id`，null
+- `redeemed_by_user_id` 外键到 `users.id`，null
+- `redeemed_at` timestamptz null
+- `created_at` timestamptz not null
+- `updated_at` timestamptz not null
+
+约束：
+
+- `credit_amount > 0`
+- `code_hash` 唯一。
+
+### `credit_activation_code_redemptions`
+
+保存激活码兑换记录。
+
+字段：
+
+- `id` 主键
+- `activation_code_id` 外键到 `credit_activation_codes.id`，not null，唯一
+- `user_id` 外键到 `users.id`，not null
+- `transaction_id` 外键到 `credit_transactions.id`，not null，唯一
+- `redeemed_at` timestamptz not null
+- `created_at` timestamptz not null
+- `updated_at` timestamptz not null
 
 ### `styles`
 

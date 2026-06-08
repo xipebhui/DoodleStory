@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.enums import (
     ContentExtractionMediaKind,
+    CreditTransactionType,
     DownloadStatus,
     FileAssetPurpose,
     GenerationStepName,
@@ -51,6 +52,11 @@ class User(Base, TimestampMixin):
     tasks: Mapped[list["GenerationTask"]] = relationship(back_populates="owner")
     content_extractions: Mapped[list["ContentExtraction"]] = relationship(back_populates="owner")
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    credit_account: Mapped[Optional["UserCreditAccount"]] = relationship(back_populates="user")
+    credit_transactions: Mapped[list["CreditTransaction"]] = relationship(
+        back_populates="user",
+        foreign_keys="CreditTransaction.user_id",
+    )
 
 
 class Session(Base, TimestampMixin):
@@ -445,3 +451,97 @@ class ContentExtractionMedia(Base, TimestampMixin):
 
     content_extraction: Mapped[ContentExtraction] = relationship(back_populates="media")
     asset: Mapped[FileAsset] = relationship()
+
+
+class UserCreditAccount(Base, TimestampMixin):
+    __tablename__ = "user_credit_accounts"
+    __table_args__ = (
+        CheckConstraint("balance >= 0", name="ck_user_credit_accounts_balance_non_negative"),
+        CheckConstraint("reserved_balance >= 0", name="ck_user_credit_accounts_reserved_non_negative"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    balance: Mapped[int] = mapped_column(Integer, default=0)
+    reserved_balance: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped[User] = relationship(back_populates="credit_account")
+
+
+class CreditTransaction(Base, TimestampMixin):
+    __tablename__ = "credit_transactions"
+    __table_args__ = (
+        CheckConstraint("amount != 0", name="ck_credit_transactions_amount_non_zero"),
+        CheckConstraint("balance_after >= 0", name="ck_credit_transactions_balance_after_non_negative"),
+        CheckConstraint("reserved_balance_after >= 0", name="ck_credit_transactions_reserved_after_non_negative"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    transaction_type: Mapped[CreditTransactionType] = mapped_column(Enum(CreditTransactionType), index=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    balance_before: Mapped[int] = mapped_column(Integer)
+    balance_after: Mapped[int] = mapped_column(Integer)
+    reserved_balance_before: Mapped[int] = mapped_column(Integer)
+    reserved_balance_after: Mapped[int] = mapped_column(Integer)
+    admin_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    task_id: Mapped[Optional[str]] = mapped_column(ForeignKey("generation_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    panel_id: Mapped[Optional[str]] = mapped_column(ForeignKey("task_panels.id", ondelete="SET NULL"), nullable=True, index=True)
+    generated_image_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("generated_images.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    style_test_id: Mapped[Optional[str]] = mapped_column(ForeignKey("style_tests.id", ondelete="SET NULL"), nullable=True, index=True)
+    character_appearance_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("task_character_appearances.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    activation_code_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("credit_activation_codes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="credit_transactions", foreign_keys=[user_id])
+    admin_user: Mapped[Optional[User]] = relationship(foreign_keys=[admin_user_id])
+
+
+class CreditActivationCode(Base, TimestampMixin):
+    __tablename__ = "credit_activation_codes"
+    __table_args__ = (
+        CheckConstraint("credit_amount > 0", name="ck_credit_activation_codes_credit_amount_positive"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    code_prefix: Mapped[str] = mapped_column(String(12), index=True)
+    credit_amount: Mapped[int] = mapped_column(Integer)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+    disabled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_by_admin_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    redeemed_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    redeemed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    created_by_admin: Mapped[Optional[User]] = relationship(foreign_keys=[created_by_admin_id])
+    redeemed_by_user: Mapped[Optional[User]] = relationship(foreign_keys=[redeemed_by_user_id])
+    redemptions: Mapped[list["CreditActivationCodeRedemption"]] = relationship(
+        back_populates="activation_code",
+        cascade="all, delete-orphan",
+    )
+
+
+class CreditActivationCodeRedemption(Base, TimestampMixin):
+    __tablename__ = "credit_activation_code_redemptions"
+    __table_args__ = (UniqueConstraint("activation_code_id"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    activation_code_id: Mapped[str] = mapped_column(ForeignKey("credit_activation_codes.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    transaction_id: Mapped[str] = mapped_column(ForeignKey("credit_transactions.id", ondelete="RESTRICT"), unique=True)
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+    activation_code: Mapped[CreditActivationCode] = relationship(back_populates="redemptions")
+    user: Mapped[User] = relationship()
+    transaction: Mapped[CreditTransaction] = relationship()

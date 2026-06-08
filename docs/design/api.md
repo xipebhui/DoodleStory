@@ -120,6 +120,124 @@ GET /api/v1/auth/me
 }
 ```
 
+## 积分
+
+### 查看当前用户积分
+
+```http
+GET /api/v1/credits/me
+```
+
+响应包含当前积分账户和最近积分流水：
+
+```json
+{
+  "data": {
+    "account": {
+      "user_id": "user_...",
+      "balance": 30,
+      "reserved_balance": 0
+    },
+    "recent_transactions": []
+  }
+}
+```
+
+规则：
+
+- 新注册用户默认获得 `30` 积分。
+- Sprint 44 上线迁移时，当前已经注册的用户统一初始化为 `1000` 积分。
+- 所有模型同价，成功产出一张图片扣 `1` 积分。
+- 风格测试、人物参考图、正式 panel 图、任务重试和单 panel 修改都按成功图片数扣费。
+- 积分不足时不调用图片 Provider，并返回明确错误。
+
+### 兑换激活码
+
+```http
+POST /api/v1/credits/redeem
+```
+
+请求：
+
+```json
+{
+  "code": "DS-XXXX-XXXX-XXXX-XXXX"
+}
+```
+
+行为：
+
+- 激活码存在、未过期、未禁用且未兑换时，为当前用户增加对应积分。
+- 兑换成功写入 `activation_code_redeem` 积分流水。
+- 已兑换、过期、禁用或不存在的激活码必须明确失败。
+
+## 管理员积分与用户管理
+
+### 用户列表
+
+```http
+GET /api/v1/admin/users?query=&limit=20&cursor=...
+```
+
+仅 Admin 可访问。列表返回用户摘要、积分余额、任务数量、成功图片数量和消耗积分。
+
+### 用户详情
+
+```http
+GET /api/v1/admin/users/{user_id}
+```
+
+返回用户积分摘要和最近积分流水。
+
+### 调整用户积分
+
+```http
+POST /api/v1/admin/users/{user_id}/credits/adjust
+```
+
+请求：
+
+```json
+{
+  "amount": 100,
+  "note": "活动赠送"
+}
+```
+
+规则：
+
+- `amount` 可以为正数或负数，但不能为 `0`。
+- 必须填写 `note`。
+- 调整后不能让用户可用积分变成负数。
+- 调整写入 `admin_adjustment` 积分流水，并记录管理员操作者。
+
+### 生成激活码
+
+```http
+POST /api/v1/admin/activation-codes
+```
+
+请求：
+
+```json
+{
+  "credit_amount": 100,
+  "count": 10,
+  "expires_at": "2026-06-30T23:59:59Z",
+  "note": "内测活动"
+}
+```
+
+响应返回本次生成的明文激活码；明文只在本次响应中展示，数据库长期只保存哈希和前缀。
+
+### 激活码列表
+
+```http
+GET /api/v1/admin/activation-codes?limit=20&cursor=...
+```
+
+仅 Admin 可访问。列表返回激活码前缀、积分面额、过期时间、禁用状态和兑换状态。
+
 ### 找回密码
 
 ```http

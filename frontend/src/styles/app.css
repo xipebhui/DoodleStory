@@ -211,6 +211,30 @@ textarea {
   padding: 14px;
 }
 
+.sidebar-credit {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 4px;
+  padding-bottom: 12px;
+}
+
+.sidebar-credit svg {
+  color: #f5c56d;
+}
+
+.sidebar-credit strong,
+.sidebar-credit span {
+  display: block;
+}
+
+.sidebar-credit strong {
+  color: #eef2f7;
+  font-size: 15px;
+}
+
 .user-box span {
   color: #7d8592;
   font-size: 13px;
@@ -2794,6 +2818,10 @@ textarea {
   align-items: start;
 }
 
+.settings-layout:has(.settings-stack:only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .settings-stack {
   display: grid;
   gap: 16px;
@@ -2808,6 +2836,150 @@ textarea {
     #111318;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
   padding: 22px;
+}
+
+.credit-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.credit-summary-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.credit-summary-grid > div {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #151820;
+  padding: 14px;
+  min-width: 0;
+}
+
+.credit-summary-grid span,
+.transaction-row small,
+.activation-code-list span,
+.admin-user-row small {
+  color: #8d96a6;
+  font-size: 12px;
+}
+
+.credit-summary-grid strong {
+  display: block;
+  margin-top: 8px;
+  color: #eef2f7;
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+
+.redeem-form,
+.admin-search,
+.activation-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.redeem-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.redeem-form label {
+  display: grid;
+  gap: 8px;
+  color: #c8d0dc;
+  font-weight: 800;
+}
+
+.admin-settings-column {
+  position: sticky;
+  top: 24px;
+  display: grid;
+  gap: 16px;
+}
+
+.admin-search {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.admin-user-list,
+.transaction-list,
+.activation-code-list,
+.generated-code-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.admin-user-row,
+.transaction-row,
+.activation-code-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #151820;
+  padding: 12px;
+  text-align: left;
+}
+
+.admin-user-row {
+  width: 100%;
+  color: #eef2f7;
+}
+
+.admin-user-row span,
+.transaction-row span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-user-row strong,
+.transaction-row strong,
+.activation-code-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transaction-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.transaction-row b.positive {
+  color: #85e0a3;
+}
+
+.transaction-row b.negative {
+  color: #ffb4a6;
+}
+
+.activation-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.activation-form button {
+  grid-column: 1 / -1;
+}
+
+.generated-code-list code {
+  display: block;
+  border: 1px solid rgba(245, 197, 109, 0.28);
+  border-radius: 8px;
+  background: rgba(245, 197, 109, 0.08);
+  color: #f5c56d;
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+}
+
+.admin-user-drawer {
+  width: min(680px, 100vw - 36px);
 }
 
 .section-title {

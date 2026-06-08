@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.models.entities import User
 from app.schemas.common import ApiData
 from app.schemas.auth import LoginRequest, RegisterRequest, SessionRead, UserRead
+from app.services.credits import grant_initial_credits
 from app.services.security import clear_session_cookie, hash_password, set_session_cookie, user_role_for_email, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -26,6 +27,8 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
         role=user_role_for_email(email),
     )
     db.add(user)
+    db.flush()
+    grant_initial_credits(db, user)
     db.commit()
     db.refresh(user)
     set_session_cookie(response, user.id)

@@ -5,6 +5,87 @@ export type User = {
   role: "user" | "admin";
 };
 
+export type CreditTransaction = {
+  id: string;
+  user_id: string;
+  transaction_type:
+    | "initial_grant"
+    | "admin_adjustment"
+    | "activation_code_redeem"
+    | "image_generation_reserve"
+    | "image_generation_charge"
+    | "image_generation_release";
+  amount: number;
+  balance_before: number;
+  balance_after: number;
+  reserved_balance_before: number;
+  reserved_balance_after: number;
+  admin_user_id: string | null;
+  task_id: string | null;
+  panel_id: string | null;
+  generated_image_id: string | null;
+  style_test_id: string | null;
+  character_appearance_id: string | null;
+  activation_code_id: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreditAccount = {
+  user_id: string;
+  balance: number;
+  reserved_balance: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreditOverview = {
+  account: CreditAccount;
+  recent_transactions: CreditTransaction[];
+};
+
+export type AdminUserCreditSummary = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: "user" | "admin";
+  balance: number;
+  reserved_balance: number;
+  task_count: number;
+  succeeded_image_count: number;
+  spent_credits: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminUserCreditDetail = {
+  user: AdminUserCreditSummary;
+  recent_transactions: CreditTransaction[];
+};
+
+export type ActivationCode = {
+  id: string;
+  code_prefix: string;
+  credit_amount: number;
+  note: string | null;
+  expires_at: string | null;
+  disabled_at: string | null;
+  created_by_admin_id: string | null;
+  redeemed_by_user_id: string | null;
+  redeemed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ActivationCodeCreated = {
+  id: string;
+  code: string;
+  credit_amount: number;
+  expires_at: string | null;
+  note: string | null;
+};
+
 export type Style = {
   id: string;
   name: string;
@@ -337,6 +418,39 @@ export const api = {
       (result) => result.data,
     ),
   logout: () => request<ApiData<{ ok: boolean }>>("/auth/logout", { method: "POST" }),
+  myCredits: () => request<ApiData<CreditOverview>>("/credits/me").then((result) => result.data),
+  redeemCreditCode: (payload: { code: string }) =>
+    request<ApiData<CreditOverview>>("/credits/redeem", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  adminUsers: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AdminUserCreditSummary>>(`/admin/users${suffix}`);
+  },
+  adminUserDetail: (userId: string) =>
+    request<ApiData<AdminUserCreditDetail>>(`/admin/users/${userId}`).then((result) => result.data),
+  adjustAdminUserCredits: (userId: string, payload: { amount: number; note: string }) =>
+    request<ApiData<AdminUserCreditDetail>>(`/admin/users/${userId}/credits/adjust`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  createActivationCodes: (payload: { credit_amount: number; count: number; expires_at?: string | null; note?: string | null }) =>
+    request<ApiData<ActivationCodeCreated[]>>("/admin/activation-codes", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  activationCodes: (params?: { cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<ActivationCode>>(`/admin/activation-codes${suffix}`);
+  },
   styles: (params?: { query?: string; status?: Style["status"] | "all" }) => {
     const search = new URLSearchParams();
     if (params?.query) search.set("query", params.query);

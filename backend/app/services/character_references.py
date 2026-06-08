@@ -20,6 +20,13 @@ from app.services.image_generation import (
     ImageReference,
     generate_xg_image,
 )
+from app.services.credits import (
+    CreditError,
+    InsufficientCreditsError,
+    charge_reserved_image_credit,
+    release_reserved_image_credit,
+    reserve_image_credit,
+)
 from app.services.llm import LLMResponseError, TaskCharacterPlan
 from app.services.prompt_logging import log_prompt_trace
 from app.services.prompt_templates import render_prompt_template
@@ -155,6 +162,14 @@ def ensure_character_reference_images(
             )
             db.commit()
             try:
+                reserve_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    character_appearance_id=appearance.id,
+                    note=f"人物参考图 {character.name} 占用",
+                )
+                db.commit()
                 logger.info(
                     "character reference image request task_id=%s character_key=%s appearance_key=%s prompt_chars=%s reference_count=%s",
                     task.id,
@@ -183,6 +198,13 @@ def ensure_character_reference_images(
                 db.flush()
                 appearance.reference_image_id = asset.id
                 appearance.provider_request_id = generated.provider_request_id
+                charge_reserved_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    character_appearance_id=appearance.id,
+                    note=f"人物参考图 {character.name} 成功产出扣费",
+                )
                 appearance.status = WorkflowStatus.succeeded
                 logger.info(
                     "character reference image succeeded task_id=%s appearance_key=%s asset_storage_key=%s bytes=%s",
@@ -191,10 +213,26 @@ def ensure_character_reference_images(
                     generated.storage_key,
                     generated.byte_size,
                 )
+            except InsufficientCreditsError as exc:
+                appearance.status = WorkflowStatus.failed
+                appearance.error_code = exc.__class__.__name__
+                appearance.error_message = str(exc)
+                db.commit()
+                raise
             except (ImageProviderConfigError, ImageProviderResponseError) as exc:
                 appearance.status = WorkflowStatus.failed
                 appearance.error_code = exc.__class__.__name__
                 appearance.error_message = str(exc)
+                try:
+                    release_reserved_image_credit(
+                        db,
+                        user_id=task.owner_user_id,
+                        task_id=task.id,
+                        character_appearance_id=appearance.id,
+                        note=f"人物参考图 {character.name} 失败释放积分占用",
+                    )
+                except CreditError:
+                    logger.info("character reference release skipped no reserved credit appearance_id=%s", appearance.id)
                 db.commit()
                 raise
             db.commit()

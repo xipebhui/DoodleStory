@@ -46,6 +46,13 @@ from app.services.character_references import (
     save_character_plan_panel_links,
     save_panel_character_links,
 )
+from app.services.credits import (
+    CreditError,
+    InsufficientCreditsError,
+    charge_reserved_image_credit,
+    release_reserved_image_credit,
+    reserve_image_credit,
+)
 from app.services.image_generation import (
     GeneratedImageFile,
     ImageReference,
@@ -1093,7 +1100,7 @@ def process_task(task_id: str) -> None:
                     task.id,
                     round((monotonic() - step_started) * 1000),
                 )
-            except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+            except (CreditError, ImageProviderConfigError, ImageProviderResponseError) as exc:
                 fail_step_and_task(db, task, GenerationStepName.generate_character_references, exc)
                 return
 
@@ -1334,6 +1341,31 @@ def process_task(task_id: str) -> None:
             db.add(image)
             db.commit()
             db.refresh(image)
+            try:
+                reserve_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    panel_id=panel.id,
+                    generated_image_id=image.id,
+                    note=f"任务分镜 {panel.panel_order} 生图占用",
+                )
+                db.commit()
+            except InsufficientCreditsError as exc:
+                image.status = GeneratedImageStatus.failed
+                image.error_code = exc.__class__.__name__
+                image.error_message = str(exc)
+                image.finished_at = datetime.utcnow()
+                db.commit()
+                logger.warning(
+                    "story_drawing_debug panel_image_credit_insufficient task_id=%s panel_id=%s panel_order=%s image_id=%s error=%s",
+                    task.id,
+                    panel.id,
+                    panel.panel_order,
+                    image.id,
+                    exc,
+                )
+                continue
             logger.info(
                 "story_drawing_debug generated_image_record_created task_id=%s panel_id=%s panel_order=%s image_id=%s generation_number=%s source_type=%s",
                 task.id,
@@ -1402,6 +1434,14 @@ def process_task(task_id: str) -> None:
                         image.error_code = result.error.__class__.__name__
                         image.error_message = str(result.error)
                         image.finished_at = datetime.utcnow()
+                        release_reserved_image_credit(
+                            db,
+                            user_id=task.owner_user_id,
+                            task_id=task.id,
+                            panel_id=result.request.panel_id,
+                            generated_image_id=result.request.image_id,
+                            note="任务分镜生图失败释放积分占用",
+                        )
                         db.commit()
                         continue
                     generated = result.generated
@@ -1417,6 +1457,14 @@ def process_task(task_id: str) -> None:
                         image.error_code = "ImageGenerationFailed"
                         image.error_message = "图片 Provider 未返回生成结果"
                         image.finished_at = datetime.utcnow()
+                        release_reserved_image_credit(
+                            db,
+                            user_id=task.owner_user_id,
+                            task_id=task.id,
+                            panel_id=result.request.panel_id,
+                            generated_image_id=result.request.image_id,
+                            note="任务分镜生图未返回结果释放积分占用",
+                        )
                         db.commit()
                         continue
                     asset = FileAsset(
@@ -1436,6 +1484,14 @@ def process_task(task_id: str) -> None:
                     if result.final_prompt and result.final_prompt != image.final_prompt:
                         image.final_prompt = result.final_prompt
                         image.prompt_change_summary = result.prompt_change_summary
+                    charge_reserved_image_credit(
+                        db,
+                        user_id=task.owner_user_id,
+                        task_id=task.id,
+                        panel_id=result.request.panel_id,
+                        generated_image_id=result.request.image_id,
+                        note="任务分镜图片成功产出扣费",
+                    )
                     image.status = GeneratedImageStatus.succeeded
                     mark_image_current(db, image)
                     image.finished_at = datetime.utcnow()
@@ -1685,6 +1741,15 @@ def process_panel_edit(generated_image_id: str) -> None:
                 reference_pack.style_reference_count,
             )
             original_final_prompt = image.final_prompt or ""
+            reserve_image_credit(
+                db,
+                user_id=task.owner_user_id,
+                task_id=task.id,
+                panel_id=panel.id,
+                generated_image_id=image.id,
+                note="单分镜修改生图占用",
+            )
+            db.commit()
             generated, actual_final_prompt, prompt_change_summary = generate_image_with_policy_prompt_rewrite(
                 prompt=image.final_prompt or "",
                 references=references,
@@ -1712,6 +1777,14 @@ def process_panel_edit(generated_image_id: str) -> None:
                 image.prompt_change_summary = prompt_change_summary
             image.asset_id = asset.id
             image.provider_request_id = generated.provider_request_id
+            charge_reserved_image_credit(
+                db,
+                user_id=task.owner_user_id,
+                task_id=task.id,
+                panel_id=panel.id,
+                generated_image_id=image.id,
+                note="单分镜修改成功产出扣费",
+            )
             image.status = GeneratedImageStatus.succeeded
             image.finished_at = datetime.utcnow()
             panel.generated_prompt = image.image_prompt
@@ -1734,6 +1807,18 @@ def process_panel_edit(generated_image_id: str) -> None:
                 generated.storage_key,
                 generated.byte_size,
             )
+        except InsufficientCreditsError as exc:
+            logger.warning(
+                "panel edit image credit insufficient generated_image_id=%s task_id=%s panel_id=%s error=%s",
+                image.id,
+                task.id,
+                panel.id,
+                exc,
+            )
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
         except (ImageProviderConfigError, ImageProviderResponseError) as exc:
             logger.warning(
                 "panel edit image failed generated_image_id=%s task_id=%s panel_id=%s error_type=%s error=%s",
@@ -1747,4 +1832,15 @@ def process_panel_edit(generated_image_id: str) -> None:
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
             image.finished_at = datetime.utcnow()
+            try:
+                release_reserved_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    panel_id=panel.id,
+                    generated_image_id=image.id,
+                    note="单分镜修改生图失败释放积分占用",
+                )
+            except CreditError:
+                logger.info("panel edit release skipped no reserved credit generated_image_id=%s", image.id)
         db.commit()

@@ -7,36 +7,41 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Coins,
   Download,
   Eye,
   FileText,
   Filter,
-  FolderOpen,
   Images,
-  KeyRound,
   LogOut,
   Loader2,
-  Monitor,
   Pencil,
   Plus,
   RefreshCw,
   Save,
   Search,
   Settings,
-  Shield,
   Sparkles,
+  Ticket,
   Trash2,
   Upload,
   UserRound,
+  Users,
   X,
 } from "lucide-react";
 import {
   API_BASE_URL,
   api,
+  type ActivationCode,
+  type ActivationCodeCreated,
+  type AdminUserCreditDetail,
+  type AdminUserCreditSummary,
   type ContentExtraction,
   type ContentExtractionHealth,
   type ContentExtractionMedia,
   type ContentExtractionSummary,
+  type CreditOverview,
+  type CreditTransaction,
   type FileAsset,
   type Style,
   type StyleTest,
@@ -201,6 +206,8 @@ function assetUrl(asset: FileAsset, variant: "original" | "thumbnail" = "origina
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [creditOverview, setCreditOverview] = useState<CreditOverview | null>(null);
+  const [creditError, setCreditError] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [loading, setLoading] = useState(true);
@@ -214,6 +221,32 @@ function App() {
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
+
+  async function refreshCredits() {
+    if (!user) return null;
+    try {
+      const overview = await api.myCredits();
+      setCreditOverview(overview);
+      setCreditError("");
+      return overview;
+    } catch (error) {
+      setCreditError(error instanceof Error ? error.message : "积分加载失败");
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    if (!user) {
+      setCreditOverview(null);
+      setCreditError("");
+      return;
+    }
+    void refreshCredits();
+    const timer = window.setInterval(() => {
+      void refreshCredits();
+    }, 12000);
+    return () => window.clearInterval(timer);
+  }, [user?.id]);
 
   useEffect(() => {
     function handlePopState() {
@@ -250,23 +283,60 @@ function App() {
   }
 
   if (!user) {
-    return <AuthScreen mode={authMode} setMode={setAuthMode} onAuthed={setUser} />;
+    return (
+      <AuthScreen
+        mode={authMode}
+        setMode={setAuthMode}
+        onAuthed={(nextUser) => {
+          setUser(nextUser);
+          setCreditOverview(null);
+        }}
+      />
+    );
   }
 
   if (!view) {
     return (
-      <Shell user={user} view={null} onNavigate={navigateToView} onLogout={() => setUser(null)}>
+      <Shell
+        user={user}
+        view={null}
+        creditOverview={creditOverview}
+        creditError={creditError}
+        onNavigate={navigateToView}
+        onLogout={() => setUser(null)}
+      >
         <NotFoundView />
       </Shell>
     );
   }
 
   return (
-    <Shell user={user} view={view} onNavigate={navigateToView} onLogout={() => setUser(null)}>
+    <Shell
+      user={user}
+      view={view}
+      creditOverview={creditOverview}
+      creditError={creditError}
+      onNavigate={navigateToView}
+      onLogout={() => setUser(null)}
+    >
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "content" ? <ContentExtractionView user={user} onNavigatePath={navigateToPath} /> : null}
-      {view === "styles" ? <StylesView user={user} /> : null}
-      {view === "settings" ? <SettingsView user={user} onLogout={() => setUser(null)} /> : null}
+      {view === "styles" ? <StylesView user={user} onCreditsChanged={refreshCredits} /> : null}
+      {view === "settings" ? (
+        <SettingsView
+          user={user}
+          creditOverview={creditOverview}
+          onCreditsChanged={(overview) => {
+            if (overview) {
+              setCreditOverview(overview);
+              setCreditError("");
+            } else {
+              void refreshCredits();
+            }
+          }}
+          onLogout={() => setUser(null)}
+        />
+      ) : null}
     </Shell>
   );
 }
@@ -338,12 +408,16 @@ function AuthScreen({
 function Shell({
   user,
   view,
+  creditOverview,
+  creditError,
   onNavigate,
   onLogout,
   children,
 }: {
   user: User;
   view: View | null;
+  creditOverview: CreditOverview | null;
+  creditError: string;
   onNavigate: (view: View) => void;
   onLogout: () => void;
   children: React.ReactNode;
@@ -389,6 +463,19 @@ function Shell({
           ))}
         </nav>
         <div className="user-box">
+          <div className="sidebar-credit">
+            <Coins size={18} />
+            <div>
+              <strong>{creditOverview ? `${creditOverview.account.balance} 积分` : creditError ? "积分不可用" : "积分加载中"}</strong>
+              <span>
+                {creditOverview
+                  ? creditOverview.account.reserved_balance > 0
+                    ? `占用 ${creditOverview.account.reserved_balance}`
+                    : "成功出图扣 1 分"
+                  : creditError || "正在读取余额"}
+              </span>
+            </div>
+          </div>
           <strong>{user.display_name || user.email}</strong>
           <span>{user.role === "admin" ? "管理员" : "普通用户"}</span>
           <button onClick={logout}>
@@ -2282,7 +2369,7 @@ function ContentExtractionView({
   );
 }
 
-function StylesView({ user }: { user: User }) {
+function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: () => Promise<CreditOverview | null> }) {
   const [styles, setStyles] = useState<Style[]>([]);
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
@@ -2466,6 +2553,7 @@ function StylesView({ user }: { user: User }) {
         test_text: String(formData.get("test_text") ?? ""),
       });
       setStyleTest(result);
+      await onCreditsChanged();
       setMessage(result.status === "succeeded" ? "风格测试已完成" : result.error_message ?? "风格测试未成功");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "风格测试失败");
@@ -2737,24 +2825,134 @@ function StylesView({ user }: { user: User }) {
   );
 }
 
-function SettingsView({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const [displayMode, setDisplayMode] = useState<"system" | "light" | "dark">("dark");
-  const [archiveName, setArchiveName] = useState("doodlestory-task-{task_id}.zip");
-  const apiBaseUrl = API_BASE_URL;
+const creditTransactionLabels: Record<CreditTransaction["transaction_type"], string> = {
+  initial_grant: "初始赠送",
+  admin_adjustment: "管理员调整",
+  activation_code_redeem: "激活码兑换",
+  image_generation_reserve: "生图占用",
+  image_generation_charge: "成功扣费",
+  image_generation_release: "失败释放",
+};
+
+function SettingsView({
+  user,
+  creditOverview,
+  onCreditsChanged,
+  onLogout,
+}: {
+  user: User;
+  creditOverview: CreditOverview | null;
+  onCreditsChanged: (overview: CreditOverview | null) => void;
+  onLogout: () => void;
+}) {
+  const [message, setMessage] = useState("");
+  const [adminUsers, setAdminUsers] = useState<AdminUserCreditSummary[]>([]);
+  const [adminUsersLoading, setAdminUsersLoading] = useState(false);
+  const [adminQuery, setAdminQuery] = useState("");
+  const [selectedUser, setSelectedUser] = useState<AdminUserCreditDetail | null>(null);
+  const [activationCodes, setActivationCodes] = useState<ActivationCode[]>([]);
+  const [createdCodes, setCreatedCodes] = useState<ActivationCodeCreated[]>([]);
+
+  useEffect(() => {
+    if (user.role !== "admin") return;
+    void refreshAdminData();
+  }, [user.role]);
 
   async function logout() {
     await api.logout();
     onLogout();
   }
 
+  async function refreshAdminData(query = adminQuery) {
+    if (user.role !== "admin") return;
+    setAdminUsersLoading(true);
+    try {
+      const [usersResult, codesResult] = await Promise.all([
+        api.adminUsers({ query: query.trim() || undefined, limit: 20 }),
+        api.activationCodes({ limit: 20 }),
+      ]);
+      setAdminUsers(usersResult.items);
+      setActivationCodes(codesResult.items);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "管理员数据加载失败");
+    } finally {
+      setAdminUsersLoading(false);
+    }
+  }
+
+  async function redeemCode(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    try {
+      const overview = await api.redeemCreditCode({ code: String(formData.get("code") ?? "") });
+      onCreditsChanged(overview);
+      setMessage("激活码已兑换");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "兑换失败");
+    }
+  }
+
+  async function openUserDetail(userId: string) {
+    try {
+      setSelectedUser(await api.adminUserDetail(userId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "用户详情加载失败");
+    }
+  }
+
+  async function adjustCredits(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedUser) return;
+    const formData = new FormData(event.currentTarget);
+    const amount = Number(formData.get("amount") ?? 0);
+    const note = String(formData.get("note") ?? "");
+    try {
+      const detail = await api.adjustAdminUserCredits(selectedUser.user.id, { amount, note });
+      setSelectedUser(detail);
+      await refreshAdminData();
+      if (detail.user.id === user.id) {
+        onCreditsChanged(null);
+      }
+      setMessage("积分已调整");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "积分调整失败");
+    }
+  }
+
+  async function createCodes(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const expiresAt = String(formData.get("expires_at") ?? "");
+    try {
+      const codes = await api.createActivationCodes({
+        credit_amount: Number(formData.get("credit_amount") ?? 0),
+        count: Number(formData.get("count") ?? 1),
+        expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+        note: String(formData.get("note") ?? "") || null,
+      });
+      setCreatedCodes(codes);
+      await refreshAdminData();
+      setMessage("激活码已生成，明文只显示本次");
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "激活码生成失败");
+    }
+  }
+
+  const account = creditOverview?.account;
+
   return (
     <section className="page settings-page">
       <header className="page-header">
         <div>
           <h1>设置</h1>
-          <p>管理账号、显示偏好、本地存储和下载规则。</p>
+          <p>管理账号、积分、激活码和管理员用户操作。</p>
         </div>
       </header>
+
+      {message ? <p className="form-message">{message}</p> : null}
 
       <div className="settings-layout">
         <div className="settings-stack">
@@ -2774,12 +2972,6 @@ function SettingsView({ user, onLogout }: { user: User; onLogout: () => void }) 
                 <small>{user.role === "admin" ? "管理员" : "普通用户"}</small>
               </div>
               <div className="account-actions">
-                <button type="button" className="secondary-button" disabled>
-                  修改昵称
-                </button>
-                <button type="button" className="ghost-button" disabled>
-                  修改密码
-                </button>
                 <button type="button" className="danger-button text-danger-button" onClick={logout}>
                   <LogOut size={16} />
                   退出登录
@@ -2788,139 +2980,190 @@ function SettingsView({ user, onLogout }: { user: User; onLogout: () => void }) 
             </div>
           </section>
 
-          <section className="settings-section setting-row">
+          <section className="settings-section credit-section">
             <div className="section-title">
-              <Monitor size={22} />
+              <Coins size={22} />
               <div>
-                <h2>显示模式</h2>
-                <p>选择界面外观模式。</p>
+                <h2>我的积分</h2>
+                <p>所有模型同价，成功产出一张图片扣 1 积分。</p>
               </div>
             </div>
-            <div className="segmented-control setting-segment">
-              <button type="button" className={displayMode === "system" ? "active" : ""} onClick={() => setDisplayMode("system")}>
-                跟随系统
-              </button>
-              <button type="button" className={displayMode === "light" ? "active" : ""} onClick={() => setDisplayMode("light")}>
-                浅色
-              </button>
-              <button type="button" className={displayMode === "dark" ? "active" : ""} onClick={() => setDisplayMode("dark")}>
-                深色
-              </button>
-            </div>
-          </section>
-
-          <section className="settings-section">
-            <div className="section-title">
-              <FolderOpen size={22} />
+            <div className="credit-summary-grid">
               <div>
-                <h2>本地存储说明</h2>
-                <p>生成图和下载包由后端保存到本地磁盘。</p>
+                <span>可用积分</span>
+                <strong>{account ? account.balance : "-"}</strong>
+              </div>
+              <div>
+                <span>生成中占用</span>
+                <strong>{account ? account.reserved_balance : "-"}</strong>
+              </div>
+              <div>
+                <span>当前 API</span>
+                <strong>{API_BASE_URL || "同源"}</strong>
               </div>
             </div>
-            <div className="info-lines">
-              <div>
-                <strong>存储位置</strong>
-                <span>由服务端 DOODLESTORY_STORAGE_ROOT 控制，默认项目目录下 storage/。</span>
-              </div>
-              <div>
-                <strong>访问方式</strong>
-                <span>前端通过资产接口读取，不直接暴露本地文件路径。</span>
-              </div>
-              <div>
-                <strong>当前 API</strong>
-                <span>{apiBaseUrl}</span>
-              </div>
-            </div>
-          </section>
-
-          <section className="settings-section">
-            <div className="section-title">
-              <Download size={22} />
-              <div>
-                <h2>下载偏好</h2>
-                <p>设置批量下载文件的命名展示。</p>
-              </div>
-            </div>
-            <div className="download-preference">
+            <form className="redeem-form" onSubmit={redeemCode}>
               <label>
-                压缩包文件名格式
-                <input value={archiveName} onChange={(event) => setArchiveName(event.target.value)} />
+                激活码
+                <input name="code" placeholder="输入管理员发放的激活码" required />
               </label>
-              <button type="button" className="secondary-button" onClick={() => setArchiveName("doodlestory-task-{task_id}.zip")}>
-                恢复默认
+              <button type="submit">
+                <Ticket size={16} />
+                兑换积分
               </button>
-            </div>
-            <div className="info-lines compact">
-              <div>
-                <strong>包含内容</strong>
-                <span>仅包含成功生成的图片，不包含原文、日志或内部 prompt。</span>
-              </div>
-            </div>
+            </form>
           </section>
 
           <section className="settings-section">
             <div className="section-title">
-              <Shield size={22} />
+              <Clock3 size={22} />
               <div>
-                <h2>安全</h2>
-                <p>密码、登录记录和帮助入口。</p>
+                <h2>最近积分流水</h2>
+                <p>占用、成功扣费、失败释放和人工调整都会记录。</p>
               </div>
             </div>
-            <div className="security-list">
-              <div>
-                <strong>密码与登录</strong>
-                <span>密码修改和找回密码会在账号安全能力接入后开放。</span>
-                <button type="button" className="secondary-button" disabled>
-                  管理密码
-                </button>
-              </div>
-              <div>
-                <strong>最近登录记录</strong>
-                <span>用于查看近期登录设备和时间。</span>
-                <button type="button" className="ghost-button" disabled>
-                  查看记录
-                </button>
-              </div>
-            </div>
+            <TransactionList transactions={creditOverview?.recent_transactions ?? []} />
           </section>
         </div>
 
-        <aside className="auth-preview-column">
-          <section className="auth-preview-card">
-            <div className="section-title">
-              <KeyRound size={20} />
+        {user.role === "admin" ? (
+          <aside className="admin-settings-column">
+            <section className="settings-section">
+              <div className="section-title">
+                <Users size={22} />
+                <div>
+                  <h2>用户管理</h2>
+                  <p>查看用户积分、任务和成功图片数量。</p>
+                </div>
+              </div>
+              <form
+                className="admin-search"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void refreshAdminData(adminQuery);
+                }}
+              >
+                <input value={adminQuery} onChange={(event) => setAdminQuery(event.target.value)} placeholder="搜索邮箱或昵称" />
+                <button type="submit" disabled={adminUsersLoading}>
+                  <Search size={16} />
+                  搜索
+                </button>
+              </form>
+              <div className="admin-user-list">
+                {adminUsers.map((item) => (
+                  <button type="button" key={item.id} className="admin-user-row" onClick={() => openUserDetail(item.id)}>
+                    <span>
+                      <strong>{item.display_name || item.email}</strong>
+                      <small>{item.email}</small>
+                    </span>
+                    <b>{item.balance}</b>
+                    <small>{item.task_count} 任务 · {item.succeeded_image_count} 图</small>
+                  </button>
+                ))}
+                {adminUsers.length === 0 ? <div className="empty mini">暂无用户</div> : null}
+              </div>
+            </section>
+
+            <section className="settings-section">
+              <div className="section-title">
+                <Ticket size={22} />
+                <div>
+                  <h2>生成激活码</h2>
+                  <p>明文激活码只在生成后显示一次。</p>
+                </div>
+              </div>
+              <form className="activation-form" onSubmit={createCodes}>
+                <input name="credit_amount" type="number" min={1} max={100000} placeholder="每个码的积分" required />
+                <input name="count" type="number" min={1} max={200} defaultValue={1} placeholder="数量" required />
+                <input name="expires_at" type="datetime-local" />
+                <input name="note" placeholder="备注" />
+                <button type="submit">
+                  <Plus size={16} />
+                  生成
+                </button>
+              </form>
+              {createdCodes.length > 0 ? (
+                <div className="generated-code-list">
+                  {createdCodes.map((code) => (
+                    <code key={code.id}>{code.code}</code>
+                  ))}
+                </div>
+              ) : null}
+              <div className="activation-code-list">
+                {activationCodes.map((code) => (
+                  <div key={code.id}>
+                    <strong>{code.code_prefix}...</strong>
+                    <span>{code.credit_amount} 分 · {code.redeemed_at ? "已兑换" : code.disabled_at ? "已禁用" : "可用"}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        ) : null}
+      </div>
+
+      {selectedUser ? (
+        <div className="drawer-backdrop" role="presentation" onMouseDown={() => setSelectedUser(null)}>
+          <aside className="task-create-drawer admin-user-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
               <div>
-                <h2>登录表单预览</h2>
-                <p>账号相关操作的视觉基线。</p>
+                <h2>{selectedUser.user.display_name || selectedUser.user.email}</h2>
+                <p>{selectedUser.user.email}</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setSelectedUser(null)} aria-label="关闭">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="credit-summary-grid compact">
+              <div>
+                <span>可用积分</span>
+                <strong>{selectedUser.user.balance}</strong>
+              </div>
+              <div>
+                <span>消耗积分</span>
+                <strong>{selectedUser.user.spent_credits}</strong>
+              </div>
+              <div>
+                <span>成功图片</span>
+                <strong>{selectedUser.user.succeeded_image_count}</strong>
               </div>
             </div>
-            <div className="mini-auth-form">
-              <input value={user.email} readOnly aria-label="预览邮箱" />
-              <input value="••••••••••••" readOnly aria-label="预览密码" />
-              <label className="checkline">
-                <input type="checkbox" />
-                记住我
-              </label>
-              <button type="button">登录</button>
-              <button type="button" className="link-button">
-                还没有账号？立即注册
+            <form className="activation-form" onSubmit={adjustCredits}>
+              <input name="amount" type="number" placeholder="增减积分，例如 100 或 -20" required />
+              <input name="note" placeholder="调整原因" required />
+              <button type="submit">
+                <Save size={16} />
+                调整积分
               </button>
-            </div>
-          </section>
-
-          <section className="auth-preview-card">
-            <h2>找回密码</h2>
-            <p>输入注册邮箱后发送重置链接。邮件服务接入前保持禁用状态。</p>
-            <div className="mini-auth-form">
-              <input value={user.email} readOnly aria-label="找回密码邮箱" />
-              <button type="button" disabled>
-                发送重置链接
-              </button>
-            </div>
-          </section>
-        </aside>
-      </div>
+            </form>
+            <TransactionList transactions={selectedUser.recent_transactions} />
+          </aside>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function TransactionList({ transactions }: { transactions: CreditTransaction[] }) {
+  if (transactions.length === 0) {
+    return <div className="empty mini">暂无积分流水</div>;
+  }
+  return (
+    <div className="transaction-list">
+      {transactions.map((transaction) => (
+        <div key={transaction.id} className="transaction-row">
+          <span>
+            <strong>{creditTransactionLabels[transaction.transaction_type]}</strong>
+            <small>{transaction.note || formatDateTime(transaction.created_at)}</small>
+          </span>
+          <b className={transaction.amount > 0 ? "positive" : "negative"}>
+            {transaction.amount > 0 ? "+" : ""}
+            {transaction.amount}
+          </b>
+          <small>余额 {transaction.balance_after} · 占用 {transaction.reserved_balance_after}</small>
+        </div>
+      ))}
+    </div>
   );
 }
 
