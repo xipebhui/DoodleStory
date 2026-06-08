@@ -6,11 +6,15 @@ from unittest.mock import patch
 
 from app.api.content_extractions import (
     CONTENT_EXTRACTION_INTERRUPTED_MESSAGE,
+    TASK_CREATE_FAILED_STATUS,
+    TASK_CREATE_PENDING_STATUS,
+    TASK_CREATE_SUCCEEDED_STATUS,
     DownloadedAssetCandidate,
+    create_generation_task_from_content_extraction,
     mark_content_extraction_interrupted,
     save_downloaded_assets_parallel,
 )
-from app.models.enums import ContentExtractionMediaKind
+from app.models.enums import ContentExtractionMediaKind, ImageCountMode, StoryInputMode
 from app.services.media_text_extraction import (
     ImageExtractionReference,
     LLMResponseError,
@@ -80,12 +84,55 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
         )
 
     def test_interrupted_processing_content_is_marked_failed(self) -> None:
-        content = SimpleNamespace(processing_status="processing", processing_error_message=None)
+        content = SimpleNamespace(
+            processing_status="processing",
+            processing_error_message=None,
+            task_create_status=TASK_CREATE_PENDING_STATUS,
+            task_create_error_message=None,
+        )
 
         mark_content_extraction_interrupted(content)
 
         self.assertEqual("failed", content.processing_status)
         self.assertEqual(CONTENT_EXTRACTION_INTERRUPTED_MESSAGE, content.processing_error_message)
+        self.assertEqual(TASK_CREATE_FAILED_STATUS, content.task_create_status)
+        self.assertEqual(CONTENT_EXTRACTION_INTERRUPTED_MESSAGE, content.task_create_error_message)
+
+    def test_replicate_content_creates_extracted_storyboard_task(self) -> None:
+        content = SimpleNamespace(
+            extracted_text="第1页：\n画面：女孩拿着通知书\n旁白：通知来了",
+            linked_task_id=None,
+            task_create_status=TASK_CREATE_PENDING_STATUS,
+            task_create_error_message=None,
+        )
+        payload = SimpleNamespace(
+            image_count_mode=ImageCountMode.auto,
+            requested_image_count=None,
+            style_id="style-1",
+            use_character_references=True,
+        )
+        user = SimpleNamespace(id="user-1")
+        db = object()
+
+        def fake_create_generation_task_record(*, db, payload, user):
+            self.assertEqual("第1页：\n画面：女孩拿着通知书\n旁白：通知来了", payload.original_text)
+            self.assertEqual(StoryInputMode.extracted_storyboard, payload.story_input_mode)
+            self.assertEqual(ImageCountMode.auto, payload.image_count_mode)
+            self.assertIsNone(payload.requested_image_count)
+            self.assertEqual("style-1", payload.style_id)
+            self.assertTrue(payload.use_character_references)
+            return SimpleNamespace(id="task-1")
+
+        with patch(
+            "app.api.content_extractions.create_generation_task_record",
+            side_effect=fake_create_generation_task_record,
+        ):
+            task_id = create_generation_task_from_content_extraction(content, payload, user, db)
+
+        self.assertEqual("task-1", task_id)
+        self.assertEqual("task-1", content.linked_task_id)
+        self.assertEqual(TASK_CREATE_SUCCEEDED_STATUS, content.task_create_status)
+        self.assertIsNone(content.task_create_error_message)
 
 
 if __name__ == "__main__":

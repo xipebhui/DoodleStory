@@ -2,13 +2,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import ContentExtractionMediaKind
+from app.models.enums import ContentExtractionMediaKind, ImageCountMode
 from app.schemas.common import TimestampFields
 from app.schemas.style import FileAssetRead
 
 
 class ContentExtractionDownloadCreate(BaseModel):
     raw_input: str = Field(min_length=1, max_length=4000)
+
+
+class ContentExtractionReplicateTaskCreate(ContentExtractionDownloadCreate):
+    image_count_mode: ImageCountMode
+    requested_image_count: int | None = Field(default=None, ge=1, le=80)
+    style_id: str = Field(min_length=1)
+    use_character_references: bool = True
 
 
 class ContentExtractionHealthRead(BaseModel):
@@ -40,6 +47,9 @@ class ContentExtractionRead(TimestampFields):
     target_audience: str | None = None
     story_summary_model: str | None = None
     story_summarized_at: datetime | None = None
+    linked_task_id: str | None = None
+    task_create_status: str | None = None
+    task_create_error_message: str | None = None
     media: list[ContentExtractionMediaRead] = []
 
 
@@ -59,6 +69,9 @@ class ContentExtractionListItemRead(TimestampFields):
     has_extracted_text: bool
     has_story_summary: bool
     media_count: int
+    linked_task_id: str | None = None
+    task_create_status: str | None = None
+    task_create_error_message: str | None = None
 
 
 class ContentExtractionCreatedRead(BaseModel):

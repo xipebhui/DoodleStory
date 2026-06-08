@@ -418,9 +418,15 @@ class ContentExtraction(Base, TimestampMixin):
     target_audience: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     story_summary_model: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     story_summarized_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    linked_task_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("generation_tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    task_create_status: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, index=True)
+    task_create_error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     owner: Mapped[User] = relationship(back_populates="content_extractions")
     media: Mapped[list["ContentExtractionMedia"]] = relationship(back_populates="content_extraction", cascade="all, delete-orphan")
+    linked_task: Mapped[Optional[GenerationTask]] = relationship(foreign_keys=[linked_task_id])
 
 
 class ContentExtractionMedia(Base, TimestampMixin):

@@ -15,14 +15,16 @@ from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import SessionLocal, get_db
 from app.models.entities import ContentExtraction, ContentExtractionMedia, FileAsset, User
-from app.models.enums import ContentExtractionMediaKind, FileAssetPurpose, UserRole
+from app.models.enums import ContentExtractionMediaKind, FileAssetPurpose, StoryInputMode, UserRole
 from app.schemas.common import ApiData, ApiList
 from app.schemas.content_extraction import (
     ContentExtractionDownloadCreate,
     ContentExtractionHealthRead,
     ContentExtractionListItemRead,
     ContentExtractionRead,
+    ContentExtractionReplicateTaskCreate,
 )
+from app.schemas.task import TaskCreate
 from app.services.douyin_import_service import (
     DouyinImportConfigError,
     DouyinImportServiceError,
@@ -37,6 +39,8 @@ from app.services.media_text_extraction import (
     transcribe_video_audio,
 )
 from app.services.storage import save_binary_file
+from app.services.task_creation import TaskCreationError, create_generation_task_record
+from app.services.task_worker import enqueue_task_from_thread
 
 router = APIRouter(prefix="/content-extractions", tags=["content-extractions"])
 logger = logging.getLogger(__name__)
@@ -48,6 +52,9 @@ IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_SUFFIXES = {".mp4"}
 ASSET_UPLOAD_CONCURRENCY = 6
 CONTENT_EXTRACTION_INTERRUPTED_MESSAGE = "内容提取任务在后端重启或进程中断时停止，已标记为失败；请重新提取以使用当前处理链路"
+TASK_CREATE_PENDING_STATUS = "pending"
+TASK_CREATE_SUCCEEDED_STATUS = "succeeded"
+TASK_CREATE_FAILED_STATUS = "failed"
 
 
 @dataclass(frozen=True)
@@ -198,6 +205,9 @@ def load_content_extraction(db: Session, content_id: str) -> ContentExtraction |
 def mark_content_extraction_interrupted(content: ContentExtraction) -> None:
     content.processing_status = "failed"
     content.processing_error_message = CONTENT_EXTRACTION_INTERRUPTED_MESSAGE
+    if content.task_create_status == TASK_CREATE_PENDING_STATUS:
+        content.task_create_status = TASK_CREATE_FAILED_STATUS
+        content.task_create_error_message = CONTENT_EXTRACTION_INTERRUPTED_MESSAGE
 
 
 def recover_interrupted_content_extractions() -> int:
@@ -242,6 +252,9 @@ def list_item_for_content(content: ContentExtraction, media_count: int) -> Conte
             or (content.target_audience and content.target_audience.strip())
         ),
         media_count=media_count,
+        linked_task_id=content.linked_task_id,
+        task_create_status=content.task_create_status,
+        task_create_error_message=content.task_create_error_message,
         created_at=content.created_at,
         updated_at=content.updated_at,
     )
@@ -274,6 +287,45 @@ def create_pending_content_extraction(
         len(payload.raw_input),
     )
     return content
+
+
+def create_pending_replicate_content_extraction(
+    payload: ContentExtractionReplicateTaskCreate,
+    user: User,
+    db: Session,
+) -> ContentExtraction:
+    content = create_pending_content_extraction(payload, user, db)
+    content.task_create_status = TASK_CREATE_PENDING_STATUS
+    content.task_create_error_message = None
+    return content
+
+
+def create_generation_task_from_content_extraction(
+    content: ContentExtraction,
+    payload: ContentExtractionReplicateTaskCreate,
+    user: User,
+    db: Session,
+) -> str:
+    if not content.extracted_text or not content.extracted_text.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="内容提取结果为空，无法创建生成任务")
+
+    task_payload = TaskCreate(
+        original_text=content.extracted_text,
+        story_input_mode=StoryInputMode.extracted_storyboard,
+        image_count_mode=payload.image_count_mode,
+        requested_image_count=payload.requested_image_count,
+        style_id=payload.style_id,
+        use_character_references=payload.use_character_references,
+    )
+    try:
+        task = create_generation_task_record(db=db, payload=task_payload, user=user)
+    except TaskCreationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    content.linked_task_id = task.id
+    content.task_create_status = TASK_CREATE_SUCCEEDED_STATUS
+    content.task_create_error_message = None
+    return task.id
 
 
 def attach_douyin_download_result(content: ContentExtraction, db: Session) -> None:
@@ -530,7 +582,23 @@ def apply_content_story_summary(content: ContentExtraction, *, skip_video: bool 
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="故事总结步骤已被整组图片内容提取替代")
 
 
-def run_content_extraction_processing(content_id: str) -> None:
+def mark_replicate_task_create_failed(content_id: str, error_message: str) -> None:
+    with SessionLocal() as db:
+        content = load_content_extraction(db, content_id)
+        if not content:
+            return
+        content.processing_status = "succeeded"
+        content.processing_error_message = None
+        content.task_create_status = TASK_CREATE_FAILED_STATUS
+        content.task_create_error_message = error_message
+        db.commit()
+
+
+def run_content_extraction_processing(
+    content_id: str,
+    replicate_payload: ContentExtractionReplicateTaskCreate | None = None,
+    owner_user_id: str | None = None,
+) -> None:
     started = monotonic()
     logger.info("content_extraction_debug background_start content_id=%s", content_id)
     with SessionLocal() as db:
@@ -552,6 +620,49 @@ def run_content_extraction_processing(content_id: str) -> None:
             db.commit()
             logger.info("content_extraction_debug background_step_committed content_id=%s step=text_extraction", content_id)
             content = load_content_extraction(db, content_id)
+            if replicate_payload is not None:
+                try:
+                    if not owner_user_id:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少复刻任务创建用户")
+                    content.task_create_status = TASK_CREATE_PENDING_STATUS
+                    content.task_create_error_message = None
+                    owner = db.get(User, owner_user_id)
+                    if not owner:
+                        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="复刻任务创建用户不存在")
+                    task_id = create_generation_task_from_content_extraction(
+                        content=content,
+                        payload=replicate_payload,
+                        user=owner,
+                        db=db,
+                    )
+                    db.commit()
+                    enqueue_task_from_thread(task_id)
+                    logger.info(
+                        "content_extraction_debug linked_task_created content_id=%s task_id=%s",
+                        content_id,
+                        task_id,
+                    )
+                    content = load_content_extraction(db, content_id)
+                except HTTPException as exc:
+                    db.rollback()
+                    mark_replicate_task_create_failed(content_id, str(exc.detail))
+                    logger.warning(
+                        "content_extraction_debug linked_task_create_failed content_id=%s error_type=HTTPException status_code=%s detail=%s elapsed_ms=%s",
+                        content_id,
+                        exc.status_code,
+                        exc.detail,
+                        round((monotonic() - started) * 1000),
+                    )
+                    return
+                except Exception as exc:
+                    db.rollback()
+                    mark_replicate_task_create_failed(content_id, str(exc))
+                    logger.exception(
+                        "content_extraction_debug linked_task_create_unexpected_failed content_id=%s elapsed_ms=%s",
+                        content_id,
+                        round((monotonic() - started) * 1000),
+                    )
+                    return
             content.processing_status = "succeeded"
             content.processing_error_message = None
             db.commit()
@@ -697,6 +808,20 @@ def process_content_extraction(
     db.commit()
     content = load_content_extraction(db, content.id)
     background_tasks.add_task(run_content_extraction_processing, content.id)
+    return ApiData(data=ContentExtractionRead.model_validate(content))
+
+
+@router.post("/replicate-task", response_model=ApiData[ContentExtractionRead], status_code=status.HTTP_202_ACCEPTED)
+def replicate_content_as_task(
+    payload: ContentExtractionReplicateTaskCreate,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[ContentExtractionRead]:
+    content = create_pending_replicate_content_extraction(payload, user, db)
+    db.commit()
+    content = load_content_extraction(db, content.id)
+    background_tasks.add_task(run_content_extraction_processing, content.id, payload, user.id)
     return ApiData(data=ContentExtractionRead.model_validate(content))
 
 

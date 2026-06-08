@@ -91,6 +91,11 @@ type ImageTextPayload = {
 };
 
 const CONTENT_EXTRACTION_TASK_DRAFT_KEY = "doodlestory.contentExtractionTaskDraft";
+type CreateInputMode = Task["story_input_mode"] | "dy_replicate";
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 function parseImageText(value: string | null | undefined): ImageTextPayload | null {
   if (!value) return null;
@@ -606,7 +611,7 @@ function TasksView({
   const [creating, setCreating] = useState(false);
   const [createStyleId, setCreateStyleId] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
-  const [storyInputMode, setStoryInputMode] = useState<Task["story_input_mode"]>("original");
+  const [storyInputMode, setStoryInputMode] = useState<CreateInputMode>("original");
   const [createOriginalText, setCreateOriginalText] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -857,6 +862,24 @@ function TasksView({
     }
     try {
       setCreating(true);
+      if (storyInputMode === "dy_replicate") {
+        const content = await api.replicateContentAsTask({
+          raw_input: originalText,
+          image_count_mode: countMode,
+          requested_image_count: countMode === "fixed" ? requested : null,
+          style_id: createStyleId,
+          use_character_references: formData.get("use_character_references") === "on",
+        });
+        setCreateOriginalText("");
+        setCountMode("auto");
+        setStoryInputMode("original");
+        setCreateStyleId(styles[0]?.id ?? "");
+        setCreateOpen(false);
+        setStylePickerOpen(false);
+        setMessage("DY 爆款复刻已提交，正在提取内容并自动创建生图任务");
+        void monitorReplicateTask(content.id);
+        return;
+      }
       const task = await api.createTask({
         original_text: originalText,
         story_input_mode: storyInputMode,
@@ -879,6 +902,34 @@ function TasksView({
     } finally {
       setCreating(false);
     }
+  }
+
+  async function monitorReplicateTask(contentExtractionId: string) {
+    for (let attempt = 0; attempt < 160; attempt += 1) {
+      await wait(3000);
+      try {
+        const content = await api.contentExtraction(contentExtractionId);
+        if (content.linked_task_id) {
+          setMessage("内容提取完成，已自动创建生图任务");
+          onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(content.linked_task_id)}`);
+          await refresh(content.linked_task_id);
+          return;
+        }
+        if (content.processing_status === "failed") {
+          setMessage(content.processing_error_message || "DY 爆款复刻内容提取失败");
+          return;
+        }
+        if (content.task_create_status === "failed") {
+          setMessage(content.task_create_error_message || "内容已提取，但自动创建生图任务失败");
+          return;
+        }
+        setMessage("DY 爆款复刻处理中：正在下载素材、提取内容或创建任务");
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "DY 爆款复刻状态查询失败");
+        return;
+      }
+    }
+    setMessage("DY 爆款复刻仍在处理中，可稍后到内容提取列表查看状态");
   }
 
   async function cancelSelectedTask() {
@@ -1394,9 +1445,24 @@ function TasksView({
                   <strong>提取分镜</strong>
                   <span>适合从内容提取结果直接生图，保留页序、旁白、对白、内心 OS 和分格布局。</span>
                 </button>
+                <button
+                  type="button"
+                  className={storyInputMode === "dy_replicate" ? "mode-choice active" : "mode-choice"}
+                  aria-pressed={storyInputMode === "dy_replicate"}
+                  onClick={() => setStoryInputMode("dy_replicate")}
+                >
+                  <strong>DY爆款复刻</strong>
+                  <span>粘贴抖音分享文本，系统先提取逐页内容，再自动创建提取分镜生图任务。</span>
+                </button>
               </div>
               <label>
-                {storyInputMode === "adapted" ? "故事方案或要求" : storyInputMode === "extracted_storyboard" ? "提取分镜内容" : "完整故事正文"}
+                {storyInputMode === "adapted"
+                  ? "故事方案或要求"
+                  : storyInputMode === "extracted_storyboard"
+                    ? "提取分镜内容"
+                    : storyInputMode === "dy_replicate"
+                      ? "抖音分享文本或链接"
+                      : "完整故事正文"}
                 <textarea
                   name="original_text"
                   value={createOriginalText}
@@ -1406,7 +1472,9 @@ function TasksView({
                       ? "输入故事设定、简短梗概、人物关系、画面要求或其他创作方向"
                       : storyInputMode === "extracted_storyboard"
                         ? "粘贴或编辑内容提取结果，例如第1页、第2页、画面、旁白、对话、内心OS和分格信息"
-                      : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
+                        : storyInputMode === "dy_replicate"
+                          ? "粘贴完整抖音分享文本或链接，例如 https://v.douyin.com/..."
+                          : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
                   }
                   required
                   autoFocus
@@ -1415,6 +1483,8 @@ function TasksView({
                   <small>原始输入会保留，系统会直接根据方案规划图文分镜并自动生成封面。</small>
                 ) : storyInputMode === "extracted_storyboard" ? (
                   <small>系统只做分镜结构化，不扩写、不总结、不合并页；会把旁白、对白和内心 OS 区分成不同画面呈现形式。</small>
+                ) : storyInputMode === "dy_replicate" ? (
+                  <small>提交后会先创建内容提取记录；提取成功后自动创建提取分镜任务并跳转到任务详情。</small>
                 ) : (
                   <small>完整故事模式会保持文本不变，所有 panel 拼接后必须逐字等于你提交的故事正文。</small>
                 )}
@@ -1442,6 +1512,7 @@ function TasksView({
                     <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
                     {storyInputMode === "adapted" ? <small>固定数量包含封面，例如 8 张 = 1 张封面 + 7 张剧情图。</small> : null}
                     {storyInputMode === "extracted_storyboard" ? <small>固定数量必须和提取分镜页数一致，不会自动合并或补页。</small> : null}
+                    {storyInputMode === "dy_replicate" ? <small>固定数量必须和提取出的页数一致；内容提取完成后不会自动合并或补页。</small> : null}
                   </label>
                 ) : (
                   <p className="field-hint">系统会根据故事长度和内容密度决定图片张数。</p>
@@ -1518,7 +1589,7 @@ function TasksView({
                 </button>
                 <button type="submit" disabled={creating}>
                   {creating ? <Loader2 size={17} className="spin" /> : <Plus size={17} />}
-                  创建任务
+                  {storyInputMode === "dy_replicate" ? "开始复刻" : "创建任务"}
                 </button>
               </div>
             </form>
@@ -1669,12 +1740,25 @@ function ContentExtractionView({
   }, [query, cursor, mediaTypeFilter, resultStatusFilter]);
 
   useEffect(() => {
-    if (!records.some((record) => record.processing_status === "processing")) return;
+    if (!records.some((record) => record.processing_status === "processing" || record.task_create_status === "pending")) return;
     const timer = window.setTimeout(() => {
       refreshRecords();
     }, 3500);
     return () => window.clearTimeout(timer);
   }, [records, query, cursor, mediaTypeFilter, resultStatusFilter]);
+
+  useEffect(() => {
+    if (!current || (current.processing_status !== "processing" && current.task_create_status !== "pending")) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await api.contentExtraction(current.id);
+        setCurrent(result);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "内容提取详情刷新失败");
+      }
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [current?.id, current?.processing_status, current?.task_create_status, current?.updated_at]);
 
   useEffect(() => {
     api
@@ -1818,6 +1902,11 @@ function ContentExtractionView({
     onNavigatePath(viewRoutes.tasks);
   }
 
+  function openLinkedTask(taskId: string) {
+    setDetailOpen(false);
+    onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(taskId)}`);
+  }
+
   function applyRecordSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setCursor(null);
@@ -1955,12 +2044,16 @@ function ContentExtractionView({
                 <strong>
                   {record.processing_status === "processing"
                     ? "正在处理，完成后可打开详情"
-                    : record.processing_status === "failed"
-                      ? record.processing_error_message || "处理失败"
-                      : record.extracted_text_preview || "暂无结果摘要"}
-                </strong>
-                <em>打开详情查看完整内容</em>
-              </span>
+	                      : record.processing_status === "failed"
+	                        ? record.processing_error_message || "处理失败"
+	                      : record.linked_task_id
+	                        ? `已创建生图任务 ${shortId(record.linked_task_id)}`
+	                        : record.task_create_status === "failed"
+	                          ? record.task_create_error_message || "内容已提取，自动创建任务失败"
+	                          : record.extracted_text_preview || "暂无结果摘要"}
+	                </strong>
+	                <em>{record.task_create_status === "pending" ? "正在自动创建生图任务" : "打开详情查看完整内容"}</em>
+	              </span>
               <span>{record.media_type === "pending" ? "待识别" : record.media_type === "gallery" ? "图文" : record.media_type === "video" ? "视频" : record.media_type}</span>
               <span>
                 <b className={`content-status-badge ${recordStatusClass(record)}`}>
@@ -2042,11 +2135,17 @@ function ContentExtractionView({
                     <button type="button" className="secondary-button" disabled={!current.extracted_text} onClick={copyExtractedText}>
                       复制内容
                     </button>
-                    <button type="button" disabled={!current.extracted_text} onClick={submitExtractedAsTask}>
-                      <Plus size={16} />
-                      提交任务
-                    </button>
-                  </div>
+	                    <button type="button" disabled={!current.extracted_text} onClick={submitExtractedAsTask}>
+	                      <Plus size={16} />
+	                      提交任务
+	                    </button>
+	                    {current.linked_task_id ? (
+	                      <button type="button" className="secondary-button" onClick={() => openLinkedTask(current.linked_task_id!)}>
+	                        <ArrowUpRight size={16} />
+	                        查看生图任务
+	                      </button>
+	                    ) : null}
+	                  </div>
                 </div>
                 <div className="extracted-text-box detail">
                   {current.extracted_text ? (
@@ -2079,12 +2178,27 @@ function ContentExtractionView({
                       <span>音频</span>
                       <strong>{audioMedia.length ? "已生成" : "无"}</strong>
                     </div>
-                    <div>
-                      <span>处理状态</span>
-                      <strong>{current.processing_status === "processing" ? "处理中" : current.processing_status === "failed" ? "失败" : "已完成"}</strong>
-                    </div>
-                  </div>
-                </section>
+	                    <div>
+	                      <span>处理状态</span>
+	                      <strong>{current.processing_status === "processing" ? "处理中" : current.processing_status === "failed" ? "失败" : "已完成"}</strong>
+	                    </div>
+	                    <div>
+	                      <span>自动任务</span>
+	                      <strong>
+	                        {current.linked_task_id
+	                          ? `已创建 ${shortId(current.linked_task_id)}`
+	                          : current.task_create_status === "pending"
+	                            ? "创建中"
+	                            : current.task_create_status === "failed"
+	                              ? "创建失败"
+	                              : "未启用"}
+	                      </strong>
+	                    </div>
+	                  </div>
+	                  {current.task_create_status === "failed" && current.task_create_error_message ? (
+	                    <p className="form-message">{current.task_create_error_message}</p>
+	                  ) : null}
+	                </section>
 
                 <section>
                   <div className="content-section-title compact">

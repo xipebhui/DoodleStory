@@ -71,6 +71,7 @@ from app.services.prompt_logging import log_prompt_trace
 from app.services.style_references import build_task_style_reference_pack, is_prompt_reference_mode
 
 _queue: asyncio.Queue[str] | None = None
+_queue_loop: asyncio.AbstractEventLoop | None = None
 _worker_tasks: list[asyncio.Task[None]] = []
 _running_task_ids: set[str] = set()
 _running_task_ids_lock: asyncio.Lock | None = None
@@ -295,8 +296,9 @@ def task_trace_context(task: GenerationTask, step: str, **extra: object) -> dict
 
 
 def init_task_queue() -> None:
-    global _queue, _worker_tasks, _running_task_ids_lock
+    global _queue, _queue_loop, _worker_tasks, _running_task_ids_lock
     settings = get_settings()
+    _queue_loop = asyncio.get_running_loop()
     _queue = asyncio.Queue()
     _running_task_ids.clear()
     _running_task_ids_lock = asyncio.Lock()
@@ -308,7 +310,7 @@ def init_task_queue() -> None:
 
 
 async def shutdown_task_queue() -> None:
-    global _worker_tasks, _running_task_ids_lock
+    global _worker_tasks, _running_task_ids_lock, _queue_loop
     if not _worker_tasks:
         return
     for worker_task in _worker_tasks:
@@ -317,6 +319,7 @@ async def shutdown_task_queue() -> None:
     _worker_tasks = []
     _running_task_ids.clear()
     _running_task_ids_lock = None
+    _queue_loop = None
     logger.info("task queue shutdown complete")
 
 
@@ -325,6 +328,13 @@ async def enqueue_task(task_id: str) -> None:
         raise RuntimeError("任务队列尚未初始化")
     await _queue.put(task_id)
     logger.info("task enqueued task_id=%s queue_size=%s", task_id, _queue.qsize())
+
+
+def enqueue_task_from_thread(task_id: str) -> None:
+    if _queue_loop is None:
+        raise RuntimeError("任务队列事件循环尚未初始化")
+    future = asyncio.run_coroutine_threadsafe(enqueue_task(task_id), _queue_loop)
+    future.result(timeout=5)
 
 
 async def enqueue_panel_edit(generated_image_id: str) -> None:

@@ -5,11 +5,11 @@
 - 分支：`main`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 42 风格参考方式实现后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 43 DY 爆款复刻一键创建任务实现后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-42-style-reference-mode.md`
+- `docs/contracts/sprint-43-dy-replication-task-create.md`
 
 ## 最近完成的工作
 
@@ -175,6 +175,7 @@
 - Sprint 40 Policy Blocked 生图切换实现前，远程真实验证 `3564da7ea27e496bb30fdb608441e51c` panel 9 使用 `baidu/ERNIE-Image-Turbo`、`reference_count=0` 成功返回 `image/jpeg`，耗时约 31.7 秒，provider request id 为 `202606080746462097348648268d9d6XlLSJ0fe`；实现后 `PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - Sprint 41 Policy Blocked 提示词改写实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - Sprint 42 风格参考方式实现后，新增 `prompt` / `image` 两种风格参考模式；旧数据默认保持 `prompt`；任务创建和重试会保存风格参考方式与参考图快照；正式 panel 生图、单 panel 修改和风格测试会按同一套参考方式传入 Prompt 或风格参考图。`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地重启前后端后，浏览器验证 `/styles` 页面可见“Prompt 参考”，新建风格抽屉中可见“Prompt 参考 / 参考图参考”和公网 URL 说明。浏览器截图尝试两次均因 in-app browser `Page.captureScreenshot` 超时未保存。
+- 开始并完成 Sprint 43 DY 爆款复刻一键创建任务：新增合同 `docs/contracts/sprint-43-dy-replication-task-create.md`；创建任务弹窗新增 `DY爆款复刻`，提交抖音分享文本后调用内容提取复刻接口，后端先下载素材并提取逐页内容，成功后复用普通任务创建服务自动创建 `story_input_mode=extracted_storyboard` 的生成任务并线程安全入队；内容提取记录新增关联任务 ID、自动创建状态和错误信息；前端轮询关联任务，创建成功后跳转 `/tasks/{task_id}`。`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 

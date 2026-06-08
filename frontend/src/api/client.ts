@@ -223,6 +223,9 @@ export type ContentExtraction = {
   target_audience: string | null;
   story_summary_model: string | null;
   story_summarized_at: string | null;
+  linked_task_id: string | null;
+  task_create_status: string | null;
+  task_create_error_message: string | null;
   media: ContentExtractionMedia[];
   created_at: string;
   updated_at: string;
@@ -244,6 +247,9 @@ export type ContentExtractionSummary = {
   has_extracted_text: boolean;
   has_story_summary: boolean;
   media_count: number;
+  linked_task_id: string | null;
+  task_create_status: string | null;
+  task_create_error_message: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -428,6 +434,17 @@ export const api = {
     }).then((result) => result.data),
   processContentExtraction: (payload: { raw_input: string }) =>
     request<ApiData<ContentExtraction>>("/content-extractions/process", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  replicateContentAsTask: (payload: {
+    raw_input: string;
+    image_count_mode: "auto" | "fixed";
+    requested_image_count?: number | null;
+    style_id: string;
+    use_character_references?: boolean;
+  }) =>
+    request<ApiData<ContentExtraction>>("/content-extractions/replicate-task", {
       method: "POST",
       body: JSON.stringify(payload),
     }).then((result) => result.data),
