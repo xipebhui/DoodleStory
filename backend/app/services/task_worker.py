@@ -571,17 +571,26 @@ def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None, p
     inner_os = values.get("inner_os")
     emphasis = values.get("emphasis")
     if title:
-        lines.append(f"标题：「{title.strip()}」")
+        lines.append(f"以标题字呈现：「{title.strip()}」")
     if narration:
-        lines.append(f"旁白：「{narration.strip()}」")
+        lines.append(f"以旁白框或字幕框呈现：「{narration.strip()}」")
     dialogue = values.get("dialogue")
     if dialogue:
-        lines.append(f"对白：「{dialogue.strip()}」")
+        lines.append(f"以对白气泡呈现：「{dialogue.strip()}」")
     if inner_os:
-        lines.append(f"内心OS：「{inner_os.strip()}」")
+        lines.append(f"以思想气泡或心理独白框呈现：「{inner_os.strip()}」")
     if emphasis:
-        lines.append(f"强调：「{emphasis.strip()}」")
+        lines.append(f"以强调字呈现：「{emphasis.strip()}」")
     return "\n".join(lines)
+
+
+def layout_instruction(text_layout: str | None) -> str | None:
+    cleaned = (text_layout or "").strip()
+    if not cleaned:
+        return None
+    if cleaned in {"单页", "单页构图", "单页漫画构图", "单页漫画"}:
+        return None
+    return f"画面必须采用{cleaned}。"
 
 
 def scene_block(story_beat: str, visual_prompt: str, image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
@@ -732,20 +741,15 @@ def build_adapted_story_final_prompt(
             visual_prompt.strip(),
         ]
     )
-    if text_layout:
-        lines.extend(
-            [
-                "",
-                "分格/多栏布局：",
-                text_layout.strip(),
-            ]
-        )
+    layout_line = layout_instruction(text_layout)
+    if layout_line:
+        lines.extend(["", layout_line])
     image_text_lines = image_text_block(image_text, panel_type)
     if image_text_lines:
         lines.extend(
             [
                 "",
-                "需要写入图片的文字和表现形式如下；类型说明用于区分呈现方式，画面中呈现引号内文字：",
+                "需要写入图片的文字如下；只把引号内文字画进图片，括号外的呈现方式说明不要画进图片：",
                 image_text_lines,
             ]
         )

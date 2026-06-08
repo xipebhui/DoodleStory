@@ -49,9 +49,12 @@ class TaskWorkerPromptTest(unittest.TestCase):
             text_layout="主画面+右下角分镜",
         )
 
-        self.assertIn("旁白：「我急得朝他吼了一下\n他吓的哭了出来\n去喊我老婆」", final_prompt)
-        self.assertIn("对白：「你个熊孩子\n别拿这个乱玩\n拿过来\n呜哇」", final_prompt)
+        self.assertIn("以旁白框或字幕框呈现：「我急得朝他吼了一下\n他吓的哭了出来\n去喊我老婆」", final_prompt)
+        self.assertIn("以对白气泡呈现：「你个熊孩子\n别拿这个乱玩\n拿过来\n呜哇」", final_prompt)
         self.assertIn("对白出现在对应人物附近的对白气泡中", final_prompt)
+        self.assertNotIn("旁白：", final_prompt)
+        self.assertNotIn("对白：", final_prompt)
+        self.assertNotIn("分格/多栏布局：", final_prompt)
         self.assertNotIn("不要添加指定文字之外", final_prompt)
         self.assertNotIn("Logo 或水印", final_prompt)
         self.assertNotIn("不要画成对白气泡", final_prompt)
@@ -88,6 +91,26 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("所有指定文字只出现一次", final_prompt)
         self.assertIn("整页旁白只使用一个旁白框", final_prompt)
         self.assertIn("不要在上格、下格或不同分栏里重复放置同一段旁白", final_prompt)
+        self.assertIn("画面必须采用上下两格。", final_prompt)
+        self.assertNotIn("分格/多栏布局：", final_prompt)
+        self.assertNotIn("旁白：", final_prompt)
+
+    def test_single_page_layout_block_is_omitted_from_final_prompt(self) -> None:
+        final_prompt = build_adapted_story_final_prompt(
+            aspect_ratio="3:4",
+            visual_prompt="漫画页，单页构图。女孩奔跑着回头。",
+            story_beat="女孩逃跑时回头提醒同伴。",
+            panel_type=PanelType.scene,
+            image_text={
+                "narration": "嘴里还一直喊：“别被追上！你们太小了！”",
+            },
+            text_layout="单页漫画构图",
+        )
+
+        self.assertIn("以旁白框或字幕框呈现：「嘴里还一直喊：“别被追上！你们太小了！”」", final_prompt)
+        self.assertNotIn("分格/多栏布局：", final_prompt)
+        self.assertNotIn("单页漫画构图\n", final_prompt)
+        self.assertNotIn("旁白：", final_prompt)
 
     def test_panel_final_prompt_omits_style_prompt_in_image_reference_mode(self) -> None:
         task = GenerationTask(
