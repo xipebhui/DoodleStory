@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   AlertCircle,
   ArrowUpRight,
+  BarChart3,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,8 @@ import {
   api,
   type ActivationCode,
   type ActivationCodeCreated,
+  type AdminCreditTransaction,
+  type AdminCreditUsage,
   type AdminUserCreditDetail,
   type AdminUserCreditSummary,
   type ContentExtraction,
@@ -53,7 +56,7 @@ import {
 } from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "content" | "styles" | "users" | "settings";
+type View = "tasks" | "content" | "styles" | "users" | "creditUsage" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const imageModelNamePlaceholder = "生图模型名，例如 gpt-image-2";
@@ -66,6 +69,7 @@ const viewRoutes: Record<View, string> = {
   content: "/content-extractions",
   styles: "/styles",
   users: "/users",
+  creditUsage: "/credit-usage",
   settings: "/settings",
 };
 
@@ -79,6 +83,7 @@ function viewFromPathname(pathname: string): View | null {
   if (path === viewRoutes.content) return "content";
   if (path === viewRoutes.styles) return "styles";
   if (path === viewRoutes.users) return "users";
+  if (path === viewRoutes.creditUsage) return "creditUsage";
   if (path === viewRoutes.settings) return "settings";
   return null;
 }
@@ -327,6 +332,7 @@ function App() {
       {view === "content" ? <ContentExtractionView user={user} onNavigatePath={navigateToPath} /> : null}
       {view === "styles" ? <StylesView user={user} onCreditsChanged={refreshCredits} /> : null}
       {view === "users" ? <UsersView user={user} onCreditsChanged={refreshCredits} /> : null}
+      {view === "creditUsage" ? <AdminCreditUsageView user={user} /> : null}
       {view === "settings" ? (
         <SettingsView
           user={user}
@@ -432,6 +438,7 @@ function Shell({
     { key: "content" as const, label: "内容提取", icon: FileText, path: viewRoutes.content },
     { key: "styles" as const, label: "风格", icon: Sparkles, path: viewRoutes.styles },
     ...(user.role === "admin" ? [{ key: "users" as const, label: "用户管理", icon: Users, path: viewRoutes.users }] : []),
+    ...(user.role === "admin" ? [{ key: "creditUsage" as const, label: "积分消耗", icon: BarChart3, path: viewRoutes.creditUsage }] : []),
     { key: "settings" as const, label: "设置", icon: Settings, path: viewRoutes.settings },
   ];
 
@@ -3141,6 +3148,266 @@ function CreditUsageChart({ points, loading }: { points: CreditUsagePoint[]; loa
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+function CreditUsageBarChart({ points, loading }: { points: CreditUsagePoint[]; loading: boolean }) {
+  const width = 780;
+  const height = 260;
+  const paddingX = 34;
+  const paddingY = 30;
+  const maxSpent = Math.max(1, ...points.map((point) => point.spent_credits));
+  const plotWidth = width - paddingX * 2;
+  const plotHeight = height - paddingY * 2;
+  const gap = points.length > 14 ? 5 : 10;
+  const barWidth = points.length ? Math.max(5, (plotWidth - gap * (points.length - 1)) / points.length) : 0;
+
+  return (
+    <div className="usage-bar-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="管理员积分消耗柱状图">
+        <line x1={paddingX} y1={height - paddingY} x2={width - paddingX} y2={height - paddingY} />
+        <line x1={paddingX} y1={paddingY} x2={paddingX} y2={height - paddingY} />
+        {points.map((point, index) => {
+          const x = paddingX + index * (barWidth + gap);
+          const barHeight = (point.spent_credits / maxSpent) * plotHeight;
+          const y = height - paddingY - barHeight;
+          const showLabel = points.length <= 10 || index === 0 || index === points.length - 1 || index % 5 === 0;
+          return (
+            <g key={`${point.started_at}-${point.label}`}>
+              <rect x={x} y={y} width={barWidth} height={barHeight || 2} rx={3} />
+              {point.spent_credits > 0 ? <text className="bar-value" x={x + barWidth / 2} y={Math.max(14, y - 6)}>{point.spent_credits}</text> : null}
+              {showLabel ? <text x={x + barWidth / 2} y={height - 8}>{point.label}</text> : null}
+            </g>
+          );
+        })}
+      </svg>
+      {loading ? <div className="chart-loading">正在加载积分消耗数据</div> : null}
+    </div>
+  );
+}
+
+function AdminCreditUsageView({ user }: { user: User }) {
+  const [message, setMessage] = useState("");
+  const [days, setDays] = useState<1 | 7 | 30>(7);
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [userQueryInput, setUserQueryInput] = useState("");
+  const [userQuery, setUserQuery] = useState("");
+  const [userOptions, setUserOptions] = useState<AdminUserCreditSummary[]>([]);
+  const [usage, setUsage] = useState<AdminCreditUsage | null>(null);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [transactions, setTransactions] = useState<AdminCreditTransaction[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
+
+  async function refreshUserOptions(query = userQuery) {
+    if (user.role !== "admin") return;
+    try {
+      const result = await api.adminUsers({ query: query.trim() || undefined, limit: 100 });
+      setUserOptions(result.items);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "用户筛选列表加载失败");
+    }
+  }
+
+  async function refreshUsage(nextDays = days, nextUserId = selectedUserId) {
+    if (user.role !== "admin") return;
+    setUsageLoading(true);
+    try {
+      setUsage(await api.adminCreditUsage({ days: nextDays, user_id: nextUserId || null }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "积分消耗大盘加载失败");
+    } finally {
+      setUsageLoading(false);
+    }
+  }
+
+  async function refreshTransactions(nextCursor = cursor, nextUserId = selectedUserId) {
+    if (user.role !== "admin") return;
+    setTransactionsLoading(true);
+    try {
+      const result = await api.adminCreditTransactions({
+        user_id: nextUserId || null,
+        cursor: nextCursor,
+        limit: 10,
+      });
+      setTransactions(result.items);
+      setPageInfo({ next_cursor: result.page.next_cursor, has_more: result.page.has_more });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "积分消耗明细加载失败");
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshUserOptions(userQuery);
+  }, [userQuery, user.role]);
+
+  useEffect(() => {
+    void refreshUsage(days, selectedUserId);
+  }, [days, selectedUserId, user.role]);
+
+  useEffect(() => {
+    void refreshTransactions(cursor, selectedUserId);
+  }, [cursor, selectedUserId, user.role]);
+
+  function submitUserSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSelectedUserId("");
+    setCursor(null);
+    setCursorStack([]);
+    setUserQuery(userQueryInput);
+  }
+
+  function selectUsageUser(userId: string) {
+    setSelectedUserId(userId);
+    setCursor(null);
+    setCursorStack([]);
+  }
+
+  if (user.role !== "admin") {
+    return (
+      <section className="page">
+        <header className="page-header">
+          <div>
+            <h1>积分消耗</h1>
+            <p>当前账号没有访问积分消耗大盘的权限。</p>
+          </div>
+        </header>
+      </section>
+    );
+  }
+
+  const selectedUser = userOptions.find((option) => option.id === selectedUserId) ?? null;
+  const summary = usage?.summary;
+
+  return (
+    <section className="page credit-usage-page">
+      <header className="page-header">
+        <div>
+          <h1>积分消耗</h1>
+          <p>查看全站成功出图扣费趋势，也可以按用户筛选消耗明细。</p>
+        </div>
+      </header>
+
+      {message ? <p className="form-message">{message}</p> : null}
+
+      <section className="settings-section">
+        <div className="admin-usage-controls">
+          <div className="segmented-control usage-range-control">
+            {([1, 7, 30] as const).map((value) => (
+              <button key={value} type="button" className={days === value ? "active" : ""} onClick={() => setDays(value)}>
+                {value === 1 ? "最近 24 小时" : `最近 ${value} 天`}
+              </button>
+            ))}
+          </div>
+          <form className="admin-search usage-user-search" onSubmit={submitUserSearch}>
+            <input value={userQueryInput} onChange={(event) => setUserQueryInput(event.target.value)} placeholder="搜索用户邮箱或昵称" />
+            <button type="submit">
+              <Search size={16} />
+              搜索用户
+            </button>
+          </form>
+          <label className="usage-user-select">
+            用户
+            <select value={selectedUserId} onChange={(event) => selectUsageUser(event.target.value)}>
+              <option value="">全部用户</option>
+              {userOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.display_name || option.email}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="usage-dashboard-grid">
+          <div>
+            <span>{selectedUser ? "筛选用户" : "统计范围"}</span>
+            <strong>{selectedUser ? selectedUser.display_name || selectedUser.email : "全部用户"}</strong>
+          </div>
+          <div>
+            <span>消耗积分</span>
+            <strong>{summary ? summary.total_spent_credits : "-"}</strong>
+          </div>
+          <div>
+            <span>扣费次数</span>
+            <strong>{summary ? summary.transaction_count : "-"}</strong>
+          </div>
+          <div>
+            <span>消耗用户数</span>
+            <strong>{summary ? summary.active_user_count : "-"}</strong>
+          </div>
+        </div>
+        <CreditUsageBarChart points={usage?.points ?? []} loading={usageLoading} />
+      </section>
+
+      <section className="settings-section">
+        <div className="section-title">
+          <Coins size={22} />
+          <div>
+            <h2>消耗明细</h2>
+            <p>只展示成功出图扣费流水，按时间倒序分页。</p>
+          </div>
+        </div>
+        <AdminCreditTransactionTable transactions={transactions} loading={transactionsLoading} />
+        <div className="pagination-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={cursorStack.length === 0 || transactionsLoading}
+            onClick={() => {
+              const previous = cursorStack[cursorStack.length - 1] ?? null;
+              setCursorStack((stack) => stack.slice(0, -1));
+              setCursor(previous);
+            }}
+          >
+            上一页
+          </button>
+          <button
+            type="button"
+            disabled={!pageInfo?.has_more || transactionsLoading}
+            onClick={() => {
+              setCursorStack((stack) => [...stack, cursor ?? ""]);
+              setCursor(pageInfo?.next_cursor ?? null);
+            }}
+          >
+            下一页
+          </button>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function AdminCreditTransactionTable({ transactions, loading }: { transactions: AdminCreditTransaction[]; loading: boolean }) {
+  if (loading) {
+    return <div className="empty mini">正在加载积分消耗明细</div>;
+  }
+  if (transactions.length === 0) {
+    return <div className="empty mini">暂无积分消耗明细</div>;
+  }
+  return (
+    <div className="admin-credit-transaction-table">
+      <div className="admin-credit-transaction-head">
+        <span>时间</span>
+        <span>用户</span>
+        <span>积分</span>
+        <span>关联</span>
+      </div>
+      {transactions.map((transaction) => (
+        <div key={transaction.id} className="admin-credit-transaction-row">
+          <span>{formatDateTime(transaction.created_at)}</span>
+          <span>
+            <strong>{transaction.user_display_name || transaction.user_email}</strong>
+            <small>{transaction.user_email}</small>
+          </span>
+          <b>{transaction.amount}</b>
+          <span>{transaction.task_id ? `任务 ${shortId(transaction.task_id)}` : transaction.note || "成功扣费"}</span>
+        </div>
+      ))}
     </div>
   );
 }

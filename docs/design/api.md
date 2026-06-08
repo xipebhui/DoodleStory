@@ -229,6 +229,50 @@ GET /api/v1/admin/users/{user_id}
 
 返回用户积分摘要和最近积分流水。
 
+### 管理员积分消耗大盘
+
+```http
+GET /api/v1/admin/credits/usage?days=7&user_id=...
+```
+
+仅 Admin 可访问。
+
+规则：
+
+- `days` 只支持 `1`、`7` 和 `30`；`days=1` 返回最近 24 个小时桶，`days=7` 和 `days=30` 返回自然日桶。
+- 不传 `user_id` 时统计全站成功出图扣费流水。
+- 传 `user_id` 时只统计该用户成功出图扣费流水。
+- 只统计 `image_generation_charge`，不统计占用、释放、激活码兑换或管理员调整。
+
+响应：
+
+```json
+{
+  "data": {
+    "summary": {
+      "total_spent_credits": 120,
+      "transaction_count": 120,
+      "active_user_count": 8
+    },
+    "points": [
+      {
+        "label": "06-08",
+        "spent_credits": 22,
+        "started_at": "2026-06-08T00:00:00"
+      }
+    ]
+  }
+}
+```
+
+### 管理员积分消耗明细
+
+```http
+GET /api/v1/admin/credits/transactions?user_id=...&limit=10&cursor=...
+```
+
+仅 Admin 可访问。按时间倒序分页返回成功出图扣费流水，并附带用户邮箱和昵称。
+
 ### 调整用户积分
 
 ```http

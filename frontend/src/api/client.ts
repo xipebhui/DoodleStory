@@ -72,6 +72,22 @@ export type AdminUserCreditDetail = {
   recent_transactions: CreditTransaction[];
 };
 
+export type AdminCreditUsageSummary = {
+  total_spent_credits: number;
+  transaction_count: number;
+  active_user_count: number;
+};
+
+export type AdminCreditUsage = {
+  summary: AdminCreditUsageSummary;
+  points: CreditUsagePoint[];
+};
+
+export type AdminCreditTransaction = CreditTransaction & {
+  user_email: string;
+  user_display_name: string | null;
+};
+
 export type ActivationCode = {
   id: string;
   code_prefix: string;
@@ -452,6 +468,21 @@ export const api = {
   },
   adminUserDetail: (userId: string) =>
     request<ApiData<AdminUserCreditDetail>>(`/admin/users/${userId}`).then((result) => result.data),
+  adminCreditUsage: (params?: { days?: 1 | 7 | 30; user_id?: string | null }) => {
+    const search = new URLSearchParams();
+    if (params?.days) search.set("days", String(params.days));
+    if (params?.user_id) search.set("user_id", params.user_id);
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiData<AdminCreditUsage>>(`/admin/credits/usage${suffix}`).then((result) => result.data);
+  },
+  adminCreditTransactions: (params?: { user_id?: string | null; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.user_id) search.set("user_id", params.user_id);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AdminCreditTransaction>>(`/admin/credits/transactions${suffix}`);
+  },
   adjustAdminUserCredits: (userId: string, payload: { amount: number; note: string }) =>
     request<ApiData<AdminUserCreditDetail>>(`/admin/users/${userId}/credits/adjust`, {
       method: "POST",

@@ -5,7 +5,7 @@ from unittest.mock import patch
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.api.credits import my_credits, transaction_rows_for_user, usage_points_for_user
+from app.api.credits import admin_credit_transaction_rows, admin_usage_for_period, my_credits, transaction_rows_for_user, usage_points_for_user
 from app.api.pagination import Pagination
 from app.api.styles import create_style_test
 from app.core.database import Base
@@ -150,6 +150,43 @@ class CreditsTest(unittest.TestCase):
         )
         self.assertEqual(1, reset_count)
         self.assertEqual([CreditTransactionType.admin_adjustment], [row.transaction_type for row in reset_rows])
+
+    def test_admin_usage_dashboard_can_filter_by_user(self) -> None:
+        db = self.Session()
+        user_a = User(email="a@example.com", password_hash="hash")
+        user_b = User(email="b@example.com", password_hash="hash")
+        db.add_all([user_a, user_b])
+        db.flush()
+        grant_initial_credits(db, user_a, amount=10)
+        grant_initial_credits(db, user_b, amount=10)
+        for user in [user_a, user_a, user_b]:
+            reserve_image_credit(db, user_id=user.id, note="占用")
+            charge_reserved_image_credit(db, user_id=user.id, note="扣费")
+        reserve_image_credit(db, user_id=user_b.id, note="临时占用")
+        release_reserved_image_credit(db, user_id=user_b.id, note="失败释放")
+        db.commit()
+
+        all_usage = admin_usage_for_period(db, days=7)
+        self.assertEqual(3, all_usage.summary.total_spent_credits)
+        self.assertEqual(3, all_usage.summary.transaction_count)
+        self.assertEqual(2, all_usage.summary.active_user_count)
+        self.assertEqual(7, len(all_usage.points))
+        self.assertEqual(3, sum(point.spent_credits for point in all_usage.points))
+
+        hourly_usage = admin_usage_for_period(db, days=1)
+        self.assertEqual(24, len(hourly_usage.points))
+        self.assertEqual(3, sum(point.spent_credits for point in hourly_usage.points))
+
+        user_usage = admin_usage_for_period(db, days=7, user_id=user_a.id)
+        self.assertEqual(2, user_usage.summary.total_spent_credits)
+        self.assertEqual(2, user_usage.summary.transaction_count)
+        self.assertEqual(1, user_usage.summary.active_user_count)
+
+        first_page, row_count = admin_credit_transaction_rows(db, pagination=Pagination(limit=2, offset=0))
+        self.assertEqual(2, len(first_page))
+        self.assertEqual(3, row_count)
+        self.assertTrue(all(item.transaction_type == CreditTransactionType.image_generation_charge for item in first_page))
+        self.assertTrue(all(item.user_email in {"a@example.com", "b@example.com"} for item in first_page))
 
     def test_admin_adjustment_and_activation_code_redeem(self) -> None:
         db = self.Session()

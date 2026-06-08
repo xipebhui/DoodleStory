@@ -5,7 +5,7 @@
 - 分支：`main`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 44 积分流水分页与按需加载补充后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 44 管理员积分消耗大盘补充后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
@@ -179,6 +179,7 @@
 - 开始并完成 Sprint 44 用户积分、激活码与管理员使用管理：新增合同 `docs/contracts/sprint-44-user-credits-admin-usage.md`；已有用户通过迁移初始化 `1000` 积分，新用户注册默认 `30` 积分；新增积分账户、积分流水、激活码和兑换记录；成功产出图片扣 `1` 积分，正式任务、任务重试、单 panel 修改、人物参考图和风格测试都接入统一扣费 hook；Provider 失败会释放积分占用，积分不足时不调用 Provider；新增 `/credits` 与 `/admin` 积分管理 API；前端左下角展示积分余额，设置页支持用户兑换激活码，Admin 可查看用户使用情况、调整积分和生成激活码。`backend/.venv/bin/python -m compileall backend/app`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_credits.py`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 34 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。本次未调用真实图片 Provider，扣费 hook 使用单元测试和构建验证覆盖。
 - 补充 Sprint 44 管理体验：管理员用户管理从设置页拆到单独 `/users` tab，用户列表改为每页 10 条分页表格并支持搜索；用户管理页保留积分调整抽屉和生成激活码能力；设置页新增当前用户最近 `1` 天、`7` 天、`30` 天积分消耗折线图，后端新增 `/api/v1/credits/usage` 只统计成功扣费流水。`backend/.venv/bin/python -m compileall backend/app`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_credits.py`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地服务已通过 `./scripts/restart-dev.sh` 重启，浏览器验证管理员登录后 `/settings` 可见趋势图、`/users` 可见分页用户表和生成激活码入口。本地新增开发管理员账号 `admin@example.com` 用于登录烟测。
 - 补充 Sprint 44 积分流水体验：`/credits/me` 不再默认加载最近流水，新增 `/credits/transactions` 分页接口；设置页最近积分流水默认只展示 `查看明细` 入口，用户点击后才按每页 10 条加载，并可用 `全部流水`、`消耗积分`、`重置积分` 快捷筛选。`消耗积分` 对应成功扣费流水，`重置积分` 对应管理员调整流水。`backend/.venv/bin/python -m compileall backend/app`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_credits.py`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
+- 补充 Sprint 44 管理员积分消耗大盘：新增管理员可见 `/credit-usage` tab，展示全站或按用户筛选的成功出图扣费汇总、最近 `1` 天按小时聚合、最近 `7` 天/`30` 天按日期聚合的柱状图和成功扣费明细分页；后端新增 `/admin/credits/usage` 和 `/admin/credits/transactions`。`backend/.venv/bin/python -m compileall backend/app`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_credits.py`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 

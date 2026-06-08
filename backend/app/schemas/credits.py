@@ -69,6 +69,22 @@ class AdminUserCreditDetail(BaseModel):
     recent_transactions: list[CreditTransactionRead]
 
 
+class AdminCreditUsageSummaryRead(BaseModel):
+    total_spent_credits: int
+    transaction_count: int
+    active_user_count: int
+
+
+class AdminCreditUsageRead(BaseModel):
+    summary: AdminCreditUsageSummaryRead
+    points: list[CreditUsagePointRead]
+
+
+class AdminCreditTransactionRead(CreditTransactionRead):
+    user_email: str
+    user_display_name: str | None
+
+
 class AdminCreditAdjustmentRequest(BaseModel):
     amount: int = Field(ge=-100000, le=100000)
     note: str = Field(min_length=1, max_length=500)

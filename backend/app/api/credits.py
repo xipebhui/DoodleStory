@@ -22,6 +22,9 @@ from app.schemas.credits import (
     ActivationCodeCreatedRead,
     ActivationCodeRead,
     AdminCreditAdjustmentRequest,
+    AdminCreditTransactionRead,
+    AdminCreditUsageRead,
+    AdminCreditUsageSummaryRead,
     AdminUserCreditDetail,
     AdminUserCreditSummary,
     CreditOverviewRead,
@@ -122,6 +125,89 @@ def usage_points_for_user(db: Session, user_id: str, days: int) -> list[CreditUs
         )
         for bucket_start, spent in buckets.items()
     ]
+
+
+def usage_window(days: int) -> tuple[datetime, int, timedelta]:
+    if days == 1:
+        now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        return now - timedelta(hours=23), 24, timedelta(hours=1)
+    if days not in {7, 30}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只支持查看最近 1 天、7 天或 30 天")
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    return today - timedelta(days=days - 1), days, timedelta(days=1)
+
+
+def admin_usage_for_period(db: Session, *, days: int, user_id: str | None = None) -> AdminCreditUsageRead:
+    start, bucket_count, bucket_delta = usage_window(days)
+    buckets = {start + bucket_delta * index: 0 for index in range(bucket_count)}
+    statement = select(CreditTransaction).where(
+        CreditTransaction.transaction_type == CreditTransactionType.image_generation_charge,
+        CreditTransaction.created_at >= start,
+    )
+    if user_id:
+        statement = statement.where(CreditTransaction.user_id == user_id)
+    transactions = db.scalars(statement).all()
+    for transaction in transactions:
+        created_at = transaction.created_at.replace(tzinfo=None)
+        if days == 1:
+            bucket_start = created_at.replace(minute=0, second=0, microsecond=0)
+        else:
+            bucket_start = created_at.replace(hour=0, minute=0, second=0, microsecond=0)
+        if bucket_start in buckets:
+            buckets[bucket_start] += max(0, -transaction.amount)
+
+    summary_statement = select(
+        func.coalesce(func.sum(-CreditTransaction.amount), 0),
+        func.count(CreditTransaction.id),
+        func.count(func.distinct(CreditTransaction.user_id)),
+    ).where(
+        CreditTransaction.transaction_type == CreditTransactionType.image_generation_charge,
+        CreditTransaction.created_at >= start,
+    )
+    if user_id:
+        summary_statement = summary_statement.where(CreditTransaction.user_id == user_id)
+    total_spent, transaction_count, active_user_count = db.execute(summary_statement).one()
+    return AdminCreditUsageRead(
+        summary=AdminCreditUsageSummaryRead(
+            total_spent_credits=int(total_spent or 0),
+            transaction_count=int(transaction_count or 0),
+            active_user_count=int(active_user_count or 0),
+        ),
+        points=[
+            CreditUsagePointRead(
+                label=bucket_start.strftime("%H:00") if days == 1 else bucket_start.strftime("%m-%d"),
+                spent_credits=spent,
+                started_at=bucket_start,
+            )
+            for bucket_start, spent in buckets.items()
+        ],
+    )
+
+
+def admin_credit_transaction_rows(
+    db: Session,
+    *,
+    pagination: Pagination,
+    user_id: str | None = None,
+) -> tuple[list[AdminCreditTransactionRead], int]:
+    statement = (
+        select(CreditTransaction, User.email, User.display_name)
+        .join(User, User.id == CreditTransaction.user_id)
+        .where(CreditTransaction.transaction_type == CreditTransactionType.image_generation_charge)
+        .order_by(CreditTransaction.created_at.desc(), CreditTransaction.id.desc())
+    )
+    if user_id:
+        statement = statement.where(CreditTransaction.user_id == user_id)
+    rows = db.execute(statement.offset(pagination.offset).limit(pagination.limit + 1)).all()
+    items = [
+        AdminCreditTransactionRead(
+            **CreditTransactionRead.model_validate(transaction).model_dump(),
+            user_email=email,
+            user_display_name=display_name,
+        )
+        for transaction, email, display_name in rows[: pagination.limit]
+    ]
+    return items, len(rows)
 
 
 def user_summary_rows(
@@ -278,6 +364,33 @@ def list_admin_users(
 ) -> ApiList[AdminUserCreditSummary]:
     require_admin(user)
     items, row_count = user_summary_rows(db, pagination=pagination, query=query)
+    return ApiList(items=items, page=build_page(pagination.limit, pagination.offset, row_count))
+
+
+@router.get("/admin/credits/usage", response_model=ApiData[AdminCreditUsageRead])
+def get_admin_credit_usage(
+    days: int = Query(default=7),
+    user_id: str | None = Query(default=None),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AdminCreditUsageRead]:
+    require_admin(user)
+    if user_id and not db.get(User, user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+    return ApiData(data=admin_usage_for_period(db, days=days, user_id=user_id))
+
+
+@router.get("/admin/credits/transactions", response_model=ApiList[AdminCreditTransactionRead])
+def list_admin_credit_transactions(
+    user_id: str | None = Query(default=None),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    pagination: Pagination = Depends(get_pagination),
+) -> ApiList[AdminCreditTransactionRead]:
+    require_admin(user)
+    if user_id and not db.get(User, user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
+    items, row_count = admin_credit_transaction_rows(db, pagination=pagination, user_id=user_id)
     return ApiList(items=items, page=build_page(pagination.limit, pagination.offset, row_count))
 
 

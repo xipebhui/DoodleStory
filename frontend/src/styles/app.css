@@ -3034,6 +3034,151 @@ textarea {
   flex-wrap: wrap;
 }
 
+.admin-usage-controls {
+  display: grid;
+  grid-template-columns: auto minmax(260px, 1fr) minmax(220px, 300px);
+  gap: 14px;
+  align-items: end;
+}
+
+.usage-user-search {
+  margin-top: 0;
+}
+
+.usage-user-select {
+  display: grid;
+  gap: 8px;
+  color: #c8d0dc;
+  font-weight: 800;
+}
+
+.usage-user-select select {
+  min-width: 0;
+}
+
+.usage-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.usage-dashboard-grid > div {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #151820;
+  padding: 14px;
+  min-width: 0;
+}
+
+.usage-dashboard-grid span {
+  color: #8d96a6;
+  font-size: 12px;
+}
+
+.usage-dashboard-grid strong {
+  display: block;
+  margin-top: 8px;
+  color: #eef2f7;
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+
+.usage-bar-chart {
+  position: relative;
+  margin-top: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #151820;
+  padding: 16px;
+}
+
+.usage-bar-chart svg {
+  width: 100%;
+  min-height: 220px;
+  overflow: visible;
+}
+
+.usage-bar-chart line {
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
+}
+
+.usage-bar-chart rect {
+  fill: #f5c56d;
+}
+
+.usage-bar-chart text {
+  fill: #8d96a6;
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.usage-bar-chart .bar-value {
+  fill: #eef2f7;
+  font-weight: 800;
+}
+
+.chart-loading {
+  position: absolute;
+  right: 16px;
+  top: 14px;
+  color: #8d96a6;
+  font-size: 12px;
+}
+
+.admin-credit-transaction-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+.admin-credit-transaction-head,
+.admin-credit-transaction-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(220px, 1.4fr) minmax(80px, 0.5fr) minmax(140px, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 720px;
+}
+
+.admin-credit-transaction-head {
+  color: #8d96a6;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.admin-credit-transaction-row {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #151820;
+  padding: 12px;
+}
+
+.admin-credit-transaction-row span {
+  min-width: 0;
+  color: #c8d0dc;
+}
+
+.admin-credit-transaction-row span:nth-child(2) {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-credit-transaction-row small {
+  overflow: hidden;
+  color: #8d96a6;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-credit-transaction-row b {
+  color: #ffb4a6;
+}
+
 .admin-user-row span,
 .transaction-row span {
   display: grid;
@@ -3411,6 +3556,11 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .admin-usage-controls,
+  .usage-dashboard-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
   .admin-settings-column {
     position: static;
   }
@@ -3564,6 +3714,15 @@ textarea {
 
   .credit-chart svg {
     min-height: 150px;
+  }
+
+  .admin-usage-controls,
+  .usage-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-bar-chart svg {
+    min-height: 180px;
   }
 }
 
