@@ -1,6 +1,12 @@
 import unittest
 
-from app.api.tasks import current_succeeded_images_for_panels, task_has_all_panel_images
+from app.api.tasks import (
+    SUPERSEDED_IMAGE_ERROR_CODE,
+    SUPERSEDED_IMAGE_ERROR_MESSAGE,
+    current_succeeded_images_for_panels,
+    retire_superseded_running_images,
+    task_has_all_panel_images,
+)
 from app.models.entities import GeneratedImage, GenerationTask, TaskPanel
 from app.models.enums import GeneratedImageStatus, TaskStatus
 
@@ -58,6 +64,27 @@ class TaskDownloadStateTest(unittest.TestCase):
 
         self.assertTrue(task_has_all_panel_images(task))
         self.assertEqual(["panel-1", "panel-2"], [image.panel_id for image in current_succeeded_images_for_panels(task)])
+
+    def test_retry_retires_superseded_running_images(self) -> None:
+        task = make_task_with_panels(1)
+        running = GeneratedImage(
+            id="running-panel-1",
+            task_id="task",
+            panel_id="panel-1",
+            status=GeneratedImageStatus.running,
+            generation_number=1,
+            is_current=True,
+            image_model_name_snapshot="gpt-image-2",
+        )
+        task.generated_images = [running, make_current_success("panel-1", generation_number=2)]
+
+        self.assertEqual(1, retire_superseded_running_images(task))
+
+        self.assertEqual(GeneratedImageStatus.failed, running.status)
+        self.assertFalse(running.is_current)
+        self.assertEqual(SUPERSEDED_IMAGE_ERROR_CODE, running.error_code)
+        self.assertEqual(SUPERSEDED_IMAGE_ERROR_MESSAGE, running.error_message)
+        self.assertIsNotNone(running.finished_at)
 
 
 if __name__ == "__main__":

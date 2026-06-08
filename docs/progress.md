@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-38-content-extraction-stuck-processing-recovery.md`
+- `docs/contracts/sprint-39-stale-generated-image-state.md`
 
 ## 最近完成的工作
 
@@ -81,6 +81,7 @@
 - 开始并完成 Sprint 36 七牛原图 URL 缓存污染修复：远程任务 `260d1c030dfb437480d9a51b28b8b6d8` 的生成图本地镜像和 xgapi 直连结果均为完整 `896x1200`，但对象存储公网 URL 返回 `320x568 image/webp`；进一步确认 `?imageInfo`、`?imageMogr2/format/jpg` 等 query 也命中同一份 WebP，判断为 CDN 忽略 query string 后由 `imageView2` 缩略图请求污染同 key 缓存。现已取消七牛资产 `thumbnail_url` 和 `thumbnail` 变体的同 key query 缩略图，统一返回无 query 原图 URL；历史已污染缓存可能仍需刷新 CDN、等待过期或生成新 key。
 - 开始并完成 Sprint 37 内容提取公网 URL 视觉理解：下载素材登记资产仍使用原始文件 bytes，不做压缩、缩放或格式转换；图片和 metadata 资产保存/对象存储上传改为并行执行，完成后按原 display_order 写入数据库；图文 VL 请求改为按顺序传资产公网原图 URL，不再把图片转成 base64 data URL，没有公网 HTTP(S) URL 时明确失败。
 - 开始并完成 Sprint 38 内容提取卡死状态恢复：内容提取仍使用同进程后台任务；后端启动时会扫描上一进程遗留的 `processing` 内容提取记录，将其标记为 `failed` 并写入“后端重启或进程中断”的明确原因，避免服务重启后列表长期卡在处理中。
+- 开始并完成 Sprint 39 旧图片生成状态不污染任务详情：定位远程任务 `43a48af4739f4e0791965ba06070d12f` 已有 11 张当前成功图，但上一轮中断的 11 条非当前 `running` 图片版本仍残留；前端详情优先选择任意 running 导致已完成任务显示生成中。现已改为任务重试时作废旧运行中图片版本，前端只在任务运行中或用户单 panel 修改时展示 active 图片。
 - 开始 Sprint 06 抖音下载 Cookie 与导入适配：阅读 `jiji262/douyin-downloader` V2.0 的 Cookie 获取方式，确认官方推荐用浏览器登录保存 Cookie；当时新增 DoodleStory 后端临时直连 adapter 和命令行验证入口，用于先获取 Cookie 再输入抖音链接做真实下载验证。该临时路径后续已被独立 HTTP 下载服务取代。
 - 新增内容提取需求设计：后续 `内容提取` tab 由后端解析抖音分享文本中的真实 URL，同步调用同机抖音下载服务下载图文或视频；下载后用户再同步触发文案提取，视频先分离音频并用 SiliconFlow 音频多模态转写，图文按图片顺序逐张用 SiliconFlow 视觉理解提取文字。该功能第一版不设计异步状态机、worker、轮询或取消流程，页面以最终文案为主，媒体预览为辅。
 - 开始 Sprint 07 同步内容提取：新增合同 `docs/contracts/sprint-07-content-extraction.md`，范围锁定为后端同步下载服务代理、最小内容提取记录、SiliconFlow 图文/音频文案提取和前端 `内容提取` tab。
@@ -168,6 +169,7 @@
 - 修复 xgapi 多参考图公网 URL 提交方式：本地真实请求验证 `multipart image`、`image[]`、`image[0]/image[1]`、`images[]`、`image/image2` 以及 form URL 均返回 500，`/v1/images/edits` JSON `image: [url1, url2]` 返回 200；后端已改为该格式，单元测试同步覆盖。
 - 调整内容提取分镜解析策略：`parse_extracted_storyboard_v1.md` 不再诱导 LLM 在 `visual_prompt` 或 `text_layout` 中输出画面比例，分镜解析只负责画面与分格信息，最终画面比例继续由风格 `aspect_ratio` 统一控制。
 - Sprint 38 内容提取卡死状态恢复实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_content_extraction_media_flow.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
+- Sprint 39 旧图片生成状态修复实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_download_state.py`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 

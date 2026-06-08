@@ -1,3 +1,4 @@
+from datetime import datetime
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -41,6 +42,8 @@ from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_gene
 from app.services.storage import existing_local_asset_path, save_local_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+SUPERSEDED_IMAGE_ERROR_CODE = "ImageGenerationSuperseded"
+SUPERSEDED_IMAGE_ERROR_MESSAGE = "任务重新生成后旧图片生成记录已失效"
 
 
 def task_access_filter(user: User):
@@ -97,6 +100,20 @@ def current_succeeded_images_for_panels(task: GenerationTask) -> list[GeneratedI
 
 def task_has_all_panel_images(task: GenerationTask) -> bool:
     return bool(task.panels) and len(current_succeeded_images_for_panels(task)) == len(task.panels)
+
+
+def retire_superseded_running_images(task: GenerationTask) -> int:
+    count = 0
+    for image in task.generated_images:
+        if image.status not in {GeneratedImageStatus.queued, GeneratedImageStatus.running}:
+            continue
+        image.status = GeneratedImageStatus.failed
+        image.is_current = False
+        image.error_code = SUPERSEDED_IMAGE_ERROR_CODE
+        image.error_message = SUPERSEDED_IMAGE_ERROR_MESSAGE
+        image.finished_at = image.finished_at or datetime.utcnow()
+        count += 1
+    return count
 
 
 def task_original_text_preview(task: GenerationTask) -> str:
@@ -273,6 +290,7 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     if not style.image_model_name.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格尚未绑定生图模型名")
 
+    retire_superseded_running_images(task)
     for image in list(task.generated_images):
         if image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
             image.is_current = False

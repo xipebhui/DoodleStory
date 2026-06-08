@@ -498,7 +498,11 @@ function isActiveTask(task: Task | TaskSummary | null | undefined) {
 }
 
 function hasActivePanelEdit(task: Task | null | undefined) {
-  return Boolean(task?.generated_images.some((image) => image.status === "queued" || image.status === "running"));
+  return Boolean(
+    task?.generated_images.some(
+      (image) => image.source_type === "user_edit" && (image.status === "queued" || image.status === "running"),
+    ),
+  );
 }
 
 function taskProgress(task: Task | TaskSummary) {
@@ -513,12 +517,17 @@ function sortedPanels(task: Task | null | undefined) {
 function imagesByPanel(task: Task | null | undefined) {
   const map = new Map<string, Task["generated_images"][number]>();
   const groups = new Map<string, Task["generated_images"]>();
+  const canShowActiveImages = isActiveTask(task);
   task?.generated_images.forEach((image) => {
     groups.set(image.panel_id, [...(groups.get(image.panel_id) ?? []), image]);
   });
   groups.forEach((images, panelId) => {
     const active = images
-      .filter((image) => image.status === "queued" || image.status === "running")
+      .filter(
+        (image) =>
+          (image.status === "queued" || image.status === "running") &&
+          (canShowActiveImages || image.source_type === "user_edit"),
+      )
       .sort((a, b) => b.generation_number - a.generation_number)[0];
     const current = images
       .filter((image) => image.is_current)
