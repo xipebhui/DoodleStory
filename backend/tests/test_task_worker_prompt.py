@@ -70,6 +70,25 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("低饱和手绘漫画风，细线条，浅色水彩，中文手写字要清晰偏大。", final_prompt)
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("画面比例：3:4"))
 
+    def test_multi_panel_narration_is_constrained_to_single_caption(self) -> None:
+        final_prompt = build_adapted_story_final_prompt(
+            aspect_ratio="3:4",
+            visual_prompt=(
+                "漫画页，上下两格，阅读顺序从上到下。上格：女主在烈日下发传单。"
+                "下格：女主隔着玻璃看小孩吃冰淇淋。"
+            ),
+            story_beat="女主在烈日下发传单，羡慕别人家的孩子吃冰淇淋。",
+            panel_type=PanelType.scene,
+            image_text={
+                "narration": "大太阳底下，我发着传单，\n隔着玻璃看别人家的小幼孩吃冰淇淋。",
+            },
+            text_layout="上下两格",
+        )
+
+        self.assertIn("所有指定文字只出现一次", final_prompt)
+        self.assertIn("整页旁白只使用一个旁白框", final_prompt)
+        self.assertIn("不要在上格、下格或不同分栏里重复放置同一段旁白", final_prompt)
+
     def test_panel_final_prompt_omits_style_prompt_in_image_reference_mode(self) -> None:
         task = GenerationTask(
             owner_user_id="user",

@@ -616,11 +616,23 @@ def visual_prompt_has_dialogue(visual_prompt: str) -> bool:
     )
 
 
-def text_rules_block(visual_prompt: str, image_text: ImageTextPlan | dict[str, str | None] | None) -> str:
+def text_rules_block(
+    visual_prompt: str,
+    image_text: ImageTextPlan | dict[str, str | None] | None,
+    text_layout: str | None = None,
+) -> str:
     values = image_text_to_dict(image_text)
     rules = ["图片内文字字号偏大、清晰可读，保留足够留白，优先保证文字可读性。"]
+    if any(values.get(key) for key in ("title", "narration", "dialogue", "inner_os", "emphasis")):
+        rules.append("所有指定文字只出现一次，不能在不同分格重复绘制同一段文字。")
     if values.get("narration"):
-        rules.append("旁白使用漫画旁白框或字幕框呈现，可放在画面上方、下方或格子边缘，并与对白气泡明确区分。")
+        rules.append("旁白使用漫画旁白框或字幕框呈现，只选择一个位置放置完整旁白，并与对白气泡明确区分。")
+        layout_hint = f"{visual_prompt}\n{text_layout or ''}"
+        if re.search(r"(上下|上格|下格|上中下|中格|多格|分格|分屏|左右|左栏|右栏|多栏)", layout_hint):
+            rules.append(
+                "如果是分格或多栏页面，整页旁白只使用一个旁白框，不要在上格、下格或不同分栏里重复放置同一段旁白；"
+                "只有文字列表明确拆成上格旁白、下格旁白时，才分别放到对应格子。"
+            )
     if dialogue_block(image_text) or visual_prompt_has_dialogue(visual_prompt):
         rules.append("对白出现在对应人物附近的对白气泡中，气泡尾巴指向说话人物；气泡里呈现人物说出的句子。")
     if values.get("inner_os"):
@@ -730,7 +742,7 @@ def build_adapted_story_final_prompt(
                 image_text_lines,
             ]
         )
-    rules = text_rules_block(visual_prompt, image_text)
+    rules = text_rules_block(visual_prompt, image_text, text_layout)
     if rules:
         lines.extend(["", rules])
     return "\n".join(line for line in lines if line is not None).strip()
