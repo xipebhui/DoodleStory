@@ -44,6 +44,12 @@ class MediaTextResult:
 
 
 @dataclass(frozen=True)
+class ImageExtractionReference:
+    url: str
+    source_path: str
+
+
+@dataclass(frozen=True)
 class AudioExtractionResult:
     text: str
     model: str
@@ -189,7 +195,7 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
     return text
 
 
-def extract_ordered_gallery_comic_content(images: list[tuple[Path, str]]) -> MediaTextResult:
+def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]) -> MediaTextResult:
     if not images:
         raise LLMResponseError("没有可提取的图文图片")
     if len(images) > MAX_CONTENT_EXTRACTION_IMAGES:
@@ -197,17 +203,18 @@ def extract_ordered_gallery_comic_content(images: list[tuple[Path, str]]) -> Med
     settings = get_settings()
     model = settings.siliconflow_vision_model.strip()
     content: list[dict[str, object]] = [{"type": "text", "text": COMIC_CONTENT_EXTRACTION_PROMPT}]
-    for index, (path, content_type) in enumerate(images, start=1):
-        if not path.exists() or not path.is_file() or path.stat().st_size <= 0:
-            raise LLMResponseError(f"媒体文件为空：{path}")
+    for index, image in enumerate(images, start=1):
+        if not image.url.startswith(("http://", "https://")):
+            raise LLMResponseError(f"图片理解需要公网 HTTP(S) URL：{image.source_path}")
         content.append({"type": "text", "text": f"第 {index} 张图片："})
-        content.append({"type": "image_url", "image_url": {"url": data_url(path, content_type), "detail": "high"}})
+        content.append({"type": "image_url", "image_url": {"url": image.url, "detail": "high"}})
     logger.info(
-        "content_extraction_ai_debug ordered_gallery_prompt model=%s image_count=%s prompt=%s image_paths=%s",
+        "content_extraction_ai_debug ordered_gallery_prompt model=%s image_count=%s prompt=%s image_urls=%s source_paths=%s",
         model,
         len(images),
         COMIC_CONTENT_EXTRACTION_PROMPT,
-        [str(path) for path, _content_type in images],
+        [image.url for image in images],
+        [image.source_path for image in images],
     )
     text = _chat_multimodal(
         model=model,

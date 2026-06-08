@@ -1,6 +1,8 @@
 import logging
 import mimetypes
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 
@@ -29,6 +31,7 @@ from app.services.douyin_import_service import (
 )
 from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError
 from app.services.media_text_extraction import (
+    ImageExtractionReference,
     MAX_CONTENT_EXTRACTION_IMAGES,
     extract_ordered_gallery_comic_content,
     transcribe_video_audio,
@@ -43,6 +46,20 @@ DOUYIN_URL_PATTERN = re.compile(
 )
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_SUFFIXES = {".mp4"}
+ASSET_UPLOAD_CONCURRENCY = 6
+
+
+@dataclass(frozen=True)
+class DownloadedAssetCandidate:
+    display_order: int
+    path: Path
+    media_kind: ContentExtractionMediaKind
+
+
+@dataclass(frozen=True)
+class SavedDownloadedAsset:
+    candidate: DownloadedAssetCandidate
+    asset: FileAsset
 
 
 def content_extraction_options():
@@ -121,6 +138,46 @@ def save_path_as_asset(path: Path, media_kind: ContentExtractionMediaKind) -> Fi
         width=width,
         height=height,
     )
+
+
+def save_downloaded_assets_parallel(candidates: list[DownloadedAssetCandidate]) -> list[SavedDownloadedAsset]:
+    if not candidates:
+        return []
+    started = monotonic()
+    max_workers = min(ASSET_UPLOAD_CONCURRENCY, len(candidates))
+    logger.info(
+        "content_extraction_debug asset_upload_parallel_start item_count=%s max_workers=%s display_orders=%s",
+        len(candidates),
+        max_workers,
+        [candidate.display_order for candidate in candidates],
+    )
+    saved_by_order: dict[int, SavedDownloadedAsset] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(save_path_as_asset, candidate.path, candidate.media_kind): candidate
+            for candidate in candidates
+        }
+        for future in as_completed(future_map):
+            candidate = future_map[future]
+            asset = future.result()
+            saved_by_order[candidate.display_order] = SavedDownloadedAsset(candidate=candidate, asset=asset)
+            logger.info(
+                "content_extraction_debug asset_upload_parallel_item_done display_order=%s media_kind=%s source_path=%s storage_backend=%s storage_key=%s byte_size=%s elapsed_ms=%s",
+                candidate.display_order,
+                candidate.media_kind.value,
+                candidate.path,
+                asset.storage_backend.value,
+                asset.storage_key,
+                asset.byte_size,
+                round((monotonic() - started) * 1000),
+            )
+    saved = [saved_by_order[candidate.display_order] for candidate in candidates]
+    logger.info(
+        "content_extraction_debug asset_upload_parallel_done item_count=%s elapsed_ms=%s",
+        len(saved),
+        round((monotonic() - started) * 1000),
+    )
+    return saved
 
 
 def content_preview(text: str | None, limit: int = 160) -> str | None:
@@ -222,59 +279,65 @@ def attach_douyin_download_result(content: ContentExtraction, db: Session) -> No
         round((monotonic() - started) * 1000),
     )
 
+    candidates: list[DownloadedAssetCandidate] = []
     display_order = 1
     for path in result.media_files:
-        media_kind = media_kind_for_path(path)
-        asset = save_path_as_asset(path, media_kind)
-        db.add(asset)
-        db.flush()
-        logger.info(
-            "content_extraction_debug media_registered content_id=%s display_order=%s media_kind=%s source_path=%s asset_id=%s storage_backend=%s storage_key=%s byte_size=%s content_type=%s",
-            content.id,
-            display_order,
-            media_kind.value,
-            path,
-            asset.id,
-            asset.storage_backend.value,
-            asset.storage_key,
-            asset.byte_size,
-            asset.content_type,
-        )
-        db.add(
-            ContentExtractionMedia(
-                content_extraction=content,
-                asset=asset,
-                source_path=str(path),
-                media_kind=media_kind,
+        candidates.append(
+            DownloadedAssetCandidate(
                 display_order=display_order,
+                path=path,
+                media_kind=media_kind_for_path(path),
+            )
+        )
+        display_order += 1
+    for path in result.metadata_files:
+        candidates.append(
+            DownloadedAssetCandidate(
+                display_order=display_order,
+                path=path,
+                media_kind=ContentExtractionMediaKind.metadata,
             )
         )
         display_order += 1
 
-    for path in result.metadata_files:
-        asset = save_path_as_asset(path, ContentExtractionMediaKind.metadata)
+    for saved in save_downloaded_assets_parallel(candidates):
+        candidate = saved.candidate
+        asset = saved.asset
         db.add(asset)
         db.flush()
-        logger.info(
-            "content_extraction_debug metadata_registered content_id=%s display_order=%s source_path=%s asset_id=%s storage_backend=%s storage_key=%s byte_size=%s",
-            content.id,
-            display_order,
-            path,
-            asset.id,
-            asset.storage_backend.value,
-            asset.storage_key,
-            asset.byte_size,
-        )
+        if candidate.media_kind == ContentExtractionMediaKind.metadata:
+            logger.info(
+                "content_extraction_debug metadata_registered content_id=%s display_order=%s source_path=%s asset_id=%s storage_backend=%s storage_key=%s byte_size=%s",
+                content.id,
+                candidate.display_order,
+                candidate.path,
+                asset.id,
+                asset.storage_backend.value,
+                asset.storage_key,
+                asset.byte_size,
+            )
+        else:
+            logger.info(
+                "content_extraction_debug media_registered content_id=%s display_order=%s media_kind=%s source_path=%s asset_id=%s storage_backend=%s storage_key=%s byte_size=%s content_type=%s",
+                content.id,
+                candidate.display_order,
+                candidate.media_kind.value,
+                candidate.path,
+                asset.id,
+                asset.storage_backend.value,
+                asset.storage_key,
+                asset.byte_size,
+                asset.content_type,
+            )
         db.add(
             ContentExtractionMedia(
                 content_extraction=content,
                 asset=asset,
-                source_path=str(path),
-                media_kind=ContentExtractionMediaKind.metadata,
-                display_order=display_order,
+                source_path=str(candidate.path),
+                media_kind=candidate.media_kind,
+                display_order=candidate.display_order,
             )
         )
-        display_order += 1
 
     db.flush()
     content.media.sort(key=lambda item: (item.display_order, item.media_kind.value))
@@ -375,15 +438,22 @@ def apply_content_text_extraction(content: ContentExtraction, db: Session) -> No
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}",
                 )
-            images = [
-                (source_media_path(media), media.asset.content_type)
-                for media in image_media
-            ]
+            images: list[ImageExtractionReference] = []
+            for media in image_media:
+                source_path = source_media_path(media)
+                public_url = (media.asset.public_url or "").strip()
+                if not public_url.startswith(("http://", "https://")):
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"图片理解需要已上传对象存储后的公网 URL：{media.source_path}",
+                    )
+                images.append(ImageExtractionReference(url=public_url, source_path=str(source_path)))
             logger.info(
-                "content_extraction_debug ordered_gallery_extract_start content_id=%s image_count=%s source_paths=%s",
+                "content_extraction_debug ordered_gallery_extract_start content_id=%s image_count=%s image_urls=%s source_paths=%s",
                 content.id,
                 len(images),
-                [str(path) for path, _content_type in images],
+                [image.url for image in images],
+                [image.source_path for image in images],
             )
             result = extract_ordered_gallery_comic_content(images)
             content.extracted_text = result.text
