@@ -26,6 +26,7 @@ from app.services.image_generation import (
     generate_xg_image,
 )
 from app.services.prompt_templates import render_prompt_template
+from app.services.style_references import build_style_reference_pack_from_style, is_image_reference_mode
 from app.services.storage import save_upload_file
 
 router = APIRouter(prefix="/styles", tags=["styles"])
@@ -55,6 +56,12 @@ def normalize_aspect_ratio(value: str) -> str:
     if cleaned not in STYLE_ASPECT_RATIOS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="画面比例不支持")
     return cleaned
+
+
+def style_test_reference_instruction(style: Style) -> str:
+    if is_image_reference_mode(style.style_reference_mode):
+        return "整体视觉风格以随请求提供的风格参考图为准。"
+    return f"整体保持这种视觉风格：{style.style_prompt.strip()}"
 
 
 @router.get("", response_model=ApiList[StyleRead])
@@ -252,6 +259,7 @@ def create_style_test(
         "style_test_image_prompt_v1.md",
         {
             "style_prompt": style.style_prompt.strip(),
+            "style_reference_instruction": style_test_reference_instruction(style),
             "aspect_ratio": style.aspect_ratio,
             "test_text": payload.test_text.strip(),
         },
@@ -263,6 +271,7 @@ def create_style_test(
         style_prompt_snapshot=style.style_prompt,
         image_model_name_snapshot=style.image_model_name,
         aspect_ratio_snapshot=style.aspect_ratio,
+        style_reference_mode_snapshot=style.style_reference_mode,
         composed_prompt=composed_prompt,
         status=WorkflowStatus.running,
         attempts=1,
@@ -277,14 +286,15 @@ def create_style_test(
         style.id,
         style.image_model_name,
         len(payload.test_text),
-        0,
+        len(style.reference_images) if is_image_reference_mode(style.style_reference_mode) else 0,
         len(style.reference_images),
     )
 
     try:
+        style_reference_pack = build_style_reference_pack_from_style(style)
         generated = generate_xg_image(
             prompt=composed_prompt,
-            references=[],
+            references=style_reference_pack.references,
             image_model_name=style.image_model_name,
             aspect_ratio=style.aspect_ratio,
         )

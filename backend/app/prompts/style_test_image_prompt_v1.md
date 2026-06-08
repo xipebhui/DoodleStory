@@ -1,4 +1,4 @@
-请生成一张中文图文故事测试图，整体保持这种视觉风格：{{ style_prompt }}
+请生成一张中文图文故事测试图，{{ style_reference_instruction }}
 
 画面比例是 {{ aspect_ratio }}。
 

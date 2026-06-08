@@ -21,6 +21,7 @@ from app.models.enums import (
     StepStatus,
     StorageBackend,
     StoryInputMode,
+    StyleReferenceMode,
     StyleStatus,
     TaskStatus,
     UserRole,
@@ -75,6 +76,9 @@ class Style(Base, TimestampMixin):
     status: Mapped[StyleStatus] = mapped_column(Enum(StyleStatus), default=StyleStatus.draft, index=True)
     image_model_name: Mapped[str] = mapped_column(String(120), index=True)
     aspect_ratio: Mapped[str] = mapped_column(String(20), default="9:16")
+    style_reference_mode: Mapped[StyleReferenceMode] = mapped_column(
+        Enum(StyleReferenceMode), default=StyleReferenceMode.prompt, index=True
+    )
     style_prompt: Mapped[str] = mapped_column(Text)
     cover_asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
     last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -126,6 +130,9 @@ class StyleTest(Base, TimestampMixin):
     style_prompt_snapshot: Mapped[str] = mapped_column(Text)
     image_model_name_snapshot: Mapped[str] = mapped_column(String(120))
     aspect_ratio_snapshot: Mapped[str] = mapped_column(String(20), default="9:16")
+    style_reference_mode_snapshot: Mapped[StyleReferenceMode] = mapped_column(
+        Enum(StyleReferenceMode), default=StyleReferenceMode.prompt
+    )
     composed_prompt: Mapped[str] = mapped_column(Text)
     status: Mapped[WorkflowStatus] = mapped_column(Enum(WorkflowStatus), default=WorkflowStatus.queued)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -170,6 +177,9 @@ class GenerationTask(Base, TimestampMixin):
     style_prompt_snapshot: Mapped[str] = mapped_column(Text)
     image_model_name_snapshot: Mapped[str] = mapped_column(String(120))
     style_aspect_ratio_snapshot: Mapped[str] = mapped_column(String(20), default="9:16")
+    style_reference_mode_snapshot: Mapped[StyleReferenceMode] = mapped_column(
+        Enum(StyleReferenceMode), default=StyleReferenceMode.prompt
+    )
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.queued, index=True)
     current_step: Mapped[Optional[GenerationStepName]] = mapped_column(Enum(GenerationStepName), nullable=True)
     progress_current: Mapped[int] = mapped_column(Integer, default=0)
@@ -189,6 +199,9 @@ class GenerationTask(Base, TimestampMixin):
     steps: Mapped[list["GenerationStep"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     panels: Mapped[list["TaskPanel"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     characters: Mapped[list["TaskCharacter"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    style_reference_images: Mapped[list["TaskStyleReferenceImage"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
     generated_images: Mapped[list["GeneratedImage"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     downloads: Mapped[list["TaskDownload"]] = relationship(back_populates="task", cascade="all, delete-orphan")
 
@@ -207,6 +220,24 @@ class GenerationTask(Base, TimestampMixin):
                         }
                     )
         return references
+
+
+class TaskStyleReferenceImage(Base):
+    __tablename__ = "task_style_reference_images"
+    __table_args__ = (
+        UniqueConstraint("task_id", "asset_id"),
+        UniqueConstraint("task_id", "reference_order"),
+        CheckConstraint("reference_order > 0", name="ck_task_style_reference_images_reference_order_positive"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("file_assets.id", ondelete="RESTRICT"))
+    reference_order: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    task: Mapped[GenerationTask] = relationship(back_populates="style_reference_images")
+    asset: Mapped[FileAsset] = relationship()
 
 
 class GenerationStep(Base, TimestampMixin):

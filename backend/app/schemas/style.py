@@ -1,7 +1,7 @@
 from datetime import datetime
 from pydantic import BaseModel, Field, computed_field
 
-from app.models.enums import StyleStatus, WorkflowStatus
+from app.models.enums import StyleReferenceMode, StyleStatus, WorkflowStatus
 from app.schemas.common import TimestampFields
 
 STYLE_ASPECT_RATIOS = ("1:1", "3:4", "4:3", "9:16", "16:9")
@@ -13,6 +13,7 @@ class StyleCreate(BaseModel):
     status: StyleStatus = StyleStatus.draft
     image_model_name: str = Field(min_length=1, max_length=120)
     aspect_ratio: str = Field(default="9:16")
+    style_reference_mode: StyleReferenceMode = StyleReferenceMode.prompt
     style_prompt: str = Field(min_length=1, max_length=8000)
 
 
@@ -22,6 +23,7 @@ class StyleUpdate(BaseModel):
     status: StyleStatus | None = None
     image_model_name: str | None = Field(default=None, min_length=1, max_length=120)
     aspect_ratio: str | None = None
+    style_reference_mode: StyleReferenceMode | None = None
     style_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
 
 
@@ -70,6 +72,7 @@ class StyleRead(TimestampFields):
     status: StyleStatus
     image_model_name: str
     aspect_ratio: str
+    style_reference_mode: StyleReferenceMode
     style_prompt: str
     cover_asset: FileAssetRead | None = None
     last_tested_at: datetime | None
@@ -87,6 +90,7 @@ class StyleTestRead(TimestampFields):
     style_prompt_snapshot: str
     image_model_name_snapshot: str
     aspect_ratio_snapshot: str
+    style_reference_mode_snapshot: StyleReferenceMode
     composed_prompt: str
     status: WorkflowStatus
     output_asset: FileAssetRead | None = None

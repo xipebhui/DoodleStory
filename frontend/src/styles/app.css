@@ -321,6 +321,44 @@ textarea {
   line-height: 1.45;
 }
 
+.style-reference-mode-field {
+  grid-column: 1 / -1;
+}
+
+.style-reference-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.style-reference-mode-options label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 12px;
+}
+
+.style-reference-mode-options input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.style-reference-mode-options span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.style-reference-mode-options strong {
+  color: #ecf1f8;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -3213,6 +3251,10 @@ textarea {
   .drawer-actions,
   .account-actions {
     display: grid;
+  }
+
+  .style-reference-mode-options {
+    grid-template-columns: 1fr;
   }
 }
 

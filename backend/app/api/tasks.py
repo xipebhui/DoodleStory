@@ -15,6 +15,8 @@ from app.models.entities import (
     GenerationStep,
     GenerationTask,
     Style,
+    StyleReferenceImage,
+    TaskStyleReferenceImage,
     TaskCharacter,
     TaskCharacterAppearance,
     TaskDownload,
@@ -39,6 +41,8 @@ from app.models.enums import (
 from app.schemas.common import ApiData, ApiList
 from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskListItemRead, TaskPreviewImageRead, TaskRead
 from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
+from app.services.image_generation import ImageProviderConfigError
+from app.services.style_references import snapshot_task_style_reference_images
 from app.services.storage import existing_local_asset_path, save_local_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -60,6 +64,7 @@ def task_options():
         selectinload(GenerationTask.characters)
         .selectinload(TaskCharacter.appearances)
         .selectinload(TaskCharacterAppearance.reference_image),
+        selectinload(GenerationTask.style_reference_images).selectinload(TaskStyleReferenceImage.asset),
         selectinload(GenerationTask.downloads).selectinload(TaskDownload.asset),
     )
 
@@ -186,6 +191,7 @@ def list_tasks(
                 style_name_snapshot=task.style_name_snapshot,
                 image_model_name_snapshot=task.image_model_name_snapshot,
                 style_aspect_ratio_snapshot=task.style_aspect_ratio_snapshot,
+                style_reference_mode_snapshot=task.style_reference_mode_snapshot,
                 status=task.status,
                 progress_current=task.progress_current,
                 progress_total=task.progress_total,
@@ -209,7 +215,11 @@ def list_tasks(
 
 @router.post("", response_model=ApiData[TaskRead], status_code=status.HTTP_202_ACCEPTED)
 async def create_task(payload: TaskCreate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
-    style = db.scalar(select(Style).where(Style.id == payload.style_id, Style.deleted_at.is_(None)))
+    style = db.scalar(
+        select(Style)
+        .where(Style.id == payload.style_id, Style.deleted_at.is_(None))
+        .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+    )
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
     if style.status != StyleStatus.active:
@@ -235,6 +245,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
         style_prompt_snapshot=style.style_prompt,
         image_model_name_snapshot=style.image_model_name,
         style_aspect_ratio_snapshot=style.aspect_ratio,
+        style_reference_mode_snapshot=style.style_reference_mode,
         status=TaskStatus.queued,
         progress_current=0,
     )
@@ -259,6 +270,10 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
                 idempotency_key=f"{task.id}:{step_name.value}",
             )
         )
+    try:
+        snapshot_task_style_reference_images(db=db, task=task, style=style)
+    except ImageProviderConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     db.commit()
     db.refresh(task)
     await enqueue_task(task.id)
@@ -282,7 +297,11 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     if task.status not in {TaskStatus.failed, TaskStatus.partial_succeeded}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败或部分完成的任务可以重试")
 
-    style = db.scalar(select(Style).where(Style.id == task.style_id, Style.deleted_at.is_(None)))
+    style = db.scalar(
+        select(Style)
+        .where(Style.id == task.style_id, Style.deleted_at.is_(None))
+        .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+    )
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务绑定的风格不存在")
     if style.status != StyleStatus.active:
@@ -327,6 +346,11 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     task.style_prompt_snapshot = style.style_prompt
     task.image_model_name_snapshot = style.image_model_name
     task.style_aspect_ratio_snapshot = style.aspect_ratio
+    task.style_reference_mode_snapshot = style.style_reference_mode
+    try:
+        snapshot_task_style_reference_images(db=db, task=task, style=style)
+    except ImageProviderConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     db.commit()
     await enqueue_task(task.id)

@@ -12,6 +12,7 @@ export type Style = {
   status: "draft" | "active" | "disabled";
   image_model_name: string;
   aspect_ratio: string;
+  style_reference_mode: "prompt" | "image";
   style_prompt: string;
   cover_asset: FileAsset | null;
   last_tested_at: string | null;
@@ -49,6 +50,7 @@ export type StyleTest = {
   test_text: string;
   composed_prompt: string;
   aspect_ratio_snapshot: string;
+  style_reference_mode_snapshot: "prompt" | "image";
   status: "queued" | "running" | "succeeded" | "failed" | "cancel_requested" | "cancelled" | "retrying";
   output_asset: FileAsset | null;
   error_code: string | null;
@@ -73,6 +75,7 @@ export type Task = {
   style_name_snapshot: string;
   image_model_name_snapshot: string;
   style_aspect_ratio_snapshot: string;
+  style_reference_mode_snapshot: "prompt" | "image";
   status:
     | "queued"
     | "running"
@@ -115,6 +118,7 @@ export type TaskSummary = {
   style_name_snapshot: string;
   image_model_name_snapshot: string;
   style_aspect_ratio_snapshot: string;
+  style_reference_mode_snapshot: "prompt" | "image";
   status: Task["status"];
   progress_current: number;
   progress_total: number;

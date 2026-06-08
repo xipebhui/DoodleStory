@@ -2,11 +2,30 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import call, patch
 
-from app.models.enums import PanelType, StorageBackend
+from app.models.entities import (
+    FileAsset,
+    GenerationTask,
+    TaskCharacter,
+    TaskCharacterAppearance,
+    TaskPanel,
+    TaskPanelCharacterAppearance,
+    TaskStyleReferenceImage,
+)
+from app.models.enums import (
+    FileAssetPurpose,
+    ImageCountMode,
+    PanelType,
+    StorageBackend,
+    StoryInputMode,
+    StyleReferenceMode,
+    WorkflowStatus,
+)
 from app.services.image_generation import GeneratedImageFile, ImageReference, ImageProviderResponseError
 from app.services.task_worker import (
     PreparedPanelImageRequest,
     build_adapted_story_final_prompt,
+    build_generation_reference_pack,
+    build_panel_final_prompt,
     generate_panel_image_request,
     is_policy_blocked_image_error,
 )
@@ -51,6 +70,96 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("低饱和手绘漫画风，细线条，浅色水彩，中文手写字要清晰偏大。", final_prompt)
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("画面比例：3:4"))
 
+    def test_panel_final_prompt_omits_style_prompt_in_image_reference_mode(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="参考图风格",
+            style_prompt_snapshot="这段风格提示词不应直接进入最终生图 prompt",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+        panel = TaskPanel(panel_order=1, panel_type=PanelType.scene, original_text_segment="原文")
+
+        final_prompt = build_panel_final_prompt(
+            task=task,
+            panel=panel,
+            visual_prompt="女孩在窗边读书。",
+            image_text={"narration": "原文"},
+            reference_notes=["风格参考（参考图1）"],
+        )
+
+        self.assertIn("风格参考（参考图1）", final_prompt)
+        self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
+        self.assertNotIn("这段风格提示词不应直接进入最终生图 prompt", final_prompt)
+
+    def test_generation_reference_pack_orders_character_before_style_reference(self) -> None:
+        character_asset = FileAsset(
+            purpose=FileAssetPurpose.character_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="characters/zhangsan.png",
+            public_url="https://cdn.example.com/characters/zhangsan.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        style_asset = FileAsset(
+            purpose=FileAssetPurpose.style_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="styles/watercolor.png",
+            public_url="https://cdn.example.com/styles/watercolor.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        character = TaskCharacter(character_key="char_1", name="张三", description="主角")
+        appearance = TaskCharacterAppearance(
+            appearance_key="char_1_adult",
+            status=WorkflowStatus.succeeded,
+            reference_image=character_asset,
+        )
+        appearance.character = character
+        panel = TaskPanel(panel_order=1, panel_type=PanelType.scene, original_text_segment="原文")
+        panel.character_appearances = [
+            TaskPanelCharacterAppearance(
+                reference_order=1,
+                appearance=appearance,
+            )
+        ]
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            use_character_references=True,
+            style_id="style",
+            style_name_snapshot="参考图风格",
+            style_prompt_snapshot="手绘风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+        task.style_reference_images = [
+            TaskStyleReferenceImage(reference_order=1, asset=style_asset),
+        ]
+
+        pack = build_generation_reference_pack(task, panel)
+
+        self.assertEqual(
+            [
+                "https://cdn.example.com/characters/zhangsan.png",
+                "https://cdn.example.com/styles/watercolor.png",
+            ],
+            [reference.url for reference in pack.references],
+        )
+        self.assertEqual(["张三参考（参考图1）", "风格参考（参考图2）"], pack.notes)
+        self.assertEqual(1, pack.character_reference_count)
+        self.assertEqual(1, pack.style_reference_count)
+
     def test_google_policy_blocked_error_rewrites_prompt_with_same_model_and_references(self) -> None:
         blocked_error = ImageProviderResponseError(
             "图片 Provider 请求失败：HTTP 400 {\"error\":{\"message\":\"Unable to show the generated image. "
@@ -74,6 +183,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
             references=[ImageReference(url="https://cdn.example.com/person.jpg")],
             reference_count=1,
             character_reference_count=1,
+            style_reference_count=0,
         )
 
         with patch("app.services.task_worker.generate_xg_image", side_effect=[blocked_error, generated]) as generate, patch(
@@ -122,6 +232,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
             references=[],
             reference_count=0,
             character_reference_count=0,
+            style_reference_count=0,
         )
         error = ImageProviderResponseError("图片 Provider 请求失败：HTTP 400 bad request")
 

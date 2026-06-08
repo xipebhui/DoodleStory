@@ -5,11 +5,11 @@
 - 分支：`main`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：产品设计文档已中文化，并通过 `./scripts/check.sh`
+- 最近验证状态：Sprint 42 风格参考方式实现后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-41-policy-blocked-prompt-rewrite.md`
+- `docs/contracts/sprint-42-style-reference-mode.md`
 
 ## 最近完成的工作
 
@@ -174,12 +174,13 @@
 - Sprint 39 旧图片生成状态修复实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_download_state.py`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - Sprint 40 Policy Blocked 生图切换实现前，远程真实验证 `3564da7ea27e496bb30fdb608441e51c` panel 9 使用 `baidu/ERNIE-Image-Turbo`、`reference_count=0` 成功返回 `image/jpeg`，耗时约 31.7 秒，provider request id 为 `202606080746462097348648268d9d6XlLSJ0fe`；实现后 `PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - Sprint 41 Policy Blocked 提示词改写实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
+- Sprint 42 风格参考方式实现后，新增 `prompt` / `image` 两种风格参考模式；旧数据默认保持 `prompt`；任务创建和重试会保存风格参考方式与参考图快照；正式 panel 生图、单 panel 修改和风格测试会按同一套参考方式传入 Prompt 或风格参考图。`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地重启前后端后，浏览器验证 `/styles` 页面可见“Prompt 参考”，新建风格抽屉中可见“Prompt 参考 / 参考图参考”和公网 URL 说明。浏览器截图尝试两次均因 in-app browser `Page.captureScreenshot` 超时未保存。
 
 ## 已知缺口
 
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
-- 风格测试真实生图尚未实现，当前仍会明确返回 Provider 未接入错误，避免产生 Mock 结果。
+- 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。
 - LLM 客户端和 prompts 已实现，但尚未接入任务 worker 流程。
 - 任务 worker 已接入 LLM 和统一生图 Gateway 客户端，基础任务详情、批量下载和预览已完成；更精细的运行中恢复策略、单图下载入口和更系统的组件拆分仍可继续完善。
 - 历史本地资产尚未迁移到七牛；七牛对象存储已通过独立上传/访问烟测，仍建议用真实任务生成链路做一次端到端验证。

@@ -50,6 +50,10 @@ type View = "tasks" | "content" | "styles" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const imageModelNamePlaceholder = "生图模型名，例如 gpt-image-2";
+const styleReferenceModeLabels: Record<Style["style_reference_mode"], string> = {
+  prompt: "Prompt 参考",
+  image: "参考图参考",
+};
 const viewRoutes: Record<View, string> = {
   tasks: "/tasks",
   content: "/content-extractions",
@@ -1447,7 +1451,7 @@ function TasksView({
                 <legend>选择风格</legend>
                 <div className="style-picker-head">
                   <div>
-                    <p>通过参考图判断视觉方向，提交后会使用该风格绑定的模型名生成图片。</p>
+                    <p>按风格内设置的参考方式生成图片，提交后会使用该风格绑定的模型名。</p>
                   </div>
                   {canExpandCreateStyles ? (
                     <button type="button" className="secondary-button" onClick={() => setStylePickerOpen(true)}>
@@ -1476,7 +1480,7 @@ function TasksView({
                       </span>
                       <strong>{selectedCreateStyle.name}</strong>
                       <p>{selectedCreateStyle.description || "暂无描述"}</p>
-                      <small>{selectedCreateStyle.reference_images.length} 张参考图 · 比例 {selectedCreateStyle.aspect_ratio} · {selectedCreateStyle.image_model_name}</small>
+                      <small>{styleReferenceModeLabels[selectedCreateStyle.style_reference_mode]} · {selectedCreateStyle.reference_images.length} 张参考图 · 比例 {selectedCreateStyle.aspect_ratio} · {selectedCreateStyle.image_model_name}</small>
                     </div>
                   </div>
                 ) : null}
@@ -1499,7 +1503,7 @@ function TasksView({
                         </div>
                         <div>
                           <strong>{style.name}</strong>
-                          <small>{style.description || `${style.reference_images.length} 张参考图`} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
+                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {styleReferenceModeLabels[style.style_reference_mode]} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
                         </div>
                         <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
                       </button>
@@ -1565,7 +1569,7 @@ function TasksView({
                         </div>
                         <div>
                           <strong>{style.name}</strong>
-                          <small>{style.description || `${style.reference_images.length} 张参考图`} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
+                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {styleReferenceModeLabels[style.style_reference_mode]} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
                         </div>
                         <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
                       </button>
@@ -2237,6 +2241,7 @@ function StylesView({ user }: { user: User }) {
       status: String(formData.get("status") ?? "draft") as Style["status"],
       image_model_name: String(formData.get("image_model_name") ?? ""),
       aspect_ratio: String(formData.get("aspect_ratio") ?? "9:16"),
+      style_reference_mode: String(formData.get("style_reference_mode") ?? "prompt") as Style["style_reference_mode"],
       style_prompt: String(formData.get("style_prompt") ?? ""),
       description: String(formData.get("description") ?? ""),
     };
@@ -2405,7 +2410,7 @@ function StylesView({ user }: { user: User }) {
               <div className="editor-title">
                 <div>
                   <h2>测试结果</h2>
-                  <p>测试图仅用于校准风格提示词；参考图只作为样张查看。</p>
+                  <p>测试图使用当前风格参考方式，结果应与正式任务的风格输入保持一致。</p>
                 </div>
                 {styleTest ? <span className={`status-pill ${styleTest.status}`}>{styleTest.status}</span> : null}
               </div>
@@ -2433,7 +2438,7 @@ function StylesView({ user }: { user: User }) {
       <header className="page-header">
         <div>
           <h1>风格</h1>
-          <p>共 {styles.length} 个风格，{activeCount} 个启用。生图风格由模板提示词控制，参考图只作为样张展示。</p>
+          <p>共 {styles.length} 个风格，{activeCount} 个启用。每个风格可选择使用 Prompt 或参考图作为生图风格参考。</p>
         </div>
         <button onClick={startCreate}>
           <Plus size={18} />
@@ -2479,7 +2484,7 @@ function StylesView({ user }: { user: User }) {
                   </button>
                 </div>
                 <p>{style.description || "暂无描述"}</p>
-                <small>{style.reference_images.length} 张参考图 · 比例 {style.aspect_ratio} · 模型 {style.image_model_name} · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
+                <small>{styleReferenceModeLabels[style.style_reference_mode]} · {style.reference_images.length} 张参考图 · 比例 {style.aspect_ratio} · 模型 {style.image_model_name} · {style.last_tested_at ? `最近测试 ${formatDateTime(style.last_tested_at)}` : "未测试"}</small>
               </div>
               <div className="style-row-strip">
                 {assets.slice(0, 5).map((asset) => (
@@ -2513,7 +2518,7 @@ function StylesView({ user }: { user: User }) {
             <div className="editor-title">
               <div>
                 <h2>基础信息</h2>
-                <p>风格提示词用于任务生图；描述和参考图用于管理与样张展示。</p>
+                <p>选择 Prompt 或参考图作为正式生图的风格参考来源。</p>
               </div>
               {styleFormMode === "edit" && formStyle ? (
                 <button type="button" className="danger-button" onClick={() => deleteStyle(formStyle)}>
@@ -2534,6 +2539,35 @@ function StylesView({ user }: { user: User }) {
                 </option>
               ))}
             </select>
+            <div className="form-field style-reference-mode-field">
+              <span>参考方式</span>
+              <div className="style-reference-mode-options">
+                <label>
+                  <input
+                    type="radio"
+                    name="style_reference_mode"
+                    value="prompt"
+                    defaultChecked={(formStyle?.style_reference_mode ?? "prompt") === "prompt"}
+                  />
+                  <span>
+                    <strong>Prompt 参考</strong>
+                    <small>最终生图 prompt 会直接拼接风格提示词。</small>
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="style_reference_mode"
+                    value="image"
+                    defaultChecked={formStyle?.style_reference_mode === "image"}
+                  />
+                  <span>
+                    <strong>参考图参考</strong>
+                    <small>生图请求会传入风格参考图，参考图需有公网 URL。</small>
+                  </span>
+                </label>
+              </div>
+            </div>
             <select name="status" defaultValue={formStyle?.status ?? "draft"}>
               <option value="draft">草稿</option>
               <option value="active">启用</option>
@@ -2552,7 +2586,7 @@ function StylesView({ user }: { user: User }) {
               <div className="editor-title">
                 <div>
                   <h2>参考图</h2>
-                  <p>{formStyle ? "参考图只作为风格样张展示，不会传入生图模型。" : "创建时选择的参考图会在风格创建成功后自动上传为样张。"}</p>
+                  <p>{formStyle ? "当参考方式为参考图参考时，这些图片会作为生图模型输入。" : "创建时选择的参考图会在风格创建成功后自动上传。"}</p>
                 </div>
                 {formStyle ? (
                   <label className="upload-button">

@@ -12,6 +12,11 @@ class StyleStatus(StrEnum):
     disabled = "disabled"
 
 
+class StyleReferenceMode(StrEnum):
+    prompt = "prompt"
+    image = "image"
+
+
 class FileAssetPurpose(StrEnum):
     style_reference = "style_reference"
     character_reference = "character_reference"

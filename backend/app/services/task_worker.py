@@ -18,6 +18,7 @@ from app.models.entities import (
     GenerationStep,
     GenerationTask,
     Style,
+    TaskStyleReferenceImage,
     TaskCharacter,
     TaskCharacterAppearance,
     TaskPanel,
@@ -67,6 +68,7 @@ from app.services.llm import (
     segment_story,
 )
 from app.services.prompt_logging import log_prompt_trace
+from app.services.style_references import build_task_style_reference_pack, is_prompt_reference_mode
 
 _queue: asyncio.Queue[str] | None = None
 _worker_tasks: list[asyncio.Task[None]] = []
@@ -90,6 +92,15 @@ class PreparedPanelImageRequest:
     references: list[ImageReference]
     reference_count: int
     character_reference_count: int
+    style_reference_count: int
+
+
+@dataclass(frozen=True)
+class GenerationReferencePack:
+    references: list[ImageReference]
+    notes: list[str]
+    character_reference_count: int
+    style_reference_count: int
 
 
 @dataclass(frozen=True)
@@ -204,7 +215,7 @@ def generate_panel_image_request(
     started = monotonic()
     try:
         logger.info(
-            "story_drawing_debug provider_request_start task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s aspect_ratio=%s prompt_chars=%s reference_count=%s character_reference_count=%s",
+            "story_drawing_debug provider_request_start task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s aspect_ratio=%s prompt_chars=%s reference_count=%s character_reference_count=%s style_reference_count=%s",
             task_id,
             request.panel_id,
             request.panel_order,
@@ -214,6 +225,7 @@ def generate_panel_image_request(
             len(request.final_prompt),
             request.reference_count,
             request.character_reference_count,
+            request.style_reference_count,
         )
         generated, actual_final_prompt, prompt_change_summary = generate_image_with_policy_prompt_rewrite(
             prompt=request.final_prompt,
@@ -404,6 +416,7 @@ def load_task(db: Session, task_id: str) -> GenerationTask | None:
             selectinload(GenerationTask.characters)
             .selectinload(TaskCharacter.appearances)
             .selectinload(TaskCharacterAppearance.reference_image),
+            selectinload(GenerationTask.style_reference_images).selectinload(TaskStyleReferenceImage.asset),
             selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
         )
     )
@@ -720,13 +733,14 @@ def build_panel_final_prompt(
     image_text: ImageTextPlan | dict[str, str | None] | None,
     reference_notes: list[str] | None = None,
 ) -> str:
+    style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
     if task.story_input_mode == StoryInputMode.original:
         return build_original_story_final_prompt(
             aspect_ratio=task.style_aspect_ratio_snapshot,
             visual_prompt=visual_prompt,
             reference_notes=reference_notes,
             exact_text=panel.original_text_segment,
-            style_prompt=task.style_prompt_snapshot,
+            style_prompt=style_prompt,
         )
     return build_adapted_story_final_prompt(
         aspect_ratio=task.style_aspect_ratio_snapshot,
@@ -736,7 +750,30 @@ def build_panel_final_prompt(
         image_text=image_text,
         reference_notes=reference_notes,
         text_layout=panel.text_layout,
-        style_prompt=task.style_prompt_snapshot,
+        style_prompt=style_prompt,
+    )
+
+
+def build_generation_reference_pack(task: GenerationTask, panel: TaskPanel) -> GenerationReferencePack:
+    if task.use_character_references:
+        character_pack = build_panel_reference_pack(panel=panel)
+        references = list(character_pack.references)
+        notes = list(character_pack.notes)
+        character_reference_count = character_pack.character_count
+    else:
+        references = []
+        notes = []
+        character_reference_count = 0
+
+    style_pack = build_task_style_reference_pack(task, start_index=len(references) + 1)
+    references.extend(style_pack.references)
+    notes.extend(style_pack.notes)
+
+    return GenerationReferencePack(
+        references=references,
+        notes=notes,
+        character_reference_count=character_reference_count,
+        style_reference_count=style_pack.style_count,
     )
 
 
@@ -959,7 +996,7 @@ def process_task(task_id: str) -> None:
         logger.info(
             "story_drawing_debug prompt_style_ready task_id=%s provider_style_reference_count=%s story_segment_count=%s",
             task.id,
-            0,
+            len(task.style_reference_images),
             len(story_segments),
         )
 
@@ -1021,7 +1058,7 @@ def process_task(task_id: str) -> None:
                 logger.info(
                     "story_drawing_debug character_reference_start task_id=%s provider_style_reference_count=%s",
                     task.id,
-                    0,
+                    len(task.style_reference_images),
                 )
                 ensure_character_reference_images(
                     db=db,
@@ -1183,7 +1220,7 @@ def process_task(task_id: str) -> None:
             "story_drawing_debug image_generation_start task_id=%s panel_count=%s provider_style_reference_count=%s image_model=%s aspect_ratio=%s",
             task.id,
             len(task.panels),
-            0,
+            len(task.style_reference_images),
             task.image_model_name_snapshot,
             task.style_aspect_ratio_snapshot,
         )
@@ -1206,15 +1243,11 @@ def process_task(task_id: str) -> None:
                 )
                 continue
             try:
-                if task.use_character_references:
-                    reference_pack = build_panel_reference_pack(panel=panel)
-                    panel_references = reference_pack.references
-                    reference_notes = reference_pack.notes
-                    character_reference_count = reference_pack.character_count
-                else:
-                    panel_references = []
-                    reference_notes = []
-                    character_reference_count = 0
+                reference_pack = build_generation_reference_pack(task, panel)
+                panel_references = reference_pack.references
+                reference_notes = reference_pack.notes
+                character_reference_count = reference_pack.character_reference_count
+                style_reference_count = reference_pack.style_reference_count
                 final_prompt = build_panel_final_prompt(
                     task=task,
                     panel=panel,
@@ -1241,18 +1274,20 @@ def process_task(task_id: str) -> None:
                     reference_notes=reference_notes,
                     reference_count=len(panel_references),
                     character_reference_count=character_reference_count,
+                    style_reference_count=style_reference_count,
                     visual_prompt=panel.generated_prompt,
                     image_text_json=panel.image_text_json,
                     final_prompt_chars=len(final_prompt),
                     final_prompt=final_prompt,
                 )
                 logger.info(
-                    "story_drawing_debug final_prompt_ready task_id=%s panel_id=%s panel_order=%s reference_count=%s character_reference_count=%s visual_prompt_chars=%s final_prompt_chars=%s",
+                    "story_drawing_debug final_prompt_ready task_id=%s panel_id=%s panel_order=%s reference_count=%s character_reference_count=%s style_reference_count=%s visual_prompt_chars=%s final_prompt_chars=%s",
                     task.id,
                     panel.id,
                     panel.panel_order,
                     len(panel_references),
                     character_reference_count,
+                    style_reference_count,
                     len(panel.generated_prompt or ""),
                     len(final_prompt),
                 )
@@ -1295,6 +1330,7 @@ def process_task(task_id: str) -> None:
                     references=panel_references,
                     reference_count=len(panel_references),
                     character_reference_count=character_reference_count,
+                    style_reference_count=style_reference_count,
                 )
             )
 
@@ -1569,95 +1605,62 @@ def process_panel_edit(generated_image_id: str) -> None:
             db.commit()
             return
 
-        if task.use_character_references:
-            try:
-                reference_pack = build_panel_reference_pack(panel=panel)
-            except ImageProviderConfigError as exc:
-                image.status = GeneratedImageStatus.failed
-                image.error_code = exc.__class__.__name__
-                image.error_message = str(exc)
-                image.finished_at = datetime.utcnow()
-                db.commit()
-                return
-            references = reference_pack.references
-            reference_notes = reference_pack.notes
-            image.final_prompt = build_panel_final_prompt(
-                task=task,
-                panel=panel,
-                visual_prompt=image.image_prompt or "",
-                image_text=parse_image_text_json(image.image_text_json)
-                or {
-                    "title": None,
-                    "narration": panel.narration_text,
-                    "dialogue": panel.dialogue_text,
-                    "inner_os": None,
-                    "emphasis": None,
-                },
-                reference_notes=reference_notes,
-            )
-            log_prompt_trace(
-                logger,
-                "panel_edit_final_image_prompt_composed",
-                context=task_trace_context(
-                    task,
-                    "panel_edit_generate_image",
-                    panel_id=panel.id,
-                    panel_order=panel.panel_order,
-                    generated_image_id=image.id,
-                    generation_number=image.generation_number,
-                ),
-                reference_notes=reference_notes,
-                reference_count=len(references),
-                visual_prompt=image.image_prompt,
-                image_text_json=image.image_text_json,
-                final_prompt_chars=len(image.final_prompt or ""),
-                final_prompt=image.final_prompt,
-            )
+        try:
+            reference_pack = build_generation_reference_pack(task, panel)
+        except ImageProviderConfigError as exc:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
             db.commit()
-        else:
-            references = []
-            reference_notes = []
-            image.final_prompt = build_panel_final_prompt(
-                task=task,
-                panel=panel,
-                visual_prompt=image.image_prompt or "",
-                image_text=parse_image_text_json(image.image_text_json)
-                or {
-                    "title": None,
-                    "narration": panel.narration_text,
-                    "dialogue": panel.dialogue_text,
-                    "inner_os": None,
-                    "emphasis": None,
-                },
-                reference_notes=reference_notes,
-            )
-            log_prompt_trace(
-                logger,
-                "panel_edit_final_image_prompt_composed",
-                context=task_trace_context(
-                    task,
-                    "panel_edit_generate_image",
-                    panel_id=panel.id,
-                    panel_order=panel.panel_order,
-                    generated_image_id=image.id,
-                    generation_number=image.generation_number,
-                ),
-                reference_notes=reference_notes,
-                reference_count=len(references),
-                visual_prompt=image.image_prompt,
-                image_text_json=image.image_text_json,
-                final_prompt_chars=len(image.final_prompt or ""),
-                final_prompt=image.final_prompt,
-            )
-            db.commit()
+            return
+        references = reference_pack.references
+        reference_notes = reference_pack.notes
+        image.final_prompt = build_panel_final_prompt(
+            task=task,
+            panel=panel,
+            visual_prompt=image.image_prompt or "",
+            image_text=parse_image_text_json(image.image_text_json)
+            or {
+                "title": None,
+                "narration": panel.narration_text,
+                "dialogue": panel.dialogue_text,
+                "inner_os": None,
+                "emphasis": None,
+            },
+            reference_notes=reference_notes,
+        )
+        log_prompt_trace(
+            logger,
+            "panel_edit_final_image_prompt_composed",
+            context=task_trace_context(
+                task,
+                "panel_edit_generate_image",
+                panel_id=panel.id,
+                panel_order=panel.panel_order,
+                generated_image_id=image.id,
+                generation_number=image.generation_number,
+            ),
+            reference_notes=reference_notes,
+            reference_count=len(references),
+            character_reference_count=reference_pack.character_reference_count,
+            style_reference_count=reference_pack.style_reference_count,
+            visual_prompt=image.image_prompt,
+            image_text_json=image.image_text_json,
+            final_prompt_chars=len(image.final_prompt or ""),
+            final_prompt=image.final_prompt,
+        )
+        db.commit()
         try:
             logger.info(
-                "panel edit image request generated_image_id=%s task_id=%s panel_id=%s prompt_chars=%s reference_count=%s",
+                "panel edit image request generated_image_id=%s task_id=%s panel_id=%s prompt_chars=%s reference_count=%s character_reference_count=%s style_reference_count=%s",
                 image.id,
                 task.id,
                 panel.id,
                 len(image.final_prompt or ""),
                 len(references),
+                reference_pack.character_reference_count,
+                reference_pack.style_reference_count,
             )
             original_final_prompt = image.final_prompt or ""
             generated, actual_final_prompt, prompt_change_summary = generate_image_with_policy_prompt_rewrite(

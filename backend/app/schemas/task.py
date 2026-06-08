@@ -13,6 +13,7 @@ from app.models.enums import (
     PromptStatus,
     StepStatus,
     StoryInputMode,
+    StyleReferenceMode,
     TaskStatus,
 )
 from app.schemas.common import TimestampFields
@@ -110,6 +111,7 @@ class TaskListItemRead(TimestampFields):
     style_name_snapshot: str
     image_model_name_snapshot: str
     style_aspect_ratio_snapshot: str
+    style_reference_mode_snapshot: StyleReferenceMode
     status: TaskStatus
     progress_current: int
     progress_total: int
@@ -136,6 +138,7 @@ class TaskRead(TimestampFields):
     style_name_snapshot: str
     image_model_name_snapshot: str
     style_aspect_ratio_snapshot: str
+    style_reference_mode_snapshot: StyleReferenceMode
     status: TaskStatus
     progress_current: int
     progress_total: int
