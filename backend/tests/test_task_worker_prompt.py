@@ -1,7 +1,15 @@
 import unittest
+from unittest.mock import call, patch
 
-from app.models.enums import PanelType
-from app.services.task_worker import build_adapted_story_final_prompt
+from app.models.enums import PanelType, StorageBackend
+from app.services.image_generation import GeneratedImageFile, ImageReference, ImageProviderResponseError
+from app.services.task_worker import (
+    POLICY_BLOCKED_IMAGE_MODEL,
+    PreparedPanelImageRequest,
+    build_adapted_story_final_prompt,
+    generate_panel_image_request,
+    is_policy_blocked_image_error,
+)
 
 
 class TaskWorkerPromptTest(unittest.TestCase):
@@ -42,6 +50,87 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("低饱和手绘漫画风，细线条，浅色水彩，中文手写字要清晰偏大。", final_prompt)
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("画面比例：3:4"))
+
+    def test_google_policy_blocked_error_switches_to_baidu_without_references(self) -> None:
+        blocked_error = ImageProviderResponseError(
+            "图片 Provider 请求失败：HTTP 400 {\"error\":{\"message\":\"Unable to show the generated image. "
+            "The image was filtered out because it violated Google's Generative AI Prohibited Use policy\"}}"
+        )
+        generated = GeneratedImageFile(
+            storage_backend=StorageBackend.local,
+            storage_key="generated_image/test.jpg",
+            byte_size=123,
+            checksum_sha256="hash",
+            content_type="image/jpeg",
+            original_filename="generated-image.jpg",
+            provider_request_id="baidu-request",
+            public_url=None,
+        )
+        request = PreparedPanelImageRequest(
+            panel_id="panel-1",
+            panel_order=9,
+            image_id="image-1",
+            final_prompt="画一个倔强说不疼的小女孩",
+            references=[ImageReference(url="https://cdn.example.com/person.jpg")],
+            reference_count=1,
+            character_reference_count=1,
+        )
+
+        with patch(
+            "app.services.task_worker.generate_xg_image",
+            side_effect=[blocked_error, generated],
+        ) as generate:
+            result = generate_panel_image_request(
+                task_id="task-1",
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+                request=request,
+            )
+
+        self.assertIs(result.generated, generated)
+        self.assertIsNone(result.error)
+        self.assertEqual(POLICY_BLOCKED_IMAGE_MODEL, result.image_model_name)
+        self.assertEqual(
+            [
+                call(
+                    prompt="画一个倔强说不疼的小女孩",
+                    references=[ImageReference(url="https://cdn.example.com/person.jpg")],
+                    image_model_name="gpt-image-2",
+                    aspect_ratio="3:4",
+                ),
+                call(
+                    prompt="画一个倔强说不疼的小女孩",
+                    references=[],
+                    image_model_name=POLICY_BLOCKED_IMAGE_MODEL,
+                    aspect_ratio="3:4",
+                ),
+            ],
+            generate.call_args_list,
+        )
+
+    def test_non_policy_provider_error_does_not_switch_model(self) -> None:
+        request = PreparedPanelImageRequest(
+            panel_id="panel-1",
+            panel_order=1,
+            image_id="image-1",
+            final_prompt="画一只猫",
+            references=[],
+            reference_count=0,
+            character_reference_count=0,
+        )
+        error = ImageProviderResponseError("图片 Provider 请求失败：HTTP 400 bad request")
+
+        with patch("app.services.task_worker.generate_xg_image", side_effect=error) as generate:
+            result = generate_panel_image_request(
+                task_id="task-1",
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+                request=request,
+            )
+
+        self.assertIs(result.error, error)
+        self.assertTrue(is_policy_blocked_image_error(ImageProviderResponseError(str(error))) is False)
+        generate.assert_called_once()
 
 
 if __name__ == "__main__":

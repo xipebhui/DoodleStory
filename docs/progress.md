@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-39-stale-generated-image-state.md`
+- `docs/contracts/sprint-40-policy-blocked-image-model-switch.md`
 
 ## 最近完成的工作
 
@@ -82,6 +82,7 @@
 - 开始并完成 Sprint 37 内容提取公网 URL 视觉理解：下载素材登记资产仍使用原始文件 bytes，不做压缩、缩放或格式转换；图片和 metadata 资产保存/对象存储上传改为并行执行，完成后按原 display_order 写入数据库；图文 VL 请求改为按顺序传资产公网原图 URL，不再把图片转成 base64 data URL，没有公网 HTTP(S) URL 时明确失败。
 - 开始并完成 Sprint 38 内容提取卡死状态恢复：内容提取仍使用同进程后台任务；后端启动时会扫描上一进程遗留的 `processing` 内容提取记录，将其标记为 `failed` 并写入“后端重启或进程中断”的明确原因，避免服务重启后列表长期卡在处理中。
 - 开始并完成 Sprint 39 旧图片生成状态不污染任务详情：定位远程任务 `43a48af4739f4e0791965ba06070d12f` 已有 11 张当前成功图，但上一轮中断的 11 条非当前 `running` 图片版本仍残留；前端详情优先选择任意 running 导致已完成任务显示生成中。现已改为任务重试时作废旧运行中图片版本，前端只在任务运行中或用户单 panel 修改时展示 active 图片。
+- 开始并完成 Sprint 40 Policy Blocked 生图切换百度模型：先用远程任务 `3564da7ea27e496bb30fdb608441e51c` 的 panel 9 同一 `final_prompt` 验证 `baidu/ERNIE-Image-Turbo` 无参考图真实生成成功；随后在正式 panel 生图和单 panel 修改生图中增加仅针对 Google policy blocked 类错误的模型切换，切换后不提交参考图，并把成功图片版本的模型快照写为实际使用的百度模型。
 - 开始 Sprint 06 抖音下载 Cookie 与导入适配：阅读 `jiji262/douyin-downloader` V2.0 的 Cookie 获取方式，确认官方推荐用浏览器登录保存 Cookie；当时新增 DoodleStory 后端临时直连 adapter 和命令行验证入口，用于先获取 Cookie 再输入抖音链接做真实下载验证。该临时路径后续已被独立 HTTP 下载服务取代。
 - 新增内容提取需求设计：后续 `内容提取` tab 由后端解析抖音分享文本中的真实 URL，同步调用同机抖音下载服务下载图文或视频；下载后用户再同步触发文案提取，视频先分离音频并用 SiliconFlow 音频多模态转写，图文按图片顺序逐张用 SiliconFlow 视觉理解提取文字。该功能第一版不设计异步状态机、worker、轮询或取消流程，页面以最终文案为主，媒体预览为辅。
 - 开始 Sprint 07 同步内容提取：新增合同 `docs/contracts/sprint-07-content-extraction.md`，范围锁定为后端同步下载服务代理、最小内容提取记录、SiliconFlow 图文/音频文案提取和前端 `内容提取` tab。
@@ -170,6 +171,7 @@
 - 调整内容提取分镜解析策略：`parse_extracted_storyboard_v1.md` 不再诱导 LLM 在 `visual_prompt` 或 `text_layout` 中输出画面比例，分镜解析只负责画面与分格信息，最终画面比例继续由风格 `aspect_ratio` 统一控制。
 - Sprint 38 内容提取卡死状态恢复实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_content_extraction_media_flow.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - Sprint 39 旧图片生成状态修复实现后，`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_download_state.py`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
+- Sprint 40 Policy Blocked 生图切换实现前，远程真实验证 `3564da7ea27e496bb30fdb608441e51c` panel 9 使用 `baidu/ERNIE-Image-Turbo`、`reference_count=0` 成功返回 `image/jpeg`，耗时约 31.7 秒，provider request id 为 `202606080746462097348648268d9d6XlLSJ0fe`；实现后 `PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 
