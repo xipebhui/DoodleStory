@@ -213,6 +213,8 @@ export type TaskPreviewImage = {
 export type TaskSummary = {
   id: string;
   owner_user_id: string;
+  owner_display_name: string | null;
+  owner_email: string | null;
   display_title: string;
   original_text_preview: string;
   story_input_mode: Task["story_input_mode"];

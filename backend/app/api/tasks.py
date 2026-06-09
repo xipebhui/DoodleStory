@@ -138,6 +138,7 @@ def list_tasks(
 
     statement = (
         select(GenerationTask)
+        .options(selectinload(GenerationTask.owner))
         .order_by(GenerationTask.created_at.desc())
         .offset(pagination.offset)
         .limit(pagination.limit + 1)
@@ -178,6 +179,8 @@ def list_tasks(
             TaskListItemRead(
                 id=task.id,
                 owner_user_id=task.owner_user_id,
+                owner_display_name=task.owner.display_name if task.owner else None,
+                owner_email=task.owner.email if task.owner else None,
                 display_title=task.display_title,
                 original_text_preview=task_original_text_preview(task),
                 story_input_mode=task.story_input_mode,

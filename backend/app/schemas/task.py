@@ -101,6 +101,8 @@ class TaskPreviewImageRead(BaseModel):
 class TaskListItemRead(TimestampFields):
     id: str
     owner_user_id: str
+    owner_display_name: str | None = None
+    owner_email: str | None = None
     display_title: str
     original_text_preview: str
     story_input_mode: StoryInputMode

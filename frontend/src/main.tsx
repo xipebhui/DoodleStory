@@ -454,10 +454,10 @@ function Shell({
           <span className="brand-mark">
             <img className="brand-icon" src="/doodlestory-icon.svg" alt="" />
           </span>
-          <div>
-            <strong>DoodleStory</strong>
-            <span>FastAPI + React</span>
-          </div>
+	          <div>
+	            <strong>DoodleStory</strong>
+	            <span>故事漫画生成</span>
+	          </div>
         </div>
         <nav>
           {items.map((item) => (
@@ -1229,8 +1229,10 @@ function TasksView({
                   <div>
                     <strong>{task.display_title}</strong>
                     <p>{task.original_text_preview}</p>
-                    {user.role === "admin" ? <small>Owner {shortId(task.owner_user_id)}</small> : null}
-                  </div>
+	                    {user.role === "admin" ? (
+	                      <small>{task.owner_display_name || task.owner_email || shortId(task.owner_user_id)}</small>
+	                    ) : null}
+	                  </div>
                 </div>
                 <div className="thumb-strip">
 	                  {rowImages.slice(0, TASK_ROW_IMAGE_PREVIEW_LIMIT).map((image) => (
