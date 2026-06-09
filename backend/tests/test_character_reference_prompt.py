@@ -17,6 +17,10 @@ class CharacterReferencePromptTest(unittest.TestCase):
         self.assertIn("低饱和手绘漫画风，细线条，浅色水彩，人物圆脸小五官。", prompt)
         self.assertLess(prompt.index("风格提示词"), prompt.index("画面比例是 3:4"))
         self.assertIn("人物外观设定：成年男性，短发，蓝色短袖T恤，身材高大可靠。", prompt)
+        self.assertIn("上半部分：一张正面主图", prompt)
+        self.assertIn("下半部分：两个侧视图并排展示", prompt)
+        self.assertIn("左侧视图和右侧视图", prompt)
+        self.assertIn("三张视图必须是同一个人物", prompt)
 
 
 if __name__ == "__main__":
