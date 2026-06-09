@@ -584,6 +584,49 @@ def image_text_block(image_text: ImageTextPlan | dict[str, str | None] | None, p
     return "\n".join(lines)
 
 
+def storyboard_layout_label(text_layout: str | None) -> str:
+    cleaned = (text_layout or "").strip()
+    if not cleaned:
+        return "单页"
+    if cleaned in {"单页", "单页构图", "单页漫画构图", "单页漫画"}:
+        return "单页"
+    return cleaned
+
+
+def storyboard_text_value(value: str | None) -> str:
+    cleaned = (value or "").strip()
+    return cleaned if cleaned else "无"
+
+
+def structured_storyboard_block(
+    *,
+    panel_order: int,
+    visual_prompt: str,
+    image_text: ImageTextPlan | dict[str, str | None] | None,
+    text_layout: str | None,
+) -> str:
+    values = image_text_to_dict(image_text)
+    lines = [
+        f"第{panel_order}页：",
+        f"【分格】{storyboard_layout_label(text_layout)}",
+        f"画面：{visual_prompt.strip()}",
+    ]
+    title = storyboard_text_value(values.get("title"))
+    if title != "无":
+        lines.append(f"标题：{title}")
+    lines.extend(
+        [
+            f"旁白：{storyboard_text_value(values.get('narration'))}",
+            f"对话：{storyboard_text_value(values.get('dialogue'))}",
+            f"内心OS：{storyboard_text_value(values.get('inner_os'))}",
+        ]
+    )
+    emphasis = storyboard_text_value(values.get("emphasis"))
+    if emphasis != "无":
+        lines.append(f"强调：{emphasis}")
+    return "\n".join(lines)
+
+
 def layout_instruction(text_layout: str | None) -> str | None:
     cleaned = (text_layout or "").strip()
     if not cleaned:
@@ -691,7 +734,15 @@ def build_original_story_final_prompt(
     reference_notes: list[str] | None = None,
     exact_text: str = "",
     style_prompt: str | None = None,
+    panel_order: int = 1,
 ) -> str:
+    image_text = {
+        "title": None,
+        "narration": exact_text,
+        "dialogue": None,
+        "inner_os": None,
+        "emphasis": None,
+    }
     lines = [
         "参考：",
         reference_notes_block(reference_notes),
@@ -702,12 +753,16 @@ def build_original_story_final_prompt(
             "",
             f"画面比例：{aspect_ratio}",
             "",
-            "画面：",
-            visual_prompt.strip(),
+            "结构化分镜：",
+            structured_storyboard_block(
+                panel_order=panel_order,
+                visual_prompt=visual_prompt,
+                image_text=image_text,
+                text_layout="单页漫画构图",
+            ),
             "",
-            "必须把下面这段原文完整写入图片中，逐字一致，不能增加、删除、替换或改写任何一个字，不能添加“旁白”“字幕”“标题”等标签：",
-            f"「{exact_text}」",
-            "",
+            "上面的字段名只用于理解分镜结构，不要把“画面”“旁白”“对话”“内心OS”等字段名画进图片。",
+            "必须把“旁白”中的原文完整写入图片中，逐字一致，不能增加、删除、替换或改写任何一个字。",
             "不要添加这段原文之外的任何文字、Logo 或水印。",
         ]
     )
@@ -723,6 +778,7 @@ def build_adapted_story_final_prompt(
     reference_notes: list[str] | None = None,
     text_layout: str | None = None,
     style_prompt: str | None = None,
+    panel_order: int = 1,
 ) -> str:
     lines = [
         "参考：",
@@ -737,22 +793,25 @@ def build_adapted_story_final_prompt(
             "剧情意图：",
             story_beat.strip(),
             "",
-            "画面：",
-            visual_prompt.strip(),
+            "结构化分镜：",
+            structured_storyboard_block(
+                panel_order=panel_order,
+                visual_prompt=visual_prompt,
+                image_text=image_text,
+                text_layout=text_layout,
+            ),
         ]
     )
     layout_line = layout_instruction(text_layout)
     if layout_line:
         lines.extend(["", layout_line])
-    image_text_lines = image_text_block(image_text, panel_type)
-    if image_text_lines:
-        lines.extend(
-            [
-                "",
-                "需要写入图片的文字如下；只把引号内文字画进图片，括号外的呈现方式说明不要画进图片：",
-                image_text_lines,
-            ]
-        )
+    lines.extend(
+        [
+            "",
+            "上面的字段名只用于理解分镜结构，不要把“画面”“旁白”“对话”“内心OS”“标题”“强调”等字段名画进图片。",
+            "图片里只绘制字段值对应的内容：旁白用旁白框或字幕框，对话用对白气泡，内心OS用思想气泡或心理独白框，标题和强调字按画面需要突出呈现。",
+        ]
+    )
     rules = text_rules_block(visual_prompt, image_text, text_layout)
     if rules:
         lines.extend(["", rules])
@@ -774,6 +833,7 @@ def build_panel_final_prompt(
             reference_notes=reference_notes,
             exact_text=panel.original_text_segment,
             style_prompt=style_prompt,
+            panel_order=panel.panel_order,
         )
     return build_adapted_story_final_prompt(
         aspect_ratio=task.style_aspect_ratio_snapshot,
@@ -784,6 +844,7 @@ def build_panel_final_prompt(
         reference_notes=reference_notes,
         text_layout=panel.text_layout,
         style_prompt=style_prompt,
+        panel_order=panel.panel_order,
     )
 
 

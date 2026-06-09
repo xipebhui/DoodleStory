@@ -5,11 +5,11 @@
 - 分支：`main`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 44 管理员积分消耗大盘补充后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 45 统一分镜生图格式实现后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-44-user-credits-admin-usage.md`
+- `docs/contracts/sprint-45-unified-storyboard-prompt-format.md`
 
 ## 最近完成的工作
 
@@ -180,6 +180,7 @@
 - 补充 Sprint 44 管理体验：管理员用户管理从设置页拆到单独 `/users` tab，用户列表改为每页 10 条分页表格并支持搜索；用户管理页保留积分调整抽屉和生成激活码能力；设置页新增当前用户最近 `1` 天、`7` 天、`30` 天积分消耗折线图，后端新增 `/api/v1/credits/usage` 只统计成功扣费流水。`backend/.venv/bin/python -m compileall backend/app`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_credits.py`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地服务已通过 `./scripts/restart-dev.sh` 重启，浏览器验证管理员登录后 `/settings` 可见趋势图、`/users` 可见分页用户表和生成激活码入口。本地新增开发管理员账号 `admin@example.com` 用于登录烟测。
 - 补充 Sprint 44 积分流水体验：`/credits/me` 不再默认加载最近流水，新增 `/credits/transactions` 分页接口；设置页最近积分流水默认只展示 `查看明细` 入口，用户点击后才按每页 10 条加载，并可用 `全部流水`、`消耗积分`、`重置积分` 快捷筛选。`消耗积分` 对应成功扣费流水，`重置积分` 对应管理员调整流水。`backend/.venv/bin/python -m compileall backend/app`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_credits.py`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 补充 Sprint 44 管理员积分消耗大盘：新增管理员可见 `/credit-usage` tab，展示全站或按用户筛选的成功出图扣费汇总、最近 `1` 天按小时聚合、最近 `7` 天/`30` 天按日期聚合的柱状图和成功扣费明细分页；后端新增 `/admin/credits/usage` 和 `/admin/credits/transactions`。`backend/.venv/bin/python -m compileall backend/app`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_credits.py`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
+- 完成 Sprint 45 统一分镜生图格式：新增合同 `docs/contracts/sprint-45-unified-storyboard-prompt-format.md`；故事方案 prompt 改为输出 `text_layout`，并将旁白、对白、内心 OS 分别放入结构化字段；完整故事 prompt 明确后端会把 panel 原文映射到 `第X页 / 【分格】单页 / 画面 / 旁白 / 对话 / 内心OS` 的页式分镜块；正式 panel 最终生图 prompt 已统一组装为页式分镜块，同时要求字段名只用于理解结构、不能画进图片。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 
