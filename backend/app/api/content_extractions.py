@@ -1,3 +1,4 @@
+import json
 import logging
 import mimetypes
 import re
@@ -238,6 +239,9 @@ def list_item_for_content(content: ContentExtraction, media_count: int) -> Conte
         source_url=content.source_url,
         media_type=content.media_type,
         aweme_id=content.aweme_id,
+        source_title=content.source_title,
+        source_description=content.source_description,
+        source_tags=content.source_tags,
         processing_status=content.processing_status,
         processing_error_message=content.processing_error_message,
         raw_input_preview=content_preview(content.raw_input, 120),
@@ -346,11 +350,16 @@ def attach_douyin_download_result(content: ContentExtraction, db: Session) -> No
     content.aweme_id = result.aweme_id
     content.output_dir = str(result.output_dir)
     content.manifest_path = str(result.manifest_path) if result.manifest_path else None
+    content.source_title = result.title
+    content.source_description = result.description
+    content.source_tags_json = json.dumps(result.tags, ensure_ascii=False)
     logger.info(
-        "content_extraction_debug download_result content_id=%s media_type=%s aweme_id=%s media_file_count=%s metadata_file_count=%s output_dir=%s manifest_path=%s elapsed_ms=%s",
+        "content_extraction_debug download_result content_id=%s media_type=%s aweme_id=%s source_title_chars=%s source_tag_count=%s media_file_count=%s metadata_file_count=%s output_dir=%s manifest_path=%s elapsed_ms=%s",
         content.id,
         result.media_type,
         result.aweme_id,
+        len(result.title or ""),
+        len(result.tags),
         len(result.media_files),
         len(result.metadata_files),
         result.output_dir,

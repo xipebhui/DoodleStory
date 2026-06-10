@@ -4,10 +4,11 @@ from app.api.tasks import (
     SUPERSEDED_IMAGE_ERROR_CODE,
     SUPERSEDED_IMAGE_ERROR_MESSAGE,
     current_succeeded_images_for_panels,
+    download_meta_for_content_extraction,
     retire_superseded_running_images,
     task_has_all_panel_images,
 )
-from app.models.entities import GeneratedImage, GenerationTask, TaskPanel
+from app.models.entities import ContentExtraction, GeneratedImage, GenerationTask, TaskPanel
 from app.models.enums import GeneratedImageStatus, TaskStatus
 
 
@@ -35,6 +36,28 @@ def make_current_success(panel_id: str, generation_number: int = 1) -> Generated
 
 
 class TaskDownloadStateTest(unittest.TestCase):
+    def test_douyin_download_meta_contains_source_title_description_and_tags(self) -> None:
+        content = ContentExtraction(
+            id="content",
+            owner_user_id="user",
+            raw_input="https://v.douyin.com/test/",
+            source_url="https://v.douyin.com/test/",
+            media_type="image",
+            output_dir="/tmp/douyin/test",
+            source_title="尴尬开场，温柔收场，我们刚好同校。",
+            source_description="尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画",
+            source_tags_json='["纯爱", "恋爱", "漫画"]',
+        )
+
+        self.assertEqual(
+            {
+                "title": "尴尬开场，温柔收场，我们刚好同校。",
+                "description": "尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画",
+                "tags": ["纯爱", "恋爱", "漫画"],
+            },
+            download_meta_for_content_extraction(content),
+        )
+
     def test_partial_current_images_are_not_complete(self) -> None:
         task = make_task_with_panels(2)
         task.generated_images = [make_current_success("panel-1")]

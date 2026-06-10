@@ -15,6 +15,7 @@ from app.api.content_extractions import (
     save_downloaded_assets_parallel,
 )
 from app.models.enums import ContentExtractionMediaKind, ImageCountMode, StoryInputMode
+from app.services.douyin_import_service import download_douyin_content
 from app.services.media_text_extraction import (
     ImageExtractionReference,
     LLMResponseError,
@@ -22,7 +23,47 @@ from app.services.media_text_extraction import (
 )
 
 
+class FakeDouyinResponse:
+    def __init__(self, status_code: int, payload: dict[str, object]):
+        self.status_code = status_code
+        self._payload = payload
+        self.text = str(payload)
+
+    def json(self) -> dict[str, object]:
+        return self._payload
+
+
 class ContentExtractionMediaFlowTest(unittest.TestCase):
+    def test_douyin_download_keeps_source_meta_fields(self) -> None:
+        settings = SimpleNamespace(douyin_import_service_base_url="http://127.0.0.1:8010")
+        response = FakeDouyinResponse(
+            200,
+            {
+                "url": "https://v.douyin.com/test/",
+                "output_dir": "/tmp/douyin/test",
+                "media_type": "image",
+                "aweme_id": "123",
+                "media_files": ["/tmp/douyin/test/1.jpg"],
+                "metadata_files": [],
+                "manifest_path": "/tmp/douyin/test/manifest.json",
+                "title": "尴尬开场，温柔收场，我们刚好同校。",
+                "description": "尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画",
+                "tags": ["纯爱", "恋爱", "漫画"],
+                "author_name": "杰哥是纯爱",
+                "publish_timestamp": 1775815824,
+            },
+        )
+
+        with patch("app.services.douyin_import_service.get_settings", return_value=settings), patch(
+            "app.services.douyin_import_service.requests.post",
+            return_value=response,
+        ):
+            result = download_douyin_content("https://v.douyin.com/test/")
+
+        self.assertEqual("尴尬开场，温柔收场，我们刚好同校。", result.title)
+        self.assertEqual("尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画", result.description)
+        self.assertEqual(["纯爱", "恋爱", "漫画"], result.tags)
+
     def test_ordered_gallery_uses_public_image_urls(self) -> None:
         captured: dict[str, object] = {}
 

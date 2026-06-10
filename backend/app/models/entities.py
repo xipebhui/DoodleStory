@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+import json
 from typing import Optional
 from uuid import uuid4
 
@@ -416,6 +417,9 @@ class ContentExtraction(Base, TimestampMixin):
     aweme_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True, index=True)
     output_dir: Mapped[str] = mapped_column(String(1000))
     manifest_path: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    source_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_tags_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     processing_status: Mapped[str] = mapped_column(String(40), default="succeeded", index=True)
     processing_error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -433,6 +437,15 @@ class ContentExtraction(Base, TimestampMixin):
     owner: Mapped[User] = relationship(back_populates="content_extractions")
     media: Mapped[list["ContentExtractionMedia"]] = relationship(back_populates="content_extraction", cascade="all, delete-orphan")
     linked_task: Mapped[Optional[GenerationTask]] = relationship(foreign_keys=[linked_task_id])
+
+    @property
+    def source_tags(self) -> list[str]:
+        if not self.source_tags_json:
+            return []
+        tags = json.loads(self.source_tags_json)
+        if not isinstance(tags, list) or any(not isinstance(item, str) for item in tags):
+            raise ValueError("content_extractions.source_tags_json 必须是字符串数组 JSON")
+        return tags
 
 
 class ContentExtractionMedia(Base, TimestampMixin):

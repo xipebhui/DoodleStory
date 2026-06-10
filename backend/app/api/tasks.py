@@ -1,5 +1,6 @@
 from datetime import datetime
 from io import BytesIO
+import json
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +14,7 @@ from app.models.entities import (
     FileAsset,
     GeneratedImage,
     GenerationTask,
+    ContentExtraction,
     Style,
     StyleReferenceImage,
     TaskStyleReferenceImage,
@@ -121,6 +123,18 @@ def retire_superseded_running_images(task: GenerationTask) -> int:
 def task_original_text_preview(task: GenerationTask) -> str:
     text = task.original_text.strip().replace("\n", " ")
     return text[:160]
+
+
+def download_meta_for_content_extraction(content: ContentExtraction) -> dict[str, object]:
+    return {
+        "title": content.source_title or "",
+        "description": content.source_description or "",
+        "tags": content.source_tags,
+    }
+
+
+def douyin_source_content_for_task(db: Session, task_id: str) -> ContentExtraction | None:
+    return db.scalar(select(ContentExtraction).where(ContentExtraction.linked_task_id == task_id))
 
 
 @router.get("", response_model=ApiList[TaskListItemRead])
@@ -432,6 +446,8 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
     db.refresh(download)
 
     try:
+        source_content = douyin_source_content_for_task(db, task.id)
+        source_meta = download_meta_for_content_extraction(source_content) if source_content else None
         buffer = BytesIO()
         with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
             for index, image in enumerate(images, start=1):
@@ -439,6 +455,11 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
                 source_path = existing_local_asset_path(asset)
                 suffix = source_path.suffix or ".png"
                 archive.write(source_path, arcname=f"panel-{index:02d}{suffix}")
+            if source_meta is not None:
+                archive.writestr(
+                    "meta.json",
+                    json.dumps(source_meta, ensure_ascii=False, indent=2).encode("utf-8"),
+                )
 
         stored = save_local_binary_file(
             FileAssetPurpose.download_archive.value,

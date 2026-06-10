@@ -22,6 +22,9 @@ class DouyinImportResult:
     output_dir: Path
     media_type: str
     aweme_id: str | None
+    title: str | None
+    description: str | None
+    tags: list[str]
     media_files: list[Path]
     metadata_files: list[Path]
     manifest_path: Path | None
@@ -60,6 +63,32 @@ def _path_list(values: object, field_name: str) -> list[Path]:
             raise DouyinImportServiceError(f"抖音下载服务返回字段 {field_name} 包含非法路径")
         paths.append(Path(value))
     return paths
+
+
+def _optional_text(payload: dict[str, object], field_name: str) -> str | None:
+    value = payload.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise DouyinImportServiceError(f"抖音下载服务返回字段 {field_name} 必须是字符串")
+    value = value.strip()
+    return value or None
+
+
+def _optional_tags(payload: dict[str, object]) -> list[str]:
+    value = payload.get("tags")
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise DouyinImportServiceError("抖音下载服务返回字段 tags 必须是数组")
+    tags: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise DouyinImportServiceError("抖音下载服务返回字段 tags 只能包含字符串")
+        item = item.strip()
+        if item:
+            tags.append(item)
+    return tags
 
 
 def download_douyin_content(url: str) -> DouyinImportResult:
@@ -110,6 +139,9 @@ def download_douyin_content(url: str) -> DouyinImportResult:
         output_dir=Path(output_dir),
         media_type=media_type.strip(),
         aweme_id=str(payload["aweme_id"]).strip() if payload.get("aweme_id") else None,
+        title=_optional_text(payload, "title"),
+        description=_optional_text(payload, "description"),
+        tags=_optional_tags(payload),
         media_files=media_files,
         metadata_files=_path_list(payload.get("metadata_files"), "metadata_files"),
         manifest_path=Path(manifest_path) if isinstance(manifest_path, str) and manifest_path.strip() else None,

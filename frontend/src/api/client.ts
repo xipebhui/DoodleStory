@@ -322,6 +322,9 @@ export type ContentExtraction = {
   source_url: string;
   media_type: string;
   aweme_id: string | null;
+  source_title: string | null;
+  source_description: string | null;
+  source_tags: string[];
   processing_status: "processing" | "succeeded" | "failed" | string;
   processing_error_message: string | null;
   extracted_text: string | null;
@@ -344,6 +347,9 @@ export type ContentExtractionSummary = {
   source_url: string;
   media_type: string;
   aweme_id: string | null;
+  source_title: string | null;
+  source_description: string | null;
+  source_tags: string[];
   processing_status: "processing" | "succeeded" | "failed" | string;
   processing_error_message: string | null;
   raw_input_preview: string | null;
