@@ -5,12 +5,13 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.api.tasks import extract_character_names
 from app.core.database import Base
 from app.models.entities import FileAsset, Style, User, UserCharacter
 from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
-from app.schemas.character import StoryCharacterBindingCreate
+from app.schemas.character import CharacterNameExtractionRequest, StoryCharacterBindingCreate
 from app.schemas.task import TaskCreate
-from app.services.llm import extract_character_names_from_story
+from app.services.llm import ExtractedCharacterNames, extract_character_names_from_story
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 
 
@@ -35,6 +36,18 @@ class UserCharacterTest(unittest.TestCase):
         call_json.assert_called_once()
         self.assertEqual("Qwen/Qwen3.6-27B", call_json.call_args.kwargs["model"])
         self.assertEqual(0.1, call_json.call_args.kwargs["temperature"])
+
+    @patch("app.api.tasks.extract_character_names_from_story")
+    def test_character_extraction_api_returns_names_payload(self, extract_from_story) -> None:
+        extract_from_story.return_value = ExtractedCharacterNames(names=["我", "妈妈", "爸爸"])
+        user = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+
+        response = extract_character_names(
+            CharacterNameExtractionRequest(text="我看见妈妈躺在床上，爸爸沉默着。"),
+            user,
+        )
+
+        self.assertEqual(["我", "妈妈", "爸爸"], response.data.names)
 
     def test_task_can_only_bind_owned_user_character(self) -> None:
         db = self.Session()

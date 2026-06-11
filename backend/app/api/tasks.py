@@ -151,7 +151,7 @@ def extract_character_names(
         )
     except LLMProviderError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-    return ApiData(data=CharacterNameExtractionResult.model_validate(result))
+    return ApiData(data=CharacterNameExtractionResult(names=result.names))
 
 
 @router.post("/merge-character-into-story", response_model=ApiData[StoryCharacterMergeResult])
