@@ -73,6 +73,10 @@ def characters_to_plans(characters: list[TaskCharacter]) -> list[TaskCharacterPl
     ]
 
 
+def is_fixed_task_character(character: TaskCharacter) -> bool:
+    return character.character_key.startswith("fixed_")
+
+
 def persist_character_plans(db: Session, task: GenerationTask, character_plans: list[TaskCharacterPlan]) -> None:
     for existing in load_task_characters(db, task.id):
         db.delete(existing)
@@ -98,6 +102,53 @@ def persist_character_plans(db: Session, task: GenerationTask, character_plans: 
                 )
             )
     db.commit()
+
+
+def persist_missing_generated_character_plans(
+    db: Session,
+    task: GenerationTask,
+    character_plans: list[TaskCharacterPlan],
+) -> list[TaskCharacterPlan]:
+    existing_characters = load_task_characters(db, task.id)
+    existing_names = {character.name.strip() for character in existing_characters if character.name.strip()}
+    existing_keys = {character.character_key for character in existing_characters}
+    existing_appearance_keys = {
+        appearance.appearance_key
+        for character in existing_characters
+        for appearance in character.appearances
+    }
+    persisted: list[TaskCharacterPlan] = []
+    for character_plan in character_plans:
+        name = character_plan.name.strip()
+        if not name or name in existing_names or character_plan.character_key in existing_keys:
+            continue
+        character = TaskCharacter(
+            task_id=task.id,
+            character_key=character_plan.character_key,
+            name=character_plan.name,
+            description=character_plan.description,
+            importance="primary",
+        )
+        db.add(character)
+        db.flush()
+        for appearance_plan in character_plan.appearances:
+            if appearance_plan.appearance_key in existing_appearance_keys:
+                continue
+            db.add(
+                TaskCharacterAppearance(
+                    task_character_id=character.id,
+                    appearance_key=appearance_plan.appearance_key,
+                    age_stage=appearance_plan.age_stage,
+                    visual_prompt=appearance_plan.visual_prompt,
+                    status=WorkflowStatus.queued,
+                )
+            )
+            existing_appearance_keys.add(appearance_plan.appearance_key)
+        existing_names.add(name)
+        existing_keys.add(character_plan.character_key)
+        persisted.append(character_plan)
+    db.commit()
+    return persisted
 
 
 def build_character_reference_prompt(
@@ -325,16 +376,13 @@ def ensure_fixed_character_panel_links_by_name(db: Session, task: GenerationTask
     panels = sorted(task.panels, key=lambda item: item.panel_order)
     if not panels:
         return
-    existing_links = {
-        link.panel_id
-        for panel in panels
-        for link in panel.character_appearances
-    }
-    if existing_links:
-        return
 
-    characters = load_task_characters(db, task.id)
+    characters = [character for character in load_task_characters(db, task.id) if is_fixed_task_character(character)]
     reference_order_by_panel: dict[str, int] = {}
+    linked_appearance_ids_by_panel = {
+        panel.id: {link.task_character_appearance_id for link in panel.character_appearances}
+        for panel in panels
+    }
     for character in characters:
         appearances = sorted(character.appearances, key=lambda item: item.appearance_key)
         if not appearances:
@@ -359,7 +407,10 @@ def ensure_fixed_character_panel_links_by_name(db: Session, task: GenerationTask
             )
             if name not in haystack:
                 continue
-            reference_order = reference_order_by_panel.get(panel.id, 1)
+            if appearance.id in linked_appearance_ids_by_panel.get(panel.id, set()):
+                continue
+            existing_orders = [link.reference_order for link in panel.character_appearances]
+            reference_order = reference_order_by_panel.get(panel.id, max(existing_orders, default=0) + 1)
             db.add(
                 TaskPanelCharacterAppearance(
                     panel_id=panel.id,

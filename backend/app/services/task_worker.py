@@ -42,8 +42,10 @@ from app.services.character_references import (
     clear_panel_character_links,
     ensure_fixed_character_panel_links_by_name,
     ensure_character_reference_images,
+    is_fixed_task_character,
     load_task_characters,
     persist_character_plans,
+    persist_missing_generated_character_plans,
     save_character_plan_panel_links,
     save_panel_character_links,
 )
@@ -1097,7 +1099,8 @@ def process_task(task_id: str) -> None:
 
         if task.use_character_references:
             characters = load_task_characters(db, task.id)
-            if characters:
+            has_generated_characters = any(not is_fixed_task_character(character) for character in characters)
+            if characters and has_generated_characters:
                 task.progress_current = max(task.progress_current, 2)
                 set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                 logger.info("story_drawing_debug character_extraction_skipped task_id=%s character_count=%s", task.id, len(characters))
@@ -1118,8 +1121,19 @@ def process_task(task_id: str) -> None:
                         trace_context=task_trace_context(task, "extract_characters"),
                     )
                     if not character_result.characters:
-                        raise LLMResponseError("未识别到可用于参考图的主要人物")
-                    persist_character_plans(db, task, character_result.characters)
+                        if characters:
+                            persisted_character_plans = []
+                        else:
+                            raise LLMResponseError("未识别到可用于参考图的主要人物")
+                    elif characters:
+                        persisted_character_plans = persist_missing_generated_character_plans(
+                            db,
+                            task,
+                            character_result.characters,
+                        )
+                    else:
+                        persist_character_plans(db, task, character_result.characters)
+                        persisted_character_plans = character_result.characters
                     if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
                         task = load_task(db, task_id)
                         if task is None:
@@ -1127,15 +1141,16 @@ def process_task(task_id: str) -> None:
                         save_character_plan_panel_links(
                             db=db,
                             task=task,
-                            character_plans=character_result.characters,
+                            character_plans=persisted_character_plans,
                         )
                     task.progress_current = 2
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                     logger.info(
-                        "story_drawing_debug character_extraction_done task_id=%s character_count=%s appearance_count=%s elapsed_ms=%s",
+                        "story_drawing_debug character_extraction_done task_id=%s character_count=%s appearance_count=%s persisted_character_count=%s elapsed_ms=%s",
                         task.id,
                         len(character_result.characters),
                         sum(len(character.appearances) for character in character_result.characters),
+                        len(persisted_character_plans),
                         round((monotonic() - step_started) * 1000),
                     )
                 except LLMProviderError as exc:
