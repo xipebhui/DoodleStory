@@ -9,7 +9,7 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-47-dy-source-meta-download.md`
+- `docs/contracts/sprint-48-user-character-management.md`
 
 ## 最近完成的工作
 
@@ -184,6 +184,8 @@
 - 完成 Sprint 46 人物参考图三视图布局：新增合同 `docs/contracts/sprint-46-character-reference-three-view-layout.md`；人物参考图 prompt 改为固定角色设定图布局，上半部分为正面主图，下半部分并排展示同一人物的左侧视图和右侧视图，并要求三张视图保持同一年龄阶段、发型、服装、体态和标志物。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_character_reference_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 开始并完成 Sprint 47 DY 来源元信息随任务下载：新增合同 `docs/contracts/sprint-47-dy-source-meta-download.md`；抖音下载 adapter 解析 `title`、`description`、`tags` 并保存到内容提取记录；通过 `DY爆款复刻` 自动创建出的生成任务在下载 zip 时额外写入 `meta.json`，只包含标题、描述和标签。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_content_extraction_media_flow.py backend/tests/test_task_download_state.py`、`backend/.venv/bin/python -m compileall backend/app`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 修复 QY 图片接口误传未验证尺寸：`gpt-image-2` 等 QY 图片请求不再把 `3:4` 映射为视频/Grok 章节里的 `864x1152` 传入 `size`，避免统一平台返回“gpt-image-2 不支持 864x1152”；当前仅对 `1:1`、`16:9`、`9:16` 这些已验证图片尺寸显式传 `size`，`3:4` 和 `4:3` 继续通过最终生图 prompt 表达画面比例。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_image_generation_gateway_only.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
+- 开始 Sprint 48 用户角色管理与快速角色参考：新增合同 `docs/contracts/sprint-48-user-character-management.md`；目标是新增用户隔离的角色管理 tab，并把创建任务里的人物参考改为规则快速提取角色名、用户显式绑定参考图后才进入固定角色参考链路。
+- 完成 Sprint 48 用户角色管理与快速角色参考：新增 `user_characters` 表、角色 CRUD API 和角色参考图资产权限；新增创建任务规则角色名提取接口与显式角色绑定 payload；固定角色会快照为任务内人物参考，参考图不重新生成、不额外扣人物参考图积分，未绑定角色不进入人物参考链路；前端新增 `/characters` 角色管理 tab，并把创建任务弹窗改为角色名卡片、已有角色绑定、新建角色和显式融入故事操作。`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地服务已通过 `./scripts/restart-dev.sh` 重启，浏览器验证 `/characters` 页面可访问且创建任务弹窗可见角色参考区域。
 
 ## 已知缺口
 

@@ -1,6 +1,7 @@
 from datetime import datetime
 from io import BytesIO
 import json
+import re
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -37,16 +38,46 @@ from app.models.enums import (
     UserRole,
 )
 from app.schemas.common import ApiData, ApiList
+from app.schemas.character import CharacterNameExtractionRequest, CharacterNameExtractionResult, StoryCharacterMergeRequest, StoryCharacterMergeResult
 from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskListItemRead, TaskPreviewImageRead, TaskRead
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
 from app.services.image_generation import ImageProviderConfigError
+from app.services.llm import LLMProviderError, merge_character_into_story
 from app.services.style_references import snapshot_task_style_reference_images
 from app.services.storage import existing_local_asset_path, save_local_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 SUPERSEDED_IMAGE_ERROR_CODE = "ImageGenerationSuperseded"
 SUPERSEDED_IMAGE_ERROR_MESSAGE = "任务重新生成后旧图片生成记录已失效"
+COMMON_CHARACTER_WORDS = (
+    "妈妈",
+    "爸爸",
+    "爷爷",
+    "奶奶",
+    "外婆",
+    "外公",
+    "老师",
+    "老板",
+    "医生",
+    "同事",
+    "朋友",
+    "男孩",
+    "女孩",
+    "小孩",
+    "孩子",
+    "公主",
+    "王子",
+    "国王",
+    "王后",
+    "小猪",
+    "小狗",
+    "小猫",
+    "小兔",
+    "大灰狼",
+    "狼",
+    "小红帽",
+)
 
 
 def task_access_filter(user: User):
@@ -135,6 +166,72 @@ def download_meta_for_content_extraction(content: ContentExtraction) -> dict[str
 
 def douyin_source_content_for_task(db: Session, task_id: str) -> ContentExtraction | None:
     return db.scalar(select(ContentExtraction).where(ContentExtraction.linked_task_id == task_id))
+
+
+def normalize_extracted_character_name(value: str) -> str:
+    return re.sub(r"\s+", "", value.strip(" ，。！？；：、,.!?;:()（）[]【】《》\"'“”‘’"))
+
+
+def extract_character_names_by_rules(text: str) -> list[str]:
+    candidates: list[str] = []
+    patterns = [
+        r"[一二三四五六七八九十两0-9]+只[\u4e00-\u9fa5]{1,4}",
+        r"小[\u4e00-\u9fa5]{1,2}(?=[，。！？；、\s]|$)",
+        r"老[\u4e00-\u9fa5]{1,2}(?=[，。！？；、\s]|$)",
+        r"[\u4e00-\u9fa5]{1,4}(?:先生|女士|小姐|老师|老板|医生|妈妈|爸爸|爷爷|奶奶)",
+    ]
+    for pattern in patterns:
+        candidates.extend(re.findall(pattern, text))
+    for word in COMMON_CHARACTER_WORDS:
+        if word in text:
+            candidates.append(word)
+
+    names: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        name = normalize_extracted_character_name(candidate)
+        count_match = re.match(r"^([一二三四五六七八九十两0-9]+只)(.+)$", name)
+        if count_match:
+            prefix = count_match.group(1)
+            rest = count_match.group(2)
+            for word in COMMON_CHARACTER_WORDS:
+                if word in rest:
+                    name = f"{prefix}{word}"
+                    break
+        if len(name) < 1 or len(name) > 12:
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+        if len(names) >= 12:
+            break
+    return names
+
+
+@router.post("/extract-character-names", response_model=ApiData[CharacterNameExtractionResult])
+def extract_character_names(
+    payload: CharacterNameExtractionRequest,
+    _: User = Depends(current_user),
+) -> ApiData[CharacterNameExtractionResult]:
+    return ApiData(data=CharacterNameExtractionResult(names=extract_character_names_by_rules(payload.text)))
+
+
+@router.post("/merge-character-into-story", response_model=ApiData[StoryCharacterMergeResult])
+def merge_story_character(
+    payload: StoryCharacterMergeRequest,
+    _: User = Depends(current_user),
+) -> ApiData[StoryCharacterMergeResult]:
+    try:
+        result = merge_character_into_story(
+            story_text=payload.story_text,
+            character_name=payload.character_name,
+            character_description=payload.character_description,
+            trace_context={"operation": "merge_character_into_story_api"},
+        )
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return ApiData(data=StoryCharacterMergeResult.model_validate(result))
 
 
 @router.get("", response_model=ApiList[TaskListItemRead])

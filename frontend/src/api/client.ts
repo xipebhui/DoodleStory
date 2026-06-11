@@ -142,6 +142,22 @@ export type FileAsset = {
   updated_at: string;
 };
 
+export type UserCharacter = {
+  id: string;
+  owner_user_id: string;
+  name: string;
+  description: string | null;
+  reference_asset: FileAsset;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoryCharacterBinding = {
+  source_name: string;
+  user_character_id: string;
+};
+
 export type StyleReferenceImage = {
   id: string;
   display_order: number;
@@ -566,7 +582,46 @@ export const api = {
     requested_image_count?: number | null;
     style_id: string;
     use_character_references?: boolean;
+    story_characters?: StoryCharacterBinding[];
   }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
+  extractCharacterNames: (payload: { text: string }) =>
+    request<ApiData<{ names: string[] }>>("/tasks/extract-character-names", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  mergeCharacterIntoStory: (payload: {
+    story_text: string;
+    character_name: string;
+    character_description?: string | null;
+  }) =>
+    request<ApiData<{ story_text: string; change_summary: string }>>("/tasks/merge-character-into-story", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  characters: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<UserCharacter>>(`/characters${suffix}`);
+  },
+  character: (id: string) => request<ApiData<UserCharacter>>(`/characters/${id}`).then((result) => result.data),
+  createCharacter: (payload: { name: string; description?: string | null; file: File }) => {
+    const form = new FormData();
+    form.append("name", payload.name);
+    form.append("description", payload.description ?? "");
+    form.append("file", payload.file);
+    return request<ApiData<UserCharacter>>("/characters", { method: "POST", body: form }).then((result) => result.data);
+  },
+  updateCharacter: (id: string, payload: { name?: string; description?: string | null; file?: File | null }) => {
+    const form = new FormData();
+    if (payload.name !== undefined) form.append("name", payload.name);
+    if (payload.description !== undefined) form.append("description", payload.description ?? "");
+    if (payload.file) form.append("file", payload.file);
+    return request<ApiData<UserCharacter>>(`/characters/${id}`, { method: "PATCH", body: form }).then((result) => result.data);
+  },
+  deleteCharacter: (id: string) => request<ApiData<{ deleted: boolean }>>(`/characters/${id}`, { method: "DELETE" }),
   cancelTask: (id: string) =>
     request<ApiData<Task>>(`/tasks/${id}/cancel`, { method: "POST" }).then((result) => result.data),
   retryTask: (id: string) =>

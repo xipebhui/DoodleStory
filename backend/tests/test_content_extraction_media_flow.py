@@ -161,7 +161,7 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
             self.assertEqual(ImageCountMode.auto, payload.image_count_mode)
             self.assertIsNone(payload.requested_image_count)
             self.assertEqual("style-1", payload.style_id)
-            self.assertTrue(payload.use_character_references)
+            self.assertFalse(payload.use_character_references)
             return SimpleNamespace(id="task-1")
 
         with patch(

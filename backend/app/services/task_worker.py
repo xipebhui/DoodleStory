@@ -40,6 +40,7 @@ from app.services.character_references import (
     build_panel_reference_pack,
     characters_to_plans,
     clear_panel_character_links,
+    ensure_fixed_character_panel_links_by_name,
     ensure_character_reference_images,
     load_task_characters,
     persist_character_plans,
@@ -1174,6 +1175,10 @@ def process_task(task_id: str) -> None:
             return
         if should_stop_for_cancel(db, task):
             return
+
+        if task.use_character_references and task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+            ensure_fixed_character_panel_links_by_name(db, task)
+            db.commit()
 
         prompts_ready = bool(task.panels) and all(
             panel.prompt_status == PromptStatus.generated and bool(panel.generated_prompt)

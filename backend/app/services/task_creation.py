@@ -3,13 +3,14 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.entities import GenerationStep, GenerationTask, Style, StyleReferenceImage, User
+from app.models.entities import GenerationStep, GenerationTask, Style, StyleReferenceImage, TaskCharacter, TaskCharacterAppearance, User, UserCharacter
 from app.models.enums import (
     GenerationStepName,
     ImageCountMode,
     StoryInputMode,
     StyleStatus,
     TaskStatus,
+    WorkflowStatus,
 )
 from app.schemas.task import TaskCreate
 from app.services.image_generation import ImageProviderConfigError
@@ -73,6 +74,68 @@ def validate_task_create_payload(payload: TaskCreate) -> None:
         raise TaskCreationError(status_code=400, detail="自动判断图片数量时不能传 requested_image_count")
     if payload.image_count_mode == ImageCountMode.fixed and payload.requested_image_count is None:
         raise TaskCreationError(status_code=400, detail="固定图片数量时必须传 requested_image_count")
+    seen_sources: set[str] = set()
+    seen_character_ids: set[str] = set()
+    for item in payload.story_characters:
+        source_name = item.source_name.strip()
+        if not source_name:
+            raise TaskCreationError(status_code=400, detail="绑定角色名字不能为空")
+        if source_name in seen_sources:
+            raise TaskCreationError(status_code=400, detail="同一个故事角色不能重复绑定")
+        if item.user_character_id in seen_character_ids:
+            raise TaskCreationError(status_code=400, detail="同一个角色资产不能在同一任务中重复绑定")
+        seen_sources.add(source_name)
+        seen_character_ids.add(item.user_character_id)
+
+
+def load_user_characters_for_task(db: Session, payload: TaskCreate, user: User) -> dict[str, UserCharacter]:
+    ids = [item.user_character_id for item in payload.story_characters]
+    if not ids:
+        return {}
+    characters = db.scalars(
+        select(UserCharacter).where(
+            UserCharacter.id.in_(ids),
+            UserCharacter.owner_user_id == user.id,
+            UserCharacter.deleted_at.is_(None),
+        )
+    ).all()
+    by_id = {character.id: character for character in characters}
+    missing = [character_id for character_id in ids if character_id not in by_id]
+    if missing:
+        raise TaskCreationError(status_code=403, detail="只能绑定当前用户自己的角色")
+    return by_id
+
+
+def persist_fixed_task_characters(
+    *,
+    db: Session,
+    task: GenerationTask,
+    payload: TaskCreate,
+    user_characters: dict[str, UserCharacter],
+) -> None:
+    for index, item in enumerate(payload.story_characters, start=1):
+        user_character = user_characters[item.user_character_id]
+        source_name = item.source_name.strip()
+        description = user_character.description or f"{source_name} 的固定角色参考"
+        character = TaskCharacter(
+            task_id=task.id,
+            character_key=f"fixed_{index}",
+            name=source_name,
+            description=description,
+            importance="primary",
+        )
+        db.add(character)
+        db.flush()
+        db.add(
+            TaskCharacterAppearance(
+                task_character_id=character.id,
+                appearance_key=f"fixed_{index}_default",
+                age_stage="固定角色",
+                visual_prompt=f"{source_name}：{description}",
+                reference_image_id=user_character.reference_asset_id,
+                status=WorkflowStatus.succeeded,
+            )
+        )
 
 
 def create_generation_task_record(
@@ -83,6 +146,8 @@ def create_generation_task_record(
 ) -> GenerationTask:
     validate_task_create_payload(payload)
     style = load_active_style_for_task(db, payload.style_id)
+    fixed_user_characters = load_user_characters_for_task(db, payload, user)
+    use_character_references = bool(payload.story_characters)
 
     display_title = payload.original_text.strip().replace("\n", " ")[:36] or "未命名任务"
     task = GenerationTask(
@@ -92,7 +157,7 @@ def create_generation_task_record(
         story_input_mode=payload.story_input_mode,
         image_count_mode=payload.image_count_mode,
         requested_image_count=payload.requested_image_count,
-        use_character_references=payload.use_character_references,
+        use_character_references=use_character_references,
         style_id=style.id,
         style_name_snapshot=style.name,
         style_prompt_snapshot=style.style_prompt,
@@ -105,10 +170,16 @@ def create_generation_task_record(
     task.progress_total = task_progress_total_for_creation(task)
     db.add(task)
     db.flush()
+    persist_fixed_task_characters(
+        db=db,
+        task=task,
+        payload=payload,
+        user_characters=fixed_user_characters,
+    )
 
     for step_name in generation_step_names_for_task(
         story_input_mode=payload.story_input_mode,
-        use_character_references=payload.use_character_references,
+        use_character_references=use_character_references,
     ):
         db.add(
             GenerationStep(

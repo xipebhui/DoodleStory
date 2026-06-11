@@ -50,13 +50,15 @@ import {
   type FileAsset,
   type Style,
   type StyleTest,
+  type StoryCharacterBinding,
   type Task,
   type TaskSummary,
   type User,
+  type UserCharacter,
 } from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "content" | "styles" | "users" | "creditUsage" | "settings";
+type View = "tasks" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const imageModelNamePlaceholder = "生图模型名，例如 gpt-image-2";
@@ -68,6 +70,7 @@ const viewRoutes: Record<View, string> = {
   tasks: "/tasks",
   content: "/content-extractions",
   styles: "/styles",
+  characters: "/characters",
   users: "/users",
   creditUsage: "/credit-usage",
   settings: "/settings",
@@ -82,6 +85,7 @@ function viewFromPathname(pathname: string): View | null {
   if (path === "/" || path === viewRoutes.tasks || path.startsWith(`${viewRoutes.tasks}/`)) return "tasks";
   if (path === viewRoutes.content) return "content";
   if (path === viewRoutes.styles) return "styles";
+  if (path === viewRoutes.characters) return "characters";
   if (path === viewRoutes.users) return "users";
   if (path === viewRoutes.creditUsage) return "creditUsage";
   if (path === viewRoutes.settings) return "settings";
@@ -106,6 +110,7 @@ type ImageTextPayload = {
 
 const CONTENT_EXTRACTION_TASK_DRAFT_KEY = "doodlestory.contentExtractionTaskDraft";
 type CreateInputMode = Task["story_input_mode"] | "dy_replicate";
+type CharacterCreateTarget = { sourceName: string; allowMerge: boolean } | null;
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -331,6 +336,7 @@ function App() {
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "content" ? <ContentExtractionView user={user} onNavigatePath={navigateToPath} /> : null}
       {view === "styles" ? <StylesView user={user} onCreditsChanged={refreshCredits} /> : null}
+      {view === "characters" ? <CharactersView /> : null}
       {view === "users" ? <UsersView user={user} onCreditsChanged={refreshCredits} /> : null}
       {view === "creditUsage" ? <AdminCreditUsageView user={user} /> : null}
       {view === "settings" ? (
@@ -437,6 +443,7 @@ function Shell({
     { key: "tasks" as const, label: "任务", icon: Images, path: viewRoutes.tasks },
     { key: "content" as const, label: "内容提取", icon: FileText, path: viewRoutes.content },
     { key: "styles" as const, label: "风格", icon: Sparkles, path: viewRoutes.styles },
+    { key: "characters" as const, label: "角色管理", icon: UserRound, path: viewRoutes.characters },
     ...(user.role === "admin" ? [{ key: "users" as const, label: "用户管理", icon: Users, path: viewRoutes.users }] : []),
     ...(user.role === "admin" ? [{ key: "creditUsage" as const, label: "积分消耗", icon: BarChart3, path: viewRoutes.creditUsage }] : []),
     { key: "settings" as const, label: "设置", icon: Settings, path: viewRoutes.settings },
@@ -713,6 +720,13 @@ function TasksView({
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
   const [storyInputMode, setStoryInputMode] = useState<CreateInputMode>("original");
   const [createOriginalText, setCreateOriginalText] = useState("");
+  const [userCharacters, setUserCharacters] = useState<UserCharacter[]>([]);
+  const [loadingCharacters, setLoadingCharacters] = useState(false);
+  const [extractedCharacterNames, setExtractedCharacterNames] = useState<string[]>([]);
+  const [manualCharacterNames, setManualCharacterNames] = useState<string[]>([]);
+  const [createCharacterBindings, setCreateCharacterBindings] = useState<Record<string, string>>({});
+  const [characterCreateTarget, setCharacterCreateTarget] = useState<CharacterCreateTarget>(null);
+  const [creatingCharacter, setCreatingCharacter] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -747,10 +761,66 @@ function TasksView({
   const createStylePreviewLimit = 8;
   const visibleCreateStyles = styles.slice(0, createStylePreviewLimit);
   const canExpandCreateStyles = styles.length > 0;
+  const createRoleNames = useMemo(() => {
+    const names: string[] = [];
+    for (const name of [...extractedCharacterNames, ...manualCharacterNames]) {
+      const cleaned = name.trim();
+      if (cleaned && !names.includes(cleaned)) names.push(cleaned);
+    }
+    return names;
+  }, [extractedCharacterNames, manualCharacterNames]);
+  const boundRoleCount = createRoleNames.filter((name) => createCharacterBindings[name]).length;
 
   useEffect(() => {
     refresh(undefined, { quiet: false });
   }, [query, statusFilter, styleFilter, cursor]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    let cancelled = false;
+    async function loadCharacters() {
+      try {
+        setLoadingCharacters(true);
+        const result = await api.characters({ limit: 80 });
+        if (!cancelled) setUserCharacters(result.items);
+      } catch (error) {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : "角色列表加载失败");
+      } finally {
+        if (!cancelled) setLoadingCharacters(false);
+      }
+    }
+    void loadCharacters();
+    return () => {
+      cancelled = true;
+    };
+  }, [createOpen]);
+
+  useEffect(() => {
+    if (!createOpen || storyInputMode === "dy_replicate") {
+      setExtractedCharacterNames([]);
+      return;
+    }
+    const text = createOriginalText.trim();
+    if (!text) {
+      setExtractedCharacterNames([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api
+        .extractCharacterNames({ text })
+        .then((result) => {
+          if (!cancelled) setExtractedCharacterNames(result.names);
+        })
+        .catch(() => {
+          if (!cancelled) setExtractedCharacterNames([]);
+        });
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [createOpen, createOriginalText, storyInputMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -947,6 +1017,71 @@ function TasksView({
     });
   }
 
+  function resetCreateForm() {
+    setCreateOriginalText("");
+    setCountMode("auto");
+    setStoryInputMode("original");
+    setCreateStyleId(styles[0]?.id ?? "");
+    setExtractedCharacterNames([]);
+    setManualCharacterNames([]);
+    setCreateCharacterBindings({});
+    setCharacterCreateTarget(null);
+  }
+
+  function bindCreateRole(sourceName: string, userCharacterId: string) {
+    setCreateCharacterBindings((items) => {
+      const next = { ...items };
+      if (userCharacterId) {
+        next[sourceName] = userCharacterId;
+      } else {
+        delete next[sourceName];
+      }
+      return next;
+    });
+  }
+
+  async function createAndBindCharacter(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!characterCreateTarget) return;
+    const formData = new FormData(event.currentTarget);
+    const sourceName = String(formData.get("source_name") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
+    const description = String(formData.get("description") ?? "").trim();
+    const file = formData.get("file");
+    const mergeIntoStory = formData.get("merge_into_story") === "on";
+    if (!sourceName || !name) {
+      setMessage("请输入角色名字");
+      return;
+    }
+    if (!(file instanceof File) || file.size === 0) {
+      setMessage("请上传角色参考图");
+      return;
+    }
+    try {
+      setCreatingCharacter(true);
+      const character = await api.createCharacter({ name, description, file });
+      setUserCharacters((items) => [character, ...items]);
+      setManualCharacterNames((items) => (items.includes(sourceName) ? items : [...items, sourceName]));
+      bindCreateRole(sourceName, character.id);
+      if (mergeIntoStory) {
+        const merged = await api.mergeCharacterIntoStory({
+          story_text: createOriginalText,
+          character_name: name,
+          character_description: description || null,
+        });
+        setCreateOriginalText(merged.story_text);
+        setMessage(merged.change_summary);
+      } else {
+        setMessage("角色已创建并绑定到本次任务");
+      }
+      setCharacterCreateTarget(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "角色创建失败");
+    } finally {
+      setCreatingCharacter(false);
+    }
+  }
+
   async function createTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -962,18 +1097,21 @@ function TasksView({
     }
     try {
       setCreating(true);
+      const storyCharacters: StoryCharacterBinding[] = createRoleNames
+        .map((sourceName) => ({
+          source_name: sourceName,
+          user_character_id: createCharacterBindings[sourceName],
+        }))
+        .filter((item) => Boolean(item.user_character_id));
       if (storyInputMode === "dy_replicate") {
         const content = await api.replicateContentAsTask({
           raw_input: originalText,
           image_count_mode: countMode,
           requested_image_count: countMode === "fixed" ? requested : null,
           style_id: createStyleId,
-          use_character_references: formData.get("use_character_references") === "on",
+          use_character_references: false,
         });
-        setCreateOriginalText("");
-        setCountMode("auto");
-        setStoryInputMode("original");
-        setCreateStyleId(styles[0]?.id ?? "");
+        resetCreateForm();
         setCreateOpen(false);
         setStylePickerOpen(false);
         setMessage("DY 爆款复刻已提交，正在提取内容并自动创建生图任务");
@@ -986,12 +1124,10 @@ function TasksView({
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
-        use_character_references: formData.get("use_character_references") === "on",
+        use_character_references: storyCharacters.length > 0,
+        story_characters: storyCharacters,
       });
-      setCreateOriginalText("");
-      setCountMode("auto");
-      setStoryInputMode("original");
-      setCreateStyleId(styles[0]?.id ?? "");
+      resetCreateForm();
       setCreateOpen(false);
       setStylePickerOpen(false);
       setMessage("任务已进入队列");
@@ -1591,13 +1727,65 @@ function TasksView({
                   <small>完整故事模式会保持文本不变，所有 panel 拼接后必须逐字等于你提交的故事正文。</small>
                 )}
               </label>
-              <label className="character-reference-toggle">
-                <input name="use_character_references" type="checkbox" defaultChecked />
-                <span>
-                  <strong>使用参考人物</strong>
-                  <small>默认开启。系统会先识别主要人物并生成人物参考图，再用于后续分镜生图。</small>
-                </span>
-              </label>
+              {storyInputMode !== "dy_replicate" ? (
+                <section className="create-section character-quick-section">
+                  <div className="section-label">角色参考</div>
+                  <p className="field-hint">
+                    输入故事后会用规则快速提取角色名；只有点加号并绑定参考图的角色会用于统一形象。已绑定 {boundRoleCount} 个。
+                  </p>
+                  <div className="quick-character-grid">
+                    {createRoleNames.map((name) => {
+                      const boundCharacter = userCharacters.find((character) => character.id === createCharacterBindings[name]);
+                      return (
+                        <div key={name} className={`quick-character-card ${boundCharacter ? "bound" : ""}`}>
+                          {boundCharacter ? (
+                            <LazyAssetImage
+                              asset={boundCharacter.reference_asset}
+                              assetId={boundCharacter.reference_asset.id}
+                              alt={boundCharacter.name}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              className="quick-character-plus"
+                              aria-label={`设置 ${name} 的角色形象`}
+                              onClick={() => setCharacterCreateTarget({ sourceName: name, allowMerge: false })}
+                            >
+                              <Plus size={22} />
+                            </button>
+                          )}
+                          <strong>{name}</strong>
+                          {boundCharacter ? <small>{boundCharacter.name}</small> : <small>未设置形象</small>}
+                          <select
+                            value={createCharacterBindings[name] ?? ""}
+                            onChange={(event) => bindCreateRole(name, event.target.value)}
+                            aria-label={`绑定 ${name} 到我的角色`}
+                          >
+                            <option value="">不绑定</option>
+                            {userCharacters.map((character) => (
+                              <option key={character.id} value={character.id}>
+                                {character.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="quick-character-card add-card"
+                      onClick={() => setCharacterCreateTarget({ sourceName: "", allowMerge: true })}
+                    >
+                      <span className="quick-character-plus">
+                        <Plus size={22} />
+                      </span>
+                      <strong>添加角色</strong>
+                      <small>手动新增并可融入故事</small>
+                    </button>
+                  </div>
+                  {loadingCharacters ? <small className="field-hint">正在读取我的角色库</small> : null}
+                </section>
+              ) : null}
               <section className="create-section">
                 <div className="section-label">图片数量</div>
                 <div className="segmented-control">
@@ -1696,6 +1884,79 @@ function TasksView({
               </div>
             </form>
           </section>
+          {characterCreateTarget ? (
+            <div
+              className="style-picker-backdrop"
+              onClick={(event) => {
+                event.stopPropagation();
+                setCharacterCreateTarget(null);
+              }}
+            >
+              <section
+                className="character-create-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="character-create-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="drawer-head">
+                  <div>
+                    <h2 id="character-create-title">设置角色形象</h2>
+                    <p>参考图只保存在你的角色库，本次任务会使用快照。</p>
+                  </div>
+                  <button type="button" className="icon-button" aria-label="关闭角色设置" onClick={() => setCharacterCreateTarget(null)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <form className="form compact-form" onSubmit={createAndBindCharacter}>
+                  <label>
+                    故事里的角色名
+                    <input
+                      name="source_name"
+                      defaultValue={characterCreateTarget.sourceName}
+                      placeholder="例如 三只小猪"
+                      required
+                    />
+                  </label>
+                  <label>
+                    保存到角色库的名字
+                    <input
+                      name="name"
+                      defaultValue={characterCreateTarget.sourceName}
+                      placeholder="例如 三只小猪设定"
+                      required
+                    />
+                  </label>
+                  <label>
+                    形象描述
+                    <textarea name="description" placeholder="例如 三只圆滚滚的小猪，童话绘本风，穿不同颜色背带裤" />
+                  </label>
+                  <label>
+                    参考图
+                    <input name="file" type="file" accept="image/png,image/jpeg,image/webp" required />
+                  </label>
+                  {characterCreateTarget.allowMerge ? (
+                    <label className="character-reference-toggle">
+                      <input name="merge_into_story" type="checkbox" />
+                      <span>
+                        <strong>融入故事文本</strong>
+                        <small>这是显式 LLM 操作，会把新增角色自然写入当前故事。</small>
+                      </span>
+                    </label>
+                  ) : null}
+                  <div className="drawer-actions">
+                    <button type="button" className="ghost-button" onClick={() => setCharacterCreateTarget(null)}>
+                      取消
+                    </button>
+                    <button type="submit" disabled={creatingCharacter}>
+                      {creatingCharacter ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
+                      保存并绑定
+                    </button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          ) : null}
           {stylePickerOpen ? (
             <div
               className="style-picker-backdrop"
@@ -2378,6 +2639,208 @@ function ContentExtractionView({
           <button type="button" className="modal-nav right" aria-label="下一张图片" disabled={imageMedia.length <= 1} onClick={(event) => { event.stopPropagation(); showPreviewOffset(1); }}>
             <ChevronRight size={22} />
           </button>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CharactersView() {
+  const [characters, setCharacters] = useState<UserCharacter[]>([]);
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [editingCharacter, setEditingCharacter] = useState<UserCharacter | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function loadCharacters() {
+    try {
+      setLoading(true);
+      const result = await api.characters({ query, limit: 80 });
+      setCharacters(result.items);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "角色加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadCharacters();
+  }, [query]);
+
+  function applyCharacterSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setQuery(queryInput.trim());
+  }
+
+  async function saveCharacter(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const description = String(form.get("description") ?? "").trim();
+    const fileValue = form.get("file");
+    const file = fileValue instanceof File && fileValue.size > 0 ? fileValue : null;
+    if (!name) {
+      setMessage("请输入角色名字");
+      return;
+    }
+    if (!editingCharacter && !file) {
+      setMessage("创建角色需要上传参考图");
+      return;
+    }
+    try {
+      setSaving(true);
+      if (editingCharacter) {
+        await api.updateCharacter(editingCharacter.id, { name, description, file });
+        setMessage("角色已更新");
+      } else if (file) {
+        await api.createCharacter({ name, description, file });
+        setMessage("角色已创建");
+      }
+      setEditingCharacter(null);
+      setCreateOpen(false);
+      await loadCharacters();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteCharacter(character: UserCharacter) {
+    if (!window.confirm(`删除角色「${character.name}」？历史任务会继续使用已保存快照。`)) return;
+    try {
+      await api.deleteCharacter(character.id);
+      setMessage("角色已删除");
+      await loadCharacters();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "删除失败");
+    }
+  }
+
+  const formCharacter = editingCharacter;
+
+  return (
+    <section className="page characters-page">
+      <header className="page-header">
+        <div>
+          <h1>角色管理</h1>
+          <p>维护自己的固定角色形象。角色和参考图只对当前账号可见。</p>
+        </div>
+        <button onClick={() => setCreateOpen(true)}>
+          <Plus size={18} />
+          新建角色
+        </button>
+      </header>
+
+      <form className="task-toolbar" onSubmit={applyCharacterSearch}>
+        <label className="search-box">
+          <Search size={18} />
+          <input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="搜索角色名字或描述" />
+        </label>
+        <button type="submit" className="secondary-button">搜索</button>
+        <button type="button" className="ghost-button" onClick={() => { setQueryInput(""); setQuery(""); }}>
+          清空
+        </button>
+      </form>
+      {message ? <p className="form-message">{message}</p> : null}
+      {loading ? <div className="empty mini">正在加载角色</div> : null}
+      {!loading && characters.length === 0 ? (
+        <div className="empty">
+          <div>
+            <strong>{query ? "没有匹配的角色" : "还没有角色"}</strong>
+            <p>{query ? "换个关键词再试。" : "创建一个角色后，可以在任务创建时快速绑定参考图。"}</p>
+            <button type="button" onClick={() => setCreateOpen(true)}>
+              <Plus size={18} />
+              新建角色
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <div className="character-library-grid">
+        {characters.map((character) => (
+          <article key={character.id} className="character-library-card">
+            <button type="button" className="character-library-image" onClick={() => setEditingCharacter(character)}>
+              <LazyAssetImage
+                asset={character.reference_asset}
+                assetId={character.reference_asset.id}
+                alt={character.name}
+              />
+            </button>
+            <div>
+              <strong>{character.name}</strong>
+              <p>{character.description || "暂无描述"}</p>
+              <small>更新于 {formatDateTime(character.updated_at)}</small>
+            </div>
+            <div className="row-actions">
+              <button type="button" className="secondary-button" onClick={() => setEditingCharacter(character)}>
+                <Pencil size={15} />
+                编辑
+              </button>
+              <button type="button" className="ghost-button danger" onClick={() => deleteCharacter(character)}>
+                <Trash2 size={15} />
+                删除
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {createOpen || editingCharacter ? (
+        <div className="task-create-backdrop" onClick={() => { setCreateOpen(false); setEditingCharacter(null); }}>
+          <section className="character-create-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>{formCharacter ? "编辑角色" : "新建角色"}</h2>
+                <p>{formCharacter ? "更新后只影响之后创建的新任务。" : "上传一张参考图，之后创建任务时可以直接绑定。"}</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭角色表单" onClick={() => { setCreateOpen(false); setEditingCharacter(null); }}>
+                <X size={18} />
+              </button>
+            </div>
+            <form className="form compact-form" onSubmit={saveCharacter}>
+              <label>
+                名字
+                <input name="name" defaultValue={formCharacter?.name ?? ""} required />
+              </label>
+              <label>
+                描述
+                <textarea name="description" defaultValue={formCharacter?.description ?? ""} />
+              </label>
+              {formCharacter ? (
+                <div className="selected-style-preview compact">
+                  <div className="selected-style-poster">
+                    <LazyAssetImage
+                      asset={formCharacter.reference_asset}
+                      assetId={formCharacter.reference_asset.id}
+                      alt={formCharacter.name}
+                    />
+                  </div>
+                  <div>
+                    <strong>当前参考图</strong>
+                    <small>重新上传会替换后续任务使用的角色图。</small>
+                  </div>
+                </div>
+              ) : null}
+              <label>
+                参考图
+                <input name="file" type="file" accept="image/png,image/jpeg,image/webp" required={!formCharacter} />
+              </label>
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={() => { setCreateOpen(false); setEditingCharacter(null); }}>
+                  取消
+                </button>
+                <button type="submit" disabled={saving}>
+                  {saving ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
+                  保存角色
+                </button>
+              </div>
+            </form>
+          </section>
         </div>
       ) : null}
     </section>

@@ -122,6 +122,11 @@ class PolicyRewrittenImagePrompt(BaseModel):
     change_summary: str = Field(min_length=1)
 
 
+class CharacterMergedStory(BaseModel):
+    story_text: str = Field(min_length=1)
+    change_summary: str = Field(min_length=1)
+
+
 AGE_STAGE_SPECS = [
     (("童年", "儿童", "幼年", "小孩"), "child", "童年"),
     (("少年", "青少年"), "teen", "少年"),
@@ -467,6 +472,44 @@ def split_original_story(
             for index, segment in enumerate(segments)
         ]
     )
+
+
+def merge_character_into_story(
+    *,
+    story_text: str,
+    character_name: str,
+    character_description: str | None,
+    trace_context: dict[str, Any] | None = None,
+) -> CharacterMergedStory:
+    user_prompt = json.dumps(
+        {
+            "story_text": story_text,
+            "character": {
+                "name": character_name,
+                "description": character_description,
+            },
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(
+        system_prompt=read_prompt("merge_character_into_story_v1.md"),
+        user_prompt=user_prompt,
+        prompt_name="merge_character_into_story_v1.md",
+        trace_context={**(trace_context or {}), "operation": "merge_character_into_story"},
+    )
+    try:
+        result = CharacterMergedStory.model_validate(raw)
+    except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="merge_character_into_story_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        raise LLMResponseError("LLM 合并角色 JSON 结构不符合要求") from exc
+    return result
 
 
 def split_text_atoms(text: str) -> list[str]:

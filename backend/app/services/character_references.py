@@ -321,6 +321,57 @@ def save_character_plan_panel_links(
             reference_order += 1
 
 
+def ensure_fixed_character_panel_links_by_name(db: Session, task: GenerationTask) -> None:
+    panels = sorted(task.panels, key=lambda item: item.panel_order)
+    if not panels:
+        return
+    existing_links = {
+        link.panel_id
+        for panel in panels
+        for link in panel.character_appearances
+    }
+    if existing_links:
+        return
+
+    characters = load_task_characters(db, task.id)
+    reference_order_by_panel: dict[str, int] = {}
+    for character in characters:
+        appearances = sorted(character.appearances, key=lambda item: item.appearance_key)
+        if not appearances:
+            continue
+        appearance = appearances[0]
+        if appearance.status != WorkflowStatus.succeeded or appearance.reference_image_id is None:
+            continue
+        name = character.name.strip()
+        if not name:
+            continue
+        for panel in panels:
+            haystack = "\n".join(
+                value or ""
+                for value in [
+                    panel.original_text_segment,
+                    panel.narration_text,
+                    panel.dialogue_text,
+                    panel.generated_prompt,
+                    panel.image_text_json,
+                    panel.text_layout,
+                ]
+            )
+            if name not in haystack:
+                continue
+            reference_order = reference_order_by_panel.get(panel.id, 1)
+            db.add(
+                TaskPanelCharacterAppearance(
+                    panel_id=panel.id,
+                    task_character_appearance_id=appearance.id,
+                    reference_order=reference_order,
+                    usage_note=f"{name}，用户固定角色参考",
+                )
+            )
+            reference_order_by_panel[panel.id] = reference_order + 1
+    db.flush()
+
+
 def reference_asset_public_url(asset: FileAsset) -> str | None:
     if asset.public_url and asset.public_url.strip():
         return asset.public_url.strip()

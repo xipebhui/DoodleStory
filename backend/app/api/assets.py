@@ -5,7 +5,17 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import current_user
 from app.core.database import get_db
-from app.models.entities import ContentExtractionMedia, FileAsset, GeneratedImage, StyleReferenceImage, TaskDownload, User
+from app.models.entities import (
+    ContentExtractionMedia,
+    FileAsset,
+    GeneratedImage,
+    StyleReferenceImage,
+    TaskCharacter,
+    TaskCharacterAppearance,
+    TaskDownload,
+    User,
+    UserCharacter,
+)
 from app.models.enums import FileAssetPurpose, UserRole
 from app.schemas.common import ApiData
 from app.schemas.style import FileAssetRead
@@ -29,8 +39,41 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
     if asset.purpose == FileAssetPurpose.style_reference:
         reference = db.scalar(select(StyleReferenceImage).where(StyleReferenceImage.asset_id == asset.id))
         return reference is not None
+    if asset.purpose == FileAssetPurpose.user_character_reference:
+        if user.role == UserRole.admin:
+            return True
+        character = db.scalar(
+            select(UserCharacter).where(
+                UserCharacter.reference_asset_id == asset.id,
+                UserCharacter.owner_user_id == user.id,
+                UserCharacter.deleted_at.is_(None),
+            )
+        )
+        if character is not None:
+            return True
+        task_reference = db.scalar(
+            select(TaskCharacterAppearance)
+            .join(TaskCharacterAppearance.character)
+            .join(TaskCharacter.task)
+            .where(
+                TaskCharacterAppearance.reference_image_id == asset.id,
+                TaskCharacter.task.has(owner_user_id=user.id),
+            )
+        )
+        return task_reference is not None
     if user.role == UserRole.admin:
         return True
+    if asset.purpose == FileAssetPurpose.character_reference:
+        task_reference = db.scalar(
+            select(TaskCharacterAppearance)
+            .join(TaskCharacterAppearance.character)
+            .join(TaskCharacter.task)
+            .where(
+                TaskCharacterAppearance.reference_image_id == asset.id,
+                TaskCharacter.task.has(owner_user_id=user.id),
+            )
+        )
+        return task_reference is not None
     if asset.purpose == FileAssetPurpose.generated_image:
         image = db.scalar(
             select(GeneratedImage)

@@ -52,6 +52,7 @@ class User(Base, TimestampMixin):
 
     tasks: Mapped[list["GenerationTask"]] = relationship(back_populates="owner")
     content_extractions: Mapped[list["ContentExtraction"]] = relationship(back_populates="owner")
+    user_characters: Mapped[list["UserCharacter"]] = relationship(back_populates="owner")
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     credit_account: Mapped[Optional["UserCreditAccount"]] = relationship(back_populates="user")
     credit_transactions: Mapped[list["CreditTransaction"]] = relationship(
@@ -156,6 +157,20 @@ class StyleTest(Base, TimestampMixin):
 
     style: Mapped[Style] = relationship(back_populates="tests")
     output_asset: Mapped[Optional[FileAsset]] = relationship()
+
+
+class UserCharacter(Base, TimestampMixin):
+    __tablename__ = "user_characters"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_asset_id: Mapped[str] = mapped_column(ForeignKey("file_assets.id", ondelete="RESTRICT"))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+
+    owner: Mapped[User] = relationship(back_populates="user_characters")
+    reference_asset: Mapped[FileAsset] = relationship()
 
 
 class GenerationTask(Base, TimestampMixin):

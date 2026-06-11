@@ -19,6 +19,7 @@ class StyleReferenceMode(StrEnum):
 
 class FileAssetPurpose(StrEnum):
     style_reference = "style_reference"
+    user_character_reference = "user_character_reference"
     character_reference = "character_reference"
     generated_image = "generated_image"
     download_archive = "download_archive"

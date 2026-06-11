@@ -17,6 +17,7 @@ from app.models.enums import (
     TaskStatus,
 )
 from app.schemas.common import TimestampFields
+from app.schemas.character import StoryCharacterBindingCreate
 from app.schemas.style import FileAssetRead
 
 
@@ -27,6 +28,7 @@ class TaskCreate(BaseModel):
     requested_image_count: int | None = Field(default=None, ge=1, le=80)
     style_id: str = Field(min_length=1)
     use_character_references: bool = False
+    story_characters: list[StoryCharacterBindingCreate] = Field(default_factory=list, max_length=12)
 
 
 class TaskPanelRead(TimestampFields):
