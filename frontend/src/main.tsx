@@ -1773,7 +1773,7 @@ function TasksView({
                     <div>
                       <div className="section-label">角色参考</div>
                       <p className="field-hint">
-                        点击后端接口提取角色名；只有绑定参考图的角色会用于统一形象。已绑定 {boundRoleCount} 个。
+                        点击后端 AI 提取角色名；只有绑定参考图的角色会用于统一形象。已绑定 {boundRoleCount} 个。
                       </p>
                     </div>
                     <button type="button" className="secondary-button" onClick={extractRolesForCreate} disabled={extractingCharacters}>

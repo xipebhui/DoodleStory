@@ -187,6 +187,7 @@
 - 开始 Sprint 48 用户角色管理与快速角色参考：新增合同 `docs/contracts/sprint-48-user-character-management.md`；目标是新增用户隔离的角色管理 tab，并把创建任务里的人物参考改为规则快速提取角色名、用户显式绑定参考图后才进入固定角色参考链路。
 - 完成 Sprint 48 用户角色管理与快速角色参考：新增 `user_characters` 表、角色 CRUD API 和角色参考图资产权限；新增创建任务规则角色名提取接口与显式角色绑定 payload；固定角色会快照为任务内人物参考，参考图不重新生成、不额外扣人物参考图积分，未绑定角色不进入人物参考链路；前端新增 `/characters` 角色管理 tab，并把创建任务弹窗改为角色名卡片、已有角色绑定、新建角色和显式融入故事操作。`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地服务已通过 `./scripts/restart-dev.sh` 重启，浏览器验证 `/characters` 页面可访问且创建任务弹窗可见角色参考区域。
 - 细化 Sprint 48 角色交互：角色管理列表改为一行一行的紧凑列表，角色图使用完整 contain 展示；创建/编辑角色上传图片后立刻显示本地预览；创建任务中的角色提取改为显式点击 `提取角色` 后调用后端接口，不再随输入自动刷新；提取出的角色名支持删除，点加号会打开带图片的用户角色库列表；手动添加角色只填写角色名称即可加入本次任务。
+- 调整 Sprint 48 角色提取：`/tasks/extract-character-names` 不再使用程序规则，改为后端同步调用硅基流动 `Qwen/Qwen3.6-27B` 的 JSON 角色名提取 prompt；前端文案同步为后端 AI 提取，接口失败时明确返回错误，不静默切回规则提取。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_user_characters.py`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地真实模型烟测输入“三只小猪盖房子，大灰狼来敲门。小红帽在森林里遇见了外婆。”返回 `三只小猪`、`大灰狼`、`小红帽`、`外婆`，耗时约 16.3 秒。
 
 ## 已知缺口
 

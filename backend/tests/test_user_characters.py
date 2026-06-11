@@ -1,14 +1,16 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.api.tasks import extract_character_names_by_rules
 from app.core.database import Base
 from app.models.entities import FileAsset, Style, User, UserCharacter
 from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
 from app.schemas.character import StoryCharacterBindingCreate
 from app.schemas.task import TaskCreate
+from app.services.llm import extract_character_names_from_story
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 
 
@@ -18,12 +20,21 @@ class UserCharacterTest(unittest.TestCase):
         Base.metadata.create_all(engine)
         self.Session = sessionmaker(bind=engine)
 
-    def test_rule_extraction_finds_names_without_llm(self) -> None:
-        names = extract_character_names_by_rules("三只小猪盖房子，大灰狼来敲门，小红帽在远处看见了。")
+    @patch("app.services.llm.call_siliconflow_json")
+    @patch("app.services.llm.get_settings")
+    def test_ai_extraction_uses_character_model_and_normalizes_names(self, get_settings, call_json) -> None:
+        get_settings.return_value = SimpleNamespace(
+            character_extraction_model="Qwen/Qwen3.6-27B",
+            character_extraction_temperature=0.1,
+        )
+        call_json.return_value = {"names": [" 三只小猪 ", "小猪", "大灰狼", "大灰狼"]}
 
-        self.assertIn("三只小猪", names)
-        self.assertIn("大灰狼", names)
-        self.assertIn("小红帽", names)
+        result = extract_character_names_from_story(text="三只小猪盖房子，大灰狼来敲门。")
+
+        self.assertEqual(["三只小猪", "大灰狼"], result.names)
+        call_json.assert_called_once()
+        self.assertEqual("Qwen/Qwen3.6-27B", call_json.call_args.kwargs["model"])
+        self.assertEqual(0.1, call_json.call_args.kwargs["temperature"])
 
     def test_task_can_only_bind_owned_user_character(self) -> None:
         db = self.Session()

@@ -1,7 +1,6 @@
 from datetime import datetime
 from io import BytesIO
 import json
-import re
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -43,41 +42,13 @@ from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, Task
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
 from app.services.image_generation import ImageProviderConfigError
-from app.services.llm import LLMProviderError, merge_character_into_story
+from app.services.llm import LLMProviderError, extract_character_names_from_story, merge_character_into_story
 from app.services.style_references import snapshot_task_style_reference_images
 from app.services.storage import existing_local_asset_path, save_local_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 SUPERSEDED_IMAGE_ERROR_CODE = "ImageGenerationSuperseded"
 SUPERSEDED_IMAGE_ERROR_MESSAGE = "任务重新生成后旧图片生成记录已失效"
-COMMON_CHARACTER_WORDS = (
-    "妈妈",
-    "爸爸",
-    "爷爷",
-    "奶奶",
-    "外婆",
-    "外公",
-    "老师",
-    "老板",
-    "医生",
-    "同事",
-    "朋友",
-    "男孩",
-    "女孩",
-    "小孩",
-    "孩子",
-    "公主",
-    "王子",
-    "国王",
-    "王后",
-    "小猪",
-    "小狗",
-    "小猫",
-    "小兔",
-    "大灰狼",
-    "狼",
-    "小红帽",
-)
 
 
 def task_access_filter(user: User):
@@ -168,48 +139,19 @@ def douyin_source_content_for_task(db: Session, task_id: str) -> ContentExtracti
     return db.scalar(select(ContentExtraction).where(ContentExtraction.linked_task_id == task_id))
 
 
-def normalize_extracted_character_name(value: str) -> str:
-    return re.sub(r"\s+", "", value.strip(" ，。！？；：、,.!?;:()（）[]【】《》\"'“”‘’"))
-
-
-def extract_character_names_by_rules(text: str) -> list[str]:
-    candidates: list[tuple[int, str]] = []
-    patterns = [
-        r"[\u4e00-\u9fa5]{1,4}(?:先生|女士|小姐|老师|老板|医生|妈妈|爸爸|爷爷|奶奶)",
-    ]
-    for pattern in patterns:
-        for match in re.finditer(pattern, text):
-            candidates.append((match.start(), match.group(0)))
-    for word in COMMON_CHARACTER_WORDS:
-        count_pattern = rf"([一二三四五六七八九十两0-9]+只){re.escape(word)}"
-        for match in re.finditer(count_pattern, text):
-            candidates.append((match.start(), f"{match.group(1)}{word}"))
-        for match in re.finditer(re.escape(word), text):
-            candidates.append((match.start(), word))
-
-    names: list[str] = []
-    seen: set[str] = set()
-    for _, candidate in sorted(candidates, key=lambda item: item[0]):
-        name = normalize_extracted_character_name(candidate)
-        if len(name) < 1 or len(name) > 12:
-            continue
-        if any(name != existing and name in existing for existing in names):
-            continue
-        if name in seen:
-            continue
-        seen.add(name)
-        names.append(name)
-        if len(names) >= 12:
-            break
-    return names
-
-
 @router.post("/extract-character-names", response_model=ApiData[CharacterNameExtractionResult])
 def extract_character_names(
     payload: CharacterNameExtractionRequest,
     _: User = Depends(current_user),
 ) -> ApiData[CharacterNameExtractionResult]:
-    return ApiData(data=CharacterNameExtractionResult(names=extract_character_names_by_rules(payload.text)))
+    try:
+        result = extract_character_names_from_story(
+            text=payload.text,
+            trace_context={"operation": "extract_character_names_api"},
+        )
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return ApiData(data=CharacterNameExtractionResult.model_validate(result))
 
 
 @router.post("/merge-character-into-story", response_model=ApiData[StoryCharacterMergeResult])

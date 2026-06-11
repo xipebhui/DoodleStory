@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 from uuid import uuid4
 from pathlib import Path
@@ -125,6 +126,10 @@ class PolicyRewrittenImagePrompt(BaseModel):
 class CharacterMergedStory(BaseModel):
     story_text: str = Field(min_length=1)
     change_summary: str = Field(min_length=1)
+
+
+class ExtractedCharacterNames(BaseModel):
+    names: list[str] = Field(default_factory=list)
 
 
 AGE_STAGE_SPECS = [
@@ -296,8 +301,6 @@ def create_siliconflow_client():
     settings = get_settings()
     if not settings.siliconflow_api_key.strip():
         raise LLMConfigError("SILICONFLOW_API_KEY 未配置")
-    if not settings.siliconflow_model.strip():
-        raise LLMConfigError("SILICONFLOW_MODEL 未配置")
 
     try:
         from openai import OpenAI
@@ -313,8 +316,14 @@ def call_siliconflow_json(
     user_prompt: str,
     prompt_name: str,
     trace_context: dict[str, Any] | None = None,
+    model: str | None = None,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
+    selected_model = (model if model is not None else settings.siliconflow_model).strip()
+    if not selected_model:
+        raise LLMConfigError("SILICONFLOW_MODEL 未配置")
+    selected_temperature = settings.siliconflow_temperature if temperature is None else temperature
     client = create_siliconflow_client()
     trace_id = uuid4().hex
     context = trace_context or {}
@@ -325,8 +334,8 @@ def call_siliconflow_json(
         prompt_name=prompt_name,
         context=context,
         provider="siliconflow",
-        model=settings.siliconflow_model,
-        temperature=settings.siliconflow_temperature,
+        model=selected_model,
+        temperature=selected_temperature,
         response_format="json_object",
         system_prompt_chars=len(system_prompt),
         user_prompt_chars=len(user_prompt),
@@ -336,8 +345,8 @@ def call_siliconflow_json(
     started = time.monotonic()
     try:
         response = client.chat.completions.create(
-            model=settings.siliconflow_model,
-            temperature=settings.siliconflow_temperature,
+            model=selected_model,
+            temperature=selected_temperature,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -414,6 +423,54 @@ def call_siliconflow_json(
         top_level_keys=sorted(parsed.keys()),
     )
     return parsed
+
+
+def normalize_extracted_character_names(names: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for value in names:
+        name = re.sub(r"\s+", "", value.strip(" ，。！？；：、,.!?;:()（）[]【】《》\"'“”‘’"))
+        if not name or len(name) > 30:
+            continue
+        if any(name == existing or name in existing for existing in normalized):
+            continue
+        normalized = [existing for existing in normalized if existing not in name]
+        normalized.append(name)
+        if len(normalized) >= 12:
+            break
+    return normalized
+
+
+def extract_character_names_from_story(
+    *,
+    text: str,
+    trace_context: dict[str, Any] | None = None,
+) -> ExtractedCharacterNames:
+    settings = get_settings()
+    model = settings.character_extraction_model.strip()
+    if not model:
+        raise LLMConfigError("CHARACTER_EXTRACTION_MODEL 未配置")
+
+    raw = call_siliconflow_json(
+        system_prompt=read_prompt("extract_character_names_v1.md"),
+        user_prompt=json.dumps({"story_text": text}, ensure_ascii=False),
+        prompt_name="extract_character_names_v1.md",
+        trace_context={**(trace_context or {}), "operation": "extract_character_names"},
+        model=model,
+        temperature=settings.character_extraction_temperature,
+    )
+    try:
+        result = ExtractedCharacterNames.model_validate(raw)
+    except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="extract_character_names_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        raise LLMResponseError("LLM 角色名提取 JSON 结构不符合要求") from exc
+    return ExtractedCharacterNames(names=normalize_extracted_character_names(result.names))
 
 
 def segment_story(
