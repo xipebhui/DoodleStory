@@ -173,32 +173,27 @@ def normalize_extracted_character_name(value: str) -> str:
 
 
 def extract_character_names_by_rules(text: str) -> list[str]:
-    candidates: list[str] = []
+    candidates: list[tuple[int, str]] = []
     patterns = [
-        r"[一二三四五六七八九十两0-9]+只[\u4e00-\u9fa5]{1,4}",
-        r"小[\u4e00-\u9fa5]{1,2}(?=[，。！？；、\s]|$)",
-        r"老[\u4e00-\u9fa5]{1,2}(?=[，。！？；、\s]|$)",
         r"[\u4e00-\u9fa5]{1,4}(?:先生|女士|小姐|老师|老板|医生|妈妈|爸爸|爷爷|奶奶)",
     ]
     for pattern in patterns:
-        candidates.extend(re.findall(pattern, text))
+        for match in re.finditer(pattern, text):
+            candidates.append((match.start(), match.group(0)))
     for word in COMMON_CHARACTER_WORDS:
-        if word in text:
-            candidates.append(word)
+        count_pattern = rf"([一二三四五六七八九十两0-9]+只){re.escape(word)}"
+        for match in re.finditer(count_pattern, text):
+            candidates.append((match.start(), f"{match.group(1)}{word}"))
+        for match in re.finditer(re.escape(word), text):
+            candidates.append((match.start(), word))
 
     names: list[str] = []
     seen: set[str] = set()
-    for candidate in candidates:
+    for _, candidate in sorted(candidates, key=lambda item: item[0]):
         name = normalize_extracted_character_name(candidate)
-        count_match = re.match(r"^([一二三四五六七八九十两0-9]+只)(.+)$", name)
-        if count_match:
-            prefix = count_match.group(1)
-            rest = count_match.group(2)
-            for word in COMMON_CHARACTER_WORDS:
-                if word in rest:
-                    name = f"{prefix}{word}"
-                    break
         if len(name) < 1 or len(name) > 12:
+            continue
+        if any(name != existing and name in existing for existing in names):
             continue
         if name in seen:
             continue

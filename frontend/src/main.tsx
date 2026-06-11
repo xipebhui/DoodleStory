@@ -111,6 +111,7 @@ type ImageTextPayload = {
 const CONTENT_EXTRACTION_TASK_DRAFT_KEY = "doodlestory.contentExtractionTaskDraft";
 type CreateInputMode = Task["story_input_mode"] | "dy_replicate";
 type CharacterCreateTarget = { sourceName: string; allowMerge: boolean } | null;
+type ManualRoleTarget = { allowMerge: boolean } | null;
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -725,8 +726,12 @@ function TasksView({
   const [extractedCharacterNames, setExtractedCharacterNames] = useState<string[]>([]);
   const [manualCharacterNames, setManualCharacterNames] = useState<string[]>([]);
   const [createCharacterBindings, setCreateCharacterBindings] = useState<Record<string, string>>({});
+  const [extractingCharacters, setExtractingCharacters] = useState(false);
+  const [characterPickTarget, setCharacterPickTarget] = useState<string | null>(null);
+  const [manualRoleTarget, setManualRoleTarget] = useState<ManualRoleTarget>(null);
   const [characterCreateTarget, setCharacterCreateTarget] = useState<CharacterCreateTarget>(null);
   const [creatingCharacter, setCreatingCharacter] = useState(false);
+  const [quickCharacterPreviewUrl, setQuickCharacterPreviewUrl] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -757,7 +762,6 @@ function TasksView({
         ].join(":"),
       )
       .join("|") ?? "";
-  const selectedCreateStyle = styles.find((style) => style.id === createStyleId) ?? styles[0] ?? null;
   const createStylePreviewLimit = 8;
   const visibleCreateStyles = styles.slice(0, createStylePreviewLimit);
   const canExpandCreateStyles = styles.length > 0;
@@ -796,31 +800,15 @@ function TasksView({
   }, [createOpen]);
 
   useEffect(() => {
-    if (!createOpen || storyInputMode === "dy_replicate") {
-      setExtractedCharacterNames([]);
-      return;
-    }
-    const text = createOriginalText.trim();
-    if (!text) {
-      setExtractedCharacterNames([]);
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      api
-        .extractCharacterNames({ text })
-        .then((result) => {
-          if (!cancelled) setExtractedCharacterNames(result.names);
-        })
-        .catch(() => {
-          if (!cancelled) setExtractedCharacterNames([]);
-        });
-    }, 220);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [createOpen, createOriginalText, storyInputMode]);
+    setExtractedCharacterNames([]);
+    setManualCharacterNames([]);
+    setCreateCharacterBindings({});
+  }, [storyInputMode]);
+
+  useEffect(() => {
+    if (!quickCharacterPreviewUrl) return;
+    return () => URL.revokeObjectURL(quickCharacterPreviewUrl);
+  }, [quickCharacterPreviewUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1025,7 +1013,10 @@ function TasksView({
     setExtractedCharacterNames([]);
     setManualCharacterNames([]);
     setCreateCharacterBindings({});
+    setCharacterPickTarget(null);
+    setManualRoleTarget(null);
     setCharacterCreateTarget(null);
+    setQuickCharacterPreviewUrl("");
   }
 
   function bindCreateRole(sourceName: string, userCharacterId: string) {
@@ -1038,6 +1029,54 @@ function TasksView({
       }
       return next;
     });
+  }
+
+  async function extractRolesForCreate() {
+    const text = createOriginalText.trim();
+    if (!text) {
+      setMessage("请输入故事内容后再提取角色");
+      return;
+    }
+    try {
+      setExtractingCharacters(true);
+      const result = await api.extractCharacterNames({ text });
+      setExtractedCharacterNames(result.names);
+      setCreateCharacterBindings((items) => {
+        const validNames = new Set([...result.names, ...manualCharacterNames]);
+        return Object.fromEntries(Object.entries(items).filter(([name]) => validNames.has(name)));
+      });
+      setMessage(result.names.length ? `已提取 ${result.names.length} 个角色名` : "没有提取到明确角色名，可手动添加");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "角色提取失败");
+    } finally {
+      setExtractingCharacters(false);
+    }
+  }
+
+  function removeCreateRole(sourceName: string) {
+    setExtractedCharacterNames((items) => items.filter((name) => name !== sourceName));
+    setManualCharacterNames((items) => items.filter((name) => name !== sourceName));
+    setCreateCharacterBindings((items) => {
+      const next = { ...items };
+      delete next[sourceName];
+      return next;
+    });
+    if (characterPickTarget === sourceName) {
+      setCharacterPickTarget(null);
+    }
+  }
+
+  function addManualRole(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const sourceName = String(formData.get("source_name") ?? "").trim();
+    if (!sourceName) {
+      setMessage("请输入角色名称");
+      return;
+    }
+    setManualCharacterNames((items) => (items.includes(sourceName) ? items : [...items, sourceName]));
+    setManualRoleTarget(null);
+    setMessage("角色名称已添加，可继续绑定形象");
   }
 
   async function createAndBindCharacter(event: React.FormEvent<HTMLFormElement>) {
@@ -1075,6 +1114,7 @@ function TasksView({
         setMessage("角色已创建并绑定到本次任务");
       }
       setCharacterCreateTarget(null);
+      setQuickCharacterPreviewUrl("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "角色创建失败");
     } finally {
@@ -1729,15 +1769,31 @@ function TasksView({
               </label>
               {storyInputMode !== "dy_replicate" ? (
                 <section className="create-section character-quick-section">
-                  <div className="section-label">角色参考</div>
-                  <p className="field-hint">
-                    输入故事后会用规则快速提取角色名；只有点加号并绑定参考图的角色会用于统一形象。已绑定 {boundRoleCount} 个。
-                  </p>
+                  <div className="create-section-head">
+                    <div>
+                      <div className="section-label">角色参考</div>
+                      <p className="field-hint">
+                        点击后端接口提取角色名；只有绑定参考图的角色会用于统一形象。已绑定 {boundRoleCount} 个。
+                      </p>
+                    </div>
+                    <button type="button" className="secondary-button" onClick={extractRolesForCreate} disabled={extractingCharacters}>
+                      {extractingCharacters ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
+                      提取角色
+                    </button>
+                  </div>
                   <div className="quick-character-grid">
                     {createRoleNames.map((name) => {
                       const boundCharacter = userCharacters.find((character) => character.id === createCharacterBindings[name]);
                       return (
                         <div key={name} className={`quick-character-card ${boundCharacter ? "bound" : ""}`}>
+                          <button
+                            type="button"
+                            className="quick-character-remove"
+                            aria-label={`移除 ${name}`}
+                            onClick={() => removeCreateRole(name)}
+                          >
+                            <X size={14} />
+                          </button>
                           {boundCharacter ? (
                             <LazyAssetImage
                               asset={boundCharacter.reference_asset}
@@ -1749,7 +1805,7 @@ function TasksView({
                               type="button"
                               className="quick-character-plus"
                               aria-label={`设置 ${name} 的角色形象`}
-                              onClick={() => setCharacterCreateTarget({ sourceName: name, allowMerge: false })}
+                              onClick={() => setCharacterPickTarget(name)}
                             >
                               <Plus size={22} />
                             </button>
@@ -1774,13 +1830,13 @@ function TasksView({
                     <button
                       type="button"
                       className="quick-character-card add-card"
-                      onClick={() => setCharacterCreateTarget({ sourceName: "", allowMerge: true })}
+                      onClick={() => setManualRoleTarget({ allowMerge: true })}
                     >
                       <span className="quick-character-plus">
                         <Plus size={22} />
                       </span>
                       <strong>添加角色</strong>
-                      <small>手动新增并可融入故事</small>
+                      <small>只填写角色名称</small>
                     </button>
                   </div>
                   {loadingCharacters ? <small className="field-hint">正在读取我的角色库</small> : null}
@@ -1822,29 +1878,6 @@ function TasksView({
                   ) : null}
                 </div>
                 {styles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
-                {selectedCreateStyle ? (
-                  <div className="selected-style-preview">
-                    <div className="selected-style-poster">
-                      {styleCover(selectedCreateStyle) ? (
-                        <LazyAssetImage
-                          asset={styleCover(selectedCreateStyle)}
-                          assetId={styleCover(selectedCreateStyle)!.id}
-                          alt={selectedCreateStyle.name}
-                        />
-                      ) : (
-                        <span>比例由模板控制</span>
-                      )}
-                    </div>
-                    <div>
-                      <span className={`status-pill ${selectedCreateStyle.status}`}>
-                        {selectedCreateStyle.status === "active" ? "启用" : selectedCreateStyle.status}
-                      </span>
-                      <strong>{selectedCreateStyle.name}</strong>
-                      <p>{selectedCreateStyle.description || "暂无描述"}</p>
-                      <small>{styleReferenceModeLabels[selectedCreateStyle.style_reference_mode]} · {selectedCreateStyle.reference_images.length} 张参考图 · 比例 {selectedCreateStyle.aspect_ratio} · {selectedCreateStyle.image_model_name}</small>
-                    </div>
-                  </div>
-                ) : null}
                 <div className="style-picker-grid compact">
                   {visibleCreateStyles.map((style) => {
                     const assets = stylePreviewAssets(style);
@@ -1884,6 +1917,125 @@ function TasksView({
               </div>
             </form>
           </section>
+          {manualRoleTarget ? (
+            <div
+              className="style-picker-backdrop"
+              onClick={(event) => {
+                event.stopPropagation();
+                setManualRoleTarget(null);
+              }}
+            >
+              <section
+                className="character-create-modal small"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="manual-role-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="drawer-head">
+                  <div>
+                    <h2 id="manual-role-title">添加角色</h2>
+                    <p>这里只添加角色名称，之后可以点加号绑定已有角色形象。</p>
+                  </div>
+                  <button type="button" className="icon-button" aria-label="关闭添加角色" onClick={() => setManualRoleTarget(null)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <form className="form compact-form" onSubmit={addManualRole}>
+                  <label>
+                    角色名称
+                    <input name="source_name" placeholder="例如 女主、男友、小猫" required autoFocus />
+                  </label>
+                  <div className="drawer-actions">
+                    <button type="button" className="ghost-button" onClick={() => setManualRoleTarget(null)}>
+                      取消
+                    </button>
+                    <button type="submit">
+                      <Plus size={17} />
+                      添加
+                    </button>
+                  </div>
+                </form>
+              </section>
+            </div>
+          ) : null}
+          {characterPickTarget ? (
+            <div
+              className="style-picker-backdrop"
+              onClick={(event) => {
+                event.stopPropagation();
+                setCharacterPickTarget(null);
+              }}
+            >
+              <section
+                className="character-picker-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="character-picker-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="drawer-head">
+                  <div>
+                    <h2 id="character-picker-title">绑定角色形象</h2>
+                    <p>为「{characterPickTarget}」选择你的角色库图片。</p>
+                  </div>
+                  <button type="button" className="icon-button" aria-label="关闭角色选择" onClick={() => setCharacterPickTarget(null)}>
+                    <X size={18} />
+                  </button>
+                </div>
+                {userCharacters.length === 0 ? (
+                  <div className="empty mini">角色库暂无角色，可以新建一个角色形象。</div>
+                ) : (
+                  <div className="character-picker-list">
+                    {userCharacters.map((character) => (
+                      <button
+                        type="button"
+                        key={character.id}
+                        className={`character-picker-row ${createCharacterBindings[characterPickTarget] === character.id ? "selected" : ""}`}
+                        onClick={() => {
+                          bindCreateRole(characterPickTarget, character.id);
+                          setCharacterPickTarget(null);
+                        }}
+                      >
+                        <LazyAssetImage
+                          asset={character.reference_asset}
+                          assetId={character.reference_asset.id}
+                          alt={character.name}
+                        />
+                        <span>
+                          <strong>{character.name}</strong>
+                          <small>{character.description || "暂无描述"}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="drawer-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setCharacterCreateTarget({ sourceName: characterPickTarget, allowMerge: false });
+                      setCharacterPickTarget(null);
+                    }}
+                  >
+                    <Plus size={17} />
+                    新建角色形象
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => {
+                      bindCreateRole(characterPickTarget, "");
+                      setCharacterPickTarget(null);
+                    }}
+                  >
+                    不绑定
+                  </button>
+                </div>
+              </section>
+            </div>
+          ) : null}
           {characterCreateTarget ? (
             <div
               className="style-picker-backdrop"
@@ -1933,8 +2085,22 @@ function TasksView({
                   </label>
                   <label>
                     参考图
-                    <input name="file" type="file" accept="image/png,image/jpeg,image/webp" required />
+                    <input
+                      name="file"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      required
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        setQuickCharacterPreviewUrl(file ? URL.createObjectURL(file) : "");
+                      }}
+                    />
                   </label>
+                  {quickCharacterPreviewUrl ? (
+                    <div className="upload-preview-frame">
+                      <img src={quickCharacterPreviewUrl} alt="上传预览" />
+                    </div>
+                  ) : null}
                   {characterCreateTarget.allowMerge ? (
                     <label className="character-reference-toggle">
                       <input name="merge_into_story" type="checkbox" />
@@ -2654,6 +2820,7 @@ function CharactersView() {
   const [editingCharacter, setEditingCharacter] = useState<UserCharacter | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [formPreviewUrl, setFormPreviewUrl] = useState("");
 
   async function loadCharacters() {
     try {
@@ -2671,6 +2838,17 @@ function CharactersView() {
   useEffect(() => {
     void loadCharacters();
   }, [query]);
+
+  useEffect(() => {
+    if (!formPreviewUrl) return;
+    return () => URL.revokeObjectURL(formPreviewUrl);
+  }, [formPreviewUrl]);
+
+  function closeCharacterForm() {
+    setCreateOpen(false);
+    setEditingCharacter(null);
+    setFormPreviewUrl("");
+  }
 
   function applyCharacterSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2703,6 +2881,7 @@ function CharactersView() {
       }
       setEditingCharacter(null);
       setCreateOpen(false);
+      setFormPreviewUrl("");
       await loadCharacters();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
@@ -2791,14 +2970,14 @@ function CharactersView() {
       </div>
 
       {createOpen || editingCharacter ? (
-        <div className="task-create-backdrop" onClick={() => { setCreateOpen(false); setEditingCharacter(null); }}>
+        <div className="task-create-backdrop" onClick={closeCharacterForm}>
           <section className="character-create-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="drawer-head">
               <div>
                 <h2>{formCharacter ? "编辑角色" : "新建角色"}</h2>
                 <p>{formCharacter ? "更新后只影响之后创建的新任务。" : "上传一张参考图，之后创建任务时可以直接绑定。"}</p>
               </div>
-              <button type="button" className="icon-button" aria-label="关闭角色表单" onClick={() => { setCreateOpen(false); setEditingCharacter(null); }}>
+              <button type="button" className="icon-button" aria-label="关闭角色表单" onClick={closeCharacterForm}>
                 <X size={18} />
               </button>
             </div>
@@ -2828,10 +3007,24 @@ function CharactersView() {
               ) : null}
               <label>
                 参考图
-                <input name="file" type="file" accept="image/png,image/jpeg,image/webp" required={!formCharacter} />
+                <input
+                  name="file"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  required={!formCharacter}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    setFormPreviewUrl(file ? URL.createObjectURL(file) : "");
+                  }}
+                />
               </label>
+              {formPreviewUrl ? (
+                <div className="upload-preview-frame">
+                  <img src={formPreviewUrl} alt="上传预览" />
+                </div>
+              ) : null}
               <div className="drawer-actions">
-                <button type="button" className="ghost-button" onClick={() => { setCreateOpen(false); setEditingCharacter(null); }}>
+                <button type="button" className="ghost-button" onClick={closeCharacterForm}>
                   取消
                 </button>
                 <button type="submit" disabled={saving}>

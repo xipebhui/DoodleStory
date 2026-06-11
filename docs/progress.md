@@ -186,6 +186,7 @@
 - 修复 QY 图片接口误传未验证尺寸：`gpt-image-2` 等 QY 图片请求不再把 `3:4` 映射为视频/Grok 章节里的 `864x1152` 传入 `size`，避免统一平台返回“gpt-image-2 不支持 864x1152”；当前仅对 `1:1`、`16:9`、`9:16` 这些已验证图片尺寸显式传 `size`，`3:4` 和 `4:3` 继续通过最终生图 prompt 表达画面比例。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_image_generation_gateway_only.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 开始 Sprint 48 用户角色管理与快速角色参考：新增合同 `docs/contracts/sprint-48-user-character-management.md`；目标是新增用户隔离的角色管理 tab，并把创建任务里的人物参考改为规则快速提取角色名、用户显式绑定参考图后才进入固定角色参考链路。
 - 完成 Sprint 48 用户角色管理与快速角色参考：新增 `user_characters` 表、角色 CRUD API 和角色参考图资产权限；新增创建任务规则角色名提取接口与显式角色绑定 payload；固定角色会快照为任务内人物参考，参考图不重新生成、不额外扣人物参考图积分，未绑定角色不进入人物参考链路；前端新增 `/characters` 角色管理 tab，并把创建任务弹窗改为角色名卡片、已有角色绑定、新建角色和显式融入故事操作。`PYTHONPATH=backend backend/.venv/bin/python -m unittest discover -s backend/tests`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本地服务已通过 `./scripts/restart-dev.sh` 重启，浏览器验证 `/characters` 页面可访问且创建任务弹窗可见角色参考区域。
+- 细化 Sprint 48 角色交互：角色管理列表改为一行一行的紧凑列表，角色图使用完整 contain 展示；创建/编辑角色上传图片后立刻显示本地预览；创建任务中的角色提取改为显式点击 `提取角色` 后调用后端接口，不再随输入自动刷新；提取出的角色名支持删除，点加号会打开带图片的用户角色库列表；手动添加角色只填写角色名称即可加入本次任务。
 
 ## 已知缺口
 
