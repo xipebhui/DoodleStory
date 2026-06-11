@@ -731,7 +731,6 @@ function TasksView({
   const [manualRoleTarget, setManualRoleTarget] = useState<ManualRoleTarget>(null);
   const [characterCreateTarget, setCharacterCreateTarget] = useState<CharacterCreateTarget>(null);
   const [creatingCharacter, setCreatingCharacter] = useState(false);
-  const [describingQuickCharacter, setDescribingQuickCharacter] = useState(false);
   const [quickCharacterPreviewUrl, setQuickCharacterPreviewUrl] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -741,7 +740,6 @@ function TasksView({
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
   const [downloadingTaskId, setDownloadingTaskId] = useState<string | null>(null);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
-  const quickCharacterDescriptionRef = useRef<HTMLTextAreaElement | null>(null);
 
   const taskForDetail = selectedTask;
   const taskStepsForDetail = useMemo(() => (taskForDetail ? visibleTaskSteps(taskForDetail) : []), [taskForDetail]);
@@ -1113,7 +1111,7 @@ function TasksView({
         setCreateOriginalText(merged.story_text);
         setMessage(merged.change_summary);
       } else {
-        setMessage("角色已创建并绑定到本次任务");
+        setMessage(description ? "角色已创建并绑定到本次任务" : "角色已创建并绑定，外观描述会在后台识别后自动补充");
       }
       setCharacterCreateTarget(null);
       setQuickCharacterPreviewUrl("");
@@ -1124,21 +1122,9 @@ function TasksView({
     }
   }
 
-  async function describeQuickCharacterFile(file: File | undefined) {
+  function describeQuickCharacterFile(file: File | undefined) {
     setQuickCharacterPreviewUrl(file ? URL.createObjectURL(file) : "");
-    if (!file) return;
-    try {
-      setDescribingQuickCharacter(true);
-      const result = await api.describeCharacterReference(file);
-      if (quickCharacterDescriptionRef.current) {
-        quickCharacterDescriptionRef.current.value = result.description;
-      }
-      setMessage("已根据参考图生成角色外观描述，可继续编辑");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "角色参考图识别失败");
-    } finally {
-      setDescribingQuickCharacter(false);
-    }
+    if (file) setMessage("参考图已选择，保存后会在后台识别外观描述");
   }
 
   async function createTask(event: React.FormEvent<HTMLFormElement>) {
@@ -2101,11 +2087,10 @@ function TasksView({
                   <label>
                     形象描述
                     <textarea
-                      ref={quickCharacterDescriptionRef}
                       name="description"
-                      placeholder="上传参考图后会自动识别外观锚点，也可以手动修改"
+                      placeholder="可手动填写；留空时保存后会在后台自动识别"
                     />
-                    <small>{describingQuickCharacter ? "正在识别参考图外观..." : "这段描述会保存到角色库，并用于后续固定角色一致性。"}</small>
+                    <small>这段描述会保存到角色库；留空时不会阻塞保存，系统会后台识别并自动补充。</small>
                   </label>
                   <label>
                     参考图
@@ -2114,7 +2099,7 @@ function TasksView({
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
                       required
-                      onChange={(event) => void describeQuickCharacterFile(event.currentTarget.files?.[0])}
+                      onChange={(event) => describeQuickCharacterFile(event.currentTarget.files?.[0])}
                     />
                   </label>
                   {quickCharacterPreviewUrl ? (
@@ -2135,8 +2120,8 @@ function TasksView({
                     <button type="button" className="ghost-button" onClick={() => setCharacterCreateTarget(null)}>
                       取消
                     </button>
-                    <button type="submit" disabled={creatingCharacter || describingQuickCharacter}>
-                      {creatingCharacter || describingQuickCharacter ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
+                    <button type="submit" disabled={creatingCharacter}>
+                      {creatingCharacter ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
                       保存并绑定
                     </button>
                   </div>
@@ -2841,9 +2826,7 @@ function CharactersView() {
   const [editingCharacter, setEditingCharacter] = useState<UserCharacter | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [describingCharacter, setDescribingCharacter] = useState(false);
   const [formPreviewUrl, setFormPreviewUrl] = useState("");
-  const characterDescriptionRef = useRef<HTMLTextAreaElement | null>(null);
 
   async function loadCharacters() {
     try {
@@ -2897,10 +2880,10 @@ function CharactersView() {
       setSaving(true);
       if (editingCharacter) {
         await api.updateCharacter(editingCharacter.id, { name, description, file });
-        setMessage("角色已更新");
+        setMessage(description || !file ? "角色已更新" : "角色已更新，外观描述会在后台识别后自动补充");
       } else if (file) {
         await api.createCharacter({ name, description, file });
-        setMessage("角色已创建");
+        setMessage(description ? "角色已创建" : "角色已创建，外观描述会在后台识别后自动补充");
       }
       setEditingCharacter(null);
       setCreateOpen(false);
@@ -2913,21 +2896,9 @@ function CharactersView() {
     }
   }
 
-  async function describeCharacterFile(file: File | undefined) {
+  function describeCharacterFile(file: File | undefined) {
     setFormPreviewUrl(file ? URL.createObjectURL(file) : "");
-    if (!file) return;
-    try {
-      setDescribingCharacter(true);
-      const result = await api.describeCharacterReference(file);
-      if (characterDescriptionRef.current) {
-        characterDescriptionRef.current.value = result.description;
-      }
-      setMessage("已根据参考图生成角色外观描述，可继续编辑");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "角色参考图识别失败");
-    } finally {
-      setDescribingCharacter(false);
-    }
+    if (file) setMessage("参考图已选择，保存后会在后台识别外观描述");
   }
 
   async function deleteCharacter(character: UserCharacter) {
@@ -3029,12 +3000,11 @@ function CharactersView() {
               <label>
                 角色外观描述
                 <textarea
-                  ref={characterDescriptionRef}
                   name="description"
                   defaultValue={formCharacter?.description ?? ""}
-                  placeholder="上传参考图后会自动识别外观锚点，也可以手动修改"
+                  placeholder="可手动填写；留空时保存后会在后台自动识别"
                 />
-                <small>{describingCharacter ? "正在识别参考图外观..." : "这段描述会作为固定角色身份锚点保存，后续生成不再重复调用 VL。"}</small>
+                <small>这段描述会作为固定角色身份锚点保存；留空时不会阻塞保存，系统会后台识别并自动补充。</small>
               </label>
               {formCharacter ? (
                 <div className="selected-style-preview compact">
@@ -3058,7 +3028,7 @@ function CharactersView() {
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   required={!formCharacter}
-                  onChange={(event) => void describeCharacterFile(event.currentTarget.files?.[0])}
+                  onChange={(event) => describeCharacterFile(event.currentTarget.files?.[0])}
                 />
               </label>
               {formPreviewUrl ? (
@@ -3070,8 +3040,8 @@ function CharactersView() {
                 <button type="button" className="ghost-button" onClick={closeCharacterForm}>
                   取消
                 </button>
-                <button type="submit" disabled={saving || describingCharacter}>
-                  {saving || describingCharacter ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
+                <button type="submit" disabled={saving}>
+                  {saving ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
                   保存角色
                 </button>
               </div>

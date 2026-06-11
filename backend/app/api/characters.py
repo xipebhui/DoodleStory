@@ -1,12 +1,14 @@
+import logging
 from datetime import datetime
+from time import sleep
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.models.entities import FileAsset, User, UserCharacter
 from app.models.enums import FileAssetPurpose
 from app.schemas.character import CharacterReferenceDescriptionResult, UserCharacterRead
@@ -16,6 +18,8 @@ from app.services.media_text_extraction import describe_character_reference_imag
 from app.services.storage import image_suffix_for_content_type, save_bytes
 
 router = APIRouter(prefix="/characters", tags=["characters"])
+logger = logging.getLogger(__name__)
+CHARACTER_DESCRIPTION_RETRY_COUNT = 3
 
 
 def normalize_character_name(name: str) -> str:
@@ -50,6 +54,58 @@ def describe_reference_or_502(content: bytes, content_type: str) -> str:
         return describe_character_reference_image(content, content_type).text
     except LLMProviderError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+
+def fill_character_description_from_reference(
+    *,
+    character_id: str,
+    content: bytes,
+    content_type: str,
+) -> None:
+    for attempt in range(1, CHARACTER_DESCRIPTION_RETRY_COUNT + 2):
+        try:
+            description = describe_character_reference_image(content, content_type).text
+            with SessionLocal() as db:
+                character = db.get(UserCharacter, character_id)
+                if character is None or character.deleted_at is not None:
+                    return
+                if character.description and character.description.strip():
+                    return
+                character.description = description
+                db.commit()
+            logger.info(
+                "character reference description filled character_id=%s attempt=%s",
+                character_id,
+                attempt,
+            )
+            return
+        except Exception as exc:  # noqa: BLE001
+            if attempt > CHARACTER_DESCRIPTION_RETRY_COUNT:
+                logger.warning(
+                    "character reference description failed character_id=%s attempts=%s error=%s",
+                    character_id,
+                    attempt,
+                    exc,
+                )
+                return
+            sleep(min(attempt, 3))
+
+
+def enqueue_character_description_fill(
+    *,
+    background_tasks: BackgroundTasks | None,
+    character_id: str,
+    content: bytes,
+    content_type: str,
+) -> None:
+    if background_tasks is None:
+        return
+    background_tasks.add_task(
+        fill_character_description_from_reference,
+        character_id=character_id,
+        content=content,
+        content_type=content_type,
+    )
 
 
 def load_user_character(db: Session, character_id: str, user: User, *, include_deleted: bool = False) -> UserCharacter:
@@ -93,6 +149,7 @@ def list_characters(
 
 @router.post("", response_model=ApiData[UserCharacterRead], status_code=status.HTTP_201_CREATED)
 async def create_character(
+    background_tasks: BackgroundTasks,
     name: str = Form(...),
     description: str | None = Form(default=None),
     file: UploadFile = File(...),
@@ -101,8 +158,6 @@ async def create_character(
 ) -> ApiData[UserCharacterRead]:
     content, content_type = await read_character_reference_upload(file)
     cleaned_description = normalize_character_description(description)
-    if not cleaned_description:
-        cleaned_description = describe_reference_or_502(content, content_type)
     stored = save_bytes(
         FileAssetPurpose.user_character_reference.value,
         content,
@@ -129,6 +184,13 @@ async def create_character(
     )
     db.add(character)
     db.commit()
+    if not cleaned_description:
+        enqueue_character_description_fill(
+            background_tasks=background_tasks,
+            character_id=character.id,
+            content=content,
+            content_type=content_type,
+        )
     character = load_user_character(db, character.id, user)
     return ApiData(data=UserCharacterRead.model_validate(character))
 
@@ -154,6 +216,7 @@ def get_character(
 @router.patch("/{character_id}", response_model=ApiData[UserCharacterRead])
 async def update_character(
     character_id: str,
+    background_tasks: BackgroundTasks,
     name: str | None = Form(default=None),
     description: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
@@ -170,8 +233,6 @@ async def update_character(
         character.description = cleaned_description
     if file is not None:
         content, content_type = await read_character_reference_upload(file)
-        if not cleaned_description:
-            character.description = describe_reference_or_502(content, content_type)
         stored = save_bytes(
             FileAssetPurpose.user_character_reference.value,
             content,
@@ -192,6 +253,13 @@ async def update_character(
         db.flush()
         character.reference_asset_id = asset.id
     db.commit()
+    if file is not None and not (character.description and character.description.strip()):
+        enqueue_character_description_fill(
+            background_tasks=background_tasks,
+            character_id=character.id,
+            content=content,
+            content_type=content_type,
+        )
     character = load_user_character(db, character_id, user)
     return ApiData(data=UserCharacterRead.model_validate(character))
 

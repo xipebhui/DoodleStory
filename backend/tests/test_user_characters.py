@@ -3,11 +3,12 @@ from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fastapi import UploadFile
+from fastapi import BackgroundTasks, UploadFile
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
-from app.api.characters import create_character
+from app.api.characters import create_character, fill_character_description_from_reference
 from app.api.tasks import extract_character_names
 from app.core.database import Base
 from app.models.entities import FileAsset, GenerationTask, Style, TaskCharacter, TaskCharacterAppearance, TaskPanel, TaskPanelCharacterAppearance, User, UserCharacter
@@ -25,7 +26,11 @@ from app.services.task_creation import TaskCreationError, create_generation_task
 
 class UserCharacterTest(unittest.TestCase):
     def setUp(self) -> None:
-        engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
         Base.metadata.create_all(engine)
         self.Session = sessionmaker(bind=engine)
 
@@ -58,13 +63,12 @@ class UserCharacterTest(unittest.TestCase):
         self.assertEqual(["我", "妈妈", "爸爸"], response.data.names)
 
     @patch("app.api.characters.save_bytes")
-    @patch("app.api.characters.describe_reference_or_502")
-    def test_character_create_auto_fills_description_from_reference_image(self, describe_reference, save_bytes) -> None:
+    @patch("app.api.characters.describe_character_reference_image")
+    def test_character_create_saves_first_and_schedules_reference_description(self, describe_reference, save_bytes) -> None:
         db = self.Session()
         user = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
         db.add(user)
         db.commit()
-        describe_reference.return_value = "中年女性，短发，穿宽松针织衫；保持发型、体态和服装轮廓不变。"
         save_bytes.return_value = SimpleNamespace(
             storage_backend=StorageBackend.local,
             storage_key="characters/auto.png",
@@ -73,9 +77,11 @@ class UserCharacterTest(unittest.TestCase):
             checksum_sha256="sha256",
         )
         upload = UploadFile(filename="role.png", file=BytesIO(b"image-bytes"), headers={"content-type": "image/png"})
+        background_tasks = BackgroundTasks()
 
         response = __import__("asyncio").run(
             create_character(
+                background_tasks=background_tasks,
                 name="妈妈",
                 description="",
                 file=upload,
@@ -84,8 +90,50 @@ class UserCharacterTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual(describe_reference.return_value, response.data.description)
-        describe_reference.assert_called_once_with(b"image-bytes", "image/png")
+        self.assertIsNone(response.data.description)
+        describe_reference.assert_not_called()
+        self.assertEqual(1, len(background_tasks.tasks))
+
+    @patch("app.api.characters.CHARACTER_DESCRIPTION_RETRY_COUNT", 3)
+    @patch("app.api.characters.sleep")
+    @patch("app.api.characters.describe_character_reference_image")
+    def test_background_reference_description_retries_and_updates_blank_description(self, describe_reference, sleep) -> None:
+        db = self.Session()
+        asset = FileAsset(
+            purpose=FileAssetPurpose.user_character_reference,
+            storage_backend=StorageBackend.local,
+            storage_key="characters/mom.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        user = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        db.add_all([asset, user])
+        db.flush()
+        character = UserCharacter(
+            owner_user_id=user.id,
+            name="妈妈",
+            reference_asset_id=asset.id,
+            description=None,
+        )
+        db.add(character)
+        db.commit()
+        describe_reference.side_effect = [
+            RuntimeError("temporary vl error"),
+            SimpleNamespace(text="中年女性，短发，穿宽松针织衫。"),
+        ]
+
+        with patch("app.api.characters.SessionLocal", self.Session):
+            fill_character_description_from_reference(
+                character_id=character.id,
+                content=b"image-bytes",
+                content_type="image/png",
+            )
+
+        db.expire_all()
+        refreshed = db.get(UserCharacter, character.id)
+        self.assertEqual("中年女性，短发，穿宽松针织衫。", refreshed.description)
+        self.assertEqual(2, describe_reference.call_count)
+        sleep.assert_called_once_with(1)
 
     def test_task_can_only_bind_owned_user_character(self) -> None:
         db = self.Session()
