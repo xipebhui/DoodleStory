@@ -131,6 +131,28 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         self.assertFalse(any(isinstance(value, str) and value.startswith("data:image") for value in payload.values()))
         self.assertEqual(2, len(reference_info))
 
+    def test_gateway_payload_omits_unverified_image_size_for_three_by_four(self) -> None:
+        payload, _reference_info = build_image_gateway_generation_payload(
+            prompt="画一张 3:4 漫画页",
+            references=[],
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+        )
+
+        self.assertNotIn("size", payload)
+        self.assertNotEqual("864x1152", payload.get("size"))
+        self.assertNotIn("aspect_ratio", payload)
+
+    def test_gateway_payload_keeps_verified_image_size_for_nine_by_sixteen(self) -> None:
+        payload, _reference_info = build_image_gateway_generation_payload(
+            prompt="画一张 9:16 漫画页",
+            references=[],
+            image_model_name="gpt-image-2",
+            aspect_ratio="9:16",
+        )
+
+        self.assertEqual("1024x1792", payload["size"])
+
     def test_gateway_payload_rejects_non_public_reference_url(self) -> None:
         with self.assertRaisesRegex(ImageProviderConfigError, "HTTP\\(S\\) URL"):
             build_image_gateway_generation_payload(

@@ -5,7 +5,7 @@
 - 分支：`main`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 47 DY 来源元信息随任务下载实现后，`./scripts/check.sh` 通过。
+- 最近验证状态：QY 图片接口尺寸参数修复后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
@@ -183,6 +183,7 @@
 - 完成 Sprint 45 统一分镜生图格式：新增合同 `docs/contracts/sprint-45-unified-storyboard-prompt-format.md`；故事方案 prompt 改为输出 `text_layout`，并将旁白、对白、内心 OS 分别放入结构化字段；完整故事 prompt 明确后端会把 panel 原文映射到 `第X页 / 【分格】单页 / 画面 / 旁白 / 对话 / 内心OS` 的页式分镜块；正式 panel 最终生图 prompt 已统一组装为页式分镜块，同时要求字段名只用于理解结构、不能画进图片。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 完成 Sprint 46 人物参考图三视图布局：新增合同 `docs/contracts/sprint-46-character-reference-three-view-layout.md`；人物参考图 prompt 改为固定角色设定图布局，上半部分为正面主图，下半部分并排展示同一人物的左侧视图和右侧视图，并要求三张视图保持同一年龄阶段、发型、服装、体态和标志物。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_character_reference_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 开始并完成 Sprint 47 DY 来源元信息随任务下载：新增合同 `docs/contracts/sprint-47-dy-source-meta-download.md`；抖音下载 adapter 解析 `title`、`description`、`tags` 并保存到内容提取记录；通过 `DY爆款复刻` 自动创建出的生成任务在下载 zip 时额外写入 `meta.json`，只包含标题、描述和标签。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_content_extraction_media_flow.py backend/tests/test_task_download_state.py`、`backend/.venv/bin/python -m compileall backend/app`、空 SQLite Alembic `upgrade head`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
+- 修复 QY 图片接口误传未验证尺寸：`gpt-image-2` 等 QY 图片请求不再把 `3:4` 映射为视频/Grok 章节里的 `864x1152` 传入 `size`，避免统一平台返回“gpt-image-2 不支持 864x1152”；当前仅对 `1:1`、`16:9`、`9:16` 这些已验证图片尺寸显式传 `size`，`3:4` 和 `4:3` 继续通过最终生图 prompt 表达画面比例。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_image_generation_gateway_only.py`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 ## 已知缺口
 

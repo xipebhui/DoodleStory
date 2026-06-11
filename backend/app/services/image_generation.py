@@ -47,12 +47,10 @@ IMAGE_GATEWAY_APEXER_MODELS = {
     "gemini_3.1_flash_image_preview_4K",
     "gemini_3.0_pro_image_preview_4K",
 }
-IMAGE_GATEWAY_OPENAI_SIZE_BY_ASPECT_RATIO = {
+IMAGE_GATEWAY_IMAGE_SIZE_BY_ASPECT_RATIO = {
     "1:1": "1024x1024",
     "16:9": "1792x1024",
     "9:16": "1024x1792",
-    "4:3": "1152x864",
-    "3:4": "864x1152",
 }
 
 
@@ -367,11 +365,8 @@ def download_generated_image(
     return response.content, detect_image_content_type(response.content)
 
 
-def image_gateway_size_for_aspect_ratio(aspect_ratio: str) -> str:
-    size = IMAGE_GATEWAY_OPENAI_SIZE_BY_ASPECT_RATIO.get(aspect_ratio)
-    if not size:
-        raise ImageProviderConfigError(f"统一生图 Gateway 不支持画面比例：{aspect_ratio}")
-    return size
+def image_gateway_size_for_aspect_ratio(aspect_ratio: str) -> str | None:
+    return IMAGE_GATEWAY_IMAGE_SIZE_BY_ASPECT_RATIO.get(aspect_ratio)
 
 
 def image_gateway_reference_limit(image_model_name: str) -> int:
@@ -428,8 +423,10 @@ def build_image_gateway_generation_payload(
         "model": model_name,
         "prompt": prompt,
         "n": 1,
-        "size": image_gateway_size_for_aspect_ratio(aspect_ratio),
     }
+    image_size = image_gateway_size_for_aspect_ratio(aspect_ratio)
+    if image_size:
+        payload["size"] = image_size
     add_image_gateway_reference_fields(payload, validated_reference_urls)
 
     if model_name in IMAGE_GATEWAY_APEXER_MODELS:
