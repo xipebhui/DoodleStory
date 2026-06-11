@@ -221,7 +221,10 @@ class TaskWorkerPromptTest(unittest.TestCase):
             ],
             [reference.url for reference in pack.references],
         )
-        self.assertEqual(["张三参考（参考图1）", "风格参考（参考图2）"], pack.notes)
+        self.assertEqual("风格参考（参考图2）", pack.notes[1])
+        self.assertIn("固定角色参考（参考图1）：张三", pack.notes[0])
+        self.assertIn("外观锁定：主角", pack.notes[0])
+        self.assertIn("固定角色身份 > 当前剧情动作/情绪 > 风格表现方式 > 风格模板默认人物外观", pack.notes[0])
         self.assertEqual(1, pack.character_reference_count)
         self.assertEqual(1, pack.style_reference_count)
 

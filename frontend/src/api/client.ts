@@ -614,6 +614,14 @@ export const api = {
     form.append("file", payload.file);
     return request<ApiData<UserCharacter>>("/characters", { method: "POST", body: form }).then((result) => result.data);
   },
+  describeCharacterReference: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ApiData<{ description: string }>>("/characters/describe-reference", {
+      method: "POST",
+      body: form,
+    }).then((result) => result.data);
+  },
   updateCharacter: (id: string, payload: { name?: string; description?: string | null; file?: File | null }) => {
     const form = new FormData();
     if (payload.name !== undefined) form.append("name", payload.name);

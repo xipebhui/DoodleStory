@@ -15,6 +15,10 @@ class UserCharacterRead(TimestampFields):
     deleted_at: datetime | None
 
 
+class CharacterReferenceDescriptionResult(BaseModel):
+    description: str = Field(min_length=1)
+
+
 class CharacterNameExtractionRequest(BaseModel):
     text: str = Field(min_length=1, max_length=20000)
 

@@ -9,9 +9,11 @@ from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
 from app.models.entities import FileAsset, User, UserCharacter
 from app.models.enums import FileAssetPurpose
-from app.schemas.character import UserCharacterRead
+from app.schemas.character import CharacterReferenceDescriptionResult, UserCharacterRead
 from app.schemas.common import ApiData, ApiList
-from app.services.storage import save_upload_file
+from app.services.llm import LLMProviderError
+from app.services.media_text_extraction import describe_character_reference_image
+from app.services.storage import image_suffix_for_content_type, save_bytes
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
@@ -32,6 +34,22 @@ def normalize_character_description(description: str | None) -> str | None:
     if len(cleaned) > 1000:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色描述不能超过 1000 个字符")
     return cleaned or None
+
+
+async def read_character_reference_upload(file: UploadFile) -> tuple[bytes, str]:
+    content_type = file.content_type or ""
+    image_suffix_for_content_type(content_type)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="参考图不能为空")
+    return content, content_type
+
+
+def describe_reference_or_502(content: bytes, content_type: str) -> str:
+    try:
+        return describe_character_reference_image(content, content_type).text
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 def load_user_character(db: Session, character_id: str, user: User, *, include_deleted: bool = False) -> UserCharacter:
@@ -81,14 +99,23 @@ async def create_character(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[UserCharacterRead]:
-    stored = await save_upload_file(FileAssetPurpose.user_character_reference.value, file)
+    content, content_type = await read_character_reference_upload(file)
+    cleaned_description = normalize_character_description(description)
+    if not cleaned_description:
+        cleaned_description = describe_reference_or_502(content, content_type)
+    stored = save_bytes(
+        FileAssetPurpose.user_character_reference.value,
+        content,
+        content_type,
+        file.filename,
+    )
     asset = FileAsset(
         purpose=FileAssetPurpose.user_character_reference,
         storage_backend=stored.storage_backend,
         storage_key=stored.storage_key,
         public_url=stored.public_url,
         original_filename=file.filename,
-        content_type=file.content_type or "application/octet-stream",
+        content_type=content_type,
         byte_size=stored.byte_size,
         checksum_sha256=stored.checksum_sha256,
     )
@@ -97,13 +124,22 @@ async def create_character(
     character = UserCharacter(
         owner_user_id=user.id,
         name=normalize_character_name(name),
-        description=normalize_character_description(description),
+        description=cleaned_description,
         reference_asset_id=asset.id,
     )
     db.add(character)
     db.commit()
     character = load_user_character(db, character.id, user)
     return ApiData(data=UserCharacterRead.model_validate(character))
+
+
+@router.post("/describe-reference", response_model=ApiData[CharacterReferenceDescriptionResult])
+async def describe_character_reference(
+    file: UploadFile = File(...),
+    _: User = Depends(current_user),
+) -> ApiData[CharacterReferenceDescriptionResult]:
+    content, content_type = await read_character_reference_upload(file)
+    return ApiData(data=CharacterReferenceDescriptionResult(description=describe_reference_or_502(content, content_type)))
 
 
 @router.get("/{character_id}", response_model=ApiData[UserCharacterRead])
@@ -125,19 +161,30 @@ async def update_character(
     db: Session = Depends(get_db),
 ) -> ApiData[UserCharacterRead]:
     character = load_user_character(db, character_id, user)
+    cleaned_description: str | None = None
+    description_was_sent = description is not None
     if name is not None:
         character.name = normalize_character_name(name)
-    if description is not None:
-        character.description = normalize_character_description(description)
+    if description_was_sent:
+        cleaned_description = normalize_character_description(description)
+        character.description = cleaned_description
     if file is not None:
-        stored = await save_upload_file(FileAssetPurpose.user_character_reference.value, file)
+        content, content_type = await read_character_reference_upload(file)
+        if not cleaned_description:
+            character.description = describe_reference_or_502(content, content_type)
+        stored = save_bytes(
+            FileAssetPurpose.user_character_reference.value,
+            content,
+            content_type,
+            file.filename,
+        )
         asset = FileAsset(
             purpose=FileAssetPurpose.user_character_reference,
             storage_backend=stored.storage_backend,
             storage_key=stored.storage_key,
             public_url=stored.public_url,
             original_filename=file.filename,
-            content_type=file.content_type or "application/octet-stream",
+            content_type=content_type,
             byte_size=stored.byte_size,
             checksum_sha256=stored.checksum_sha256,
         )

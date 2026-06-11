@@ -37,6 +37,19 @@ AUDIO_TRANSCRIPTION_PROMPT = """请转录这段音频中的原始口播、旁白
 不要总结，不要补充音频里没有的内容。
 如果无法识别，请说明无法识别的原因。"""
 
+CHARACTER_REFERENCE_DESCRIPTION_PROMPT = """请理解这张角色参考图，输出一段可用于后续图片生成保持角色一致的中文外观锁定描述。
+
+要求：
+- 只描述角色身份锚点和稳定外观，不描述背景、镜头、画风、图片质量或临时动作。
+- 重点包含年龄阶段、性别呈现、脸型、发型、体态、服装轮廓、关键配饰或标志物。
+- 颜色可以写，但必须说明颜色可随黑白、低饱和、水彩等风格转译；不要让颜色压过风格。
+- 明确哪些特征需要保持不变，哪些可以随剧情变化。
+- 不要输出 Markdown、编号或解释。
+- 控制在 300 个中文字符以内。
+
+输出格式示例：
+中年女性，短发，脸型偏瘦，体态虚弱，穿宽松针织上衣和朴素长裤，气质温柔疲惫。后续生成时保持年龄、发型、体态、服装轮廓和标志性配饰不变；表情、姿势和光照可随剧情变化，颜色可按当前画风转译。"""
+
 @dataclass(frozen=True)
 class MediaTextResult:
     text: str
@@ -126,6 +139,12 @@ def data_url(path: Path, content_type: str) -> str:
     content = path.read_bytes()
     if not content:
         raise LLMResponseError(f"媒体文件为空：{path}")
+    return data_url_from_bytes(content, content_type)
+
+
+def data_url_from_bytes(content: bytes, content_type: str) -> str:
+    if not content:
+        raise LLMResponseError("媒体文件为空")
     encoded = base64.b64encode(content).decode("ascii")
     return f"data:{content_type};base64,{encoded}"
 
@@ -229,6 +248,23 @@ def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]
         text,
     )
     return MediaTextResult(text=text, model=model)
+
+
+def describe_character_reference_image(content: bytes, content_type: str) -> MediaTextResult:
+    settings = get_settings()
+    model = settings.siliconflow_vision_model.strip()
+    text = _chat_multimodal(
+        model=model,
+        prompt_name="user_character_reference_description",
+        content=[
+            {"type": "text", "text": CHARACTER_REFERENCE_DESCRIPTION_PROMPT},
+            {"type": "image_url", "image_url": {"url": data_url_from_bytes(content, content_type), "detail": "high"}},
+        ],
+    )
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        raise LLMResponseError("角色参考图识别结果为空")
+    return MediaTextResult(text=cleaned[:1000], model=model)
 
 
 def split_audio_to_mp3(video_path: Path) -> bytes:

@@ -399,7 +399,17 @@ def build_panel_reference_pack(
                 url=reference_asset_public_url(appearance.reference_image),
             )
         )
-        notes.append(f"{character.name}参考（参考图{index}）")
+        anchor = appearance.visual_prompt or character.description or character.name
+        notes.append(
+            "\n".join(
+                [
+                    f"固定角色参考（参考图{index}）：{character.name}",
+                    f"外观锁定：{anchor}",
+                    "参考强度：固定角色身份 > 当前剧情动作/情绪 > 风格表现方式 > 风格模板默认人物外观。",
+                    "一致性规则：保持该角色的年龄阶段、发型、体态、服装轮廓和标志性配饰不变；表情、姿势、动作、光照可随当前剧情变化；颜色可按当前画风转译。",
+                ]
+            )
+        )
 
     return PanelReferencePack(
         references=character_references,
