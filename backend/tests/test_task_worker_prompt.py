@@ -21,6 +21,7 @@ from app.models.enums import (
     WorkflowStatus,
 )
 from app.services.image_generation import GeneratedImageFile, ImageReference, ImageProviderResponseError
+from app.services.llm import LLMResponseError, compose_final_image_prompts
 from app.services.task_worker import (
     PreparedPanelImageRequest,
     build_adapted_story_final_prompt,
@@ -33,6 +34,64 @@ from app.services.task_worker import (
 
 
 class TaskWorkerPromptTest(unittest.TestCase):
+    def test_compose_final_image_prompts_returns_llm_final_prompts(self) -> None:
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            return_value={
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "final_prompt": "第 1 页（单页 | 3:4）\n男生保持黄色上衣，女生保持橄榄绿上衣。",
+                        "consistency_notes": ["分镜里的蓝色裙子被角色外观锁定改为橄榄绿上衣"],
+                    }
+                ]
+            },
+        ) as call_json:
+            result = compose_final_image_prompts(
+                task_payload={
+                    "story_input_mode": "adapted",
+                    "aspect_ratio": "3:4",
+                    "style_reference_mode": "prompt",
+                    "style_prompt": "粗糙手绘漫画风",
+                },
+                characters=[
+                    {
+                        "character_key": "fixed_1",
+                        "name": "女生",
+                        "source_type": "user_fixed_character",
+                        "description": "橄榄绿上衣，深色下装",
+                        "appearances": [],
+                    }
+                ],
+                panels=[
+                    {
+                        "panel_order": 1,
+                        "visual_prompt": "女生穿蓝色裙子坐在长椅上",
+                        "image_text": {"narration": "恋爱后期的无奈瞬间"},
+                    }
+                ],
+            )
+
+        self.assertEqual(1, result.panels[0].panel_order)
+        self.assertIn("橄榄绿上衣", result.panels[0].final_prompt)
+        self.assertEqual(
+            "compose_final_image_prompts_v1.md",
+            call_json.call_args.kwargs["prompt_name"],
+        )
+        self.assertEqual(0.2, call_json.call_args.kwargs["temperature"])
+
+    def test_compose_final_image_prompts_rejects_panel_order_mismatch(self) -> None:
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            return_value={"panels": [{"panel_order": 2, "final_prompt": "第 2 页"}]},
+        ):
+            with self.assertRaises(LLMResponseError):
+                compose_final_image_prompts(
+                    task_payload={"aspect_ratio": "3:4"},
+                    characters=[],
+                    panels=[{"panel_order": 1, "visual_prompt": "女孩在窗边读书"}],
+                )
+
     def test_final_prompt_includes_dialogue_text(self) -> None:
         final_prompt = build_adapted_story_final_prompt(
             aspect_ratio="3:4",

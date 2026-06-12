@@ -123,6 +123,16 @@ class PolicyRewrittenImagePrompt(BaseModel):
     change_summary: str = Field(min_length=1)
 
 
+class FinalImagePromptPanel(BaseModel):
+    panel_order: int = Field(ge=1)
+    final_prompt: str = Field(min_length=1)
+    consistency_notes: list[str] = Field(default_factory=list)
+
+
+class FinalImagePromptResult(BaseModel):
+    panels: list[FinalImagePromptPanel] = Field(min_length=1)
+
+
 class CharacterMergedStory(BaseModel):
     story_text: str = Field(min_length=1)
     change_summary: str = Field(min_length=1)
@@ -1278,6 +1288,66 @@ def revise_panel_prompt(
         "panel_prompt_revision_result",
         context=trace_context or {},
         result=result,
+    )
+    return result
+
+
+def compose_final_image_prompts(
+    *,
+    task_payload: dict[str, Any],
+    panels: list[dict[str, Any]],
+    characters: list[dict[str, Any]],
+    trace_context: dict[str, Any] | None = None,
+) -> FinalImagePromptResult:
+    user_prompt = json.dumps(
+        {
+            "task": task_payload,
+            "characters": characters,
+            "panels": panels,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(
+        system_prompt=read_prompt("compose_final_image_prompts_v1.md"),
+        user_prompt=user_prompt,
+        prompt_name="compose_final_image_prompts_v1.md",
+        trace_context={**(trace_context or {}), "operation": "compose_final_image_prompts"},
+        temperature=0.2,
+    )
+    try:
+        result = FinalImagePromptResult.model_validate(raw)
+    except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="compose_final_image_prompts_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        raise LLMResponseError("LLM 最终生图提示词 JSON 结构不符合要求") from exc
+
+    expected_orders = [int(panel["panel_order"]) for panel in panels]
+    returned_orders = [panel.panel_order for panel in result.panels]
+    if returned_orders != expected_orders:
+        log_prompt_trace(
+            logger,
+            "llm_panel_order_mismatch",
+            prompt_name="compose_final_image_prompts_v1.md",
+            context=trace_context or {},
+            expected_orders=expected_orders,
+            returned_orders=returned_orders,
+            raw=raw,
+        )
+        raise LLMResponseError("LLM 返回的最终生图提示词顺序与输入 panels 不一致")
+
+    logger.info("final image prompt composition succeeded panel_count=%s", len(result.panels))
+    log_prompt_trace(
+        logger,
+        "final_image_prompt_llm_result",
+        context=trace_context or {},
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
     )
     return result
 

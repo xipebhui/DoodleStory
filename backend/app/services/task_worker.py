@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
 from time import monotonic
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -35,6 +36,7 @@ from app.models.enums import (
     StepStatus,
     StoryInputMode,
     TaskStatus,
+    WorkflowStatus,
 )
 from app.services.character_references import (
     build_panel_reference_pack,
@@ -67,6 +69,7 @@ from app.services.llm import (
     LLMProviderError,
     LLMResponseError,
     StorySegment,
+    compose_final_image_prompts,
     extract_task_characters,
     generate_panel_prompts,
     generate_panel_prompts_with_characters,
@@ -874,6 +877,146 @@ def build_generation_reference_pack(task: GenerationTask, panel: TaskPanel) -> G
     )
 
 
+def panel_image_text_payload(panel: TaskPanel) -> dict[str, str | None]:
+    return parse_image_text_json(panel.image_text_json) or {
+        "title": None,
+        "narration": panel.narration_text,
+        "dialogue": panel.dialogue_text,
+        "inner_os": None,
+        "emphasis": None,
+    }
+
+
+def task_character_payload(db: Session, task: GenerationTask) -> list[dict[str, Any]]:
+    characters = load_task_characters(db, task.id)
+    payload: list[dict[str, Any]] = []
+    for character in sorted(characters, key=lambda item: item.character_key):
+        source_type = "user_fixed_character" if is_fixed_task_character(character) else "task_temporary_character"
+        payload.append(
+            {
+                "character_key": character.character_key,
+                "name": character.name,
+                "source_type": source_type,
+                "description": character.description,
+                "appearances": [
+                    {
+                        "appearance_key": appearance.appearance_key,
+                        "age_stage": appearance.age_stage,
+                        "visual_prompt": appearance.visual_prompt,
+                        "reference_image_ready": bool(
+                            appearance.status == WorkflowStatus.succeeded and appearance.reference_image_id
+                        ),
+                    }
+                    for appearance in sorted(character.appearances, key=lambda item: item.appearance_key)
+                ],
+            }
+        )
+    return payload
+
+
+def final_prompt_task_payload(task: GenerationTask) -> dict[str, Any]:
+    style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
+    return {
+        "task_id": task.id,
+        "story_input_mode": task.story_input_mode.value,
+        "original_text": task.original_text,
+        "story_context": story_text_for_generation(task),
+        "aspect_ratio": task.style_aspect_ratio_snapshot,
+        "style_name": task.style_name_snapshot,
+        "style_reference_mode": task.style_reference_mode_snapshot.value,
+        "style_prompt": style_prompt,
+        "image_model_name": task.image_model_name_snapshot,
+        "role_priority_rule": "角色身份 > 当前剧情动作/情绪 > 风格表现方式 > 风格模板默认人物外观",
+    }
+
+
+def final_prompt_panel_payload(
+    *,
+    panel: TaskPanel,
+    visual_prompt: str,
+    image_text: dict[str, str | None],
+    reference_pack: GenerationReferencePack,
+) -> dict[str, Any]:
+    return {
+        "panel_id": panel.id,
+        "panel_order": panel.panel_order,
+        "panel_type": panel.panel_type.value,
+        "story_beat": panel.original_text_segment,
+        "visual_prompt": visual_prompt,
+        "text_layout": panel.text_layout,
+        "image_text": image_text,
+        "structured_storyboard": structured_storyboard_block(
+            panel_order=panel.panel_order,
+            visual_prompt=visual_prompt,
+            image_text=image_text,
+            text_layout=panel.text_layout,
+        ),
+        "layout_instruction": layout_instruction(panel.text_layout),
+        "text_rules": text_rules_block(visual_prompt, image_text, panel.text_layout),
+        "reference_notes": reference_pack.notes,
+        "reference_count": len(reference_pack.references),
+        "character_reference_count": reference_pack.character_reference_count,
+        "style_reference_count": reference_pack.style_reference_count,
+    }
+
+
+def compose_final_prompts_for_panels(
+    *,
+    db: Session,
+    task: GenerationTask,
+    panels: list[TaskPanel],
+    reference_packs: dict[str, GenerationReferencePack],
+    image_text_by_panel_id: dict[str, dict[str, str | None]] | None = None,
+    visual_prompt_by_panel_id: dict[str, str] | None = None,
+    trace_step: str,
+) -> dict[int, str]:
+    if not panels:
+        return {}
+    panel_payloads = []
+    for panel in panels:
+        visual_prompt = (
+            visual_prompt_by_panel_id.get(panel.id)
+            if visual_prompt_by_panel_id is not None
+            else panel.generated_prompt
+        ) or ""
+        image_text = (
+            image_text_by_panel_id.get(panel.id)
+            if image_text_by_panel_id is not None
+            else panel_image_text_payload(panel)
+        )
+        panel_payloads.append(
+            final_prompt_panel_payload(
+                panel=panel,
+                visual_prompt=visual_prompt,
+                image_text=image_text,
+                reference_pack=reference_packs[panel.id],
+            )
+        )
+
+    result = compose_final_image_prompts(
+        task_payload=final_prompt_task_payload(task),
+        panels=panel_payloads,
+        characters=task_character_payload(db, task),
+        trace_context=task_trace_context(
+            task,
+            trace_step,
+            panel_orders=[panel.panel_order for panel in panels],
+            panel_count=len(panels),
+        ),
+    )
+    prompt_by_order = {panel.panel_order: panel.final_prompt for panel in result.panels}
+    for panel in result.panels:
+        log_prompt_trace(
+            logger,
+            "final_image_prompt_composed_by_llm",
+            context=task_trace_context(task, trace_step, panel_order=panel.panel_order),
+            consistency_notes=panel.consistency_notes,
+            final_prompt_chars=len(panel.final_prompt),
+            final_prompt=panel.final_prompt,
+        )
+    return prompt_by_order
+
+
 def current_succeeded_images_by_panel(task: GenerationTask) -> dict[str, GeneratedImage]:
     return {
         image.panel_id: image
@@ -1341,10 +1484,12 @@ def process_task(task_id: str) -> None:
         success_count = 0
         skipped_count = 0
         prepared_requests: list[PreparedPanelImageRequest] = []
+        pending_panels: list[TaskPanel] = []
+        reference_packs_by_panel_id: dict[str, GenerationReferencePack] = {}
+        existing_successes = current_succeeded_images_by_panel(task)
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
             if should_stop_for_cancel(db, task):
                 return
-            existing_successes = current_succeeded_images_by_panel(task)
             if panel.id in existing_successes:
                 success_count += 1
                 skipped_count += 1
@@ -1357,57 +1502,59 @@ def process_task(task_id: str) -> None:
                 )
                 continue
             try:
-                reference_pack = build_generation_reference_pack(task, panel)
-                panel_references = reference_pack.references
-                reference_notes = reference_pack.notes
-                character_reference_count = reference_pack.character_reference_count
-                style_reference_count = reference_pack.style_reference_count
-                final_prompt = build_panel_final_prompt(
-                    task=task,
-                    panel=panel,
-                    visual_prompt=panel.generated_prompt or "",
-                    image_text=parse_image_text_json(panel.image_text_json)
-                    or {
-                        "title": None,
-                        "narration": panel.narration_text,
-                        "dialogue": panel.dialogue_text,
-                        "inner_os": None,
-                        "emphasis": None,
-                    },
-                    reference_notes=reference_notes,
-                )
-                log_prompt_trace(
-                    logger,
-                    "final_image_prompt_composed",
-                    context=task_trace_context(
-                        task,
-                        "generate_images",
-                        panel_id=panel.id,
-                        panel_order=panel.panel_order,
-                    ),
-                    reference_notes=reference_notes,
-                    reference_count=len(panel_references),
-                    character_reference_count=character_reference_count,
-                    style_reference_count=style_reference_count,
-                    visual_prompt=panel.generated_prompt,
-                    image_text_json=panel.image_text_json,
-                    final_prompt_chars=len(final_prompt),
-                    final_prompt=final_prompt,
-                )
-                logger.info(
-                    "story_drawing_debug final_prompt_ready task_id=%s panel_id=%s panel_order=%s reference_count=%s character_reference_count=%s style_reference_count=%s visual_prompt_chars=%s final_prompt_chars=%s",
-                    task.id,
-                    panel.id,
-                    panel.panel_order,
-                    len(panel_references),
-                    character_reference_count,
-                    style_reference_count,
-                    len(panel.generated_prompt or ""),
-                    len(final_prompt),
-                )
+                reference_packs_by_panel_id[panel.id] = build_generation_reference_pack(task, panel)
+                pending_panels.append(panel)
             except ImageProviderConfigError as exc:
                 fail_step_and_task(db, task, GenerationStepName.generate_images, exc)
                 return
+
+        try:
+            final_prompts_by_order = compose_final_prompts_for_panels(
+                db=db,
+                task=task,
+                panels=pending_panels,
+                reference_packs=reference_packs_by_panel_id,
+                trace_step="generate_images_final_prompt",
+            )
+        except LLMProviderError as exc:
+            fail_step_and_task(db, task, GenerationStepName.generate_images, exc)
+            return
+
+        for panel in pending_panels:
+            reference_pack = reference_packs_by_panel_id[panel.id]
+            panel_references = reference_pack.references
+            character_reference_count = reference_pack.character_reference_count
+            style_reference_count = reference_pack.style_reference_count
+            final_prompt = final_prompts_by_order[panel.panel_order]
+            log_prompt_trace(
+                logger,
+                "final_image_prompt_ready",
+                context=task_trace_context(
+                    task,
+                    "generate_images",
+                    panel_id=panel.id,
+                    panel_order=panel.panel_order,
+                ),
+                reference_notes=reference_pack.notes,
+                reference_count=len(panel_references),
+                character_reference_count=character_reference_count,
+                style_reference_count=style_reference_count,
+                visual_prompt=panel.generated_prompt,
+                image_text_json=panel.image_text_json,
+                final_prompt_chars=len(final_prompt),
+                final_prompt=final_prompt,
+            )
+            logger.info(
+                "story_drawing_debug final_prompt_ready task_id=%s panel_id=%s panel_order=%s reference_count=%s character_reference_count=%s style_reference_count=%s visual_prompt_chars=%s final_prompt_chars=%s",
+                task.id,
+                panel.id,
+                panel.panel_order,
+                len(panel_references),
+                character_reference_count,
+                style_reference_count,
+                len(panel.generated_prompt or ""),
+                len(final_prompt),
+            )
             image = GeneratedImage(
                 task_id=task.id,
                 panel_id=panel.id,
@@ -1711,12 +1858,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                 image.text_layout = revision.text_layout
             image.prompt_change_summary = revision.change_summary
             image.llm_model_snapshot = get_settings().siliconflow_model
-            image.final_prompt = build_panel_final_prompt(
-                task=task,
-                panel=panel,
-                visual_prompt=revision.visual_prompt,
-                image_text=parse_image_text_json(image.image_text_json),
-            )
+            image.final_prompt = None
             log_prompt_trace(
                 logger,
                 "panel_edit_prompt_adopted",
@@ -1734,7 +1876,6 @@ def process_panel_edit(generated_image_id: str) -> None:
                 image_text_json=image.image_text_json,
                 text_layout=image.text_layout,
                 change_summary=image.prompt_change_summary,
-                final_prompt=image.final_prompt,
             )
             image.workflow_step = GeneratedImageWorkflowStep.generate_image
             db.commit()
@@ -1779,20 +1920,25 @@ def process_panel_edit(generated_image_id: str) -> None:
             return
         references = reference_pack.references
         reference_notes = reference_pack.notes
-        image.final_prompt = build_panel_final_prompt(
-            task=task,
-            panel=panel,
-            visual_prompt=image.image_prompt or "",
-            image_text=parse_image_text_json(image.image_text_json)
-            or {
-                "title": None,
-                "narration": panel.narration_text,
-                "dialogue": panel.dialogue_text,
-                "inner_os": None,
-                "emphasis": None,
-            },
-            reference_notes=reference_notes,
-        )
+        edit_image_text = parse_image_text_json(image.image_text_json) or panel_image_text_payload(panel)
+        try:
+            final_prompts_by_order = compose_final_prompts_for_panels(
+                db=db,
+                task=task,
+                panels=[panel],
+                reference_packs={panel.id: reference_pack},
+                image_text_by_panel_id={panel.id: edit_image_text},
+                visual_prompt_by_panel_id={panel.id: image.image_prompt or ""},
+                trace_step="panel_edit_final_prompt",
+            )
+        except LLMProviderError as exc:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            db.commit()
+            return
+        image.final_prompt = final_prompts_by_order[panel.panel_order]
         log_prompt_trace(
             logger,
             "panel_edit_final_image_prompt_composed",
