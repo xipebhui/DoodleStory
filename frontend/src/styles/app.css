@@ -2468,6 +2468,29 @@ textarea {
   white-space: nowrap;
 }
 
+.extract-character-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border-color: rgba(240, 199, 119, 0.72);
+  background:
+    linear-gradient(180deg, rgba(240, 199, 119, 0.28), rgba(214, 162, 74, 0.16)),
+    #16120b;
+  color: #ffe2a3;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 10px 30px rgba(214, 162, 74, 0.18);
+}
+
+.extract-character-button:hover:not(:disabled) {
+  border-color: rgba(255, 226, 163, 0.9);
+  background:
+    linear-gradient(180deg, rgba(255, 226, 163, 0.34), rgba(214, 162, 74, 0.2)),
+    #1d160c;
+}
+
 .section-label {
   color: #c8d0dc;
   font-weight: 800;
@@ -2744,6 +2767,23 @@ textarea {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));
   gap: 10px;
+}
+
+.character-auto-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(71, 176, 125, 0.26);
+  border-radius: 8px;
+  background: rgba(71, 176, 125, 0.08);
+  color: #9ee5bd;
+  padding: 9px 11px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.character-auto-note svg {
+  flex: 0 0 auto;
 }
 
 .quick-character-card {

@@ -147,7 +147,7 @@ def create_generation_task_record(
     validate_task_create_payload(payload)
     style = load_active_style_for_task(db, payload.style_id)
     fixed_user_characters = load_user_characters_for_task(db, payload, user)
-    use_character_references = bool(payload.story_characters)
+    use_character_references = payload.use_character_references or bool(payload.story_characters)
 
     display_title = payload.original_text.strip().replace("\n", " ")[:36] or "未命名任务"
     task = GenerationTask(

@@ -193,6 +193,7 @@
 - 修复 Sprint 48 固定角色与临时角色混合生成：定位任务 `0da41c30efe844beb25fe3d69a2c6a71` 只显示固定角色，是因为任务创建时已写入 `fixed_1`，worker 看到已有 `task_characters` 后直接跳过人物提取，导致 `妈妈`、`爸爸` 没有进入临时参考图生成。现已改为固定角色保留且优先，worker 仍会提取故事里的其他主要人物，并只追加非同名临时角色；故事方案和提取分镜模式下，已有临时角色链接也不会再阻止固定角色按名字补链。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_user_characters.py backend/tests/test_task_worker_prompt.py`、`backend/.venv/bin/python -m compileall backend/app`、`./scripts/check.sh` 和 `git diff --check` 通过。
 - 调整 Sprint 48 角色录入体验：角色管理和创建任务快速新建角色时，上传参考图只做本地预览，不再立即调用 VL 或禁用保存按钮；后端先保存角色和参考图，再通过 FastAPI 后台任务调用 SiliconFlow 视觉模型补齐 `description`。后台识别失败时最多重试 3 次，最终失败只记录日志，不阻断用户保存角色。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_user_characters.py`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`./scripts/check.sh` 和 `git diff --check` 通过；本地服务已通过 `./scripts/restart-dev.sh` 重启，浏览器验证 `/characters` 新建角色弹窗不再显示识别中状态，保存提示改为留空后台识别且不阻塞保存。
 - 调整 Sprint 48 最终生图 prompt 编译：新增 `compose_final_image_prompts_v1.md` 和后端 LLM 编译接口，正式任务与单 panel 修改不再直接把参考、风格和结构化分镜字符串拼接成最终 prompt；worker 会把全局角色表、每页分镜中间态、图片内文字、风格信息和参考图顺序一次性提交给 LLM，由这一层处理固定角色/临时角色的全局一致性、角色外观与分镜或风格模板默认人物外观的冲突，并输出每页完整画师指令。编译失败会让 `generate_images` 或单图版本明确失败，不静默回退到旧拼接逻辑。
+- 修复 Sprint 48 未点击角色提取时跳过临时角色的问题：任务创建 schema 和前端普通任务/DY 复刻入口默认开启 `use_character_references`，后端创建任务改为尊重 payload 的人物参考开关，而不是只按 `story_characters` 是否有固定角色绑定来决定；因此用户不点击 `AI 提取角色`、不绑定固定角色时，任务仍会进入 `extract_characters` 和 `generate_character_references` 临时角色链路。创建弹窗里的角色提取按钮改为更醒目的主操作，并增加“不操作也会自动走临时角色一致性”的提示。
 
 ## 已知缺口
 

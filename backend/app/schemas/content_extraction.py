@@ -15,7 +15,7 @@ class ContentExtractionReplicateTaskCreate(ContentExtractionDownloadCreate):
     image_count_mode: ImageCountMode
     requested_image_count: int | None = Field(default=None, ge=1, le=80)
     style_id: str = Field(min_length=1)
-    use_character_references: bool = False
+    use_character_references: bool = True
 
 
 class ContentExtractionHealthRead(BaseModel):

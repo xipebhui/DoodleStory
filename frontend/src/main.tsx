@@ -1154,7 +1154,7 @@ function TasksView({
           image_count_mode: countMode,
           requested_image_count: countMode === "fixed" ? requested : null,
           style_id: createStyleId,
-          use_character_references: false,
+          use_character_references: true,
         });
         resetCreateForm();
         setCreateOpen(false);
@@ -1169,7 +1169,7 @@ function TasksView({
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
-        use_character_references: storyCharacters.length > 0,
+        use_character_references: true,
         story_characters: storyCharacters,
       });
       resetCreateForm();
@@ -1778,13 +1778,17 @@ function TasksView({
                     <div>
                       <div className="section-label">角色参考</div>
                       <p className="field-hint">
-                        点击后端 AI 提取角色名；只有绑定参考图的角色会用于统一形象。已绑定 {boundRoleCount} 个。
+                        默认会为故事主要人物生成本次任务临时角色；点这里可提前看到角色名并绑定你的固定角色。已绑定 {boundRoleCount} 个。
                       </p>
                     </div>
-                    <button type="button" className="secondary-button" onClick={extractRolesForCreate} disabled={extractingCharacters}>
+                    <button type="button" className="extract-character-button" onClick={extractRolesForCreate} disabled={extractingCharacters}>
                       {extractingCharacters ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
-                      提取角色
+                      AI 提取角色
                     </button>
+                  </div>
+                  <div className="character-auto-note">
+                    <Sparkles size={16} />
+                    <span>不操作也会自动走临时角色一致性；提取只是为了让你手动绑定固定角色。</span>
                   </div>
                   <div className="quick-character-grid">
                     {createRoleNames.map((name) => {

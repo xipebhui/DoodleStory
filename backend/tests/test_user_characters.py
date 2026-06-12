@@ -12,7 +12,7 @@ from app.api.characters import create_character, fill_character_description_from
 from app.api.tasks import extract_character_names
 from app.core.database import Base
 from app.models.entities import FileAsset, GenerationTask, Style, TaskCharacter, TaskCharacterAppearance, TaskPanel, TaskPanelCharacterAppearance, User, UserCharacter
-from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
+from app.models.enums import FileAssetPurpose, GenerationStepName, ImageCountMode, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
 from app.schemas.character import CharacterNameExtractionRequest, StoryCharacterBindingCreate
 from app.schemas.task import TaskCreate
 from app.services.character_references import (
@@ -213,6 +213,47 @@ class UserCharacterTest(unittest.TestCase):
                     ],
                 ),
             )
+
+    def test_character_references_can_start_without_pre_extracted_bindings(self) -> None:
+        db = self.Session()
+        owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        style = Style(
+            name="绘本",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_reference_mode=StyleReferenceMode.prompt,
+            style_prompt="温暖绘本风",
+        )
+        db.add_all([owner, style])
+        db.commit()
+
+        task = create_generation_task_record(
+            db=db,
+            user=owner,
+            payload=TaskCreate(
+                original_text="妈妈躺在床上织毛裤，爸爸坐在旁边沉默着。",
+                story_input_mode=StoryInputMode.original,
+                image_count_mode=ImageCountMode.auto,
+                style_id=style.id,
+                use_character_references=True,
+                story_characters=[],
+            ),
+        )
+
+        self.assertTrue(task.use_character_references)
+        self.assertEqual(0, len(task.characters))
+        self.assertEqual(5, task.progress_total)
+        self.assertEqual(
+            [
+                GenerationStepName.segment_story,
+                GenerationStepName.extract_characters,
+                GenerationStepName.generate_character_references,
+                GenerationStepName.generate_panel_prompts,
+                GenerationStepName.generate_images,
+            ],
+            [step.step_name for step in task.steps],
+        )
 
     def test_fixed_character_task_still_persists_unbound_generated_characters(self) -> None:
         db = self.Session()

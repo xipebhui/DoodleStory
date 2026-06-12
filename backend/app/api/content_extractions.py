@@ -319,7 +319,7 @@ def create_generation_task_from_content_extraction(
         image_count_mode=payload.image_count_mode,
         requested_image_count=payload.requested_image_count,
         style_id=payload.style_id,
-        use_character_references=False,
+        use_character_references=payload.use_character_references,
     )
     try:
         task = create_generation_task_record(db=db, payload=task_payload, user=user)
