@@ -28,6 +28,7 @@ from app.services.task_worker import (
     build_generation_reference_pack,
     build_original_story_final_prompt,
     build_panel_final_prompt,
+    final_prompt_with_explicit_style,
     generate_panel_image_request,
     is_policy_blocked_image_error,
 )
@@ -221,6 +222,53 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("旁白：原文", final_prompt)
         self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertNotIn("这段风格提示词不应直接进入最终生图 prompt", final_prompt)
+
+    def test_llm_final_prompt_adds_explicit_style_prompt_in_prompt_mode(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.adapted,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="手绘风",
+            style_prompt_snapshot="低饱和手绘漫画风，人物比例极简，中文手写字清晰偏大。",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+
+        final_prompt = final_prompt_with_explicit_style(
+            task,
+            "第 1 页（单页 | 3:4）\n男生保持黄色衬衫，女生保持橄榄绿上衣。",
+        )
+
+        self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
+        self.assertIn("低饱和手绘漫画风，人物比例极简，中文手写字清晰偏大。", final_prompt)
+        self.assertIn("风格执行优先级：角色身份与外观锁定 > 当前剧情动作/情绪", final_prompt)
+        self.assertIn("最终画面指令：", final_prompt)
+        self.assertIn("男生保持黄色衬衫，女生保持橄榄绿上衣。", final_prompt)
+        self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
+
+    def test_llm_final_prompt_does_not_add_style_prompt_in_image_mode(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.adapted,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="参考图风格",
+            style_prompt_snapshot="这段风格提示词不应拼入最终生图 prompt",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+
+        final_prompt = final_prompt_with_explicit_style(task, "第 1 页\n女孩在窗边读书。")
+
+        self.assertEqual("第 1 页\n女孩在窗边读书。", final_prompt)
+        self.assertNotIn("这段风格提示词不应拼入最终生图 prompt", final_prompt)
 
     def test_generation_reference_pack_orders_character_before_style_reference(self) -> None:
         character_asset = FileAsset(

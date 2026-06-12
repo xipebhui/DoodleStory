@@ -734,6 +734,30 @@ def style_prompt_block(style_prompt: str | None) -> list[str]:
     ]
 
 
+def final_prompt_with_explicit_style(task: GenerationTask, final_prompt: str) -> str:
+    cleaned_prompt = final_prompt.strip()
+    style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
+    cleaned_style = (style_prompt or "").strip()
+    if not cleaned_style:
+        return cleaned_prompt
+    return "\n".join(
+        [
+            "风格提示词（必须直接用于本张图的画风、人物比例、线条、色彩、构图、文字呈现和整体质感）：",
+            cleaned_style,
+            "",
+            (
+                "风格执行优先级：角色身份与外观锁定 > 当前剧情动作/情绪 > 风格表现方式 > "
+                "风格模板默认人物外观。风格模板只控制画风、人物比例、线条、色彩、构图、"
+                "文字呈现和整体质感；不得覆盖最终画面指令中已经锁定的角色年龄阶段、发型、"
+                "体态、服装轮廓和标志性配饰。"
+            ),
+            "",
+            "最终画面指令：",
+            cleaned_prompt,
+        ]
+    ).strip()
+
+
 def build_original_story_final_prompt(
     aspect_ratio: str,
     visual_prompt: str,
@@ -1004,15 +1028,22 @@ def compose_final_prompts_for_panels(
             panel_count=len(panels),
         ),
     )
-    prompt_by_order = {panel.panel_order: panel.final_prompt for panel in result.panels}
+    prompt_by_order = {
+        panel.panel_order: final_prompt_with_explicit_style(task, panel.final_prompt) for panel in result.panels
+    }
     for panel in result.panels:
+        final_prompt = prompt_by_order[panel.panel_order]
         log_prompt_trace(
             logger,
             "final_image_prompt_composed_by_llm",
             context=task_trace_context(task, trace_step, panel_order=panel.panel_order),
             consistency_notes=panel.consistency_notes,
-            final_prompt_chars=len(panel.final_prompt),
-            final_prompt=panel.final_prompt,
+            llm_final_prompt_chars=len(panel.final_prompt),
+            llm_final_prompt=panel.final_prompt,
+            style_prompt_included=is_prompt_reference_mode(task.style_reference_mode_snapshot)
+            and bool((task.style_prompt_snapshot or "").strip()),
+            final_prompt_chars=len(final_prompt),
+            final_prompt=final_prompt,
         )
     return prompt_by_order
 
