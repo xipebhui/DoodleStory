@@ -1885,9 +1885,80 @@ function TasksView({
                 </div>
               </fieldset>
               {message ? <p className="form-message">{message}</p> : null}
-              {storyInputMode !== "dy_replicate" ? (
+              {storyInputMode !== "dy_replicate" && fixedRoleFlowEnabled ? (
                 <section className="create-section character-quick-section">
-                  <label className="character-reference-toggle fixed-role-toggle">
+                  <p className="field-hint">勾选后需先提取角色名，再选择要绑定的固定角色。已绑定 {boundRoleCount} 个。</p>
+                  {fixedRoleExtractionReady ? (
+                    <div className="quick-character-grid">
+                      {createRoleNames.map((name) => {
+                        const boundCharacter = userCharacters.find((character) => character.id === createCharacterBindings[name]);
+                        return (
+                          <div key={name} className={`quick-character-card ${boundCharacter ? "bound" : ""}`}>
+                            <button
+                              type="button"
+                              className="quick-character-remove"
+                              aria-label={`移除 ${name}`}
+                              onClick={() => removeCreateRole(name)}
+                            >
+                              <X size={14} />
+                            </button>
+                            {boundCharacter ? (
+                              <LazyAssetImage
+                                asset={boundCharacter.reference_asset}
+                                assetId={boundCharacter.reference_asset.id}
+                                alt={boundCharacter.name}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                className="quick-character-plus"
+                                aria-label={`设置 ${name} 的角色形象`}
+                                onClick={() => setCharacterPickTarget(name)}
+                              >
+                                <Plus size={22} />
+                              </button>
+                            )}
+                            <strong>{name}</strong>
+                            {boundCharacter ? <small>{boundCharacter.name}</small> : <small>未设置形象</small>}
+                            <select
+                              value={createCharacterBindings[name] ?? ""}
+                              onChange={(event) => bindCreateRole(name, event.target.value)}
+                              aria-label={`绑定 ${name} 到我的角色`}
+                            >
+                              <option value="">不绑定</option>
+                              {userCharacters.map((character) => (
+                                <option key={character.id} value={character.id}>
+                                  {character.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        className="quick-character-card add-card"
+                        onClick={() => setManualRoleTarget({ allowMerge: true })}
+                      >
+                        <span className="quick-character-plus">
+                          <Plus size={22} />
+                        </span>
+                        <strong>添加角色</strong>
+                        <small>只填写角色名称</small>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="character-extraction-waiting">
+                      <Search size={17} />
+                      <span>点击底部“提取角色”后，会显示可绑定的角色列表。</span>
+                    </div>
+                  )}
+                  {loadingCharacters ? <small className="field-hint">正在读取我的角色库</small> : null}
+                </section>
+              ) : null}
+              <div className="task-create-footer">
+                {storyInputMode !== "dy_replicate" ? (
+                  <label className="character-reference-toggle fixed-role-toggle footer-role-toggle">
                     <input
                       type="checkbox"
                       checked={fixedRoleFlowEnabled}
@@ -1895,102 +1966,29 @@ function TasksView({
                     />
                     <span>
                       <strong>使用固定角色</strong>
-                      <small>需要绑定你角色库里的固定形象时再勾选；默认不提取角色，点击创建任务会直接提交。</small>
+                      <small>勾选后底部按钮会先提取角色；不勾选会直接创建任务。</small>
                     </span>
                   </label>
-                  {fixedRoleFlowEnabled ? (
-                    <>
-                      <p className="field-hint">
-                        勾选后需先提取角色名，再选择要绑定的固定角色。已绑定 {boundRoleCount} 个。
-                      </p>
-                      {fixedRoleExtractionReady ? (
-                        <div className="quick-character-grid">
-                          {createRoleNames.map((name) => {
-                            const boundCharacter = userCharacters.find((character) => character.id === createCharacterBindings[name]);
-                            return (
-                              <div key={name} className={`quick-character-card ${boundCharacter ? "bound" : ""}`}>
-                                <button
-                                  type="button"
-                                  className="quick-character-remove"
-                                  aria-label={`移除 ${name}`}
-                                  onClick={() => removeCreateRole(name)}
-                                >
-                                  <X size={14} />
-                                </button>
-                                {boundCharacter ? (
-                                  <LazyAssetImage
-                                    asset={boundCharacter.reference_asset}
-                                    assetId={boundCharacter.reference_asset.id}
-                                    alt={boundCharacter.name}
-                                  />
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="quick-character-plus"
-                                    aria-label={`设置 ${name} 的角色形象`}
-                                    onClick={() => setCharacterPickTarget(name)}
-                                  >
-                                    <Plus size={22} />
-                                  </button>
-                                )}
-                                <strong>{name}</strong>
-                                {boundCharacter ? <small>{boundCharacter.name}</small> : <small>未设置形象</small>}
-                                <select
-                                  value={createCharacterBindings[name] ?? ""}
-                                  onChange={(event) => bindCreateRole(name, event.target.value)}
-                                  aria-label={`绑定 ${name} 到我的角色`}
-                                >
-                                  <option value="">不绑定</option>
-                                  {userCharacters.map((character) => (
-                                    <option key={character.id} value={character.id}>
-                                      {character.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            className="quick-character-card add-card"
-                            onClick={() => setManualRoleTarget({ allowMerge: true })}
-                          >
-                            <span className="quick-character-plus">
-                              <Plus size={22} />
-                            </span>
-                            <strong>添加角色</strong>
-                            <small>只填写角色名称</small>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="character-extraction-waiting">
-                          <Search size={17} />
-                          <span>点击底部“提取角色”后，会显示可绑定的角色列表。</span>
-                        </div>
-                      )}
-                      {loadingCharacters ? <small className="field-hint">正在读取我的角色库</small> : null}
-                    </>
-                  ) : null}
-                </section>
-              ) : null}
-              <div className="drawer-actions">
-                <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>
-                  取消
-                </button>
-                <button type="submit" disabled={creating || extractingCharacters}>
-                  {creating || extractingCharacters ? (
-                    <Loader2 size={17} className="spin" />
-                  ) : fixedRoleFlowEnabled && !fixedRoleExtractionReady && storyInputMode !== "dy_replicate" ? (
-                    <Search size={17} />
-                  ) : (
-                    <Plus size={17} />
-                  )}
-                  {storyInputMode === "dy_replicate"
-                    ? "开始复刻"
-                    : fixedRoleFlowEnabled && !fixedRoleExtractionReady
-                      ? "提取角色"
-                      : "创建任务"}
-                </button>
+                ) : null}
+                <div className="drawer-actions">
+                  <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>
+                    取消
+                  </button>
+                  <button type="submit" disabled={creating || extractingCharacters}>
+                    {creating || extractingCharacters ? (
+                      <Loader2 size={17} className="spin" />
+                    ) : fixedRoleFlowEnabled && !fixedRoleExtractionReady && storyInputMode !== "dy_replicate" ? (
+                      <Search size={17} />
+                    ) : (
+                      <Plus size={17} />
+                    )}
+                    {storyInputMode === "dy_replicate"
+                      ? "开始复刻"
+                      : fixedRoleFlowEnabled && !fixedRoleExtractionReady
+                        ? "提取角色"
+                        : "创建任务"}
+                  </button>
+                </div>
               </div>
             </form>
           </section>
