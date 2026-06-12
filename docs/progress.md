@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- 新增 DoodleStory 增长诊断与内容迭代上下文包：项目内增加 `.agents/skills/doodlestory-growth-diagnosis/SKILL.md`，用于在 DoodleStory 仓库内按 dbs-diagnosis 体检框架继续诊断产品增长、定价、内容实验和小红书获客；新增 `docs/strategy/doodle-growth-diagnosis.md`、`docs/product/content-iteration-system.md`、`docs/experiments/content-iteration-cycle-template.md` 和 `docs/growth/xiaohongshu/content-strategy.md`，把“图文账号内容迭代实验系统”的定位、实验闭环、售卖边界、复盘模板和获客内容策略沉淀到仓库，不再依赖聊天上下文。
 - 初始化 Git 仓库，并将 `main` 推送到 `git@github.com:xipebhui/DoodleStory.git`。
 - 从 `git@github.com:xipebhui/codex-project-template.git` 引入 Codex 项目 harness。
 - 将 README、产品规格、进度记录和当前 sprint 合同适配到 DoodleStory。
