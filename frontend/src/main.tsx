@@ -723,6 +723,8 @@ function TasksView({
   const [createOriginalText, setCreateOriginalText] = useState("");
   const [userCharacters, setUserCharacters] = useState<UserCharacter[]>([]);
   const [loadingCharacters, setLoadingCharacters] = useState(false);
+  const [fixedRoleFlowEnabled, setFixedRoleFlowEnabled] = useState(false);
+  const [characterExtractionCompletedForText, setCharacterExtractionCompletedForText] = useState("");
   const [extractedCharacterNames, setExtractedCharacterNames] = useState<string[]>([]);
   const [manualCharacterNames, setManualCharacterNames] = useState<string[]>([]);
   const [createCharacterBindings, setCreateCharacterBindings] = useState<Record<string, string>>({});
@@ -774,6 +776,11 @@ function TasksView({
     return names;
   }, [extractedCharacterNames, manualCharacterNames]);
   const boundRoleCount = createRoleNames.filter((name) => createCharacterBindings[name]).length;
+  const createTextForCharacterExtraction = createOriginalText.trim();
+  const fixedRoleExtractionReady =
+    fixedRoleFlowEnabled &&
+    Boolean(createTextForCharacterExtraction) &&
+    characterExtractionCompletedForText === createTextForCharacterExtraction;
 
   useEffect(() => {
     refresh(undefined, { quiet: false });
@@ -1010,6 +1017,8 @@ function TasksView({
     setCountMode("auto");
     setStoryInputMode("original");
     setCreateStyleId(styles[0]?.id ?? "");
+    setFixedRoleFlowEnabled(false);
+    setCharacterExtractionCompletedForText("");
     setExtractedCharacterNames([]);
     setManualCharacterNames([]);
     setCreateCharacterBindings({});
@@ -1017,6 +1026,32 @@ function TasksView({
     setManualRoleTarget(null);
     setCharacterCreateTarget(null);
     setQuickCharacterPreviewUrl("");
+  }
+
+  function updateCreateOriginalText(value: string) {
+    setCreateOriginalText(value);
+    if (characterExtractionCompletedForText && value.trim() !== characterExtractionCompletedForText) {
+      setCharacterExtractionCompletedForText("");
+      setExtractedCharacterNames([]);
+      setManualCharacterNames([]);
+      setCreateCharacterBindings({});
+      setCharacterPickTarget(null);
+      setManualRoleTarget(null);
+    }
+  }
+
+  function toggleFixedRoleFlow(enabled: boolean) {
+    setFixedRoleFlowEnabled(enabled);
+    if (!enabled) {
+      setCharacterExtractionCompletedForText("");
+      setExtractedCharacterNames([]);
+      setManualCharacterNames([]);
+      setCreateCharacterBindings({});
+      setCharacterPickTarget(null);
+      setManualRoleTarget(null);
+      setCharacterCreateTarget(null);
+      setQuickCharacterPreviewUrl("");
+    }
   }
 
   function bindCreateRole(sourceName: string, userCharacterId: string) {
@@ -1041,6 +1076,7 @@ function TasksView({
       setExtractingCharacters(true);
       const result = await api.extractCharacterNames({ text });
       setExtractedCharacterNames(result.names);
+      setCharacterExtractionCompletedForText(text);
       setCreateCharacterBindings((items) => {
         const validNames = new Set([...result.names, ...manualCharacterNames]);
         return Object.fromEntries(Object.entries(items).filter(([name]) => validNames.has(name)));
@@ -1140,14 +1176,20 @@ function TasksView({
       setMessage("请输入任务内容");
       return;
     }
+    if (storyInputMode !== "dy_replicate" && fixedRoleFlowEnabled && !fixedRoleExtractionReady) {
+      await extractRolesForCreate();
+      return;
+    }
     try {
       setCreating(true);
-      const storyCharacters: StoryCharacterBinding[] = createRoleNames
-        .map((sourceName) => ({
-          source_name: sourceName,
-          user_character_id: createCharacterBindings[sourceName],
-        }))
-        .filter((item) => Boolean(item.user_character_id));
+      const storyCharacters: StoryCharacterBinding[] = fixedRoleFlowEnabled
+        ? createRoleNames
+            .map((sourceName) => ({
+              source_name: sourceName,
+              user_character_id: createCharacterBindings[sourceName],
+            }))
+            .filter((item) => Boolean(item.user_character_id))
+        : [];
       if (storyInputMode === "dy_replicate") {
         const content = await api.replicateContentAsTask({
           raw_input: originalText,
@@ -1749,7 +1791,7 @@ function TasksView({
                 <textarea
                   name="original_text"
                   value={createOriginalText}
-                  onChange={(event) => setCreateOriginalText(event.target.value)}
+                  onChange={(event) => updateCreateOriginalText(event.target.value)}
                   placeholder={
                     storyInputMode === "adapted"
                       ? "输入故事设定、简短梗概、人物关系、画面要求或其他创作方向"
@@ -1774,81 +1816,90 @@ function TasksView({
               </label>
               {storyInputMode !== "dy_replicate" ? (
                 <section className="create-section character-quick-section">
-                  <div className="create-section-head">
-                    <div>
-                      <div className="section-label">角色参考</div>
+                  <label className="character-reference-toggle fixed-role-toggle">
+                    <input
+                      type="checkbox"
+                      checked={fixedRoleFlowEnabled}
+                      onChange={(event) => toggleFixedRoleFlow(event.target.checked)}
+                    />
+                    <span>
+                      <strong>使用固定角色</strong>
+                      <small>需要绑定你角色库里的固定形象时再勾选；默认不提取角色，点击创建任务会直接提交。</small>
+                    </span>
+                  </label>
+                  {fixedRoleFlowEnabled ? (
+                    <>
                       <p className="field-hint">
-                        默认会为故事主要人物生成本次任务临时角色；点这里可提前看到角色名并绑定你的固定角色。已绑定 {boundRoleCount} 个。
+                        勾选后需先提取角色名，再选择要绑定的固定角色。已绑定 {boundRoleCount} 个。
                       </p>
-                    </div>
-                    <button type="button" className="extract-character-button" onClick={extractRolesForCreate} disabled={extractingCharacters}>
-                      {extractingCharacters ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
-                      AI 提取角色
-                    </button>
-                  </div>
-                  <div className="character-auto-note">
-                    <Sparkles size={16} />
-                    <span>不操作也会自动走临时角色一致性；提取只是为了让你手动绑定固定角色。</span>
-                  </div>
-                  <div className="quick-character-grid">
-                    {createRoleNames.map((name) => {
-                      const boundCharacter = userCharacters.find((character) => character.id === createCharacterBindings[name]);
-                      return (
-                        <div key={name} className={`quick-character-card ${boundCharacter ? "bound" : ""}`}>
+                      {fixedRoleExtractionReady ? (
+                        <div className="quick-character-grid">
+                          {createRoleNames.map((name) => {
+                            const boundCharacter = userCharacters.find((character) => character.id === createCharacterBindings[name]);
+                            return (
+                              <div key={name} className={`quick-character-card ${boundCharacter ? "bound" : ""}`}>
+                                <button
+                                  type="button"
+                                  className="quick-character-remove"
+                                  aria-label={`移除 ${name}`}
+                                  onClick={() => removeCreateRole(name)}
+                                >
+                                  <X size={14} />
+                                </button>
+                                {boundCharacter ? (
+                                  <LazyAssetImage
+                                    asset={boundCharacter.reference_asset}
+                                    assetId={boundCharacter.reference_asset.id}
+                                    alt={boundCharacter.name}
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="quick-character-plus"
+                                    aria-label={`设置 ${name} 的角色形象`}
+                                    onClick={() => setCharacterPickTarget(name)}
+                                  >
+                                    <Plus size={22} />
+                                  </button>
+                                )}
+                                <strong>{name}</strong>
+                                {boundCharacter ? <small>{boundCharacter.name}</small> : <small>未设置形象</small>}
+                                <select
+                                  value={createCharacterBindings[name] ?? ""}
+                                  onChange={(event) => bindCreateRole(name, event.target.value)}
+                                  aria-label={`绑定 ${name} 到我的角色`}
+                                >
+                                  <option value="">不绑定</option>
+                                  {userCharacters.map((character) => (
+                                    <option key={character.id} value={character.id}>
+                                      {character.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })}
                           <button
                             type="button"
-                            className="quick-character-remove"
-                            aria-label={`移除 ${name}`}
-                            onClick={() => removeCreateRole(name)}
+                            className="quick-character-card add-card"
+                            onClick={() => setManualRoleTarget({ allowMerge: true })}
                           >
-                            <X size={14} />
-                          </button>
-                          {boundCharacter ? (
-                            <LazyAssetImage
-                              asset={boundCharacter.reference_asset}
-                              assetId={boundCharacter.reference_asset.id}
-                              alt={boundCharacter.name}
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              className="quick-character-plus"
-                              aria-label={`设置 ${name} 的角色形象`}
-                              onClick={() => setCharacterPickTarget(name)}
-                            >
+                            <span className="quick-character-plus">
                               <Plus size={22} />
-                            </button>
-                          )}
-                          <strong>{name}</strong>
-                          {boundCharacter ? <small>{boundCharacter.name}</small> : <small>未设置形象</small>}
-                          <select
-                            value={createCharacterBindings[name] ?? ""}
-                            onChange={(event) => bindCreateRole(name, event.target.value)}
-                            aria-label={`绑定 ${name} 到我的角色`}
-                          >
-                            <option value="">不绑定</option>
-                            {userCharacters.map((character) => (
-                              <option key={character.id} value={character.id}>
-                                {character.name}
-                              </option>
-                            ))}
-                          </select>
+                            </span>
+                            <strong>添加角色</strong>
+                            <small>只填写角色名称</small>
+                          </button>
                         </div>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      className="quick-character-card add-card"
-                      onClick={() => setManualRoleTarget({ allowMerge: true })}
-                    >
-                      <span className="quick-character-plus">
-                        <Plus size={22} />
-                      </span>
-                      <strong>添加角色</strong>
-                      <small>只填写角色名称</small>
-                    </button>
-                  </div>
-                  {loadingCharacters ? <small className="field-hint">正在读取我的角色库</small> : null}
+                      ) : (
+                        <div className="character-extraction-waiting">
+                          <Search size={17} />
+                          <span>点击底部“提取角色”后，会显示可绑定的角色列表。</span>
+                        </div>
+                      )}
+                      {loadingCharacters ? <small className="field-hint">正在读取我的角色库</small> : null}
+                    </>
+                  ) : null}
                 </section>
               ) : null}
               <section className="create-section">
@@ -1919,9 +1970,19 @@ function TasksView({
                 <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>
                   取消
                 </button>
-                <button type="submit" disabled={creating}>
-                  {creating ? <Loader2 size={17} className="spin" /> : <Plus size={17} />}
-                  {storyInputMode === "dy_replicate" ? "开始复刻" : "创建任务"}
+                <button type="submit" disabled={creating || extractingCharacters}>
+                  {creating || extractingCharacters ? (
+                    <Loader2 size={17} className="spin" />
+                  ) : fixedRoleFlowEnabled && !fixedRoleExtractionReady && storyInputMode !== "dy_replicate" ? (
+                    <Search size={17} />
+                  ) : (
+                    <Plus size={17} />
+                  )}
+                  {storyInputMode === "dy_replicate"
+                    ? "开始复刻"
+                    : fixedRoleFlowEnabled && !fixedRoleExtractionReady
+                      ? "提取角色"
+                      : "创建任务"}
                 </button>
               </div>
             </form>

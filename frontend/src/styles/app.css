@@ -2374,6 +2374,28 @@ textarea {
   line-height: 1.45;
 }
 
+.fixed-role-toggle strong {
+  color: #e4e9f2;
+  font-size: 14px;
+}
+
+.character-extraction-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px dashed rgba(240, 199, 119, 0.34);
+  border-radius: 8px;
+  background: rgba(240, 199, 119, 0.06);
+  color: #d8c2a0;
+  padding: 11px 12px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.character-extraction-waiting svg {
+  flex: 0 0 auto;
+}
+
 .drawer-head {
   display: flex;
   justify-content: space-between;
