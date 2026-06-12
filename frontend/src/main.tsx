@@ -1869,16 +1869,14 @@ function TasksView({
                         onClick={() => setCreateStyleId(style.id)}
                       >
                         <div className="style-pick-images">
-                          {assets.slice(0, 2).map((asset) => (
+                          {assets.slice(0, 1).map((asset) => (
                             <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
                           ))}
-                          {assets.length === 0 ? <span>模板比例</span> : null}
+                          {assets.length === 0 ? <span>无图片</span> : null}
                         </div>
                         <div>
                           <strong>{style.name}</strong>
-                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {styleReferenceModeLabels[style.style_reference_mode]} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
                         </div>
-                        <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
                       </button>
                     );
                   })}
@@ -2217,7 +2215,6 @@ function TasksView({
                 <div className="drawer-head">
                   <div>
                     <h2 id="style-picker-title">选择风格</h2>
-                    <p>从全部启用风格中选择一个作为本次任务的视觉模板。</p>
                   </div>
                   <button type="button" className="icon-button" aria-label="关闭风格选择" onClick={() => setStylePickerOpen(false)}>
                     <X size={18} />
@@ -2238,16 +2235,14 @@ function TasksView({
                         }}
                       >
                         <div className="style-pick-images">
-                          {assets.slice(0, 3).map((asset) => (
+                          {assets.slice(0, 1).map((asset) => (
                             <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
                           ))}
-                          {assets.length === 0 ? <span>模板比例</span> : null}
+                          {assets.length === 0 ? <span>无图片</span> : null}
                         </div>
                         <div>
                           <strong>{style.name}</strong>
-                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {styleReferenceModeLabels[style.style_reference_mode]} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
                         </div>
-                        <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
                       </button>
                     );
                   })}

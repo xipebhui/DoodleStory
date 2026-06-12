@@ -2581,7 +2581,7 @@ textarea {
 }
 
 .style-picker-grid.expanded {
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
   max-height: min(62vh, 620px);
   overflow: auto;
 }
@@ -2601,8 +2601,9 @@ textarea {
 
 .style-picker-grid.compact .style-pick-card,
 .style-picker-grid.expanded .style-pick-card {
+  grid-template-columns: 1fr;
   align-content: start;
-  gap: 9px;
+  gap: 8px;
 }
 
 .style-picker-grid.compact .style-pick-card {
@@ -2615,7 +2616,8 @@ textarea {
 }
 
 .style-picker-grid.expanded .style-pick-card {
-  min-height: 230px;
+  min-height: 154px;
+  padding: 8px;
 }
 
 .style-pick-card.selected {
@@ -2647,8 +2649,8 @@ textarea {
 }
 
 .style-picker-grid.expanded .style-pick-images {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  height: 132px;
+  grid-template-columns: 1fr;
+  height: 106px;
 }
 
 .style-pick-images img,
@@ -2668,13 +2670,14 @@ textarea {
   color: #6f7785;
 }
 
-.style-pick-card strong,
-.style-pick-card small {
+.style-pick-card strong {
   display: block;
 }
 
-.style-pick-card .status-pill {
-  justify-self: start;
+.style-pick-card strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .selected-style-preview {
@@ -2738,30 +2741,12 @@ textarea {
   font-weight: 800;
 }
 
-.style-pick-card small {
-  display: -webkit-box;
-  overflow: hidden;
-  margin-top: 4px;
-  color: #8993a4;
-  font-size: 12px;
-  line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.style-picker-grid.compact .style-pick-card small {
-  display: none;
-}
-
 .style-picker-grid.compact .style-pick-card strong {
-  overflow: hidden;
   font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.style-picker-grid.compact .style-pick-card .status-pill {
-  display: none;
+.style-picker-grid.expanded .style-pick-card strong {
+  font-size: 13px;
 }
 
 .task-create-footer {
