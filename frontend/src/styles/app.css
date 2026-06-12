@@ -2532,7 +2532,7 @@ textarea {
 
 .style-picker {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   margin: 0;
   border: 0;
@@ -2547,7 +2547,7 @@ textarea {
 
 .style-picker-head {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
@@ -2557,6 +2557,7 @@ textarea {
 }
 
 .style-picker p {
+  display: none;
   margin: 0;
   color: #8791a1;
   font-size: 12px;
@@ -2605,11 +2606,11 @@ textarea {
 }
 
 .style-picker-grid.compact .style-pick-card {
-  grid-template-columns: 52px minmax(0, 1fr);
-  min-height: 68px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-height: 50px;
   align-content: center;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   padding: 6px;
 }
 
@@ -2637,8 +2638,8 @@ textarea {
 
 .style-picker-grid.compact .style-pick-images {
   grid-template-columns: 1fr;
-  width: 52px;
-  height: 52px;
+  width: 42px;
+  height: 42px;
 }
 
 .style-picker-grid.compact .style-pick-images img:nth-child(n + 2) {
@@ -2749,12 +2750,12 @@ textarea {
 }
 
 .style-picker-grid.compact .style-pick-card small {
-  -webkit-line-clamp: 1;
+  display: none;
 }
 
 .style-picker-grid.compact .style-pick-card strong {
   overflow: hidden;
-  font-size: 13px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
