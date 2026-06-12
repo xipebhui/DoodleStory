@@ -64,6 +64,7 @@ from app.services.image_generation import (
     ImageProviderConfigError,
     ImageProviderResponseError,
     generate_xg_image,
+    image_gateway_reference_limit,
 )
 from app.services.llm import (
     LLMProviderError,
@@ -893,11 +894,41 @@ def build_generation_reference_pack(task: GenerationTask, panel: TaskPanel) -> G
     references.extend(style_pack.references)
     notes.extend(style_pack.notes)
 
-    return GenerationReferencePack(
+    reference_pack = GenerationReferencePack(
         references=references,
         notes=notes,
         character_reference_count=character_reference_count,
         style_reference_count=style_pack.style_count,
+    )
+    return trim_generation_reference_pack_for_model(reference_pack, task.image_model_name_snapshot)
+
+
+def trim_generation_reference_pack_for_model(
+    reference_pack: GenerationReferencePack, image_model_name: str
+) -> GenerationReferencePack:
+    reference_limit = image_gateway_reference_limit(image_model_name)
+    if len(reference_pack.references) <= reference_limit:
+        return reference_pack
+
+    kept_character_count = min(reference_pack.character_reference_count, reference_limit)
+    kept_style_count = max(0, reference_limit - kept_character_count)
+    logger.warning(
+        "generation reference pack truncated image_model=%s original_reference_count=%s kept_reference_count=%s "
+        "original_character_reference_count=%s kept_character_reference_count=%s "
+        "original_style_reference_count=%s kept_style_reference_count=%s",
+        image_model_name,
+        len(reference_pack.references),
+        reference_limit,
+        reference_pack.character_reference_count,
+        kept_character_count,
+        reference_pack.style_reference_count,
+        kept_style_count,
+    )
+    return GenerationReferencePack(
+        references=reference_pack.references[:reference_limit],
+        notes=reference_pack.notes[:reference_limit],
+        character_reference_count=kept_character_count,
+        style_reference_count=kept_style_count,
     )
 
 

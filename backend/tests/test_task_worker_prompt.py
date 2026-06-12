@@ -23,6 +23,7 @@ from app.models.enums import (
 from app.services.image_generation import GeneratedImageFile, ImageReference, ImageProviderResponseError
 from app.services.llm import LLMResponseError, compose_final_image_prompts
 from app.services.task_worker import (
+    GenerationReferencePack,
     PreparedPanelImageRequest,
     build_adapted_story_final_prompt,
     build_generation_reference_pack,
@@ -31,6 +32,7 @@ from app.services.task_worker import (
     final_prompt_with_explicit_style,
     generate_panel_image_request,
     is_policy_blocked_image_error,
+    trim_generation_reference_pack_for_model,
 )
 
 
@@ -334,6 +336,31 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("固定角色身份 > 当前剧情动作/情绪 > 风格表现方式 > 风格模板默认人物外观", pack.notes[0])
         self.assertEqual(1, pack.character_reference_count)
         self.assertEqual(1, pack.style_reference_count)
+
+    def test_generation_reference_pack_trims_extra_references_and_notes_for_model(self) -> None:
+        pack = GenerationReferencePack(
+            references=[
+                ImageReference(url=f"https://cdn.example.com/reference-{index}.png") for index in range(1, 6)
+            ],
+            notes=[f"参考图{index}" for index in range(1, 6)],
+            character_reference_count=4,
+            style_reference_count=1,
+        )
+
+        trimmed = trim_generation_reference_pack_for_model(pack, "gpt-image-2")
+
+        self.assertEqual(
+            [
+                "https://cdn.example.com/reference-1.png",
+                "https://cdn.example.com/reference-2.png",
+                "https://cdn.example.com/reference-3.png",
+                "https://cdn.example.com/reference-4.png",
+            ],
+            [reference.url for reference in trimmed.references],
+        )
+        self.assertEqual(["参考图1", "参考图2", "参考图3", "参考图4"], trimmed.notes)
+        self.assertEqual(4, trimmed.character_reference_count)
+        self.assertEqual(0, trimmed.style_reference_count)
 
     def test_google_policy_blocked_error_rewrites_prompt_with_same_model_and_references(self) -> None:
         blocked_error = ImageProviderResponseError(

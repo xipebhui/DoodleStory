@@ -371,6 +371,8 @@ def image_gateway_size_for_aspect_ratio(aspect_ratio: str) -> str | None:
 
 def image_gateway_reference_limit(image_model_name: str) -> int:
     model_name = image_model_name.strip()
+    if model_name == "gpt-image-2":
+        return 4
     if model_name in IMAGE_GATEWAY_APEXER_MODELS:
         return 1
     return 3
@@ -410,7 +412,13 @@ def build_image_gateway_generation_payload(
     reference_urls = qy_reference_urls(references)
     reference_limit = image_gateway_reference_limit(model_name)
     if len(reference_urls) > reference_limit:
-        raise ImageProviderConfigError(f"{model_name} 最多支持 {reference_limit} 张参考图")
+        logger.warning(
+            "Unified image gateway reference list truncated model=%s original_reference_count=%s kept_reference_count=%s",
+            model_name,
+            len(reference_urls),
+            reference_limit,
+        )
+        reference_urls = reference_urls[:reference_limit]
 
     reference_file_info = []
     validated_reference_urls = []

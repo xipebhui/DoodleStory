@@ -131,6 +131,24 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         self.assertFalse(any(isinstance(value, str) and value.startswith("data:image") for value in payload.values()))
         self.assertEqual(2, len(reference_info))
 
+    def test_gateway_payload_keeps_four_gpt_image_references_and_truncates_extra(self) -> None:
+        payload, reference_info = build_image_gateway_generation_payload(
+            prompt="画一张连续漫画分镜",
+            references=[
+                ImageReference(url=f"https://cdn.example.com/reference-{index}.png")
+                for index in range(1, 6)
+            ],
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+        )
+
+        self.assertEqual("https://cdn.example.com/reference-1.png", payload["image"])
+        self.assertEqual("https://cdn.example.com/reference-2.png", payload["image2"])
+        self.assertEqual("https://cdn.example.com/reference-3.png", payload["image3"])
+        self.assertEqual("https://cdn.example.com/reference-4.png", payload["image4"])
+        self.assertNotIn("image5", payload)
+        self.assertEqual(4, len(reference_info))
+
     def test_gateway_payload_omits_unverified_image_size_for_three_by_four(self) -> None:
         payload, _reference_info = build_image_gateway_generation_payload(
             prompt="画一张 3:4 漫画页",
