@@ -1618,7 +1618,7 @@ function TasksView({
                             <span>{imageStatusLabel(image?.status ?? panel.prompt_status)}</span>
                           )}
                         </div>
-                        <strong>{panel.panel_type === "cover" ? "封面" : `Panel ${panel.panel_order}`}</strong>
+                        <strong>Panel {panel.panel_order}</strong>
                         <p>{panel.original_text_segment}</p>
                         {panel.narration_text ? <small>旁白：{panel.narration_text}</small> : null}
                         {panel.dialogue_text ? <small>对白：{panel.dialogue_text}</small> : null}
@@ -1717,7 +1717,7 @@ function TasksView({
                   onClick={() => setStoryInputMode("adapted")}
                 >
                   <strong>故事方案</strong>
-                  <span>可以提交故事设计、人物设定、画面要求或简化想法，系统会规划封面和分镜。</span>
+                  <span>可以提交故事设计、人物设定、画面要求或简化想法，系统会规划连续分镜。</span>
                 </button>
                 <button
                   type="button"
@@ -1763,7 +1763,7 @@ function TasksView({
                   autoFocus
                 />
                 {storyInputMode === "adapted" ? (
-                  <small>原始输入会保留，系统会直接根据方案规划图文分镜并自动生成封面。</small>
+                  <small>原始输入会保留，系统会直接根据方案规划图文分镜；所有图片都按同一套分镜逻辑生成。</small>
                 ) : storyInputMode === "extracted_storyboard" ? (
                   <small>系统只做分镜结构化，不扩写、不总结、不合并页；会把旁白、对白和内心 OS 区分成不同画面呈现形式。</small>
                 ) : storyInputMode === "dy_replicate" ? (
@@ -1865,7 +1865,7 @@ function TasksView({
                   <label>
                     图片数量
                     <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
-                    {storyInputMode === "adapted" ? <small>固定数量包含封面，例如 8 张 = 1 张封面 + 7 张剧情图。</small> : null}
+                    {storyInputMode === "adapted" ? <small>固定数量就是最终图片张数，系统不会额外插入图片。</small> : null}
                     {storyInputMode === "extracted_storyboard" ? <small>固定数量必须和提取分镜页数一致，不会自动合并或补页。</small> : null}
                     {storyInputMode === "dy_replicate" ? <small>固定数量必须和提取出的页数一致；内容提取完成后不会自动合并或补页。</small> : null}
                   </label>

@@ -363,7 +363,7 @@ credit_activation_codes 1--0..1 credit_activation_code_redemptions
 - `id` 主键
 - `task_id` 外键到 `generation_tasks.id`，not null
 - `panel_order` integer not null
-- `panel_type` text not null，取值 `cover`、`scene`
+- `panel_type` text not null，取值 `scene`；历史数据可能仍保留旧的 `cover`
 - `original_text_segment` text not null
 - `narration_text` text null
 - `dialogue_text` text null
@@ -381,7 +381,7 @@ credit_activation_codes 1--0..1 credit_activation_code_redemptions
 - `panel_order` 必须大于 `0`。
 - `original_text_segment` 不能为空字符串。
 - 当 `prompt_status = 'generated'` 时，`generated_prompt` 不能为空。
-- 故事方案模式下，第一个 panel 必须由应用层保证为 `cover`，后续为 `scene`。
+- 新生成任务的所有 panel 都由应用层统一写为 `scene`，不再区分特殊封面 panel。
 
 索引：
 
@@ -548,7 +548,7 @@ Worker 执行：
 2. 如果任务已终态或已取消，不产生副作用。
 3. 在步骤边界更新 `current_step`、`progress_current`、`progress_total`。
 4. 如果是故事方案模式，先写入 `adapted_story_title`、`adapted_story_hook` 和 `adapted_story_text`。
-5. 将切分或规划结果写入 `task_panels`；故事方案模式第一个 panel 是封面，并保存旁白/对白。
+5. 将切分或规划结果写入 `task_panels`；故事方案模式所有 panel 都按普通分镜保存旁白/对白。
 6. 如果任务开启人物参考，写入 `task_characters` 和 `task_character_appearances`，再生成每个人物阶段的参考图并写入 `file_assets`。
 7. 将 prompt 结果写入 `task_panels.generated_prompt`；开启人物参考时，同时写入 `task_panel_character_appearances`，记录 panel 使用哪些人物参考图及顺序。
 8. 将图片生成元数据写入 `generated_images`。

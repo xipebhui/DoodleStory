@@ -548,7 +548,7 @@ POST /api/v1/tasks
 行为：
 
 - 按收到的内容原样保存 `original_text`。
-- 当 `story_input_mode = adapted` 时，先调用 LLM 生成 `adapted_story_title`、`adapted_story_hook` 和 `adapted_story_text`，再基于增强故事规划封面和分镜。
+- 当 `story_input_mode = adapted` 时，调用 LLM 生成 `adapted_story_title`、`adapted_story_hook` 和 `adapted_story_text`，并直接规划连续图文分镜。
 - 将当前登录用户保存为任务 owner。
 - 将选中风格的提示词和生图模型名快照保存到任务。
 - 当 `story_input_mode = adapted` 时，任务步骤增加 `adapt_story`。
@@ -564,7 +564,7 @@ POST /api/v1/tasks
 - 必须是登录用户。
 - 固定数量模式必须提供有效正整数 `requested_image_count`。
 - 自动模式要求 `requested_image_count` 为 `null`。
-- `story_input_mode` 默认为 `original`。`adapted` 模式固定图片数量包含封面。
+- `story_input_mode` 默认为 `original`。`adapted` 模式固定图片数量就是最终图片张数。
 - `use_character_references` 默认为 `false`。开启后如果 LLM 未识别到主要人物，任务失败并返回用户可读错误，不静默降级为普通生图。
 
 ### 获取任务详情

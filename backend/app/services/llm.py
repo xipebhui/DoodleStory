@@ -724,9 +724,9 @@ def plan_adapted_story_panels(
 
     system_prompt = read_prompt("plan_adapted_story_panels_v1.md")
     count_instruction = (
-        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，且第 1 个是封面。"
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，所有 panel 都按普通分镜图处理。"
         if image_count_mode == ImageCountMode.fixed
-        else "图片数量：自动判断。必须先输出 1 个封面，再按剧情自然规划分镜。"
+        else "图片数量：自动判断。请根据故事节奏自然规划 panels，所有 panel 都按普通分镜图处理，不要额外生成封面。"
     )
     user_prompt = json.dumps(
         {
@@ -757,10 +757,8 @@ def plan_adapted_story_panels(
         raise LLMResponseError("LLM 增强故事分镜 JSON 结构不符合要求") from exc
 
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
-    if result.panels[0].panel_type != PanelType.cover:
-        raise LLMResponseError("增强故事分镜的第一个 panel 必须是封面")
-    if any(panel.panel_type == PanelType.cover for panel in result.panels[1:]):
-        raise LLMResponseError("增强故事分镜只能第一个 panel 是封面")
+    for panel in result.panels:
+        panel.panel_type = PanelType.scene
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
         raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
     logger.info(
@@ -794,9 +792,9 @@ def plan_storyboard_from_brief(
 
     system_prompt = system_prompt_with_style(read_prompt("plan_storyboard_from_brief_v1.md"), style_prompt)
     count_instruction = (
-        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，且第 1 个是封面。"
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，所有 panel 都按普通分镜图处理。"
         if image_count_mode == ImageCountMode.fixed
-        else "图片数量：自动判断。请根据用户方案中的显式或隐式分镜逻辑自然规划 panels，默认第 1 个是封面。"
+        else "图片数量：自动判断。请根据用户方案中的显式或隐式分镜逻辑自然规划 panels，不要额外生成封面。"
     )
     user_prompt = json.dumps(
         {
@@ -833,10 +831,8 @@ def plan_storyboard_from_brief(
         raise LLMResponseError(f"LLM 故事方案图文分镜 JSON 结构不符合要求：{location} {message}") from exc
 
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
-    if result.panels[0].panel_type != PanelType.cover:
-        raise LLMResponseError("故事方案图文分镜的第一个 panel 必须是封面")
-    if any(panel.panel_type == PanelType.cover for panel in result.panels[1:]):
-        raise LLMResponseError("故事方案图文分镜只能第一个 panel 是封面")
+    for panel in result.panels:
+        panel.panel_type = PanelType.scene
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
         raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
     logger.info(
