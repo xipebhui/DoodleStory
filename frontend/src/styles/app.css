@@ -2434,18 +2434,23 @@ textarea {
   min-height: 180px;
 }
 
+.task-create-modal .form-message,
+.task-create-drawer .form-message {
+  margin: 0;
+}
+
 .mode-choice-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .mode-choice {
   display: grid;
-  gap: 7px;
-  min-height: 104px;
+  gap: 5px;
+  min-height: 78px;
   align-content: start;
-  padding: 14px;
+  padding: 10px;
   background: rgba(255, 255, 255, 0.035);
   color: #eef2f7;
   text-align: left;
@@ -2458,14 +2463,14 @@ textarea {
 }
 
 .mode-choice strong {
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .mode-choice span {
   color: #8d96a6;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  line-height: 1.5;
+  line-height: 1.35;
 }
 
 .mode-choice.active span {
@@ -2567,7 +2572,8 @@ textarea {
 }
 
 .style-picker-grid.compact {
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   max-height: none;
   overflow: visible;
   padding-right: 0;
@@ -2600,7 +2606,8 @@ textarea {
 }
 
 .style-picker-grid.compact .style-pick-card {
-  min-height: 184px;
+  min-height: 138px;
+  padding: 8px;
 }
 
 .style-picker-grid.expanded .style-pick-card {
@@ -2627,7 +2634,7 @@ textarea {
 
 .style-picker-grid.compact .style-pick-images {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  height: 104px;
+  height: 72px;
 }
 
 .style-picker-grid.expanded .style-pick-images {
@@ -2725,12 +2732,16 @@ textarea {
 .style-pick-card small {
   display: -webkit-box;
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: 4px;
   color: #8993a4;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.style-picker-grid.compact .style-pick-card small {
+  -webkit-line-clamp: 1;
 }
 
 .segmented-control {
@@ -3945,6 +3956,11 @@ textarea {
   .style-pick-images {
     height: 132px;
   }
+
+  .mode-choice-grid,
+  .style-picker-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 820px) {
@@ -4118,6 +4134,11 @@ textarea {
   }
 
   .style-reference-mode-options {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-choice-grid,
+  .style-picker-grid.compact {
     grid-template-columns: 1fr;
   }
 

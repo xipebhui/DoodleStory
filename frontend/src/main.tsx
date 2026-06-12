@@ -764,8 +764,15 @@ function TasksView({
         ].join(":"),
       )
       .join("|") ?? "";
-  const createStylePreviewLimit = 8;
-  const visibleCreateStyles = styles.slice(0, createStylePreviewLimit);
+  const createStylePreviewLimit = 3;
+  const visibleCreateStyles = useMemo(() => {
+    const previewStyles = styles.slice(0, createStylePreviewLimit);
+    if (!createStyleId || previewStyles.some((style) => style.id === createStyleId)) {
+      return previewStyles;
+    }
+    const selectedStyle = styles.find((style) => style.id === createStyleId);
+    return selectedStyle ? [...previewStyles.slice(0, createStylePreviewLimit - 1), selectedStyle] : previewStyles;
+  }, [styles, createStyleId]);
   const canExpandCreateStyles = styles.length > 0;
   const createRoleNames = useMemo(() => {
     const names: string[] = [];
@@ -1814,6 +1821,70 @@ function TasksView({
                   <small>完整故事模式会保持文本不变，所有 panel 拼接后必须逐字等于你提交的故事正文。</small>
                 )}
               </label>
+              <section className="create-section">
+                <div className="section-label">图片数量</div>
+                <div className="segmented-control">
+                  <button type="button" className={countMode === "auto" ? "active" : ""} onClick={() => setCountMode("auto")}>
+                    自动判断
+                  </button>
+                  <button type="button" className={countMode === "fixed" ? "active" : ""} onClick={() => setCountMode("fixed")}>
+                    固定数量
+                  </button>
+                </div>
+                {countMode === "fixed" ? (
+                  <label>
+                    图片数量
+                    <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
+                    {storyInputMode === "adapted" ? <small>固定数量就是最终图片张数，系统不会额外插入图片。</small> : null}
+                    {storyInputMode === "extracted_storyboard" ? <small>固定数量必须和提取分镜页数一致，不会自动合并或补页。</small> : null}
+                    {storyInputMode === "dy_replicate" ? <small>固定数量必须和提取出的页数一致；内容提取完成后不会自动合并或补页。</small> : null}
+                  </label>
+                ) : (
+                  <p className="field-hint">系统会根据故事长度和内容密度决定图片张数。</p>
+                )}
+              </section>
+              <fieldset className="style-picker">
+                <legend>选择风格</legend>
+                <div className="style-picker-head">
+                  <div>
+                    <p>按风格内设置的参考方式生成图片，提交后会使用该风格绑定的模型名。</p>
+                  </div>
+                  {canExpandCreateStyles ? (
+                    <button type="button" className="secondary-button" onClick={() => setStylePickerOpen(true)}>
+                      <Images size={16} />
+                      展开更多风格
+                    </button>
+                  ) : null}
+                </div>
+                {styles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
+                <div className="style-picker-grid compact">
+                  {visibleCreateStyles.map((style) => {
+                    const assets = stylePreviewAssets(style);
+                    return (
+                      <button
+                        type="button"
+                        key={style.id}
+                        className={`style-pick-card ${createStyleId === style.id ? "selected" : ""}`}
+                        aria-pressed={createStyleId === style.id}
+                        onClick={() => setCreateStyleId(style.id)}
+                      >
+                        <div className="style-pick-images">
+                          {assets.slice(0, 2).map((asset) => (
+                            <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
+                          ))}
+                          {assets.length === 0 ? <span>模板比例</span> : null}
+                        </div>
+                        <div>
+                          <strong>{style.name}</strong>
+                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {styleReferenceModeLabels[style.style_reference_mode]} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
+                        </div>
+                        <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+              {message ? <p className="form-message">{message}</p> : null}
               {storyInputMode !== "dy_replicate" ? (
                 <section className="create-section character-quick-section">
                   <label className="character-reference-toggle fixed-role-toggle">
@@ -1902,70 +1973,6 @@ function TasksView({
                   ) : null}
                 </section>
               ) : null}
-              <section className="create-section">
-                <div className="section-label">图片数量</div>
-                <div className="segmented-control">
-                  <button type="button" className={countMode === "auto" ? "active" : ""} onClick={() => setCountMode("auto")}>
-                    自动判断
-                  </button>
-                  <button type="button" className={countMode === "fixed" ? "active" : ""} onClick={() => setCountMode("fixed")}>
-                    固定数量
-                  </button>
-                </div>
-                {countMode === "fixed" ? (
-                  <label>
-                    图片数量
-                    <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
-                    {storyInputMode === "adapted" ? <small>固定数量就是最终图片张数，系统不会额外插入图片。</small> : null}
-                    {storyInputMode === "extracted_storyboard" ? <small>固定数量必须和提取分镜页数一致，不会自动合并或补页。</small> : null}
-                    {storyInputMode === "dy_replicate" ? <small>固定数量必须和提取出的页数一致；内容提取完成后不会自动合并或补页。</small> : null}
-                  </label>
-                ) : (
-                  <p className="field-hint">系统会根据故事长度和内容密度决定图片张数。</p>
-                )}
-              </section>
-              <fieldset className="style-picker">
-                <legend>选择风格</legend>
-                <div className="style-picker-head">
-                  <div>
-                    <p>按风格内设置的参考方式生成图片，提交后会使用该风格绑定的模型名。</p>
-                  </div>
-                  {canExpandCreateStyles ? (
-                    <button type="button" className="secondary-button" onClick={() => setStylePickerOpen(true)}>
-                      <Images size={16} />
-                      展开更多风格
-                    </button>
-                  ) : null}
-                </div>
-                {styles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
-                <div className="style-picker-grid compact">
-                  {visibleCreateStyles.map((style) => {
-                    const assets = stylePreviewAssets(style);
-                    return (
-                      <button
-                        type="button"
-                        key={style.id}
-                        className={`style-pick-card ${createStyleId === style.id ? "selected" : ""}`}
-                        aria-pressed={createStyleId === style.id}
-                        onClick={() => setCreateStyleId(style.id)}
-                      >
-                        <div className="style-pick-images">
-                          {assets.slice(0, 2).map((asset) => (
-                            <LazyAssetImage key={asset.id} asset={asset} assetId={asset.id} alt={style.name} />
-                          ))}
-                          {assets.length === 0 ? <span>模板比例</span> : null}
-                        </div>
-                        <div>
-                          <strong>{style.name}</strong>
-                          <small>{style.description || `${style.reference_images.length} 张参考图`} · {styleReferenceModeLabels[style.style_reference_mode]} · 比例 {style.aspect_ratio} · {style.image_model_name}</small>
-                        </div>
-                        <span className={`status-pill ${style.status}`}>{style.status === "active" ? "启用" : style.status}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </fieldset>
-              {message ? <p className="form-message">{message}</p> : null}
               <div className="drawer-actions">
                 <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>
                   取消
