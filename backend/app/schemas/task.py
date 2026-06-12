@@ -35,13 +35,7 @@ class TaskPanelRead(TimestampFields):
     id: str
     panel_order: int
     panel_type: PanelType
-    original_text_segment: str
-    narration_text: str | None
-    dialogue_text: str | None
-    image_text_json: str | None
-    text_layout: str | None
     prompt_status: PromptStatus
-    generated_prompt: str | None
 
 
 class GenerationStepRead(TimestampFields):
@@ -62,15 +56,38 @@ class GeneratedImageRead(TimestampFields):
     source_type: GeneratedImageSourceType
     workflow_step: GeneratedImageWorkflowStep | None
     user_instruction: str | None
-    previous_prompt: str | None
-    image_prompt: str | None
-    image_text_json: str | None
-    text_layout: str | None
     prompt_change_summary: str | None
-    final_prompt: str | None
     asset: FileAssetRead | None = None
     error_code: str | None
     error_message: str | None
+
+
+class GeneratedImageDebugRead(BaseModel):
+    id: str
+    generation_number: int
+    is_current: bool
+    source_type: GeneratedImageSourceType
+    status: GeneratedImageStatus
+    user_instruction: str | None
+    prompt_change_summary: str | None
+    image_text_json: str | None
+    text_layout: str | None
+    previous_prompt: str | None = None
+    image_prompt: str | None = None
+    final_prompt: str | None = None
+    error_message: str | None
+
+
+class TaskPanelDebugRead(BaseModel):
+    panel_id: str
+    panel_order: int
+    original_text_segment: str
+    narration_text: str | None
+    dialogue_text: str | None
+    image_text_json: str | None
+    text_layout: str | None
+    generated_prompt: str | None = None
+    images: list[GeneratedImageDebugRead] = Field(default_factory=list)
 
 
 class PanelEditCreate(BaseModel):

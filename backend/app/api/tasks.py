@@ -38,7 +38,16 @@ from app.models.enums import (
 )
 from app.schemas.common import ApiData, ApiList
 from app.schemas.character import CharacterNameExtractionRequest, CharacterNameExtractionResult, StoryCharacterMergeRequest, StoryCharacterMergeResult
-from app.schemas.task import PanelEditCreate, TaskCreate, TaskDownloadRead, TaskListItemRead, TaskPreviewImageRead, TaskRead
+from app.schemas.task import (
+    GeneratedImageDebugRead,
+    PanelEditCreate,
+    TaskCreate,
+    TaskDownloadRead,
+    TaskListItemRead,
+    TaskPanelDebugRead,
+    TaskPreviewImageRead,
+    TaskRead,
+)
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
 from app.services.image_generation import ImageProviderConfigError
@@ -368,6 +377,63 @@ def get_task(task_id: str, user: User = Depends(current_user), db: Session = Dep
     task = ensure_task_access(task, user)
 
     return ApiData(data=TaskRead.model_validate(task))
+
+
+@router.get("/{task_id}/panels/{panel_id}/debug", response_model=ApiData[TaskPanelDebugRead])
+def get_task_panel_debug(
+    task_id: str,
+    panel_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[TaskPanelDebugRead]:
+    task = db.scalar(
+        select(GenerationTask)
+        .where(GenerationTask.id == task_id)
+        .options(selectinload(GenerationTask.panels), selectinload(GenerationTask.generated_images))
+    )
+    task = ensure_task_access(task, user)
+    panel = next((item for item in task.panels if item.id == panel_id), None)
+    if panel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分镜不存在")
+
+    include_prompts = user.role == UserRole.admin
+    images = []
+    for image in sorted(
+        (item for item in task.generated_images if item.panel_id == panel_id),
+        key=lambda item: item.generation_number,
+        reverse=True,
+    ):
+        images.append(
+            GeneratedImageDebugRead(
+                id=image.id,
+                generation_number=image.generation_number,
+                is_current=image.is_current,
+                source_type=image.source_type,
+                status=image.status,
+                user_instruction=image.user_instruction,
+                prompt_change_summary=image.prompt_change_summary,
+                image_text_json=image.image_text_json,
+                text_layout=image.text_layout,
+                previous_prompt=image.previous_prompt if include_prompts else None,
+                image_prompt=image.image_prompt if include_prompts else None,
+                final_prompt=image.final_prompt if include_prompts else None,
+                error_message=image.error_message,
+            )
+        )
+
+    return ApiData(
+        data=TaskPanelDebugRead(
+            panel_id=panel.id,
+            panel_order=panel.panel_order,
+            original_text_segment=panel.original_text_segment,
+            narration_text=panel.narration_text,
+            dialogue_text=panel.dialogue_text,
+            image_text_json=panel.image_text_json,
+            text_layout=panel.text_layout,
+            generated_prompt=panel.generated_prompt if include_prompts else None,
+            images=images,
+        )
+    )
 
 
 @router.post("/{task_id}/cancel", response_model=ApiData[TaskRead])

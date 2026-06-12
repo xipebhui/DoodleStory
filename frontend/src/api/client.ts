@@ -265,13 +265,7 @@ export type TaskPanel = {
   id: string;
   panel_order: number;
   panel_type: "cover" | "scene";
-  original_text_segment: string;
-  narration_text: string | null;
-  dialogue_text: string | null;
-  image_text_json: string | null;
-  text_layout: string | null;
   prompt_status: "pending" | "generated" | "failed";
-  generated_prompt: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -296,17 +290,40 @@ export type GeneratedImage = {
   source_type: "initial" | "user_edit" | "retry";
   workflow_step: "rewrite_prompt" | "generate_image" | null;
   user_instruction: string | null;
-  previous_prompt: string | null;
-  image_prompt: string | null;
-  image_text_json: string | null;
-  text_layout: string | null;
   prompt_change_summary: string | null;
-  final_prompt: string | null;
   asset: FileAsset | null;
   error_code: string | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type GeneratedImageDebug = {
+  id: string;
+  generation_number: number;
+  is_current: boolean;
+  source_type: GeneratedImage["source_type"];
+  status: GeneratedImage["status"];
+  user_instruction: string | null;
+  prompt_change_summary: string | null;
+  image_text_json: string | null;
+  text_layout: string | null;
+  previous_prompt: string | null;
+  image_prompt: string | null;
+  final_prompt: string | null;
+  error_message: string | null;
+};
+
+export type TaskPanelDebug = {
+  panel_id: string;
+  panel_order: number;
+  original_text_segment: string;
+  narration_text: string | null;
+  dialogue_text: string | null;
+  image_text_json: string | null;
+  text_layout: string | null;
+  generated_prompt: string | null;
+  images: GeneratedImageDebug[];
 };
 
 export type TaskDownload = {
@@ -575,6 +592,8 @@ export const api = {
     return request<ApiList<TaskSummary>>(`/tasks${suffix}`);
   },
   task: (id: string) => request<ApiData<Task>>(`/tasks/${id}`).then((result) => result.data),
+  taskPanelDebug: (taskId: string, panelId: string) =>
+    request<ApiData<TaskPanelDebug>>(`/tasks/${taskId}/panels/${panelId}/debug`).then((result) => result.data),
   createTask: (payload: {
     original_text: string;
     story_input_mode?: Task["story_input_mode"];

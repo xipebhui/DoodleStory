@@ -52,6 +52,7 @@ import {
   type StyleTest,
   type StoryCharacterBinding,
   type Task,
+  type TaskPanelDebug,
   type TaskSummary,
   type User,
   type UserCharacter,
@@ -159,7 +160,7 @@ function LazyAssetImage({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [shouldLoad, setShouldLoad] = useState(eager);
   const [loadState, setLoadState] = useState<"idle" | "loading" | "loaded" | "error">(eager ? "loading" : "idle");
-  const resolvedSrc = asset ? assetUrl(asset, variant) : api.assetContentUrl(assetId, variant);
+  const resolvedSrc = asset ? assetUrl(asset, variant) : api.assetContentUrl(assetId, "original");
 
   useEffect(() => {
     if (eager) {
@@ -182,7 +183,7 @@ function LazyAssetImage({
           observer.disconnect();
         }
       },
-      { rootMargin: "640px 0px" },
+      { rootMargin: "160px 0px" },
     );
     observer.observe(image);
     return () => observer.disconnect();
@@ -215,8 +216,9 @@ function absoluteAssetUrl(value: string): string {
 }
 
 function assetUrl(asset: FileAsset, variant: "original" | "thumbnail" = "original"): string {
-  const value = variant === "thumbnail" ? asset.thumbnail_url : asset.content_url;
-  return absoluteAssetUrl(value || api.assetContentUrl(asset.id, variant));
+  void variant;
+  const value = asset.content_url || asset.thumbnail_url;
+  return absoluteAssetUrl(value || api.assetContentUrl(asset.id, "original"));
 }
 
 function App() {
@@ -740,6 +742,9 @@ function TasksView({
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
   const [panelEditInputs, setPanelEditInputs] = useState<Record<string, string>>({});
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
+  const [panelDebugById, setPanelDebugById] = useState<Record<string, TaskPanelDebug>>({});
+  const [panelDebugError, setPanelDebugError] = useState<Record<string, string>>({});
+  const [loadingPanelDebugId, setLoadingPanelDebugId] = useState<string | null>(null);
   const [downloadingTaskId, setDownloadingTaskId] = useState<string | null>(null);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
 
@@ -750,6 +755,8 @@ function TasksView({
   const previewIndex = previewItems.findIndex((image) => image.id === previewImageId);
   const previewImage = previewIndex >= 0 ? previewItems[previewIndex] : null;
   const previewPanel = previewImage ? taskForDetail?.panels.find((panel) => panel.id === previewImage.panel_id) : null;
+  const previewPanelDebug = previewImage ? panelDebugById[previewImage.panel_id] : undefined;
+  const previewImageDebug = previewImage ? previewPanelDebug?.images.find((image) => image.id === previewImage.id) : undefined;
   const activeTaskSignature = tasks.map((task) => `${task.id}:${task.status}:${task.updated_at}`).join("|");
   const selectedImageSignature =
     selectedTask?.generated_images
@@ -832,6 +839,9 @@ function TasksView({
       setDetailOpen(true);
       setSelectedTask(null);
       setPreviewImageId(null);
+      setPanelDebugById({});
+      setPanelDebugError({});
+      setLoadingPanelDebugId(null);
       try {
         const task = await api.task(taskId);
         if (cancelled) return;
@@ -849,6 +859,9 @@ function TasksView({
       setSelectedId("");
       setSelectedTask(null);
       setPreviewImageId(null);
+      setPanelDebugById({});
+      setPanelDebugError({});
+      setLoadingPanelDebugId(null);
       return () => {
         cancelled = true;
       };
@@ -972,11 +985,35 @@ function TasksView({
     }
   }
 
+  async function loadPanelDebug(panelId: string) {
+    if (!taskForDetail || panelDebugById[panelId]) return;
+    try {
+      setLoadingPanelDebugId(panelId);
+      const debug = await api.taskPanelDebug(taskForDetail.id, panelId);
+      setPanelDebugById((items) => ({ ...items, [panelId]: debug }));
+      setPanelDebugError((items) => {
+        const next = { ...items };
+        delete next[panelId];
+        return next;
+      });
+    } catch (err) {
+      setPanelDebugError((items) => ({
+        ...items,
+        [panelId]: err instanceof Error ? err.message : "分镜调试信息加载失败",
+      }));
+    } finally {
+      setLoadingPanelDebugId(null);
+    }
+  }
+
   async function selectTask(taskId: string) {
     setSelectedId(taskId);
     setDetailOpen(true);
     setSelectedTask(null);
     setPreviewImageId(null);
+    setPanelDebugById({});
+    setPanelDebugError({});
+    setLoadingPanelDebugId(null);
     onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(taskId)}`);
   }
 
@@ -985,6 +1022,9 @@ function TasksView({
     setSelectedId("");
     setSelectedTask(null);
     setPreviewImageId(null);
+    setPanelDebugById({});
+    setPanelDebugError({});
+    setLoadingPanelDebugId(null);
     onNavigatePath(viewRoutes.tasks);
   }
 
@@ -1647,9 +1687,12 @@ function TasksView({
                     const image = panelImageMap.get(panel.id);
                     const versions = panelImageVersions(taskForDetail, panel.id);
                     const activeVersion = versions.find((item) => item.status === "queued" || item.status === "running");
-                    const canEditPanel = Boolean(panel.generated_prompt) && !activeVersion;
-                    const imageText = imageTextSummary(image?.image_text_json ?? panel.image_text_json);
-                    const textLayout = image?.text_layout ?? panel.text_layout;
+                    const canEditPanel = panel.prompt_status === "generated" && !activeVersion;
+                    const panelDebug = panelDebugById[panel.id];
+                    const imageDebug = image ? panelDebug?.images.find((item) => item.id === image.id) : undefined;
+                    const imageText = imageTextSummary(imageDebug?.image_text_json ?? panelDebug?.image_text_json);
+                    const textLayout = imageDebug?.text_layout ?? panelDebug?.text_layout;
+                    const promptText = imageDebug?.final_prompt ?? imageDebug?.image_prompt ?? panelDebug?.generated_prompt ?? "";
                     const currentImageIsUserEdit = image?.source_type === "user_edit";
                     return (
                       <article key={panel.id} className="panel-card">
@@ -1668,22 +1711,39 @@ function TasksView({
                           )}
                         </div>
                         <strong>Panel {panel.panel_order}</strong>
-                        <p>{panel.original_text_segment}</p>
-                        {panel.narration_text ? <small>旁白：{panel.narration_text}</small> : null}
-                        {panel.dialogue_text ? <small>对白：{panel.dialogue_text}</small> : null}
-                        {imageText ? <small>图片文字：{imageText}</small> : null}
-                        {textLayout ? <small>文字布局：{textLayout}</small> : null}
                         {image?.workflow_step && image.status !== "succeeded" ? (
                           <small className="process-note">
                             {imageWorkflowLabel(image.workflow_step)} · {imageStatusLabel(image.status)}
                           </small>
                         ) : null}
-                        {image?.image_prompt || panel.generated_prompt ? (
-                          <small className="panel-generated-prompt">{image?.image_prompt ?? panel.generated_prompt}</small>
-                        ) : null}
                         {currentImageIsUserEdit && image?.user_instruction ? <small>修改方向：{image.user_instruction}</small> : null}
                         {currentImageIsUserEdit && image?.prompt_change_summary ? <small>修改摘要：{image.prompt_change_summary}</small> : null}
                         {image?.error_message ? <small className="error">{image.error_message}</small> : null}
+                        <div className="panel-debug-actions">
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            disabled={loadingPanelDebugId === panel.id}
+                            onClick={() => loadPanelDebug(panel.id)}
+                          >
+                            {loadingPanelDebugId === panel.id ? <Loader2 size={15} className="spin" /> : <FileText size={15} />}
+                            {panelDebug ? "已加载分镜文本" : user.role === "admin" ? "查看图片文字和 Prompt" : "查看图片文字"}
+                          </button>
+                        </div>
+                        {panelDebugError[panel.id] ? <small className="error">{panelDebugError[panel.id]}</small> : null}
+                        {panelDebug ? (
+                          <div className="panel-debug-box">
+                            <p>{panelDebug.original_text_segment}</p>
+                            {panelDebug.narration_text ? <small>旁白：{panelDebug.narration_text}</small> : null}
+                            {panelDebug.dialogue_text ? <small>对白：{panelDebug.dialogue_text}</small> : null}
+                            {imageText ? <small>图片文字：{imageText}</small> : null}
+                            {textLayout ? <small>文字布局：{textLayout}</small> : null}
+                            {user.role === "admin" && promptText ? <small className="panel-generated-prompt">{promptText}</small> : null}
+                            {user.role === "admin" && imageDebug?.previous_prompt ? (
+                              <small className="panel-generated-prompt">上一版 Prompt：{imageDebug.previous_prompt}</small>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <div className="panel-edit-box">
                           <textarea
                             value={panelEditInputs[panel.id] ?? ""}
@@ -2266,7 +2326,9 @@ function TasksView({
             <figcaption>
               <div>
                 <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
-                <p className="preview-prompt">{previewImage.final_prompt ?? previewImage.image_prompt ?? ""}</p>
+                {user.role === "admin" && (previewImageDebug?.final_prompt || previewImageDebug?.image_prompt) ? (
+                  <p className="preview-prompt">{previewImageDebug.final_prompt ?? previewImageDebug.image_prompt}</p>
+                ) : null}
               </div>
               <div className="preview-actions">
                 <button type="button" className="secondary-button" onClick={downloadPreviewImage}>
