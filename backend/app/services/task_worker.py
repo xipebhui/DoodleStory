@@ -1326,10 +1326,13 @@ def process_task(task_id: str) -> None:
                         trace_context=task_trace_context(task, "extract_characters"),
                     )
                     if not character_result.characters:
-                        if characters:
-                            persisted_character_plans = []
-                        else:
-                            raise LLMResponseError("未识别到可用于参考图的主要人物")
+                        persisted_character_plans = []
+                        logger.info(
+                            "story_drawing_debug character_extraction_empty task_id=%s existing_character_count=%s elapsed_ms=%s",
+                            task.id,
+                            len(characters),
+                            round((monotonic() - step_started) * 1000),
+                        )
                     elif characters:
                         persisted_character_plans = persist_missing_generated_character_plans(
                             db,
@@ -1343,11 +1346,12 @@ def process_task(task_id: str) -> None:
                         task = load_task(db, task_id)
                         if task is None:
                             return
-                        save_character_plan_panel_links(
-                            db=db,
-                            task=task,
-                            character_plans=persisted_character_plans,
-                        )
+                        if persisted_character_plans:
+                            save_character_plan_panel_links(
+                                db=db,
+                                task=task,
+                                character_plans=persisted_character_plans,
+                            )
                     task.progress_current = 2
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                     logger.info(

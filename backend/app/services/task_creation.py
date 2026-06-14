@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -15,6 +16,11 @@ from app.models.enums import (
 from app.schemas.task import TaskCreate
 from app.services.image_generation import ImageProviderConfigError
 from app.services.style_references import snapshot_task_style_reference_images
+
+
+DOUYIN_SHARE_URL_PATTERN = re.compile(
+    r"https?://(?:v\.douyin\.com/[A-Za-z0-9_.~%-]+/?|www\.douyin\.com/(?:video|note)/[A-Za-z0-9_.~%-]+(?:\?[^\s，,。！!？?；;]*)?)"
+)
 
 
 @dataclass(frozen=True)
@@ -74,6 +80,8 @@ def validate_task_create_payload(payload: TaskCreate) -> None:
         raise TaskCreationError(status_code=400, detail="自动判断图片数量时不能传 requested_image_count")
     if payload.image_count_mode == ImageCountMode.fixed and payload.requested_image_count is None:
         raise TaskCreationError(status_code=400, detail="固定图片数量时必须传 requested_image_count")
+    if DOUYIN_SHARE_URL_PATTERN.search(payload.original_text):
+        raise TaskCreationError(status_code=400, detail="检测到抖音分享链接，请使用 DY爆款复刻创建任务")
     seen_sources: set[str] = set()
     seen_character_ids: set[str] = set()
     for item in payload.story_characters:

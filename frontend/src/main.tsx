@@ -110,12 +110,18 @@ type ImageTextPayload = {
 };
 
 const CONTENT_EXTRACTION_TASK_DRAFT_KEY = "doodlestory.contentExtractionTaskDraft";
+const DOUYIN_SHARE_URL_PATTERN =
+  /https?:\/\/(?:v\.douyin\.com\/[A-Za-z0-9_.~%-]+\/?|www\.douyin\.com\/(?:video|note)\/[A-Za-z0-9_.~%-]+(?:\?[^\s，,。！!？?；;]*)?)/;
 type CreateInputMode = Task["story_input_mode"] | "dy_replicate";
 type CharacterCreateTarget = { sourceName: string; allowMerge: boolean } | null;
 type ManualRoleTarget = { allowMerge: boolean } | null;
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function containsDouyinShareUrl(value: string) {
+  return DOUYIN_SHARE_URL_PATTERN.test(value);
 }
 
 function parseImageText(value: string | null | undefined): ImageTextPayload | null {
@@ -1223,7 +1229,8 @@ function TasksView({
       setMessage("请输入任务内容");
       return;
     }
-    if (storyInputMode !== "dy_replicate" && fixedRoleFlowEnabled && !fixedRoleExtractionReady) {
+    const shouldUseDouyinReplicate = storyInputMode === "dy_replicate" || containsDouyinShareUrl(originalText);
+    if (!shouldUseDouyinReplicate && fixedRoleFlowEnabled && !fixedRoleExtractionReady) {
       await extractRolesForCreate();
       return;
     }
@@ -1237,7 +1244,7 @@ function TasksView({
             }))
             .filter((item) => Boolean(item.user_character_id))
         : [];
-      if (storyInputMode === "dy_replicate") {
+      if (shouldUseDouyinReplicate) {
         const content = await api.replicateContentAsTask({
           raw_input: originalText,
           image_count_mode: countMode,
@@ -1248,7 +1255,11 @@ function TasksView({
         resetCreateForm();
         setCreateOpen(false);
         setStylePickerOpen(false);
-        setMessage("DY 爆款复刻已提交，正在提取内容并自动创建生图任务");
+        setMessage(
+          storyInputMode === "dy_replicate"
+            ? "DY 爆款复刻已提交，正在提取内容并自动创建生图任务"
+            : "检测到抖音分享链接，已按 DY 爆款复刻提交，正在提取内容",
+        );
         void monitorReplicateTask(content.id);
         return;
       }

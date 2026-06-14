@@ -255,6 +255,33 @@ class UserCharacterTest(unittest.TestCase):
             [step.step_name for step in task.steps],
         )
 
+    def test_regular_task_rejects_douyin_share_link(self) -> None:
+        db = self.Session()
+        owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        style = Style(
+            name="绘本",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_reference_mode=StyleReferenceMode.prompt,
+            style_prompt="温暖绘本风",
+        )
+        db.add_all([owner, style])
+        db.commit()
+
+        with self.assertRaisesRegex(TaskCreationError, "DY爆款复刻"):
+            create_generation_task_record(
+                db=db,
+                user=owner,
+                payload=TaskCreate(
+                    original_text="9.92 https://v.douyin.com/U_6-02Q-8wQ/ 复制此链接，打开抖音搜索。",
+                    story_input_mode=StoryInputMode.extracted_storyboard,
+                    image_count_mode=ImageCountMode.auto,
+                    style_id=style.id,
+                    use_character_references=True,
+                ),
+            )
+
     def test_fixed_character_task_still_persists_unbound_generated_characters(self) -> None:
         db = self.Session()
         owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
