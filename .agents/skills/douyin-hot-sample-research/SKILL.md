@@ -57,10 +57,11 @@ export MEDIACRAWLER_HOME=/path/to/MediaCrawler
 3. `references/research-fields.md`
 4. `references/multidimensional-analysis-strategy.md`
 5. `references/seven-day-search-processing.md`
-6. `backend/app/services/media_text_extraction.py`
-7. `backend/app/api/content_extractions.py`
-8. `backend/app/prompts/parse_extracted_storyboard_v1.md`
-9. `/Users/pengfei.shi/workspace/tmp-project/douyin-downloader/README.zh-CN.md`
+6. `docs/product/content-iteration-controller-agent.md`
+7. `backend/app/services/media_text_extraction.py`
+8. `backend/app/api/content_extractions.py`
+9. `backend/app/prompts/parse_extracted_storyboard_v1.md`
+10. `/Users/pengfei.shi/workspace/tmp-project/douyin-downloader/README.zh-CN.md`
 
 ## 工作流
 
@@ -116,6 +117,8 @@ export MEDIACRAWLER_HOME=/path/to/MediaCrawler
 ### 0. 判断入口
 
 这个 Skill 只有两个用户入口，不向用户暴露复杂配置。
+
+当用户讨论“控制器 Agent”“人格底座”“预测误差”“Skill 迭代”或“根据发布数据定期决定下一轮选题”时，先读取 `docs/product/content-iteration-controller-agent.md`。该文档定义了迷宫控制器的人格、禁忌、二分心智、预测误差和规则升级门槛；当前 Skill 负责执行采集、分析和复盘步骤，控制器负责决定证据是否足够进入下一步以及是否允许升级规则。
 
 用户给关键词、想拓展新赛道时，使用 `new_lane_prediction`：
 
