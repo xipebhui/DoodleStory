@@ -206,7 +206,8 @@
 - 修复 `gpt-image-2` 参考图数量限制：根据 `docs/api_v4.md` 和真实接口验证，ListenHub 路径的 `gpt-image-2` 支持 4 张参考图；后端已把该模型参考图上限从 3 改为 4。任务生图和单 panel 修改在参考图超过模型上限时保留前 N 张并丢弃末尾多余参考图，同时同步裁剪最终 prompt 编译使用的参考说明，避免本地配置错误阻断生成。
 - 优化任务详情预加载范围：任务详情接口不再默认返回分镜原文、图片内文字、文字布局和生图 prompt；新增分镜 debug 按需接口，用户点击后才加载图片文字，管理员点击后才额外加载 Prompt。前端图片懒加载提前量从 `640px` 收窄到 `160px`，图片展示强制使用原图 URL，任务列表缩略预览和详情分镜图改为 `contain` 完整展示，不引入会裁切原图的缩略图生成，避免缩略图比例不一致导致画面被裁剪。
 - 修复普通任务误粘抖音分享链接和空角色提取失败：创建弹窗检测到抖音作品链接时会自动按 `DY爆款复刻` 提交到内容提取流程，后端普通任务 API 也会拒绝抖音链接，避免分享口令被当成提取分镜文本进入生成链路；任务执行阶段如果人物提取返回空角色，后端会记录 `character_extraction_empty` 并跳过任务级临时人物参考，继续后续生图，不再让任务停在 `extract_characters`。
-- 开始并完成 Sprint 49 抖音热门样本调研 Skill：新增项目本地 `.agents/skills/douyin-hot-sample-research/`，把 `douyin-downloader` 明确为热门图文样本库采集底座；Skill 第一阶段固定为关键词/热榜调研、最近热门筛选、候选样本分层，再下载少量入选作品；新增 `references/research-fields.md` 统一样本字段，新增 `scripts/summarize_samples.py` 从搜索 JSONL、下载 metadata 和额外数据目录中汇总日期、标题、作者、图文类型、图片数和互动数据。图片理解边界已写入 Skill：Codex 适合低量人工抽检，批量定时结构化提取需要独立 VL 模型。
+- 开始并完成 Sprint 49 抖音热门样本调研 Skill：新增项目本地 `.agents/skills/douyin-hot-sample-research/`，把 `douyin-downloader` 明确为热门图文样本库采集底座；Skill 第一阶段固定为关键词/热榜调研、最近热门筛选、候选样本分层，再下载少量入选作品；新增 `references/research-fields.md` 统一样本字段，新增 `scripts/summarize_samples.py` 从搜索 JSONL、下载 metadata 和额外数据目录中汇总日期、标题、作者、图文类型、图片数和互动数据。该版本先把 Codex 人工抽检与 VL 批量提取分开，后续由 Sprint 50 明确改为复用 DoodleStory 现有内容提取 VL 链路。
+- 完成 Sprint 50 抖音样本 Skill 复用现有 VL 链路：更新 `.agents/skills/douyin-hot-sample-research/`，把图片理解策略改为复用 DoodleStory 现有内容提取 VL，而不是另起模型链路；Skill 明确区分 `preview_vl` 与 `full_story_document`，只判断开头、结尾或中段转折时只传对应图片窗口，只有样本进入故事文档或任务创建候选时才走完整图集提取；字段参考新增 VL 输入页码、结果类型、是否需要全量提取和内容提取 ID 等记录项。
 
 ## 已知缺口
 

@@ -43,6 +43,7 @@ Prefer raw counts. Do not invent metrics when fields are absent.
 Fill these after manual Codex inspection or VL extraction:
 
 - `first_image_hook`: what makes the first page stop-scroll.
+- `ending_payoff`: whether the last page closes, reverses, or opens the story.
 - `story_structure`: setup, conflict, turn, resolution, open loop.
 - `visual_style`: layout and drawing style.
 - `comment_signal`: praise,催更, debate, question, confusion, or conversion intent.
@@ -50,8 +51,22 @@ Fill these after manual Codex inspection or VL extraction:
 - `rights_risk`: low, medium, high.
 - `experiment_fit`: A, B, C, D.
 
+## VL Scope
+
+Use these fields to avoid confusing lightweight inspection with full story extraction:
+
+- `vl_scope`: `none`, `preview_vl`, or `full_story_document`.
+- `vl_input_orders`: original image order numbers sent to VL, such as `[1]`, `[1,2]`, `[14,15]`, or `all`.
+- `vl_result_type`: `hook_judgment`, `ending_judgment`, `turning_point_judgment`, or `story_document`.
+- `should_full_extract`: whether the sample deserves all-page extraction.
+- `content_extraction_id`: DoodleStory content extraction ID when full extraction is run through the product path.
+- `extracted_text_source`: path or DB source of the VL result.
+
+`preview_vl` is research evidence only. `full_story_document` is the point where the result can become DoodleStory source material for panel creation.
+
 ## Notes
 
 - Treat old high-engagement samples as structural references unless the same structure appears in recent search results.
 - Prefer image-text/gallery works that can be recreated with original text and original generated images.
 - Keep raw downloader paths in the table so later agents can re-open evidence.
+- Reuse DoodleStory's existing content-extraction VL path. It requires ordered images with public HTTP(S) asset URLs; do not replace that with an implicit base64 or Codex-only path.
