@@ -95,16 +95,15 @@ class TaskWorkerPromptTest(unittest.TestCase):
                     panels=[{"panel_order": 1, "visual_prompt": "女孩在窗边读书"}],
                 )
 
-    def test_final_prompt_includes_dialogue_text(self) -> None:
+    def test_final_prompt_uses_visual_prompt_dialogue_once(self) -> None:
         final_prompt = build_adapted_story_final_prompt(
             aspect_ratio="3:4",
-            visual_prompt="主画面+右下角分镜布局，父亲伸手阻止，孩子哭着跑开。",
+            visual_prompt="主画面+右下角分镜布局，父亲伸手阻止孩子，焦急地对孩子说：“别拿这个乱玩，拿过来。”孩子哭着跑开。",
             story_beat="男主焦急地阻止儿子，孩子被吓哭。",
             panel_type=PanelType.scene,
             image_text={
                 "title": None,
                 "narration": "我急得朝他吼了一下\n他吓的哭了出来\n去喊我老婆",
-                "dialogue": "你个熊孩子\n别拿这个乱玩\n拿过来\n呜哇",
                 "inner_os": None,
                 "emphasis": None,
             },
@@ -114,11 +113,13 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         self.assertIn("第1页：", final_prompt)
         self.assertIn("【分格】主画面+右下角分镜", final_prompt)
+        self.assertIn("父亲伸手阻止孩子，焦急地对孩子说：“别拿这个乱玩，拿过来。”", final_prompt)
         self.assertIn("旁白：我急得朝他吼了一下\n他吓的哭了出来\n去喊我老婆", final_prompt)
-        self.assertIn("对话：你个熊孩子\n别拿这个乱玩\n拿过来\n呜哇", final_prompt)
+        self.assertIn("对话：无", final_prompt)
         self.assertIn("内心OS：无", final_prompt)
         self.assertIn("字段名只用于理解分镜结构", final_prompt)
         self.assertIn("对白出现在对应人物附近的对白气泡中", final_prompt)
+        self.assertIn("不要在旁白框里重复", final_prompt)
         self.assertNotIn("分格/多栏布局：", final_prompt)
         self.assertNotIn("不要添加指定文字之外", final_prompt)
         self.assertNotIn("Logo 或水印", final_prompt)

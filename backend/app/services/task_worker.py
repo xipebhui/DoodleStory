@@ -701,6 +701,8 @@ def text_rules_block(
             )
     if dialogue_block(image_text) or visual_prompt_has_dialogue(visual_prompt):
         rules.append("对白出现在对应人物附近的对白气泡中，气泡尾巴指向说话人物；气泡里呈现人物说出的句子。")
+        if values.get("narration"):
+            rules.append("如果旁白原文中包含同一句直接引语，而画面描述已经把它绑定到人物说话动作，最终只画一次这句台词：用对白气泡呈现，不要在旁白框里重复。")
     if values.get("inner_os"):
         rules.append("内心OS使用思想气泡、虚线气泡或半透明心理独白框呈现，明显区别于对白。")
     return "".join(rules)
@@ -840,7 +842,7 @@ def build_adapted_story_final_prompt(
         [
             "",
             "上面的字段名只用于理解分镜结构，不要把“画面”“旁白”“对话”“内心OS”“标题”“强调”等字段名画进图片。",
-            "图片里只绘制字段值对应的内容：旁白用旁白框或字幕框，对话用对白气泡，内心OS用思想气泡或心理独白框，标题和强调字按画面需要突出呈现。",
+            "图片里只绘制字段值对应的内容：旁白用旁白框或字幕框，visual_prompt 中的人物说话用对白气泡，内心OS用思想气泡或心理独白框，标题和强调字按画面需要突出呈现。",
         ]
     )
     rules = text_rules_block(visual_prompt, image_text, text_layout)
