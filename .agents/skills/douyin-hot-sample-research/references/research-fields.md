@@ -41,6 +41,27 @@ Prefer raw counts. Do not invent metrics when fields are absent.
 - `recommend_count`: visible recommendation count if present.
 - `play_count`: often zero or absent for gallery; do not overinterpret.
 
+## Seven-Day Search Processing
+
+Fill these when comparing all results from a recent 7-day search run.
+
+- `content_category`: `pure_love_healing`, `family_marriage`, `social_safety`, `suspense_horror`, `revenge_moral`, `workplace_social`, `life_growth`, `other_story`, or `uncategorized`.
+- `category_candidate_count`: number of candidates in the category.
+- `category_ab_count`: number of A/B candidates in the category.
+- `category_total_likes`: total likes in the category.
+- `category_total_comments`: total comments in the category.
+- `category_total_shares`: total shares in the category.
+- `category_avg_score`: average candidate score in the category.
+- `category_top_aweme_ids`: representative high-signal works in the category.
+- `account_probe_priority`: high, medium, low, or no_sec_uid.
+- `mimicability_label`: `high_mimicability`, `medium_mimicability`, `low_mimicability`, or `needs_account_probe`.
+- `mimicability_reason`: short reason such as `few_works_high_traffic`, `mid_work_count_high_traffic`, `large_mature_account`, or `creator_profile_not_provided`.
+- `realistic_scene_role`: proof, after-story, contrast, identity evidence, relationship confirmation, or topic proof.
+- `image2_real_scene_prompt_seed`: short prompt seed for generating a safe original realistic scene.
+- `real_scene_rights_policy`: original_generated, authorized, anonymized, or reject.
+
+Use category comparison before choosing individual works. Use account mimicability to decide which creators deserve homepage analysis.
+
 ## Account Homepage Analysis
 
 Fill these only after a candidate is promoted for account-level review.
@@ -65,6 +86,7 @@ Fill these only after a candidate is promoted for account-level review.
 - `account_analysis_note`: concise explanation for the stability classification.
 
 Account stability explains whether a sample is likely a repeatable formula or only a one-off hit.
+For DoodleStory experiments, fewer works plus high traffic is a stronger mimicability signal than account size alone.
 
 ## Comment Analysis
 
@@ -138,6 +160,7 @@ Fill these after combining work copy, story structure, comment clusters, and opt
 - `comment_trigger`: the comment cluster that best explains discussion.
 - `audience_need`: emotional release, moral judgment, realism, continuation, explanation, identity projection, practical advice, or other.
 - `replication_angle`: how to create an original work using the mechanism without copying the source story.
+- `realistic_replication_angle`: how to recreate real-photo/evidence feeling with original or generated assets.
 - `risk_note`: copyright, likeness, privacy, medical/legal/violent sensitivity, platform policy, weak evidence, or other risk.
 - `next_iteration_hypothesis`: testable statement for the next collection or publishing round.
 - `observed_signal`: repeated evidence that motivates a strategy change.

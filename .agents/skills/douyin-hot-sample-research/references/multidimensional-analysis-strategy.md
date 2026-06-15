@@ -32,6 +32,7 @@ Evidence to collect:
 - Work shape: image-text ratio, video ratio, story-topic ratio, average image count if available.
 - Traffic distribution: median, p75, p90, max, coefficient of variation, and max-to-median ratio for likes, comments, collects, and shares.
 - Topic concentration: whether recent titles/tags repeatedly use the same story archetype, relationship tension, suspense setup, or emotional payoff.
+- Mimicability: whether the account has few works but unusually high traffic, which often makes the format more useful for early imitation than a large mature account.
 
 Classification:
 
@@ -46,6 +47,7 @@ Strategy impact:
 - `viral_outlier` should keep the work as a structure reference unless comments and VL evidence show a clear reusable mechanism.
 - `emerging_series` suggests testing adjacent keywords and topic variants quickly.
 - `mixed_account` should not drive keyword expansion by itself.
+- `few_works_high_traffic` should move the account higher in the probe queue because the mechanism may be simpler to isolate.
 
 ## Comment Analysis
 
@@ -113,6 +115,19 @@ Strategy impact:
 - Real-photo or evidence endings can strengthen authenticity and discussion, but they increase privacy, likeness, and rights risk.
 - If the hook is weak but comments are strong, the discussion may come from the topic rather than the execution.
 - If the hook and ending are both strong, promote the sample for full extraction.
+
+## Realistic Ending As A Replication Mechanism
+
+When the final page is a real photo, screenshot, document, chat record, or proof-like image, treat it as a format mechanism rather than only a risk.
+
+Strategy:
+
+- Keep the emotional function: proof, after-story, relationship confirmation, real-life trace, or topic evidence.
+- Do not copy the original real person, private screenshot, document, or unlicensed image.
+- Use original photography, authorized material, anonymized composites, or image-2 realistic-scene generation to recreate the same function.
+- Record the generated-realness plan in `realistic_replication_angle` and `image2_real_scene_prompt_seed`.
+
+For hot story samples, the question is not "can we reuse this real image"; it is "what original real-feeling image would create the same trust or discussion effect."
 
 ## Copy And Comment Synthesis
 

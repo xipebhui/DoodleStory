@@ -59,6 +59,125 @@ def extract_hashtags(text: str) -> list[str]:
     return tags
 
 
+CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
+    (
+        "family_marriage",
+        (
+            "家庭",
+            "婆媳",
+            "婚姻",
+            "老公",
+            "老婆",
+            "媳妇",
+            "妻子",
+            "丈夫",
+            "父母",
+            "妈妈",
+            "爸爸",
+            "孩子",
+            "亲情",
+        ),
+    ),
+    (
+        "social_safety",
+        (
+            "女性安全",
+            "拒绝沉默",
+            "伤害",
+            "被伤害",
+            "安全",
+            "霸凌",
+            "侵害",
+            "受害",
+        ),
+    ),
+    (
+        "suspense_horror",
+        (
+            "恐怖",
+            "悬疑",
+            "惊悚",
+            "案件",
+            "诡异",
+            "睡前故事",
+            "怪谈",
+            "真相",
+            "秘密",
+        ),
+    ),
+    (
+        "revenge_moral",
+        (
+            "复仇",
+            "反转",
+            "打脸",
+            "报应",
+            "渣男",
+            "背叛",
+            "绿茶",
+            "恶人",
+            "善良",
+            "选择",
+        ),
+    ),
+    (
+        "workplace_social",
+        (
+            "职场",
+            "同事",
+            "老板",
+            "上司",
+            "高情商",
+            "社交",
+            "人情世故",
+            "发疯文学",
+        ),
+    ),
+    (
+        "pure_love_healing",
+        (
+            "纯爱",
+            "治愈",
+            "心动",
+            "爱情",
+            "恋爱",
+            "暗恋",
+            "异地恋",
+            "校花",
+            "情侣",
+            "双向奔赴",
+            "喜欢你",
+            "婚纱",
+        ),
+    ),
+    (
+        "life_growth",
+        (
+            "人生",
+            "焦虑",
+            "成长",
+            "考研",
+            "上岸",
+            "学习",
+            "努力",
+            "励志",
+            "生活",
+            "治愈系",
+        ),
+    ),
+]
+
+
+def infer_content_category(title: str, tags: list[str]) -> str:
+    haystack = f"{title} {' '.join(tags)}"
+    for category, keywords in CATEGORY_RULES:
+        if any(keyword in haystack for keyword in keywords):
+            return category
+    if "故事" in haystack:
+        return "other_story"
+    return "uncategorized"
+
+
 def safe_rate(numerator: int, denominator: int) -> float:
     if denominator <= 0:
         return 0.0
@@ -116,9 +235,66 @@ def summarize_comments(comment_rows: Iterable[dict[str, Any]]) -> dict[str, Comm
     return summaries
 
 
-def classify(row: dict[str, Any], comment_summary: CommentSummary | None, now_ts: int) -> dict[str, Any]:
+def load_creator_profiles(path: Path | None) -> dict[str, dict[str, Any]]:
+    if not path:
+        return {}
+    rows = load_jsonl(path)
+    profiles: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        for key in ("user_id", "sec_uid"):
+            value = str(row.get(key) or "")
+            if value:
+                profiles[value] = row
+    return profiles
+
+
+def account_probe_priority(grade: str, sec_uid: str, liked: int, shares: int, comments: int) -> str:
+    if not sec_uid:
+        return "no_sec_uid"
+    if grade == "A" or liked >= 50000 or shares >= 20000 or comments >= 3000:
+        return "high"
+    if grade == "B" or liked >= 10000 or shares >= 1000 or comments >= 500:
+        return "medium"
+    return "low"
+
+
+def mimicability(
+    *,
+    grade: str,
+    liked: int,
+    shares: int,
+    comments: int,
+    creator_profile: dict[str, Any] | None,
+) -> tuple[str, str, int, int, int]:
+    if not creator_profile:
+        return "needs_account_probe", "creator_profile_not_provided", 0, 0, 0
+
+    videos_count = parse_int(creator_profile.get("videos_count"))
+    fans = parse_int(creator_profile.get("fans"))
+    total_favorited = parse_int(creator_profile.get("interaction"))
+    strong_traffic = grade == "A" or liked >= 50000 or shares >= 20000 or comments >= 3000
+    promising_traffic = grade in {"A", "B"} or liked >= 10000 or shares >= 1000 or comments >= 500
+
+    if videos_count and videos_count <= 50 and promising_traffic:
+        return "high_mimicability", "few_works_high_traffic", videos_count, fans, total_favorited
+    if videos_count and videos_count <= 150 and strong_traffic:
+        return "medium_mimicability", "mid_work_count_high_traffic", videos_count, fans, total_favorited
+    if videos_count >= 300 and fans >= 100000:
+        return "low_mimicability", "large_mature_account", videos_count, fans, total_favorited
+    if promising_traffic:
+        return "medium_mimicability", "traffic_strong_but_account_not_small", videos_count, fans, total_favorited
+    return "low_mimicability", "weak_sample_traffic", videos_count, fans, total_favorited
+
+
+def classify(
+    row: dict[str, Any],
+    comment_summary: CommentSummary | None,
+    now_ts: int,
+    creator_profiles: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
     aweme_id = str(row.get("aweme_id") or "")
     title = str(row.get("title") or row.get("desc") or "").replace("\n", " ").strip()
+    sec_uid = str(row.get("sec_uid") or "")
     liked = parse_int(row.get("liked_count"))
     collected = parse_int(row.get("collected_count"))
     comments = parse_int(row.get("comment_count"))
@@ -128,6 +304,7 @@ def classify(row: dict[str, Any], comment_summary: CommentSummary | None, now_ts
     is_image_text = str(row.get("aweme_type")) == "68" or bool(note_urls)
     bucket = freshness_bucket(create_time, now_ts)
     tags = extract_hashtags(title)
+    category = infer_content_category(title, tags)
 
     share_rate = safe_rate(shares, liked)
     collect_rate = safe_rate(collected, liked)
@@ -164,14 +341,25 @@ def classify(row: dict[str, Any], comment_summary: CommentSummary | None, now_ts
         grade = "C"
         reason = "recent_image_text_low_signal"
 
+    creator_profile = creator_profiles.get(sec_uid)
+    mimic_label, mimic_reason, creator_videos_count, creator_fans, creator_total_favorited = mimicability(
+        grade=grade,
+        liked=liked,
+        shares=shares,
+        comments=comments,
+        creator_profile=creator_profile,
+    )
+
     return {
         "grade": grade,
         "reason": reason,
         "score": round(score, 2),
+        "content_category": category,
         "aweme_id": aweme_id,
         "media_type": "image_text" if is_image_text else "video_or_other",
         "title": title,
         "nickname": row.get("nickname", ""),
+        "author_sec_uid": sec_uid,
         "create_time": create_time,
         "create_date": datetime.fromtimestamp(create_time).strftime("%Y-%m-%d %H:%M:%S") if create_time else "",
         "freshness_bucket": bucket,
@@ -191,6 +379,12 @@ def classify(row: dict[str, Any], comment_summary: CommentSummary | None, now_ts
         "comment_top_likes": comment_summary.total_likes if comment_summary else 0,
         "comment_status": "collected" if comment_summary else "comment_not_collected",
         "top_comments": json.dumps(comment_summary.top_comments or [], ensure_ascii=False) if comment_summary else "[]",
+        "account_probe_priority": account_probe_priority(grade, sec_uid, liked, shares, comments),
+        "creator_videos_count": creator_videos_count,
+        "creator_fans": creator_fans,
+        "creator_total_favorited": creator_total_favorited,
+        "mimicability_label": mimic_label,
+        "mimicability_reason": mimic_reason,
     }
 
 
@@ -204,33 +398,102 @@ def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writerows(rows)
 
 
-def write_markdown(path: Path, rows: list[dict[str, Any]], content_path: Path, comments_path: Path | None) -> None:
+def summarize_categories(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row.get("content_category") or "uncategorized")].append(row)
+
+    summaries: list[dict[str, Any]] = []
+    for category, items in grouped.items():
+        liked_values = sorted(parse_int(item.get("liked_count")) for item in items)
+        score_values = [float(item.get("score") or 0.0) for item in items]
+        grade_counts = Counter(str(item.get("grade")) for item in items)
+        top_items = sorted(items, key=lambda item: float(item.get("score") or 0.0), reverse=True)[:3]
+        median_likes = liked_values[len(liked_values) // 2] if liked_values else 0
+        summaries.append(
+            {
+                "content_category": category,
+                "candidate_count": len(items),
+                "ab_count": grade_counts.get("A", 0) + grade_counts.get("B", 0),
+                "a_count": grade_counts.get("A", 0),
+                "b_count": grade_counts.get("B", 0),
+                "total_likes": sum(parse_int(item.get("liked_count")) for item in items),
+                "median_likes": median_likes,
+                "total_comments": sum(parse_int(item.get("comment_count")) for item in items),
+                "total_shares": sum(parse_int(item.get("share_count")) for item in items),
+                "avg_score": round(sum(score_values) / len(score_values), 2) if score_values else 0.0,
+                "top_aweme_ids": ",".join(str(item.get("aweme_id") or "") for item in top_items),
+                "top_titles": " | ".join(str(item.get("title") or "")[:40] for item in top_items),
+            }
+        )
+    summaries.sort(
+        key=lambda item: (
+            -parse_int(item["ab_count"]),
+            -parse_int(item["total_shares"]),
+            -parse_int(item["total_likes"]),
+        )
+    )
+    return summaries
+
+
+def write_markdown(
+    path: Path,
+    rows: list[dict[str, Any]],
+    category_rows: list[dict[str, Any]],
+    content_path: Path,
+    comments_path: Path | None,
+    creators_path: Path | None,
+) -> None:
     grade_counts = Counter(row["grade"] for row in rows)
     lines = [
         "# Douyin Hot Sample Analysis",
         "",
         f"- content_source: `{content_path}`",
         f"- comments_source: `{comments_path}`" if comments_path else "- comments_source: not provided",
+        f"- creators_source: `{creators_path}`" if creators_path else "- creators_source: not provided",
         f"- total_candidates: {len(rows)}",
         f"- grade_counts: {dict(sorted(grade_counts.items()))}",
         "",
+        "## Category Comparison",
+        "",
+        "| category | candidates | A/B | likes | comments | shares | avg_score | top_titles |",
+        "|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for row in category_rows:
+        titles = str(row["top_titles"]).replace("|", "\\|")[:120]
+        lines.append(
+            f"| {row['content_category']} | {row['candidate_count']} | {row['ab_count']} | "
+            f"{row['total_likes']} | {row['total_comments']} | {row['total_shares']} | "
+            f"{row['avg_score']} | {titles} |"
+        )
+    lines.extend(
+        [
+            "",
         "## Top Candidates",
         "",
-        "| grade | score | aweme_id | metrics | freshness | title | comment_status |",
-        "|---|---:|---|---|---|---|---|",
-    ]
+            "| grade | score | category | aweme_id | metrics | freshness | account | title | comment_status |",
+            "|---|---:|---|---|---|---|---|---|---|",
+        ]
+    )
     for row in rows[:20]:
         metrics = (
             f"赞{row['liked_count']} / 评{row['comment_count']} / "
             f"藏{row['collected_count']} / 转{row['share_count']}"
         )
         title = str(row["title"]).replace("|", "\\|")[:80]
+        account = f"{row['account_probe_priority']} / {row['mimicability_label']}"
         lines.append(
-            f"| {row['grade']} | {row['score']} | {row['aweme_id']} | {metrics} | "
-            f"{row['freshness_bucket']} | {title} | {row['comment_status']} |"
+            f"| {row['grade']} | {row['score']} | {row['content_category']} | {row['aweme_id']} | "
+            f"{metrics} | {row['freshness_bucket']} | {account} | {title} | {row['comment_status']} |"
         )
     lines.extend(
         [
+            "",
+            "## Seven-Day Processing Notes",
+            "",
+            "- First compare categories. A category with multiple A/B works is stronger than one isolated viral work.",
+            "- Probe accounts with `high` account priority first. If creator profile is available, prefer `high_mimicability` and `medium_mimicability` accounts.",
+            "- Treat real-photo or evidence-style endings as a reproducible realistic-scene mechanism, not as material to copy directly.",
             "",
             "## Next Actions",
             "",
@@ -246,6 +509,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze MediaCrawler Douyin search outputs.")
     parser.add_argument("--contents", required=True, type=Path, help="MediaCrawler search_contents JSONL path")
     parser.add_argument("--comments", type=Path, help="Optional MediaCrawler search_comments JSONL path")
+    parser.add_argument("--creators", type=Path, help="Optional MediaCrawler creator_creators JSONL path")
     parser.add_argument("--out-dir", required=True, type=Path, help="Output directory")
     parser.add_argument("--now-ts", type=int, default=int(datetime.now(timezone.utc).timestamp()))
     args = parser.parse_args()
@@ -253,23 +517,35 @@ def main() -> None:
     content_rows = load_jsonl(args.contents)
     comment_rows = load_jsonl(args.comments) if args.comments else []
     comment_summaries = summarize_comments(comment_rows)
+    creator_profiles = load_creator_profiles(args.creators)
 
-    analyzed = [classify(row, comment_summaries.get(str(row.get("aweme_id"))), args.now_ts) for row in content_rows]
+    analyzed = [
+        classify(row, comment_summaries.get(str(row.get("aweme_id"))), args.now_ts, creator_profiles)
+        for row in content_rows
+    ]
     analyzed.sort(key=lambda item: (item["grade"], -item["score"], -item["share_count"]))
+    category_rows = summarize_categories(analyzed)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.out_dir / "candidate_scores.csv", analyzed)
+    write_csv(args.out_dir / "category_summary.csv", category_rows)
     (args.out_dir / "candidate_scores.json").write_text(
         json.dumps(analyzed, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    write_markdown(args.out_dir / "analysis_report.md", analyzed, args.contents, args.comments)
+    (args.out_dir / "category_summary.json").write_text(
+        json.dumps(category_rows, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    write_markdown(args.out_dir / "analysis_report.md", analyzed, category_rows, args.contents, args.comments, args.creators)
     print(json.dumps({
         "contents": str(args.contents),
         "comments": str(args.comments) if args.comments else None,
+        "creators": str(args.creators) if args.creators else None,
         "out_dir": str(args.out_dir),
         "total_candidates": len(analyzed),
         "grade_counts": dict(sorted(Counter(row["grade"] for row in analyzed).items())),
+        "category_count": len(category_rows),
     }, ensure_ascii=False))
 
 

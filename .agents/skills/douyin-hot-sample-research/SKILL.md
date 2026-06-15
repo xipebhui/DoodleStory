@@ -28,6 +28,7 @@ This skill does not promise traffic or automate platform scraping beyond the loc
 7. `/Users/pengfei.shi/workspace/tmp-project/DoodleStory/backend/app/prompts/parse_extracted_storyboard_v1.md`
 8. `references/research-fields.md`
 9. `references/multidimensional-analysis-strategy.md`
+10. `references/seven-day-search-processing.md`
 
 ## Workflow
 
@@ -93,7 +94,37 @@ python .agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.
 
 The analyzer writes `candidate_scores.csv`, `candidate_scores.json`, and `analysis_report.md`. It grades samples A/B/C/D using freshness, media type, likes, comments, collections, shares, share rate, collection rate, comment rate, tags, and optional collected-comment signals.
 
-### 3. Basic Data Acquisition: Download Selected Works
+If creator profiles have already been collected for some authors, pass them too. The analyzer will add creator works count, follower count, and account mimicability labels:
+
+```bash
+python .agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.py \
+  --contents /Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_week/douyin/jsonl/search_contents_2026-06-15.jsonl \
+  --creators /Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/account_probe_yierbubu/douyin/jsonl/creator_creators_2026-06-15.jsonl \
+  --out-dir output/douyin-hot-sample-analysis/huayigegushi-week-seven-day-processing
+```
+
+The analyzer also writes `category_summary.csv` and `category_summary.json`. Use these files to compare which content categories are hot across the whole 7-day result set before choosing individual samples.
+
+### 3. Seven-Day Search Decision Layer
+
+After a recent search run, process the whole result set before diving into a single work:
+
+- Compare categories horizontally: count A/B works, total likes, comments, shares, median likes, and representative titles.
+- Prioritize categories with multiple A/B works over categories carried by one isolated outlier.
+- Mark account probing priority for high-signal samples. Works with high traffic and available `sec_uid` should be probed first.
+- Prefer accounts that are easier to imitate: fewer works plus high traffic, clear repeated format, image-text-heavy output, and no dependency on celebrity/IP footage.
+- Treat `needs_account_probe` as an explicit next action, not as a final judgment.
+
+For realistic endings:
+
+- If the last page is a real photo, screenshot, document, chat record, or proof-like image, record it as a reusable format mechanism.
+- Do not copy the original real person or private evidence.
+- Recreate the authenticity function with original assets, authorized material, or image-2 realistic-scene generation.
+- The research question is: what hot mechanism can become an original real-feeling scene?
+
+See `references/seven-day-search-processing.md` for category labels, mimicability labels, and realistic-ending generation strategy.
+
+### 4. Basic Data Acquisition: Download Selected Works
 
 After filtering browser search JSONL or downloader search JSONL, download selected `share_url`, `video/note` URL, or `aweme_id` URL with `douyin-downloader`. Turn on JSON metadata and comments when the research needs feedback signals:
 
@@ -108,7 +139,7 @@ comments:
 
 The downloader writes `*_data.json`, media files, optional `*_comments.json`, and `download_manifest.jsonl`.
 
-### 4. Basic Data Acquisition: Summarize Local Evidence
+### 5. Basic Data Acquisition: Summarize Local Evidence
 
 Use the bundled summarizer after direct downloader search or download:
 
@@ -123,7 +154,7 @@ Use the summary as a starting point. Inspect raw JSON for any sample that will d
 
 For browser-state search output, start from the generated `*_summary.md` and `*_gallery.jsonl` files under `Downloaded/browser_search`, then inspect the matching `*_raw_responses.json` before making a sample-library decision.
 
-### 5. Account And Discussion Analysis
+### 6. Account And Discussion Analysis
 
 Run this layer only for A candidates and strong B candidates. Do not spend full analysis effort on every search hit.
 
@@ -134,6 +165,7 @@ Account homepage analysis answers whether the sample is a repeatable account pat
 - Compare traffic distribution across recent works: median, p75, p90, max, max-to-median ratio, and coefficient of variation for likes, comments, collects, and shares.
 - Classify the account pattern as `stable_template`, `viral_outlier`, `emerging_series`, or `mixed_account`.
 - Treat stable repeated structures as stronger experiment evidence than isolated old hits.
+- Give extra priority to accounts with fewer works but high traffic. This often means the format is newer, simpler, and less dependent on mature account memory.
 
 Comment analysis is a first-class topic-direction signal:
 
@@ -150,7 +182,7 @@ Combine copy and comments before deciding the next experiment:
 
 See `references/multidimensional-analysis-strategy.md` for the strategy rationale and labels. The point is to make future Skill evolution inspectable rather than implicit.
 
-### 6. Decide VL Scope
+### 7. Decide VL Scope
 
 Choose the smallest image-understanding scope that answers the research question.
 
@@ -173,7 +205,7 @@ Use `full_story_document` only after the sample is promoted to a real candidate:
 
 Avoid full extraction for low-confidence samples. The first pass should protect attention, model cost, and review time.
 
-### 7. Reuse Existing DoodleStory VL
+### 8. Reuse Existing DoodleStory VL
 
 DoodleStory already has a VL path for Douyin image-text extraction:
 
@@ -192,7 +224,7 @@ For `full_story_document`, run the full content-extraction path on all ordered g
 
 Do not add a second VL implementation unless the existing path cannot satisfy a stated requirement. If a sample only has local files and no public asset URL, the current DoodleStory VL path requires uploading/registering those images as assets first; do not silently fall back to base64 or Codex screenshots.
 
-### 8. Codex Manual Inspection
+### 9. Codex Manual Inspection
 
 Use Codex for manual or low-volume understanding:
 
@@ -214,8 +246,11 @@ Return a concise research report:
    - B: strong structure, needs adaptation.
    - C: useful reference only.
    - D: reject due to age, rights risk, weak structure, or non-image-text dependency.
-5. Account-level judgment: `stable_template`, `viral_outlier`, `emerging_series`, or `mixed_account` when creator evidence has been collected.
-6. Comment-cluster summary: high-like/high-reply discussion, topic seeds, and the comment trigger that most likely explains sharing or debate.
-7. Opening/ending VL summary, including whether the last page is a real-photo or evidence-style ending.
-8. Copy-comment synthesis fields and next iteration hypothesis.
-9. Next download, comment, account, or VL-inspection actions, explicitly marked as `preview_vl` or `full_story_document`.
+5. Category comparison across the whole 7-day search result set.
+6. Account mimicability and account-probe priority.
+7. Account-level judgment: `stable_template`, `viral_outlier`, `emerging_series`, or `mixed_account` when creator evidence has been collected.
+8. Comment-cluster summary: high-like/high-reply discussion, topic seeds, and the comment trigger that most likely explains sharing or debate.
+9. Opening/ending VL summary, including whether the last page is a real-photo or evidence-style ending.
+10. Realistic-scene replication route when the sample uses a real-photo or evidence-style ending.
+11. Copy-comment synthesis fields and next iteration hypothesis.
+12. Next download, comment, account, or VL-inspection actions, explicitly marked as `preview_vl` or `full_story_document`.
