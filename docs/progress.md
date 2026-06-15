@@ -213,6 +213,7 @@
 - 完成 Sprint 51 抖音 Skill 集成浏览器态搜索采集：新增合同 `docs/contracts/sprint-51-douyin-browser-search-skill.md`；在 `.agents/skills/douyin-hot-sample-research/scripts/` 增加 `browser_search_collect.py`，基于已登录浏览器 `storage_state` 通过搜索框输入关键词并监听 `/aweme/v1/web/general/search/single/` 响应，输出 raw responses、全部候选、图文候选、meta 和 summary；Skill 工作流改为关键词调研优先使用浏览器态搜索，选中样本后再交给 `douyin-downloader` 下载和评论/基础数据采集；字段参考新增浏览器态采集证据路径、响应数量、storage_state 路径和明确 blocker。未下载外部代码，采集脚本独立放在 Skill 自有目录供后续调用。
 - 完成 Sprint 52 抖音账号与评论多维分析策略：新增合同 `docs/contracts/sprint-52-douyin-account-comment-analysis-strategy.md`；将搜索、筛选、下载、基础指标和初步评论采集明确命名为“基础数据获取”；新增账号主页稳定性、评论区高赞/高回复讨论、开头结尾 VL 点检、最后一张实景/证据图判断，以及文案和评论热门讨论合并沉淀的策略文档；字段参考补充账号流量稳定、评论聚类、结尾证据类型、复制角度、风险说明和下一轮迭代假设，用于后续 Skill 自动优化关键词、评分权重、VL 范围和选题方向。
 - 完成 Sprint 53 抖音最近 7 天搜索结果处理流程：新增合同 `docs/contracts/sprint-53-douyin-seven-day-search-processing.md` 和 `references/seven-day-search-processing.md`；Skill 新增“搜索结果横向决策层”，先比较类目热度，再筛选账号模仿度和账号探查优先级，最后把真人/实景结尾转化为 image-2 可生成的真实感复刻策略；`analyze_search_results.py` 新增内容类目、账号探查优先级、可选 creator profile 模仿度字段，并输出 `category_summary.csv/json`。用 `画一个故事 + 最近一周` 14 条真实搜索结果验证，得到 4 个类目，其中家庭婚姻和纯爱治愈均有多条 A/B，社会安全为单条强爆点。
+- 完成 Sprint 54 抖音预测型内容链路架构：新增合同 `docs/contracts/sprint-54-douyin-prediction-workflow-architecture.md` 和 `references/prediction-workflow-architecture.md`；Skill 输入收敛为两个自然入口：新赛道关键词预测、账号复盘诊断；明确重要实验至少用 2 个账号发布以隔离账号因素；后台详细数据进入 experiment result 层，兼容手工粘贴、CSV/JSON 导入和未来 connector；内容库定位为已验证机制库而非资源包，沉淀 hook、故事母题、评论触发、真实感结尾、账号适配和偏差诊断，用于后续结合热点生成新内容。现有 `DY爆款复刻` 保持单条样本执行器定位，不改为预测策略入口。
 
 ## 已知缺口
 

@@ -29,8 +29,33 @@ This skill does not promise traffic or automate platform scraping beyond the loc
 8. `references/research-fields.md`
 9. `references/multidimensional-analysis-strategy.md`
 10. `references/seven-day-search-processing.md`
+11. `references/prediction-workflow-architecture.md`
 
 ## Workflow
+
+### 0. Choose The User Entrypoint
+
+This Skill has two natural user-facing entrypoints. Do not ask the user for a complex JSON input.
+
+Use `new_lane_prediction` when the user has a keyword and wants to expand into a new lane:
+
+- Minimal input: keyword, desired number of topic hypotheses, optional account group.
+- Default window: latest 7 days.
+- Default sort modes: comprehensive, latest, most liked.
+- Output: market snapshot, topic hypotheses, experiment plan, and DoodleStory generation briefs.
+
+Use `account_review` when the user wants to diagnose an account or published batch:
+
+- Minimal input: account name/id/path, review window, and post performance data.
+- Post data can be pasted manually, loaded from CSV/JSON, or later provided by a connector.
+- Output: account baseline, market expectation, actual performance, deviation diagnosis, and next experiment adjustments.
+
+Important boundary:
+
+- `DY爆款复刻` remains a single-sample executor: download, VL extract, and create an `extracted_storyboard` task.
+- Prediction work should happen before task creation. The prediction route should produce a story brief for DoodleStory's `故事方案` path unless the user explicitly wants faithful sample reproduction.
+
+See `references/prediction-workflow-architecture.md` for the experiment, data-intake, and content-library design.
 
 ### 1. Basic Data Acquisition: Research First
 
@@ -123,6 +148,13 @@ For realistic endings:
 - The research question is: what hot mechanism can become an original real-feeling scene?
 
 See `references/seven-day-search-processing.md` for category labels, mimicability labels, and realistic-ending generation strategy.
+
+For new-lane prediction, convert this layer into topic hypotheses and experiments:
+
+- Each important hypothesis should be tested on at least 2 accounts when possible.
+- Record expected results before publishing.
+- Store actual backend data after publishing under the experiment result layer.
+- If actual results seriously diverge from prediction, diagnose whether the market read, account fit, story mechanism, visual execution, or realistic ending failed.
 
 ### 4. Basic Data Acquisition: Download Selected Works
 
