@@ -1,0 +1,57 @@
+# Research Fields
+
+Use these fields when building a DoodleStory Douyin hot sample library.
+
+## Candidate Identity
+
+- `keyword`: search keyword or hot-board term.
+- `aweme_id`: stable work ID.
+- `source_url`: share/video/note URL when available.
+- `author_name`: author nickname.
+- `author_sec_uid`: author `sec_uid` when available.
+- `title`: first sentence or pre-hashtag part of `desc`.
+- `description`: full `desc`.
+- `tags`: hashtags from `text_extra`, manifest, or description.
+
+## Freshness
+
+- `create_time`: Unix timestamp from `*_data.json` or search result.
+- `publish_date`: local date derived from `create_time`.
+- `freshness_class`: `7d`, `30d`, `90d`, or `old-reference`.
+
+## Media Shape
+
+- `media_type`: gallery, video, note, or unknown.
+- `image_count`: number of downloaded gallery images or `images` entries.
+- `has_local_media`: whether media files exist on disk.
+- `has_metadata_json`: whether `*_data.json` exists.
+- `has_comments_json`: whether `*_comments.json` exists.
+
+## Engagement
+
+Prefer raw counts. Do not invent metrics when fields are absent.
+
+- `digg_count`: likes.
+- `comment_count`: comment count from statistics.
+- `collect_count`: favorites/collects.
+- `share_count`: shares.
+- `recommend_count`: visible recommendation count if present.
+- `play_count`: often zero or absent for gallery; do not overinterpret.
+
+## Qualitative Review
+
+Fill these after manual Codex inspection or VL extraction:
+
+- `first_image_hook`: what makes the first page stop-scroll.
+- `story_structure`: setup, conflict, turn, resolution, open loop.
+- `visual_style`: layout and drawing style.
+- `comment_signal`: praise,催更, debate, question, confusion, or conversion intent.
+- `replication_difficulty`: low, medium, high.
+- `rights_risk`: low, medium, high.
+- `experiment_fit`: A, B, C, D.
+
+## Notes
+
+- Treat old high-engagement samples as structural references unless the same structure appears in recent search results.
+- Prefer image-text/gallery works that can be recreated with original text and original generated images.
+- Keep raw downloader paths in the table so later agents can re-open evidence.

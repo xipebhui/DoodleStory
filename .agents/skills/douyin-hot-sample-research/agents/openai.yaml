@@ -1,0 +1,4 @@
+interface:
+  display_name: "抖音热门样本调研"
+  short_description: "用 douyin-downloader 调研抖音热门图文样本。"
+  default_prompt: "用 douyin-hot-sample-research 帮我调研一个抖音图文赛道的热门样本库。"
