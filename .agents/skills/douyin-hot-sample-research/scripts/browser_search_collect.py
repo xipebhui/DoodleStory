@@ -16,7 +16,10 @@ from zoneinfo import ZoneInfo
 
 
 DEFAULT_OUTPUT_DIR = Path("/Users/pengfei.shi/workspace/tmp-project/douyin-downloader/Downloaded/browser_search")
-SEARCH_API_MARKER = "/aweme/v1/web/general/search/single/"
+SEARCH_API_MARKERS = (
+    "/aweme/v1/web/general/search/single/",
+    "/aweme/v1/web/general/search/stream/",
+)
 GALLERY_TYPE_VALUES = {2, 68, 150, "2", "68", "150"}
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -63,6 +66,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=100, help="Maximum candidates to write into summary/all files.")
     parser.add_argument("--channel", default="chrome", help="Browser channel for Patchright launch.")
     parser.add_argument("--headless", action="store_true", help="Run browser headless. Default is headed.")
+    parser.add_argument(
+        "--entry-mode",
+        choices=["ui", "url"],
+        default="ui",
+        help="Use UI search-box entry by default. Direct URL entry can load the shell without results.",
+    )
     return parser.parse_args()
 
 
@@ -75,6 +84,22 @@ def require_patchright() -> Any:
             "/Users/pengfei.shi/workspace/tmp-project/social-auto-upload/.venv/bin/python"
         ) from exc
     return async_playwright
+
+
+async def dismiss_save_login_prompt(page: Any) -> None:
+    body_text = ""
+    try:
+        body_text = await page.locator("body").inner_text(timeout=2000)
+    except Exception:
+        return
+    if "是否保存登录信息" not in body_text:
+        return
+    cancel_button = page.get_by_text("取消", exact=True)
+    try:
+        await cancel_button.click(timeout=3000)
+        await page.wait_for_timeout(500)
+    except Exception:
+        return
 
 
 def safe_slug(text: str) -> str:
@@ -256,7 +281,7 @@ async def collect(args: argparse.Namespace) -> int:
     response_tasks: list[asyncio.Task[None]] = []
 
     async def handle_response(response: Any) -> None:
-        if SEARCH_API_MARKER not in response.url:
+        if not any(marker in response.url for marker in SEARCH_API_MARKERS):
             return
         try:
             payload = await response.json()
@@ -268,18 +293,29 @@ async def collect(args: argparse.Namespace) -> int:
 
     async_playwright = require_patchright()
     search_url = f"https://www.douyin.com/search/{quote(args.keyword)}?type=general"
+    final_url = search_url
     async with async_playwright() as p:
         browser = await p.chromium.launch(channel=args.channel, headless=args.headless)
         context = await browser.new_context(storage_state=str(storage_state))
         page = await context.new_page()
         page.on("response", lambda response: response_tasks.append(asyncio.create_task(handle_response(response))))
-        await page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
+        if args.entry_mode == "ui":
+            await page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(args.wait_ms)
+            search_input = page.locator("input").first
+            await search_input.click(timeout=10000)
+            await search_input.fill(args.keyword)
+            await page.keyboard.press("Enter")
+        else:
+            await page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
         await page.wait_for_timeout(args.wait_ms)
         for _ in range(max(args.scrolls, 0)):
             await page.mouse.wheel(0, 1800)
             await page.wait_for_timeout(args.wait_ms)
         if response_tasks:
             await asyncio.gather(*response_tasks)
+        final_url = page.url
+        await dismiss_save_login_prompt(page)
         await browser.close()
 
     raw_path = output_dir / f"{stem}_raw_responses.json"
@@ -309,6 +345,8 @@ async def collect(args: argparse.Namespace) -> int:
     meta = {
         "keyword": args.keyword,
         "search_url": search_url,
+        "final_url": final_url,
+        "entry_mode": args.entry_mode,
         "collected_at": datetime.now(tz=LOCAL_TZ).isoformat(timespec="seconds"),
         "storage_state": str(storage_state),
         "output_dir": str(output_dir),

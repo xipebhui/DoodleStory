@@ -47,6 +47,8 @@ Use these fields when results come from `scripts/browser_search_collect.py`:
 
 - `browser_storage_state`: path to the `storage_state` file used for the run. Do not copy cookie values into notes.
 - `browser_search_url`: Douyin search page opened by the script.
+- `browser_final_url`: final URL after UI search or direct URL load.
+- `browser_entry_mode`: `ui` or `url`.
 - `network_response_count`: number of captured `/aweme/v1/web/general/search/single/` responses.
 - `all_aweme_path`: JSONL path for every parsed work.
 - `gallery_jsonl_path`: JSONL path after image-text/gallery filtering.

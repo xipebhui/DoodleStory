@@ -47,6 +47,8 @@ Use browser-state search for keyword research:
 
 The default output directory is `/Users/pengfei.shi/workspace/tmp-project/douyin-downloader/Downloaded/browser_search`. The script writes raw responses, all parsed works, gallery/image-text candidates, meta, and a Markdown summary. It does not print cookie values. If it captures no search response, treat that as a hard blocker and inspect login or verification state; do not invent replacement data.
 
+The collector defaults to `--entry-mode ui`: it opens the Douyin home page, types the keyword into the search box, and presses Enter. Directly opening the search URL can load the search shell without triggering result responses; use `--entry-mode url` only for diagnosis.
+
 Use `douyin-downloader` hot-board commands and selected direct search only when they work:
 
 ```bash
