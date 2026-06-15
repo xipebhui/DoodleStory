@@ -7,13 +7,15 @@ description: Use when building or updating a Douyin image-text hot sample librar
 
 ## Purpose
 
-Use `douyin-downloader` as the download base for DoodleStory's hot sample library. The first step is always research: collect recent search/hot-board evidence, filter candidate image-text works, then download only selected samples for deeper understanding.
+Use `douyin-downloader` and MediaCrawler as the collection base for DoodleStory's hot sample library. The first step is basic data acquisition: collect recent search/hot-board evidence, filter candidate image-text works, download only selected samples, and collect metrics or comments needed for the next analysis layer.
 
 For keyword search, prefer the browser-state collector in this skill when direct `douyin-downloader` search is blocked by Douyin verification. It opens Douyin search with an existing logged-in browser `storage_state`, listens to the real page search response, and writes candidate evidence for review.
 
 Downloaded image understanding should reuse DoodleStory's existing content-extraction VL path. Do not treat Codex manual image viewing as the runtime extraction pipeline.
 
-This skill does not promise traffic or automate platform scraping beyond the local downloader's visible capabilities. Keep the workflow evidence-first and small enough to review.
+After basic data acquisition, analyze the account, comments, opening/ending visuals, and the relationship between copy and discussion. These analysis notes are what later let the Skill evolve its own keyword, scoring, VL-scope, and topic-direction strategy.
+
+This skill does not promise traffic or automate platform scraping beyond the local crawler/downloader's visible capabilities. Keep the workflow evidence-first and small enough to review.
 
 ## Read First
 
@@ -25,10 +27,11 @@ This skill does not promise traffic or automate platform scraping beyond the loc
 6. `/Users/pengfei.shi/workspace/tmp-project/DoodleStory/backend/app/api/content_extractions.py`
 7. `/Users/pengfei.shi/workspace/tmp-project/DoodleStory/backend/app/prompts/parse_extracted_storyboard_v1.md`
 8. `references/research-fields.md`
+9. `references/multidimensional-analysis-strategy.md`
 
 ## Workflow
 
-### 1. Research First
+### 1. Basic Data Acquisition: Research First
 
 Start from keywords or hot-board terms. Prefer recent evidence:
 
@@ -59,7 +62,7 @@ cd /Users/pengfei.shi/workspace/tmp-project/douyin-downloader
 
 The CLI currently exposes `--search` and `--search-max`; the lower-level `search_aweme` function also supports `sort_type` and `publish_time`. If freshness is critical, call the Python API directly or add CLI flags in a separate implementation task.
 
-### 2. Filter Candidates
+### 2. Basic Data Acquisition: Filter Candidates
 
 Keep candidates that are likely useful for DoodleStory:
 
@@ -90,7 +93,7 @@ python .agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.
 
 The analyzer writes `candidate_scores.csv`, `candidate_scores.json`, and `analysis_report.md`. It grades samples A/B/C/D using freshness, media type, likes, comments, collections, shares, share rate, collection rate, comment rate, tags, and optional collected-comment signals.
 
-### 3. Download Selected Works
+### 3. Basic Data Acquisition: Download Selected Works
 
 After filtering browser search JSONL or downloader search JSONL, download selected `share_url`, `video/note` URL, or `aweme_id` URL with `douyin-downloader`. Turn on JSON metadata and comments when the research needs feedback signals:
 
@@ -105,7 +108,7 @@ comments:
 
 The downloader writes `*_data.json`, media files, optional `*_comments.json`, and `download_manifest.jsonl`.
 
-### 4. Summarize Local Evidence
+### 4. Basic Data Acquisition: Summarize Local Evidence
 
 Use the bundled summarizer after direct downloader search or download:
 
@@ -120,7 +123,34 @@ Use the summary as a starting point. Inspect raw JSON for any sample that will d
 
 For browser-state search output, start from the generated `*_summary.md` and `*_gallery.jsonl` files under `Downloaded/browser_search`, then inspect the matching `*_raw_responses.json` before making a sample-library decision.
 
-### 5. Decide VL Scope
+### 5. Account And Discussion Analysis
+
+Run this layer only for A candidates and strong B candidates. Do not spend full analysis effort on every search hit.
+
+Account homepage analysis answers whether the sample is a repeatable account pattern or a one-off viral work:
+
+- Collect creator profile basics when available: `sec_uid`, nickname, bio, follower count, total favorited/interactions, and works count.
+- Inspect recent works from the same account, preferably the latest 20 works before expanding wider.
+- Compare traffic distribution across recent works: median, p75, p90, max, max-to-median ratio, and coefficient of variation for likes, comments, collects, and shares.
+- Classify the account pattern as `stable_template`, `viral_outlier`, `emerging_series`, or `mixed_account`.
+- Treat stable repeated structures as stronger experiment evidence than isolated old hits.
+
+Comment analysis is a first-class topic-direction signal:
+
+- Start with high-like comments and high-reply comments for promoted samples.
+- Label comment clusters such as `emotional_resonance`, `identity_projection`, `moral_judgment`, `plot_question`, `request_followup`, `real_story_probe`, `topic_seed`, and `format_feedback`.
+- Record what users are actually discussing, not only whether comments are positive.
+- Use comment-derived `topic_seed` and `request_followup` signals to propose the next keyword and selection direction.
+
+Combine copy and comments before deciding the next experiment:
+
+- Compare the title/first-page promise, story payoff, and top comment discussion.
+- Output `topic_direction`, `story_archetype`, `hook_type`, `payoff_type`, `comment_trigger`, `audience_need`, `replication_angle`, `risk_note`, and `next_iteration_hypothesis`.
+- Explain every strategy change with `observed_signal`, `strategy_change`, `expected_effect`, and `review_after`.
+
+See `references/multidimensional-analysis-strategy.md` for the strategy rationale and labels. The point is to make future Skill evolution inspectable rather than implicit.
+
+### 6. Decide VL Scope
 
 Choose the smallest image-understanding scope that answers the research question.
 
@@ -128,6 +158,8 @@ Use `preview_vl` when only judging whether a sample is worth deeper extraction:
 
 - First-image hook: pass only the first page, or the first 2 pages if the hook spans pages.
 - Ending / payoff: pass only the final page, or the final 2 pages if the reversal needs context.
+- Ending evidence check: explicitly label whether the final page is an illustration, real-world photo, screenshot, document, chat record, or proof-like image.
+- Real-photo ending check: mark `last_page_real_photo=true` when the final page appears to show a real person, real place, or real object photo. Many true-story/adapted-story works use this as authenticity evidence, so also record privacy and likeness risk.
 - Middle turn: pass only the relevant local page window.
 - Record the original page numbers because the VL output will number pages relative to the selected input set.
 - Do not call this a full story document.
@@ -141,7 +173,7 @@ Use `full_story_document` only after the sample is promoted to a real candidate:
 
 Avoid full extraction for low-confidence samples. The first pass should protect attention, model cost, and review time.
 
-### 6. Reuse Existing DoodleStory VL
+### 7. Reuse Existing DoodleStory VL
 
 DoodleStory already has a VL path for Douyin image-text extraction:
 
@@ -160,7 +192,7 @@ For `full_story_document`, run the full content-extraction path on all ordered g
 
 Do not add a second VL implementation unless the existing path cannot satisfy a stated requirement. If a sample only has local files and no public asset URL, the current DoodleStory VL path requires uploading/registering those images as assets first; do not silently fall back to base64 or Codex screenshots.
 
-### 7. Codex Manual Inspection
+### 8. Codex Manual Inspection
 
 Use Codex for manual or low-volume understanding:
 
@@ -182,4 +214,8 @@ Return a concise research report:
    - B: strong structure, needs adaptation.
    - C: useful reference only.
    - D: reject due to age, rights risk, weak structure, or non-image-text dependency.
-5. Next download or VL-inspection actions, explicitly marked as `preview_vl` or `full_story_document`.
+5. Account-level judgment: `stable_template`, `viral_outlier`, `emerging_series`, or `mixed_account` when creator evidence has been collected.
+6. Comment-cluster summary: high-like/high-reply discussion, topic seeds, and the comment trigger that most likely explains sharing or debate.
+7. Opening/ending VL summary, including whether the last page is a real-photo or evidence-style ending.
+8. Copy-comment synthesis fields and next iteration hypothesis.
+9. Next download, comment, account, or VL-inspection actions, explicitly marked as `preview_vl` or `full_story_document`.

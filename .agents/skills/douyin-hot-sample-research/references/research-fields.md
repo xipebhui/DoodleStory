@@ -41,6 +41,47 @@ Prefer raw counts. Do not invent metrics when fields are absent.
 - `recommend_count`: visible recommendation count if present.
 - `play_count`: often zero or absent for gallery; do not overinterpret.
 
+## Account Homepage Analysis
+
+Fill these only after a candidate is promoted for account-level review.
+
+- `creator_profile_url`: Douyin account profile URL when available.
+- `creator_bio`: visible author bio or signature.
+- `creator_fans`: follower count from profile data.
+- `creator_total_favorited`: total favorited/interactions from profile data.
+- `creator_aweme_count`: works count from profile data.
+- `creator_recent_work_count`: number of recent works collected for analysis.
+- `creator_recent_image_text_count`: number of recent works that are image-text/gallery.
+- `creator_recent_story_count`: number of recent works that appear to use story content.
+- `creator_posting_cadence`: rough recent posting rhythm.
+- `traffic_median`: median engagement count for the chosen metric, usually likes.
+- `traffic_p75`: p75 engagement count.
+- `traffic_p90`: p90 engagement count.
+- `traffic_max`: maximum engagement count in the recent works window.
+- `traffic_cv`: coefficient of variation for the chosen metric.
+- `viral_outlier_ratio`: max engagement divided by median engagement.
+- `topic_concentration`: low, medium, or high concentration around one topic/formula.
+- `traffic_stability`: `stable_template`, `viral_outlier`, `emerging_series`, or `mixed_account`.
+- `account_analysis_note`: concise explanation for the stability classification.
+
+Account stability explains whether a sample is likely a repeatable formula or only a one-off hit.
+
+## Comment Analysis
+
+Fill these after collecting comments for promoted samples.
+
+- `comments_collected_count`: number of comments actually collected.
+- `top_like_comments`: representative high-like comments with like and reply counts.
+- `top_reply_comments`: representative high-reply comments with like and reply counts.
+- `pinned_author_comment`: author pinned comment if available.
+- `comment_clusters`: labels such as `emotional_resonance`, `identity_projection`, `moral_judgment`, `plot_question`, `request_followup`, `real_story_probe`, `topic_seed`, or `format_feedback`.
+- `comment_trigger_type`: the cluster that best explains why users discussed the work.
+- `audience_question`: repeated question users ask.
+- `audience_disagreement`: repeated debate or moral conflict.
+- `audience_added_story`: user-supplied story or scenario that can become a new topic seed.
+- `topic_seeds_from_comments`: candidate next keywords or scenarios derived from comments.
+- `comment_analysis_note`: concise explanation of what the comment section changes in the research decision.
+
 ## Browser-State Search Evidence
 
 Use these fields when results come from `scripts/browser_search_collect.py`:
@@ -60,12 +101,17 @@ Use these fields when results come from `scripts/browser_search_collect.py`:
 Fill these after manual Codex inspection or VL extraction:
 
 - `first_image_hook`: what makes the first page stop-scroll.
+- `first_page_hook_type`: confession, question, impossible choice, betrayal, deadline, evidence, contrast, warning, outcome-first, or other.
 - `ending_payoff`: whether the last page closes, reverses, or opens the story.
+- `ending_type`: `illustrated_resolution`, `illustrated_open_loop`, `real_photo_ending`, `screenshot_or_document_ending`, or `mixed_evidence_ending`.
+- `last_page_real_photo`: whether the final page appears to be a real person/place/object photo.
+- `last_page_evidence_type`: none, real photo, screenshot, chat record, document, news-like image, receipt, or other proof-like image.
 - `story_structure`: setup, conflict, turn, resolution, open loop.
 - `visual_style`: layout and drawing style.
 - `comment_signal`: praise,催更, debate, question, confusion, or conversion intent.
 - `replication_difficulty`: low, medium, high.
 - `rights_risk`: low, medium, high.
+- `privacy_or_likeness_risk`: low, medium, high, or unknown.
 - `experiment_fit`: A, B, C, D.
 
 ## VL Scope
@@ -81,6 +127,24 @@ Use these fields to avoid confusing lightweight inspection with full story extra
 
 `preview_vl` is research evidence only. `full_story_document` is the point where the result can become DoodleStory source material for panel creation.
 
+## Copy And Comment Synthesis
+
+Fill these after combining work copy, story structure, comment clusters, and optional VL evidence.
+
+- `topic_direction`: the next content direction implied by the sample.
+- `story_archetype`: reusable story category, such as family debt, regret, hidden kindness, marriage test, school memory, revenge, sacrifice, secret identity, or moral dilemma.
+- `hook_type`: the opening mechanism that stopped users.
+- `payoff_type`: reversal, tear point, justice, regret, reconciliation, open loop, truth reveal, or proof reveal.
+- `comment_trigger`: the comment cluster that best explains discussion.
+- `audience_need`: emotional release, moral judgment, realism, continuation, explanation, identity projection, practical advice, or other.
+- `replication_angle`: how to create an original work using the mechanism without copying the source story.
+- `risk_note`: copyright, likeness, privacy, medical/legal/violent sensitivity, platform policy, weak evidence, or other risk.
+- `next_iteration_hypothesis`: testable statement for the next collection or publishing round.
+- `observed_signal`: repeated evidence that motivates a strategy change.
+- `strategy_change`: what the Skill should do differently next time.
+- `expected_effect`: expected improvement from the change.
+- `review_after`: number of samples or publishing rounds before evaluating the strategy change.
+
 ## Notes
 
 - Treat old high-engagement samples as structural references unless the same structure appears in recent search results.
@@ -88,3 +152,4 @@ Use these fields to avoid confusing lightweight inspection with full story extra
 - Keep raw downloader paths in the table so later agents can re-open evidence.
 - Keep browser search raw response paths in the table when the candidate came from page network listening.
 - Reuse DoodleStory's existing content-extraction VL path. It requires ordered images with public HTTP(S) asset URLs; do not replace that with an implicit base64 or Codex-only path.
+- Treat comment analysis as a topic-direction signal. A high-like comment can explain why users share, but it should be interpreted with the title, story payoff, account stability, and VL ending evidence.
