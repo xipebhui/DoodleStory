@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- 补充 README 的抖音热门样本采集环境说明：记录 MediaCrawler 默认路径与 `MEDIACRAWLER_HOME` 覆盖方式、Chrome CDP `127.0.0.1:9222` 开启要求、当前项目内 `run_mediacrawler.py` 调用示例、搜索结果分析命令，以及生成前必须走 DoodleStory 全量 VL 的边界；同时把 README 中的当前 Sprint 合同链接修正为 Sprint 56。
 - 完成 Sprint 56 抖音 Skill 独立运行与中文执行链路：新增当前项目内 `run_mediacrawler.py` 封装，通过 `MEDIACRAWLER_HOME` 或默认路径调用外部 MediaCrawler，避免新对话依赖聊天历史记住采集脚本位置；`douyin-hot-sample-research` 主流程和关键说明改为中文优先；`analyze_search_results.py` 默认按作品 ID 去重，输出原始候选数与去重状态，并降低小分母高转发率导致的 A 类误判；账号分析规则改为可以先全量抓取账号作品、再默认分析最近 N 条，且把大号/粉丝多/作品多记录为 `large_mature_account_penalty`，作为快速模仿度减弱项；生成链路明确 `generation_brief` 前必须先完成 DoodleStory 全量 VL 的 `full_story_extract`，提取完整原文后再分析、优化和原创改写。
 - 完成 Sprint 55 抖音 Skill 分步执行协议：`douyin-hot-sample-research` 默认改为每次只执行一个小 step，完成后输出本轮完成内容和下一步建议；只有用户明确说“一次执行到位 / 跑完整流程 / 连续执行 / 直接跑完”时才连续执行。新赛道预测被拆为 `lane_intake`、`market_scan`、`market_scoring`、`deep_probe_selection`、`topic_hypothesis`、`experiment_plan`、`generation_brief`、`post_result_intake`、`deviation_review`、`strategy_update`；账号复盘被拆为 `review_intake`、`account_baseline`、`market_expectation`、`post_result_intake`、`deviation_review`、`comment_and_topic_review`、`strategy_update`。每步输出统一包含 `input_used`、`artifact`、`decision`、`blocked_by`、`next_step`，降低用户输入复杂度。
 - 抖音热门图文样本 Skill 进入第二步功能验证：基于 MediaCrawler 的 `画一个故事 + 最近一周` 搜索结果新增 `analyze_search_results.py`，可把 `search_contents_*.jsonl` 转成候选评分 CSV/JSON/Markdown，按发布时间、图文类型、点赞、评论、收藏、转发、互动率和标签输出 A/B/C/D 分类；已用 14 条真实搜索结果验证得到 7 个 A、5 个 B、2 个 C。随后用 detail 模式对 A 类样本 `7651192895256480858` 抓取 10 条真实评论，分析脚本可合并评论状态和高赞评论摘要，验证评论采集与候选分析链路可行。

@@ -27,11 +27,53 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 
 默认后端启动在 `http://127.0.0.1:8000`，前端启动在 `http://127.0.0.1:3000`。日志默认写入 `/tmp/doodlestory-backend.log` 和 `/tmp/doodlestory-frontend.log`。
 
+## 抖音热门样本采集环境
+
+项目内的 `douyin-hot-sample-research` Skill 使用当前仓库里的封装脚本调用外部 MediaCrawler，不需要在新对话里记住外部脚本路径。
+
+默认约定：
+
+- MediaCrawler checkout 默认位于 `/Users/pengfei.shi/workspace/tmp-project/MediaCrawler`。
+- 如需迁移或换目录，设置 `MEDIACRAWLER_HOME`：
+
+```bash
+export MEDIACRAWLER_HOME=/path/to/MediaCrawler
+```
+
+- MediaCrawler 目录内需要存在 `.venv/bin/python` 和 `main.py`。
+- Chrome 需要开启远程调试：在 Chrome 地址栏打开 `chrome://inspect/#remote-debugging`，勾选 `Allow remote debugging for this browser instance`，页面显示 `Server running at: 127.0.0.1:9222`。
+- 运行爬虫时如果 Chrome 弹出授权确认，需要手动点击允许。
+
+从 DoodleStory 仓库调用 MediaCrawler：
+
+```bash
+python .agents/skills/douyin-hot-sample-research/scripts/run_mediacrawler.py \
+  --platform dy \
+  --type search \
+  --keywords "文字漫画" \
+  --crawler_max_notes_count 30 \
+  --save_data_path data_test/wenzimanhua_week_comprehensive \
+  --dy_publish_time_type 7 \
+  --dy_content_type 0 \
+  --get_comment false \
+  --get_sub_comment false
+```
+
+搜索结果分析：
+
+```bash
+python .agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.py \
+  --contents /path/to/MediaCrawler/data_test/<run>/douyin/jsonl/search_contents_YYYY-MM-DD.jsonl \
+  --out-dir output/douyin-hot-sample-analysis/<run>
+```
+
+分析脚本默认按 `aweme_id` 去重，并输出原始候选数、去重状态、A/B/C/D 候选评分和类目横向对比。生成最终故事前不要只依赖首尾页预览；入选样本必须先走 DoodleStory 全量 VL，提取完整原文后再优化和原创改写。
+
 开始较大实现工作前，请先阅读：
 
 - [项目规格](docs/spec.md)
 - [进度记录](docs/progress.md)
-- [当前 Sprint 合同](docs/contracts/sprint-01-product-design.md)
+- [当前 Sprint 合同](docs/contracts/sprint-56-douyin-skill-independent-chinese-flow.md)
 - [产品设计](docs/design/README.md)
 - [开发规范](docs/standards/)
 - [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

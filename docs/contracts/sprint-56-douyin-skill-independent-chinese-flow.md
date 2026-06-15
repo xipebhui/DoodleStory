@@ -28,11 +28,13 @@
 - `.agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.py`
 - `.agents/skills/douyin-hot-sample-research/SKILL.md`
 - `.agents/skills/douyin-hot-sample-research/references/*.md`
+- `README.md`
 - `docs/progress.md`
 
 ## Done Means
 
 - 新对话可以只根据 Skill 文件和 `MEDIACRAWLER_HOME` 规则找到 MediaCrawler 调用入口。
+- 构建环境时可以从 README 找到 Chrome CDP、`MEDIACRAWLER_HOME`、封装脚本和搜索结果分析命令。
 - 用户看到的执行步骤、下一步提示和关键策略说明以中文为主。
 - 搜索评分脚本默认去重，并在输出里记录原始候选数与去重状态。
 - 账号模仿度判断把成熟账号积累作为减弱项。
