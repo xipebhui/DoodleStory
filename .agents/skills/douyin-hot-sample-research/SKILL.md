@@ -71,6 +71,25 @@ Keep candidates that are likely useful for DoodleStory:
 
 Reject candidates that depend on unauthorized copyrighted material, scraped private data, or platform behavior that cannot be verified from the downloader output.
 
+After MediaCrawler keyword search, use the analyzer to convert raw JSONL into a candidate score table:
+
+```bash
+python .agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.py \
+  --contents /Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_week/douyin/jsonl/search_contents_2026-06-15.jsonl \
+  --out-dir output/douyin-hot-sample-analysis/huayigegushi-week
+```
+
+If comments have been collected for promoted samples, pass the comments JSONL too:
+
+```bash
+python .agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.py \
+  --contents /Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_week/douyin/jsonl/search_contents_2026-06-15.jsonl \
+  --comments /Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/comment_probe_top_a/douyin/jsonl/detail_comments_2026-06-15.jsonl \
+  --out-dir output/douyin-hot-sample-analysis/huayigegushi-week-with-comments
+```
+
+The analyzer writes `candidate_scores.csv`, `candidate_scores.json`, and `analysis_report.md`. It grades samples A/B/C/D using freshness, media type, likes, comments, collections, shares, share rate, collection rate, comment rate, tags, and optional collected-comment signals.
+
 ### 3. Download Selected Works
 
 After filtering browser search JSONL or downloader search JSONL, download selected `share_url`, `video/note` URL, or `aweme_id` URL with `douyin-downloader`. Turn on JSON metadata and comments when the research needs feedback signals:

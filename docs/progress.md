@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- 抖音热门图文样本 Skill 进入第二步功能验证：基于 MediaCrawler 的 `画一个故事 + 最近一周` 搜索结果新增 `analyze_search_results.py`，可把 `search_contents_*.jsonl` 转成候选评分 CSV/JSON/Markdown，按发布时间、图文类型、点赞、评论、收藏、转发、互动率和标签输出 A/B/C/D 分类；已用 14 条真实搜索结果验证得到 7 个 A、5 个 B、2 个 C。随后用 detail 模式对 A 类样本 `7651192895256480858` 抓取 10 条真实评论，分析脚本可合并评论状态和高赞评论摘要，验证评论采集与候选分析链路可行。
 - 新增 DoodleStory 增长诊断与内容迭代上下文包：项目内增加 `.agents/skills/doodlestory-growth-diagnosis/SKILL.md`，用于在 DoodleStory 仓库内按 dbs-diagnosis 体检框架继续诊断产品增长、定价、内容实验和小红书获客；新增 `docs/strategy/doodle-growth-diagnosis.md`、`docs/product/content-iteration-system.md`、`docs/experiments/content-iteration-cycle-template.md` 和 `docs/growth/xiaohongshu/content-strategy.md`，把“图文账号内容迭代实验系统”的定位、实验闭环、售卖边界、复盘模板和获客内容策略沉淀到仓库，不再依赖聊天上下文。
 - 初始化 Git 仓库，并将 `main` 推送到 `git@github.com:xipebhui/DoodleStory.git`。
 - 从 `git@github.com:xipebhui/codex-project-template.git` 引入 Codex 项目 harness。
