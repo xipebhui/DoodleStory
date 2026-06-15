@@ -22,6 +22,16 @@
 
 内容迭代系统需要一个独立的控制器 Agent。它不是普通任务调度器，而是负责把热门样本、发布前预测、发布后数据、预测误差和 Skill 规则升级串成闭环的策略人格。完整设计见 [内容迭代控制器 Agent 设计](content-iteration-controller-agent.md)。
 
+当前最小实现已经落到项目内：
+
+- 调用入口：`.agents/skills/content-iteration-controller/SKILL.md`
+- 控制器状态：`content-lab/strategy_state/`
+- 单轮实验：`content-lab/experiments/<experiment_id>/`
+- 市场扫描归档：`content-lab/market_scans/`
+- 内容机制库：`content-lab/content_library/items/`
+
+`content-iteration-controller` 负责控制实验方向和规则升级门槛；`douyin-hot-sample-research` 负责抖音市场扫描、样本评分、账号/评论/VL 探测等执行步骤。
+
 ## 用户购买后的使用方式
 
 ### 1. 提交实验输入

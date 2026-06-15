@@ -118,7 +118,7 @@ export MEDIACRAWLER_HOME=/path/to/MediaCrawler
 
 这个 Skill 只有两个用户入口，不向用户暴露复杂配置。
 
-当用户讨论“控制器 Agent”“人格底座”“预测误差”“Skill 迭代”或“根据发布数据定期决定下一轮选题”时，先读取 `docs/product/content-iteration-controller-agent.md`。该文档定义了迷宫控制器的人格、禁忌、二分心智、预测误差和规则升级门槛；当前 Skill 负责执行采集、分析和复盘步骤，控制器负责决定证据是否足够进入下一步以及是否允许升级规则。
+当用户讨论“控制器 Agent”“人格底座”“预测误差”“Skill 迭代”或“根据发布数据定期决定下一轮选题”时，优先切换到 `content-iteration-controller` Skill。该 Skill 是迷宫控制器入口，负责决定证据是否足够进入下一步、是否允许复盘、是否允许升级规则，以及下一轮只改变哪个变量。当前 `douyin-hot-sample-research` 只作为执行器，负责市场扫描、样本评分、账号/评论/VL 探测、选题假设和实验计划。
 
 用户给关键词、想拓展新赛道时，使用 `new_lane_prediction`：
 

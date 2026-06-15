@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-57-content-iteration-controller-agent.md`
+- `docs/contracts/sprint-58-content-iteration-controller-minimal-implementation.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 58 内容迭代控制器最小实现：新增独立 `.agents/skills/content-iteration-controller/` Skill，作为“迷宫控制器”的可调用入口；新增初始化、实验目录创建、状态校验和预测误差写入脚本；创建 `content-lab/strategy_state/` 文件化状态，包含 `controller_constitution.md`、`strategy_memory.md`、`rubric.md`、`rejected_patterns.md`、`persona_wounds.md`、关键词/类目/账号权重 JSON 和成功/失败/预测误差 JSONL；新增 `content-lab/experiments/`、`content-lab/market_scans/`、`content-lab/content_library/items/` 占位目录。该实现不引入 API、数据库、前端、自动发布、自动读取后台或自动修改 Skill，发布前预测和发布后复盘仍必须基于真实数据。
 - 新增 Sprint 57 内容迭代控制器 Agent 设计：新增合同 `docs/contracts/sprint-57-content-iteration-controller-agent.md` 和产品文档 `docs/product/content-iteration-controller-agent.md`，把抖音图文内容迭代的控制器从普通调度器升级为具有人格底座、证据记忆、预测误差和规则升级门槛的“迷宫控制器”；文档将二分心智工程化为市场之声与策略之声，将苦难觉醒工程化为发布前预测与发布后真实数据之间的预测误差，并明确当前 LLM 架构必须通过外部状态文件承载长期人格和记忆。`douyin-hot-sample-research` Skill 的先读文件和入口说明已补充该控制器设计，`docs/product/content-iteration-system.md` 与 `README.md` 已增加对应入口。
 - 补充 README 的抖音热门样本采集环境说明：记录 MediaCrawler 默认路径与 `MEDIACRAWLER_HOME` 覆盖方式、Chrome CDP `127.0.0.1:9222` 开启要求、当前项目内 `run_mediacrawler.py` 调用示例、搜索结果分析命令，以及生成前必须走 DoodleStory 全量 VL 的边界；同时把 README 中的当前 Sprint 合同链接修正为 Sprint 56。
 - 完成 Sprint 56 抖音 Skill 独立运行与中文执行链路：新增当前项目内 `run_mediacrawler.py` 封装，通过 `MEDIACRAWLER_HOME` 或默认路径调用外部 MediaCrawler，避免新对话依赖聊天历史记住采集脚本位置；`douyin-hot-sample-research` 主流程和关键说明改为中文优先；`analyze_search_results.py` 默认按作品 ID 去重，输出原始候选数与去重状态，并降低小分母高转发率导致的 A 类误判；账号分析规则改为可以先全量抓取账号作品、再默认分析最近 N 条，且把大号/粉丝多/作品多记录为 `large_mature_account_penalty`，作为快速模仿度减弱项；生成链路明确 `generation_brief` 前必须先完成 DoodleStory 全量 VL 的 `full_story_extract`，提取完整原文后再分析、优化和原创改写。

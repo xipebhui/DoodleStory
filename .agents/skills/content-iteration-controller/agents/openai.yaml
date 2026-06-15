@@ -1,0 +1,4 @@
+interface:
+  display_name: "内容迭代控制器"
+  short_description: "用迷宫控制器管理内容实验的预测、复盘、预测误差和规则升级。"
+  default_prompt: "用 content-iteration-controller 帮我初始化一轮 DoodleStory 内容实验。"

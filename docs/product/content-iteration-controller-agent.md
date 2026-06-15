@@ -1,6 +1,22 @@
 # 内容迭代控制器 Agent 设计
 
-更新时间：2026-06-15
+更新时间：2026-06-16
+
+## 当前实现状态
+
+截至 Sprint 58，控制器已经有最小可调用实现：
+
+- 独立 Skill 入口：`.agents/skills/content-iteration-controller/SKILL.md`
+- 文件化状态目录：`content-lab/strategy_state/`
+- 实验目录根：`content-lab/experiments/`
+- 市场扫描归档根：`content-lab/market_scans/`
+- 内容机制库根：`content-lab/content_library/items/`
+- 初始化脚本：`.agents/skills/content-iteration-controller/scripts/init_controller_state.py`
+- 实验目录创建脚本：`.agents/skills/content-iteration-controller/scripts/create_experiment.py`
+- 状态校验脚本：`.agents/skills/content-iteration-controller/scripts/validate_controller_state.py`
+- 预测误差写入脚本：`.agents/skills/content-iteration-controller/scripts/append_prediction_error.py`
+
+当前实现仍然是文件化最小版本，不包含 API、数据库、前端页面、自动发布、自动读取抖音后台数据或自动修改 Skill。控制器可以直接被 Codex 调用，用来初始化状态、创建实验、检查预测前置条件、记录预测误差和提出策略更新建议。
 
 ## 设计背景
 
@@ -388,12 +404,12 @@ DoodleStory 生成链路仍是执行器：
 
 ## 最小可实施版本
 
-第一版只做四件事：
+第一版只做四件事，Sprint 58 已经落成文件化实现：
 
-1. 建立 `controller_constitution.md`。
-2. 每轮实验发布前写 `prediction.json`。
-3. 发布后写 `prediction_errors.jsonl` 和 `deviation_review.md`。
-4. 每周由控制器输出一次 `strategy_update.json`，人工决定是否更新 Skill。
+1. 建立 `controller_constitution.md`：由 `init_controller_state.py` 初始化。
+2. 每轮实验发布前写 `prediction.json`：由 `create_experiment.py` 创建空白结构，控制器或人工填写真实预测。
+3. 发布后写 `prediction_errors.jsonl` 和 `deviation_review.md`：由复盘后人工确认，必要时用 `append_prediction_error.py` 追加结构化预测误差。
+4. 每周由控制器输出一次 `strategy_update.json`，人工决定是否更新 Skill：当前先以实验目录内文件承载，不自动改 Skill。
 
 不做：
 

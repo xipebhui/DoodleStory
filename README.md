@@ -69,11 +69,42 @@ python .agents/skills/douyin-hot-sample-research/scripts/analyze_search_results.
 
 分析脚本默认按 `aweme_id` 去重，并输出原始候选数、去重状态、A/B/C/D 候选评分和类目横向对比。生成最终故事前不要只依赖首尾页预览；入选样本必须先走 DoodleStory 全量 VL，提取完整原文后再优化和原创改写。
 
+## 内容迭代控制器
+
+项目内已经有最小版“迷宫控制器” Skill，用于管理内容实验的预测、发布后数据回流、预测误差和策略更新：
+
+```text
+.agents/skills/content-iteration-controller/
+content-lab/
+```
+
+初始化控制器状态：
+
+```bash
+python .agents/skills/content-iteration-controller/scripts/init_controller_state.py
+```
+
+创建一轮实验目录：
+
+```bash
+python .agents/skills/content-iteration-controller/scripts/create_experiment.py \
+  --experiment-id 2026-06-16-wenzimanhua-cycle-01 \
+  --title "文字漫画第一轮真实感结尾实验"
+```
+
+校验控制器状态：
+
+```bash
+python .agents/skills/content-iteration-controller/scripts/validate_controller_state.py
+```
+
+控制器不自动发布、不自动读取后台、不自动修改 Skill。发布前必须先写 `prediction.json`；发布后有真实数据，才允许写 `prediction_errors.jsonl`、`deviation_review.md` 和 `strategy_update.json`。
+
 开始较大实现工作前，请先阅读：
 
 - [项目规格](docs/spec.md)
 - [进度记录](docs/progress.md)
-- [当前 Sprint 合同](docs/contracts/sprint-57-content-iteration-controller-agent.md)
+- [当前 Sprint 合同](docs/contracts/sprint-58-content-iteration-controller-minimal-implementation.md)
 - [产品设计](docs/design/README.md)
 - [开发规范](docs/standards/)
 - [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)
