@@ -208,6 +208,7 @@
 - 修复普通任务误粘抖音分享链接和空角色提取失败：创建弹窗检测到抖音作品链接时会自动按 `DY爆款复刻` 提交到内容提取流程，后端普通任务 API 也会拒绝抖音链接，避免分享口令被当成提取分镜文本进入生成链路；任务执行阶段如果人物提取返回空角色，后端会记录 `character_extraction_empty` 并跳过任务级临时人物参考，继续后续生图，不再让任务停在 `extract_characters`。
 - 开始并完成 Sprint 49 抖音热门样本调研 Skill：新增项目本地 `.agents/skills/douyin-hot-sample-research/`，把 `douyin-downloader` 明确为热门图文样本库采集底座；Skill 第一阶段固定为关键词/热榜调研、最近热门筛选、候选样本分层，再下载少量入选作品；新增 `references/research-fields.md` 统一样本字段，新增 `scripts/summarize_samples.py` 从搜索 JSONL、下载 metadata 和额外数据目录中汇总日期、标题、作者、图文类型、图片数和互动数据。该版本先把 Codex 人工抽检与 VL 批量提取分开，后续由 Sprint 50 明确改为复用 DoodleStory 现有内容提取 VL 链路。
 - 完成 Sprint 50 抖音样本 Skill 复用现有 VL 链路：更新 `.agents/skills/douyin-hot-sample-research/`，把图片理解策略改为复用 DoodleStory 现有内容提取 VL，而不是另起模型链路；Skill 明确区分 `preview_vl` 与 `full_story_document`，只判断开头、结尾或中段转折时只传对应图片窗口，只有样本进入故事文档或任务创建候选时才走完整图集提取；字段参考新增 VL 输入页码、结果类型、是否需要全量提取和内容提取 ID 等记录项。
+- 完成 Sprint 51 抖音 Skill 集成浏览器态搜索采集：新增合同 `docs/contracts/sprint-51-douyin-browser-search-skill.md`；在 `.agents/skills/douyin-hot-sample-research/scripts/` 增加 `browser_search_collect.py`，基于已登录浏览器 `storage_state` 打开抖音搜索页并监听 `/aweme/v1/web/general/search/single/` 响应，输出 raw responses、全部候选、图文候选、meta 和 summary；Skill 工作流改为关键词调研优先使用浏览器态搜索，选中样本后再交给 `douyin-downloader` 下载和评论/基础数据采集；字段参考新增浏览器态采集证据路径、响应数量、storage_state 路径和明确 blocker。未下载外部代码，采集脚本独立放在 Skill 自有目录供后续调用。
 
 ## 已知缺口
 

@@ -7,6 +7,8 @@ Use these fields when building a DoodleStory Douyin hot sample library.
 - `keyword`: search keyword or hot-board term.
 - `aweme_id`: stable work ID.
 - `source_url`: share/video/note URL when available.
+- `search_source`: `browser_search`, `downloader_search`, `hot_board`, or `download_metadata`.
+- `search_response_path`: raw response JSON or JSONL path used as evidence.
 - `author_name`: author nickname.
 - `author_sec_uid`: author `sec_uid` when available.
 - `title`: first sentence or pre-hashtag part of `desc`.
@@ -22,6 +24,7 @@ Use these fields when building a DoodleStory Douyin hot sample library.
 ## Media Shape
 
 - `media_type`: gallery, video, note, or unknown.
+- `aweme_type`: raw Douyin work type when available.
 - `image_count`: number of downloaded gallery images or `images` entries.
 - `has_local_media`: whether media files exist on disk.
 - `has_metadata_json`: whether `*_data.json` exists.
@@ -37,6 +40,18 @@ Prefer raw counts. Do not invent metrics when fields are absent.
 - `share_count`: shares.
 - `recommend_count`: visible recommendation count if present.
 - `play_count`: often zero or absent for gallery; do not overinterpret.
+
+## Browser-State Search Evidence
+
+Use these fields when results come from `scripts/browser_search_collect.py`:
+
+- `browser_storage_state`: path to the `storage_state` file used for the run. Do not copy cookie values into notes.
+- `browser_search_url`: Douyin search page opened by the script.
+- `network_response_count`: number of captured `/aweme/v1/web/general/search/single/` responses.
+- `all_aweme_path`: JSONL path for every parsed work.
+- `gallery_jsonl_path`: JSONL path after image-text/gallery filtering.
+- `browser_search_meta_path`: meta JSON path.
+- `search_blocker`: explicit blocker if no network response or no aweme candidates were parsed.
 
 ## Qualitative Review
 
@@ -69,4 +84,5 @@ Use these fields to avoid confusing lightweight inspection with full story extra
 - Treat old high-engagement samples as structural references unless the same structure appears in recent search results.
 - Prefer image-text/gallery works that can be recreated with original text and original generated images.
 - Keep raw downloader paths in the table so later agents can re-open evidence.
+- Keep browser search raw response paths in the table when the candidate came from page network listening.
 - Reuse DoodleStory's existing content-extraction VL path. It requires ordered images with public HTTP(S) asset URLs; do not replace that with an implicit base64 or Codex-only path.

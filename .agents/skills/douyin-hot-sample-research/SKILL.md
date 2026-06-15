@@ -7,7 +7,9 @@ description: Use when building or updating a Douyin image-text hot sample librar
 
 ## Purpose
 
-Use `douyin-downloader` as the collection base for DoodleStory's hot sample library. The first step is always research: collect recent search/hot-board evidence, filter candidate image-text works, then download only selected samples for deeper understanding.
+Use `douyin-downloader` as the download base for DoodleStory's hot sample library. The first step is always research: collect recent search/hot-board evidence, filter candidate image-text works, then download only selected samples for deeper understanding.
+
+For keyword search, prefer the browser-state collector in this skill when direct `douyin-downloader` search is blocked by Douyin verification. It opens Douyin search with an existing logged-in browser `storage_state`, listens to the real page search response, and writes candidate evidence for review.
 
 Downloaded image understanding should reuse DoodleStory's existing content-extraction VL path. Do not treat Codex manual image viewing as the runtime extraction pipeline.
 
@@ -34,7 +36,18 @@ Start from keywords or hot-board terms. Prefer recent evidence:
 - Priority 2: within 30 days.
 - Priority 3: older samples only as structure references, not first-batch experiment candidates.
 
-Use `douyin-downloader` search and hot-board commands:
+Use browser-state search for keyword research:
+
+```bash
+/Users/pengfei.shi/workspace/tmp-project/social-auto-upload/.venv/bin/python \
+  .agents/skills/douyin-hot-sample-research/scripts/browser_search_collect.py \
+  --keyword "故事" \
+  --storage-state /Users/pengfei.shi/workspace/tmp-project/social-auto-upload/cookies/douyin_douyin_test.json
+```
+
+The default output directory is `/Users/pengfei.shi/workspace/tmp-project/douyin-downloader/Downloaded/browser_search`. The script writes raw responses, all parsed works, gallery/image-text candidates, meta, and a Markdown summary. It does not print cookie values. If it captures no search response, treat that as a hard blocker and inspect login or verification state; do not invent replacement data.
+
+Use `douyin-downloader` hot-board commands and selected direct search only when they work:
 
 ```bash
 cd /Users/pengfei.shi/workspace/tmp-project/douyin-downloader
@@ -58,7 +71,7 @@ Reject candidates that depend on unauthorized copyrighted material, scraped priv
 
 ### 3. Download Selected Works
 
-After filtering search JSONL, download selected `share_url`, `video/note` URL, or `aweme_id` URL with `douyin-downloader`. Turn on JSON metadata and comments when the research needs feedback signals:
+After filtering browser search JSONL or downloader search JSONL, download selected `share_url`, `video/note` URL, or `aweme_id` URL with `douyin-downloader`. Turn on JSON metadata and comments when the research needs feedback signals:
 
 ```yaml
 json: true
@@ -73,7 +86,7 @@ The downloader writes `*_data.json`, media files, optional `*_comments.json`, an
 
 ### 4. Summarize Local Evidence
 
-Use the bundled summarizer after search or download:
+Use the bundled summarizer after direct downloader search or download:
 
 ```bash
 python .agents/skills/douyin-hot-sample-research/scripts/summarize_samples.py \
@@ -83,6 +96,8 @@ python .agents/skills/douyin-hot-sample-research/scripts/summarize_samples.py \
 ```
 
 Use the summary as a starting point. Inspect raw JSON for any sample that will drive a decision.
+
+For browser-state search output, start from the generated `*_summary.md` and `*_gallery.jsonl` files under `Downloaded/browser_search`, then inspect the matching `*_raw_responses.json` before making a sample-library decision.
 
 ### 5. Decide VL Scope
 
