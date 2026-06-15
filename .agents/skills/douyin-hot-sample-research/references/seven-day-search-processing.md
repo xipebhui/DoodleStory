@@ -1,6 +1,14 @@
-# Seven-Day Search Processing
+# 最近 7 天搜索结果处理
 
-Use this process after collecting a fresh 7-day Douyin search result set. The goal is not only to rank individual works, but to decide which categories, creators, and ending formats deserve deeper work.
+采集完一批最近 7 天抖音搜索结果后，使用这个流程。目标不只是给单个作品排序，而是判断哪些类目、账号和结尾形式值得深挖。
+
+## 目录
+
+- [决策顺序](#decision-order)
+- [类目横向对比](#category-comparison)
+- [账号模仿度筛选](#account-mimicability-screening)
+- [真实感结尾策略](#realistic-ending-strategy)
+- [先看热门，再看真实感](#hotness-first-then-realness)
 
 ## Decision Order
 
@@ -44,7 +52,7 @@ Decision rule:
 
 After category comparison, pick accounts for homepage probing.
 
-The most interesting accounts are not always the largest accounts. For DoodleStory experiments, a creator with fewer works but high traffic can be more useful because the formula may be simpler, newer, and less dependent on a mature brand.
+The most interesting accounts are not always the largest accounts. For DoodleStory experiments, a creator with fewer works but high traffic can be more useful because the formula may be simpler, newer, and less dependent on a mature brand. Large follower count, high total interaction, and many historical works should weaken direct mimicability even if the sampled work is hot.
 
 High-priority account signals:
 
@@ -59,12 +67,20 @@ Lower-priority account signals:
 - Many scattered topics with no repeated story mechanism.
 - The hot work depends on celebrity/IP/copyrighted footage or unrepeatable real-life access.
 
+Collection rule:
+
+- It is acceptable to collect all creator works when the crawler cannot hard-limit pagination.
+- The analysis window should still default to the latest 20 works, or another explicitly stated N.
+- Record both total collected works and analyzed recent works.
+- Treat account size as an explanatory variable, not an automatic advantage.
+
 Use labels:
 
 - `high_mimicability`: fewer works or smaller account plus strong traffic and clear repeatable structure.
 - `medium_mimicability`: some repeated structure, but traffic depends partly on account maturity.
 - `low_mimicability`: large mature account, scattered topics, or hard-to-copy production access.
 - `needs_account_probe`: search result is strong but account profile has not been collected yet.
+- `large_mature_account_penalty`: the work is useful as a structure reference, but the account's existing audience makes fast imitation less certain.
 
 ## Realistic Ending Strategy
 

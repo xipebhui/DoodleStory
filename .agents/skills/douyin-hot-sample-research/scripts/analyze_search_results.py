@@ -44,6 +44,20 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def deduplicate_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, row in enumerate(rows):
+        key = str(row.get("aweme_id") or row.get("aweme_id_str") or "").strip()
+        if not key:
+            key = f"row:{index}"
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped
+
+
 def split_csv_urls(value: Any) -> list[str]:
     if not value:
         return []
@@ -275,12 +289,12 @@ def mimicability(
     strong_traffic = grade == "A" or liked >= 50000 or shares >= 20000 or comments >= 3000
     promising_traffic = grade in {"A", "B"} or liked >= 10000 or shares >= 1000 or comments >= 500
 
+    if videos_count >= 300 or fans >= 100000:
+        return "low_mimicability", "large_mature_account_penalty", videos_count, fans, total_favorited
     if videos_count and videos_count <= 50 and promising_traffic:
         return "high_mimicability", "few_works_high_traffic", videos_count, fans, total_favorited
     if videos_count and videos_count <= 150 and strong_traffic:
         return "medium_mimicability", "mid_work_count_high_traffic", videos_count, fans, total_favorited
-    if videos_count >= 300 and fans >= 100000:
-        return "low_mimicability", "large_mature_account", videos_count, fans, total_favorited
     if promising_traffic:
         return "medium_mimicability", "traffic_strong_but_account_not_small", videos_count, fans, total_favorited
     return "low_mimicability", "weak_sample_traffic", videos_count, fans, total_favorited
@@ -322,8 +336,10 @@ def classify(
     )
 
     comment_count_collected = comment_summary.count if comment_summary else 0
-    strong_signal = liked >= 50000 or shares >= 20000 or comments >= 3000 or share_rate >= 2.0
-    promising_signal = liked >= 10000 or shares >= 1000 or comments >= 500 or share_rate >= 0.3
+    high_ratio_sample = liked >= 1000 and share_rate >= 2.0
+    promising_ratio_sample = liked >= 1000 and share_rate >= 0.3
+    strong_signal = liked >= 50000 or shares >= 20000 or comments >= 3000 or high_ratio_sample
+    promising_signal = liked >= 10000 or shares >= 1000 or comments >= 500 or promising_ratio_sample
 
     if not is_image_text:
         grade = "D"
@@ -446,7 +462,7 @@ def write_markdown(
 ) -> None:
     grade_counts = Counter(row["grade"] for row in rows)
     lines = [
-        "# Douyin Hot Sample Analysis",
+        "# 抖音热门样本分析",
         "",
         f"- content_source: `{content_path}`",
         f"- comments_source: `{comments_path}`" if comments_path else "- comments_source: not provided",
@@ -454,7 +470,7 @@ def write_markdown(
         f"- total_candidates: {len(rows)}",
         f"- grade_counts: {dict(sorted(grade_counts.items()))}",
         "",
-        "## Category Comparison",
+        "## 类目横向对比",
         "",
         "| category | candidates | A/B | likes | comments | shares | avg_score | top_titles |",
         "|---|---:|---:|---:|---:|---:|---:|---|",
@@ -469,7 +485,7 @@ def write_markdown(
     lines.extend(
         [
             "",
-        "## Top Candidates",
+            "## 候选样本",
         "",
             "| grade | score | category | aweme_id | metrics | freshness | account | title | comment_status |",
             "|---|---:|---|---|---|---|---|---|---|",
@@ -489,17 +505,17 @@ def write_markdown(
     lines.extend(
         [
             "",
-            "## Seven-Day Processing Notes",
+            "## 最近 7 天处理说明",
             "",
-            "- First compare categories. A category with multiple A/B works is stronger than one isolated viral work.",
-            "- Probe accounts with `high` account priority first. If creator profile is available, prefer `high_mimicability` and `medium_mimicability` accounts.",
-            "- Treat real-photo or evidence-style endings as a reproducible realistic-scene mechanism, not as material to copy directly.",
+            "- 先做类目横向对比。多个 A/B 样本支撑的类目，比单个孤立爆款更可靠。",
+            "- 优先探测账号优先级为 `high` 的样本。账号作品数和粉丝数越大，越可能依赖账号积累，模仿难度应降低评分。",
+            "- 真人照片或证据式结尾应记录为可复用的真实感机制，不直接复制原素材。",
             "",
-            "## Next Actions",
+            "## 下一步",
             "",
-            "- A: download media, run preview_vl on first/last pages, then promote selected samples to full_story_document.",
-            "- B: inspect titles, tags, and comments before deciding whether to download.",
-            "- C/D: keep as reference or reject unless a specific structure is needed.",
+            "- A：下载或读取媒体，先做首尾页 `preview_vl`，进入生成前必须对被选中的源样本做 `full_story_document`。",
+            "- B：先看标题、标签、评论，再决定是否下载和全量 VL。",
+            "- C/D：仅作为结构参考或拒绝，除非有明确需要的机制。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -512,9 +528,13 @@ def main() -> None:
     parser.add_argument("--creators", type=Path, help="Optional MediaCrawler creator_creators JSONL path")
     parser.add_argument("--out-dir", required=True, type=Path, help="Output directory")
     parser.add_argument("--now-ts", type=int, default=int(datetime.now(timezone.utc).timestamp()))
+    parser.add_argument("--no-dedup", action="store_true", help="Keep duplicate aweme rows instead of deduplicating by aweme_id")
     args = parser.parse_args()
 
     content_rows = load_jsonl(args.contents)
+    raw_total = len(content_rows)
+    if not args.no_dedup:
+        content_rows = deduplicate_rows(content_rows)
     comment_rows = load_jsonl(args.comments) if args.comments else []
     comment_summaries = summarize_comments(comment_rows)
     creator_profiles = load_creator_profiles(args.creators)
@@ -544,6 +564,8 @@ def main() -> None:
         "creators": str(args.creators) if args.creators else None,
         "out_dir": str(args.out_dir),
         "total_candidates": len(analyzed),
+        "raw_candidates": raw_total,
+        "deduplicated": not args.no_dedup,
         "grade_counts": dict(sorted(Counter(row["grade"] for row in analyzed).items())),
         "category_count": len(category_rows),
     }, ensure_ascii=False))

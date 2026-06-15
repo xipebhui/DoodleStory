@@ -1,6 +1,21 @@
-# Research Fields
+# 抖音调研字段
 
-Use these fields when building a DoodleStory Douyin hot sample library.
+构建 DoodleStory 抖音热门样本库时使用这些字段。字段名保留英文，方便脚本、JSON、CSV 和后续自动化复用；字段解释以中文为主。
+
+## 目录
+
+- [候选身份](#candidate-identity)
+- [新鲜度](#freshness)
+- [媒体形态](#media-shape)
+- [互动指标](#engagement)
+- [最近 7 天搜索处理](#seven-day-search-processing)
+- [账号主页分析](#account-homepage-analysis)
+- [评论分析](#comment-analysis)
+- [浏览器态搜索证据](#browser-state-search-evidence)
+- [质性复核](#qualitative-review)
+- [VL 范围](#vl-scope)
+- [文案和评论综合](#copy-and-comment-synthesis)
+- [备注](#notes)
 
 ## Candidate Identity
 
@@ -55,7 +70,7 @@ Fill these when comparing all results from a recent 7-day search run.
 - `category_top_aweme_ids`: representative high-signal works in the category.
 - `account_probe_priority`: high, medium, low, or no_sec_uid.
 - `mimicability_label`: `high_mimicability`, `medium_mimicability`, `low_mimicability`, or `needs_account_probe`.
-- `mimicability_reason`: short reason such as `few_works_high_traffic`, `mid_work_count_high_traffic`, `large_mature_account`, or `creator_profile_not_provided`.
+- `mimicability_reason`: short reason such as `few_works_high_traffic`, `mid_work_count_high_traffic`, `large_mature_account_penalty`, or `creator_profile_not_provided`.
 - `realistic_scene_role`: proof, after-story, contrast, identity evidence, relationship confirmation, or topic proof.
 - `image2_real_scene_prompt_seed`: short prompt seed for generating a safe original realistic scene.
 - `real_scene_rights_policy`: original_generated, authorized, anonymized, or reject.
@@ -71,7 +86,9 @@ Fill these only after a candidate is promoted for account-level review.
 - `creator_fans`: follower count from profile data.
 - `creator_total_favorited`: total favorited/interactions from profile data.
 - `creator_aweme_count`: works count from profile data.
-- `creator_recent_work_count`: number of recent works collected for analysis.
+- `creator_recent_work_count`: number of recent works used for analysis.
+- `creator_total_work_count_collected`: total works collected before selecting the recent analysis window.
+- `creator_recent_analysis_limit`: recent N works used for analysis, default 20.
 - `creator_recent_image_text_count`: number of recent works that are image-text/gallery.
 - `creator_recent_story_count`: number of recent works that appear to use story content.
 - `creator_posting_cadence`: rough recent posting rhythm.
@@ -81,12 +98,14 @@ Fill these only after a candidate is promoted for account-level review.
 - `traffic_max`: maximum engagement count in the recent works window.
 - `traffic_cv`: coefficient of variation for the chosen metric.
 - `viral_outlier_ratio`: max engagement divided by median engagement.
+- `account_maturity_penalty`: low, medium, or high. Use high when follower count, works count, or historical interaction implies the traffic may rely on accumulated audience rather than a simple content mechanism.
 - `topic_concentration`: low, medium, or high concentration around one topic/formula.
 - `traffic_stability`: `stable_template`, `viral_outlier`, `emerging_series`, or `mixed_account`.
 - `account_analysis_note`: concise explanation for the stability classification.
 
 Account stability explains whether a sample is likely a repeatable formula or only a one-off hit.
-For DoodleStory experiments, fewer works plus high traffic is a stronger mimicability signal than account size alone.
+It is acceptable to collect all available creator works first, then analyze only the latest N works. Do not skip account analysis merely because the crawler lacks a pagination limit; instead record the total collected count and the recent analysis limit.
+For DoodleStory experiments, fewer works plus high traffic is a stronger mimicability signal than account size alone. Large accounts are useful references, but their size weakens direct mimicability for a new or small account.
 
 ## Comment Analysis
 
@@ -144,10 +163,11 @@ Use these fields to avoid confusing lightweight inspection with full story extra
 - `vl_input_orders`: original image order numbers sent to VL, such as `[1]`, `[1,2]`, `[14,15]`, or `all`.
 - `vl_result_type`: `hook_judgment`, `ending_judgment`, `turning_point_judgment`, or `story_document`.
 - `should_full_extract`: whether the sample deserves all-page extraction.
+- `full_story_required_before_generation`: true when the sample will influence a final DoodleStory story brief.
 - `content_extraction_id`: DoodleStory content extraction ID when full extraction is run through the product path.
 - `extracted_text_source`: path or DB source of the VL result.
 
-`preview_vl` is research evidence only. `full_story_document` is the point where the result can become DoodleStory source material for panel creation.
+`preview_vl` is research evidence only. `full_story_document` is required before final generation briefs. The generation step must analyze the full extracted original text and then optimize/rewrite it into an original DoodleStory story plan.
 
 ## Copy And Comment Synthesis
 
