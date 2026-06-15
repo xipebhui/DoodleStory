@@ -33,6 +33,53 @@ This skill does not promise traffic or automate platform scraping beyond the loc
 
 ## Workflow
 
+### Stepwise Execution Protocol
+
+Default to one small step per user turn. Only run multiple steps in one turn when the user explicitly says something like `一次执行到位`, `跑完整流程`, `连续执行`, or `直接跑完`.
+
+At the start of each run:
+
+- Identify the entrypoint: `new_lane_prediction` or `account_review`.
+- Identify the current step from the user's wording, existing local artifacts, or the latest experiment directory.
+- Execute only the next smallest useful step.
+- Stop after producing a reviewable artifact or decision.
+- End with `本轮完成` and `下一步建议`, naming the exact next step the user can approve.
+
+Do not ask the user to provide a complex configuration object. Ask only for the one missing field that blocks the next step.
+
+For `new_lane_prediction`, use this step order:
+
+1. `lane_intake`: confirm keyword, freshness window, desired hypothesis count, and whether at least 2 accounts are available for experiments.
+2. `market_scan`: collect/search recent results across comprehensive, latest, and most-liked views when possible.
+3. `market_scoring`: filter image-text candidates, score A/B/C/D, and summarize category competition.
+4. `deep_probe_selection`: choose which A/B samples need account, comment, and preview-VL probes.
+5. `topic_hypothesis`: produce publishable hypotheses with predicted mechanism, audience need, and risk.
+6. `experiment_plan`: assign hypotheses to accounts, define metrics, checkpoints, and minimum sample count.
+7. `generation_brief`: produce DoodleStory-ready story briefs for approved hypotheses.
+8. `post_result_intake`: after publishing, ingest backend performance data.
+9. `deviation_review`: compare prediction with real results and diagnose market/account/content deviation.
+10. `strategy_update`: update the content library and next iteration direction.
+
+For `account_review`, use this step order:
+
+1. `review_intake`: confirm account, review window, and where backend data will come from.
+2. `account_baseline`: summarize account positioning, historical works, traffic stability, and category fit.
+3. `market_expectation`: compare the account's current content categories with recent market scan evidence.
+4. `post_result_intake`: structure pasted/exported backend data into per-post checkpoint rows.
+5. `deviation_review`: compare expected versus actual performance by content, account, and timing.
+6. `comment_and_topic_review`: classify high-like/high-reply comments and extract topic seeds.
+7. `strategy_update`: update account-fit profile, content library notes, and next experiment plan.
+
+Every step output should be compact and operational:
+
+- `input_used`: what was used this round.
+- `artifact`: file path or data summary produced.
+- `decision`: what became clearer.
+- `blocked_by`: only if the next step cannot proceed.
+- `next_step`: one exact suggested command or user instruction.
+
+If the user asks "继续", execute the named `next_step`, not the whole remaining workflow.
+
 ### 0. Choose The User Entrypoint
 
 This Skill has two natural user-facing entrypoints. Do not ask the user for a complex JSON input.

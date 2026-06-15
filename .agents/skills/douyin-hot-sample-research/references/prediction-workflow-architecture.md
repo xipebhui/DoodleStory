@@ -22,6 +22,12 @@ The user should not need to provide complex JSON. The Skill can infer defaults:
 - format: Douyin image-text
 - generation route: DoodleStory story brief unless the user explicitly asks to replicate one sample
 
+Default execution mode:
+
+- Run one small step per user turn.
+- Continue to the next step only after the user approves or says `继续`.
+- Run the full sequence only when the user explicitly says `一次执行到位`, `跑完整流程`, `连续执行`, or an equivalent instruction.
+
 Output:
 
 - market snapshot
@@ -226,3 +232,33 @@ Do not change `DY爆款复刻` to mean prediction. It should remain the faithful
 8. `strategy_update`: update category weights, account fit, source-origin map, and content-library reuse notes.
 
 Iteration begins only when an experiment has both prediction and actual result. Market scan without publishing is research, not iteration.
+
+## Stepwise User Experience
+
+The Skill should feel like a guided operating system, not a large form.
+
+For new lane prediction, the user can start with:
+
+```text
+用 douyin-hot-sample-research，关键词：画一个故事，做新赛道预测。
+```
+
+The first response should usually finish only `lane_intake`: normalize the goal, infer defaults, and say what `market_scan` will do next.
+
+For account review, the user can start with:
+
+```text
+用 douyin-hot-sample-research，账号：xxx，做账号复盘。
+```
+
+The first response should usually finish only `review_intake`: confirm the review window, ask for or locate backend data, and say what `account_baseline` will do next.
+
+Each step should end with:
+
+```text
+本轮完成：<one concrete artifact or decision>
+下一步建议：<one next step>
+你回复「继续」我就执行这一步；如果你说「一次执行到位」，我会连续跑完可执行步骤。
+```
+
+This keeps the user-facing input small while still allowing full automation when explicitly requested.
