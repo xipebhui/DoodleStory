@@ -1,11 +1,15 @@
 {
   "version": 1,
-  "status": "draft",
-  "strongest_evidence": "",
-  "largest_misread_risk": "",
-  "next_changed_variable": "",
-  "observations_only": [],
+  "status": "stopped_pre_publish",
+  "strongest_evidence": "`写手一条城` 的两条高互动样本在本轮评分中被识别为 `video_or_other`，不是 DoodleStory 当前优先验证的 `image_text`。",
+  "largest_misread_risk": "把该账号的视频/口播或账号人格热度误判为图文赛道已成立。",
+  "next_changed_variable": "无；本实验停止，不进入下一轮变量测试。",
+  "observations_only": [
+    "县城人物类型化机制有可观察热度，但当前证据不足以证明适合 DoodleStory 图文赛道。",
+    "该账号不继续作为当前探索入口；这个判断不能扩展为县城人物志赛道整体失败。",
+    "如未来继续，应换账号、换关键词或专门寻找 image_text 形态样本重新建实验。"
+  ],
   "rule_update_candidates": [],
   "skill_update_allowed": false,
-  "skill_update_reason": "Rule upgrades require repeated evidence and user confirmation."
+  "skill_update_reason": "本次是预发布终止，缺少连续成功或失败证据，不允许升级 Skill 或写入 rejected_patterns。"
 }

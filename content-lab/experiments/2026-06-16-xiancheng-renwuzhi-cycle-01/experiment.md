@@ -1,7 +1,7 @@
 # 县城人物志类型化图文赛道可玩性实验
 
 - experiment_id: `2026-06-16-xiancheng-renwuzhi-cycle-01`
-- status: `draft`
+- status: `stopped_pre_publish`
 - created_at: `2026-06-16T10:48:25`
 
 ## 实验目标
@@ -20,15 +20,16 @@
 
 ## 市场证据
 
-当前只有用户观察，还没有控制器认可的市场证据。
+已完成 `market_scan` 和 `market_scoring`。
 
-下一步必须由 `douyin-hot-sample-research` 执行市场扫描或账号复盘，至少补齐：
+已归档：
 
-- `手写一条城` 的账号主页样本和近期表现。
-- 相关关键词搜索结果，例如 `县城人物志`、`县城文学`、`县城女生`、`小县城`、`县城生活`。
-- 同类内容是否存在最近 7 天 A/B 样本。
-- 评论区是否出现稳定讨论点，例如自我代入、县城熟人社会、阶层气质、消费标签、婚恋/工作/家庭压力。
-- 样本是否依赖博主个人文笔或账号人格，还是可拆成图文机制。
+- `content-lab/market_scans/2026-06-16-xiancheng-renwuzhi-market-scan.md`
+- `content-lab/market_scans/2026-06-16-xiancheng-renwuzhi-market-scoring.md`
+
+评分后判断：`写手一条城` 的两条高互动样本被识别为 `video_or_other`，不是 DoodleStory 当前优先验证的 `image_text`。该账号可能不适合作为当前图文赛道探索入口。
+
+用户已明确要求终止该账号探索。
 
 ## 本轮固定变量
 
@@ -46,10 +47,19 @@
 
 ## 发布计划摘要
 
-发布计划仍为草稿。发布前必须先完成 `prediction.json` 里的市场证据、账号组、固定变量和预期指标。
+发布计划已停止。本实验不进入内容生成或发布。
 
 ## 复盘入口
 
 发布后把真实数据放入 `post_results/`，再更新 `deviation_review.md` 和 `strategy_update.json`。
 
 没有发布前预测时，本实验只能记录数据，不能做复盘结论。
+
+## 终止决定
+
+- stopped_at: `2026-06-16`
+- stopped_by: 用户判断
+- reason: `手写一条城` 可能不适合作为当前 DoodleStory 图文探索入口；已停止继续深挖该账号。
+- controller_scope: 这是预发布终止，不是发布后复盘，也不是失败规则升级。
+- retained_observation: `县城人物类型化` 机制有可观察热度，但目前缺少图文形态、评论和账号主页证据，不能证明图文赛道成立。
+- next_allowed_action: 若未来继续，只能换关键词或换账号重新开实验，不沿用本实验直接发布。

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "draft",
+  "status": "stopped_pre_publish",
   "title": "县城人物志类型化图文赛道可玩性实验",
   "hypothesis": "如果“县城人物志”的类型化命名能触发用户对熟人社会、消费气质和本地身份的自我代入，那么它可能适合转成图文赛道；但在没有账号样本、关键词样本和评论证据前，只能作为待验证假设。",
   "expected_metric": "发布前暂不设具体阈值；市场扫描后再定义 2h/24h/72h 的播放、点赞、评论、收藏或评论率基线。",
@@ -56,8 +56,16 @@
         "D": 47
       },
       "key_observation": "写手一条城两条高互动样本被识别为 video_or_other，不是 image_text；当前只能证明县城人物类型化机制有热度，不能证明图文赛道已成立。",
-      "controller_status": "needs_deep_probe_selection",
-      "next_required_evidence": "需要选择 2-4 个样本采集评论、账号主页和内容形式证据，判断该机制能否改编为 DoodleStory 图文。"
+      "controller_status": "stopped_by_user",
+      "next_required_evidence": "用户判断该账号可能不适合继续探索，本实验停止；不再采集该账号评论、账号主页或内容形式证据。"
+    },
+    {
+      "type": "stop_decision",
+      "source": "用户输入",
+      "decision": "终止探索",
+      "reason": "这个账号可能不适合探索。",
+      "controller_status": "stopped_pre_publish",
+      "effect": "停止围绕手写一条城继续 deep_probe_selection，不进入发布计划、发布后复盘或规则升级。"
     }
   ],
   "risk_notes": [
@@ -68,6 +76,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 raw market scan 和 market_scoring，但对标高互动样本主要是 video_or_other，尚未证明图文赛道成立；允许进入 deep_probe_selection，不允许发布后复盘或规则升级。"
+    "reason": "用户已终止该账号探索；本实验停在预发布阶段，不进入 deep_probe_selection、发布计划、发布后复盘或规则升级。"
   }
 }

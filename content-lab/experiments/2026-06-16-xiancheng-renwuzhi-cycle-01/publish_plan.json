@@ -1,12 +1,9 @@
 {
   "version": 1,
-  "status": "draft",
+  "status": "stopped_pre_publish",
   "posts": [],
-  "blocked_until": [
-    "完成 `手写一条城` 账号复盘或同类关键词市场扫描",
-    "补齐 `prediction.json.market_evidence` 的真实样本路径",
-    "固定账号、发布时间窗口、画风和单条页数",
-    "定义 2h/24h/72h 预期指标"
-  ],
-  "notes": "本实验当前只完成 intake。发布计划不能用空白预测直接执行；每条 post 后续必须包含 account、content_id、planned_publish_time、controlled_variation 和 expected_metric。"
+  "stopped_at": "2026-06-16",
+  "stop_reason": "用户判断 `手写一条城` 可能不适合作为当前图文赛道探索入口。",
+  "blocked_until": [],
+  "notes": "本实验已在发布前终止，不创建 post，不定义 planned_publish_time，也不进入发布后复盘。若未来继续，应换账号或关键词重新开实验。"
 }
