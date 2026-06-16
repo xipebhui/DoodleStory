@@ -42,6 +42,22 @@
       "unique_aweme": 48,
       "controller_status": "raw_evidence_needs_scoring",
       "next_required_evidence": "需要运行 market_scoring 做去重评分、图文候选筛选和类目横向对比。"
+    },
+    {
+      "type": "market_scoring",
+      "source": "douyin-hot-sample-research analyze_search_results.py",
+      "artifact": "content-lab/market_scans/2026-06-16-xiancheng-renwuzhi-market-scoring.md",
+      "output_dir": "output/douyin-hot-sample-analysis/xiancheng-renwuzhi-week-market-scoring",
+      "total_candidates_after_dedup": 48,
+      "grade_counts": {
+        "A": 0,
+        "B": 0,
+        "C": 1,
+        "D": 47
+      },
+      "key_observation": "写手一条城两条高互动样本被识别为 video_or_other，不是 image_text；当前只能证明县城人物类型化机制有热度，不能证明图文赛道已成立。",
+      "controller_status": "needs_deep_probe_selection",
+      "next_required_evidence": "需要选择 2-4 个样本采集评论、账号主页和内容形式证据，判断该机制能否改编为 DoodleStory 图文。"
     }
   ],
   "risk_notes": [
@@ -52,6 +68,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "市场证据尚未补齐；允许进入市场扫描和账号复盘，不允许做发布后复盘或规则升级。"
+    "reason": "已完成 raw market scan 和 market_scoring，但对标高互动样本主要是 video_or_other，尚未证明图文赛道成立；允许进入 deep_probe_selection，不允许发布后复盘或规则升级。"
   }
 }
