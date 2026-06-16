@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- 用 `content-iteration-controller` 创建新一轮 `画一个故事` 关键词图文赛道实验：新增 `content-lab/experiments/2026-06-16-huayigegushi-cycle-01/`，把关键词 `画一个故事` 记录为宽入口赛道假设。`prediction.json` 明确当前只完成关键词 intake，下一步必须由 `douyin-hot-sample-research` 采集最近 7 天搜索结果并运行 `market_scoring`，确认是否存在高信号 `image_text` 故事样本；发布、复盘和规则升级继续被阻止。
 - 按用户判断终止县城人物志实验中的 `手写一条城` 账号探索：将 `content-lab/experiments/2026-06-16-xiancheng-renwuzhi-cycle-01/` 标记为 `stopped_pre_publish`，同步更新 `prediction.json`、`publish_plan.json` 和 `strategy_update.json`。该终止是预发布停止，不是发布后复盘，也不是规则升级；保留的观察是“县城人物类型化机制有可观察热度，但当前高互动样本主要是 `video_or_other`，不能证明 DoodleStory 图文赛道成立”。后续若继续，应换账号或关键词重新开实验。
 - 完成县城人物志实验的第二步 `market_scoring`：用 `analyze_search_results.py` 处理 66 行原始抖音搜索结果，得到 48 个去重候选，机器评分为 C 1 个、D 47 个，原因是高互动对标样本大多被识别为 `video_or_other` 而非 `image_text`。已归档 `content-lab/market_scans/2026-06-16-xiancheng-renwuzhi-market-scoring.md` 并更新实验 `prediction.json`；当前更精确的判断是“县城人物类型化机制有热度，但尚未证明图文赛道成立”，下一步进入 `deep_probe_selection` 选择 2-4 个样本做评论、账号主页和内容形式探测。
 - 完成县城人物志实验的第一步 `market_scan`：通过项目内 `douyin-hot-sample-research` MediaCrawler 封装，以最近 7 天窗口采集 `县城人物志`、`手写一条城`、`县城生活观察` 三组抖音搜索结果，原始产物为 `/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/xiancheng_renwuzhi_week_20260616/douyin/jsonl/search_contents_2026-06-16.jsonl`；共 66 行、48 个去重作品，并归档摘要到 `content-lab/market_scans/2026-06-16-xiancheng-renwuzhi-market-scan.md`。`prediction.json` 已关联该 raw evidence，但仍保持 `allow_publish_review=false`，下一步必须做 `market_scoring` 后才能形成赛道判断。

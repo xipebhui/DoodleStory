@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "status": "draft",
+  "posts": [],
+  "blocked_until": [
+    "完成 `画一个故事` 最近 7 天 market_scan",
+    "完成 market_scoring 并确认是否存在高信号 image_text 样本",
+    "完成 deep_probe_selection，选择需要评论、账号主页或 VL 探测的样本",
+    "补齐 `prediction.json` 的预期指标、账号组、固定变量和风险说明"
+  ],
+  "notes": "本实验当前只完成关键词 intake。发布计划不能用空白预测直接执行；每条 post 后续必须包含 account、content_id、planned_publish_time、controlled_variation 和 expected_metric。"
+}

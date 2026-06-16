@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "status": "draft",
+  "title": "画一个故事关键词图文赛道实验",
+  "hypothesis": "`画一个故事` 可能不是单一赛道，而是一个宽入口关键词；如果最近 7 天搜索结果中存在多个高互动 image_text 故事样本，且它们共享可复用故事机制，那么该关键词值得进入 DoodleStory 图文实验。否则只能作为市场观察或换更窄关键词。",
+  "expected_metric": "发布前暂不设具体阈值；market_scoring 后再根据候选样本的点赞、评论、收藏、转发和评论率定义 2h/24h/72h 预期指标。",
+  "account_group": [
+    "待定：至少 1 个 DoodleStory 实验账号；重要假设建议 2 个账号隔离账号因素"
+  ],
+  "fixed_variables": {
+    "category": "关键词预测：画一个故事",
+    "visual_style": "待定；发布前固定一种 DoodleStory 可生成风格",
+    "publish_window": "待定；发布前固定发布时间窗口",
+    "story_length": "待定；市场扫描后根据高信号样本页数决定"
+  },
+  "changed_variable": "关键词 `画一个故事` 所指向的可复制故事机制",
+  "review_checkpoints": [
+    "2h",
+    "24h",
+    "72h"
+  ],
+  "market_evidence": [
+    {
+      "type": "keyword_intake",
+      "source": "用户输入",
+      "keyword": "画一个故事",
+      "controller_status": "needs_market_scan",
+      "next_required_evidence": "需要采集最近 7 天抖音搜索结果，并运行 market_scoring 判断是否存在高信号 image_text 样本。"
+    }
+  ],
+  "risk_notes": [
+    "`画一个故事` 可能混入绘画教程、AI 绘图过程、视频口播或泛娱乐内容，不能默认等于 DoodleStory 图文故事赛道。",
+    "不能凭关键词直觉生成内容；必须先看最近样本和图文形态。",
+    "如果高互动样本主要是 video_or_other，只能记录为可改编假设，不能证明图文赛道成立。",
+    "本轮只验证关键词对应机制，不同时测试多个账号、画风、标题结构和发布时间。"
+  ],
+  "decision_gate": {
+    "allow_publish_review": false,
+    "reason": "仅完成关键词 intake；尚未完成 market_scan 和 market_scoring，不允许发布、复盘或规则升级。"
+  }
+}
