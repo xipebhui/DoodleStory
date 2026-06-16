@@ -4,9 +4,14 @@
 - slot_id: `P2-H1-duck-bear`
 - account: `小黄鸭与大熊`
 - hypothesis_id: `H1-family-rule-loop`
+- status: `paused_by_prepublish_review`
 - story_input_mode: `adapted`
 - requested_image_count: `10`
 - source_full_story_extract: `content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.md`
+
+## 发布前审核结论
+
+本 brief 暂停使用，不允许直接创建任务。发布前审核认为账号名、头像和简介都可调整，不能因为账号叫“小黄鸭与大熊”就把内容机制改成拟人角色。H1 原始爆点更接近成年家庭重组后的称呼/身份错位幻想，当前红围裙版本把核心诱因改成了规则游戏，不能用于第一波发布实验。
 
 ## 机制提炼
 

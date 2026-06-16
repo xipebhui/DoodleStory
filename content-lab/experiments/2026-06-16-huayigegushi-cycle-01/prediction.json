@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "generation_brief_ready",
+  "status": "h2_generation_brief_ready_h1_paused",
   "title": "画一个故事关键词图文赛道实验",
   "hypothesis": "`画一个故事` 第一轮应优先验证 family_marriage 下的两个机制：H1 异常家庭规则怪谈，测试现实家庭关系被观众规则化解读后是否拉高评论和转发；H2 三回合家庭边界测试，测试具体生活冲突加行动兑现是否触发真实婚姻经验投射、收藏和转发。纯爱治愈作为第二优先，社会安全只做风险观察。",
   "expected_metric": "实验计划前先采用最低继续线：2h 出现目标评论簇且点赞 >= 20；24h 点赞 >= 100-120 且评论 >= 8-10；72h 点赞 >= 250-300 且评论 >= 20-25。H1 更看重规则化评论和转发/点赞比例，H2 更看重真实经历评论、收藏和转发。",
@@ -12,8 +12,8 @@
     "category": "family_marriage",
     "keyword_tag": "画一个故事",
     "visual_style": "统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换",
-    "publish_frequency": "总账号池每天 2-3 条",
-    "publish_window": "基础窗口 12:10-13:10、20:30-21:30；加速窗口 22:00-22:40 Asia/Shanghai",
+    "publish_frequency": "第一波只发 H2 两条；H1 暂停后不强行凑满 2-3 条",
+    "publish_window": "第一波 H2 基础窗口 12:10-13:10、20:30-21:30 Asia/Shanghai；H1 重启前不排期",
     "story_length": "每条 10 页",
     "cta": "不做强引导关注或私信，只保留自然评论触发"
   },
@@ -284,6 +284,36 @@
       "key_observation": "已为 4 个发布槽分别形成可直接进入 DoodleStory 故事方案模式的原创 brief。同一假设保留机制但更换账号表层故事；H1 避开继亲/未成年人/暧昧关系，只提炼家庭身份规则循环；H2 避开旧床单、纸尿裤、剩菜和离家桥段，只提炼三回合边界测试和行动兑现。",
       "controller_status": "needs_task_creation",
       "next_required_evidence": "需要用 4 份 generation_brief 创建真实生成任务，回填 content_id 或 task_id，并在素材完成后回填绝对 planned_publish_time。"
+    },
+    {
+      "type": "prepublish_generation_brief_review",
+      "source": "用户发布前审核",
+      "artifact": "content-lab/prepublish_reviews/2026-06-16-huayigegushi-generation-brief-review.md",
+      "source_review": "output/tmp.txt",
+      "decisions": [
+        {
+          "hypothesis_id": "H1-family-rule-loop",
+          "decision": "pause_first_wave",
+          "reason": "H1 源样本爆点更接近伦理身份错位幻想，当前木牌/红围裙版本把诱因删成规则游戏，离大众生活情绪太远。"
+        },
+        {
+          "hypothesis_id": "H2-marriage-boundary-three-rounds",
+          "decision": "revise_and_keep_first_wave",
+          "reason": "H2 方向成立，但必须从逐回合解决改为三次压抑累积后延迟行动兑现。"
+        },
+        {
+          "dimension": "account_packaging",
+          "decision": "content_persona_first",
+          "reason": "账号昵称、头像、简介都是可调整包装，不应反向决定内容形态。"
+        }
+      ],
+      "updated_artifacts": [
+        "content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md",
+        "content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md",
+        "content-lab/experiments/2026-06-16-huayigegushi-cycle-01/publish_plan.json"
+      ],
+      "controller_status": "needs_h2_task_creation",
+      "next_required_evidence": "需要只用 H2 两条修正版 brief 创建真实生成任务；H1 需补充同类样本或重写为安全化成年身份错位机制后再决定是否重启。"
     }
   ],
   "risk_notes": [
@@ -292,11 +322,14 @@
     "如果高互动样本主要是 video_or_other，只能记录为可改编假设，不能证明图文赛道成立。",
     "本轮只验证关键词对应机制，不同时测试多个账号、画风、标题结构和发布时间。",
     "H1 不写乱伦、未成年人性暗示、真实家庭爆料或低俗伦理刺激。",
+    "H1 暂停第一波发布；不能用木牌/红围裙规则游戏替代源样本的伦理身份错位诱因。",
     "H2 不煽动性别对立，不使用真实家庭投稿的可识别细节，不做法律或心理咨询式建议。",
+    "H2 不能写成逐回合解决方案清单；第一波必须保留压抑累积和最后释放。",
+    "账号昵称、头像、简介都是可调整包装，不能用当前账号名反推内容角色形态。",
     "纯爱治愈暂不作为第一轮生成候选，避免依赖成熟账号 IP 和真人合照。"
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 H1/H2 generation_brief；允许进入任务创建，但尚未创建真实生成任务、回填 content_id/task_id 和绝对发布时间，不允许发布、复盘或规则升级。"
+    "reason": "发布前审核后只允许 H2 两条修正版 brief 进入任务创建；H1 暂停，尚未创建真实生成任务、回填 content_id/task_id 和绝对发布时间，不允许发布、复盘或规则升级。"
   }
 }

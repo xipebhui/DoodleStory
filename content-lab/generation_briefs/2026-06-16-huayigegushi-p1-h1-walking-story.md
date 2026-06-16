@@ -4,9 +4,14 @@
 - slot_id: `P1-H1-walking-story`
 - account: `行走的故事`
 - hypothesis_id: `H1-family-rule-loop`
+- status: `paused_by_prepublish_review`
 - story_input_mode: `adapted`
 - requested_image_count: `10`
 - source_full_story_extract: `content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.md`
+
+## 发布前审核结论
+
+本 brief 暂停使用，不允许直接创建任务。发布前审核认为 H1 原始爆点不是“家庭规则循环”，而是更窄、更高风险的“伦理身份错位幻想”；当前木牌版本删掉了核心诱因，离大众家庭情绪太远。H1 需要重定义为安全化后的成年家庭称呼/身份错位，并补充同类样本后再决定是否发布。
 
 ## 机制提炼
 

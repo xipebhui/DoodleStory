@@ -3,7 +3,7 @@
 - experiment_id: `2026-06-16-huayigegushi-cycle-01`
 - keyword: `画一个故事`
 - created_at: `2026-06-16`
-- workflow_step: `generation_brief_ready`
+- workflow_step: `h2_generation_brief_ready_h1_paused`
 - evidence_source: `content-lab/market_scans/2026-06-16-huayigegushi-topic-hypothesis.md`
 
 ## 用户输入
@@ -13,13 +13,13 @@
 1. `行走的故事`
 2. `小黄鸭与大熊`
 
-控制器采用两账号交叉验证，而不是一个账号只测一个假设。这样可以初步拆开“内容机制问题”和“账号适配问题”。
+控制器采用两账号交叉验证，但发布前审核后改为第一波只用两个账号验证 H2。账号昵称、头像、简介都可调整，不能用当前账号包装反推内容形态。
 
 ## 实验目标
 
-验证 `画一个故事` 第一轮是否应该主攻 `family_marriage` 中的两个机制：
+验证 `画一个故事` 第一波是否应该主攻 `family_marriage` 中的 H2 机制：
 
-- `H1-family-rule-loop`：异常家庭规则怪谈。
+- `H1-family-rule-loop`：暂停。当前提炼偏离源样本诱因，需二次验证。
 - `H2-marriage-boundary-three-rounds`：三回合家庭边界测试。
 
 本轮不验证纯爱治愈，不验证社会安全题材，不同时测试多种画风、页数、发布时间或标题结构。
@@ -33,36 +33,36 @@
 | keyword_tag | `画一个故事` |
 | visual_style | 统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换 |
 | story_length | 每条 10 页 |
-| publish_frequency | 总账号池每天 `2-3` 条 |
-| publish_window | 基础窗口：`12:10-13:10`、`20:30-21:30`；加速窗口：`22:00-22:40`，Asia/Shanghai |
+| publish_frequency | 第一波只发 H2 两条；H1 暂停后不强行凑满 `2-3` 条 |
+| publish_window | H2 第一波基础窗口：`12:10-13:10`、`20:30-21:30`，Asia/Shanghai；H1 重启前不排期 |
 | review_checkpoints | `2h`、`24h`、`72h` |
 | CTA | 不做强引导关注或私信，只保留自然评论触发 |
 | source_handling | 不复刻源故事细节；只复用机制，生成前需走原创改写 |
 
 ## 改变变量
 
-唯一主要改变变量：故事机制。
+唯一主要改变变量：故事机制。发布前审核后，第一波只验证 H2 的结构修正版。
 
-- H1：现实家庭关系被设计成可被评论区规则化解释的异常循环。
-- H2：三次具体生活冲突之后，用行动兑现家庭边界。
+- H1：暂停。源样本更像“伦理身份错位幻想”，当前规则循环 brief 不代表有效机制。
+- H2：三次具体生活冲突连续压抑，最后一次性用行动兑现家庭边界。
 
-账号是观测维度，不是本轮主动优化变量。两个账号都发 H1 和 H2。
+账号是观测维度，不是本轮主动优化变量。内容机制和叙事人格优先于账号昵称、头像和简介；必要时账号包装服务内容。
 
 ## 内容槽
 
 | slot_id | hypothesis_id | account | planned_publish_window | page_count | controlled_variation | current_status |
 | --- | --- | --- | --- | ---: | --- | --- |
-| `P1-H1-walking-story` | `H1-family-rule-loop` | 行走的故事 | 生成完成后第 1 天 `12:10-13:10` | 10 | 异常家庭规则怪谈，偏真人故事叙述口吻 | needs_task_creation |
-| `P3-H2-walking-story` | `H2-marriage-boundary-three-rounds` | 行走的故事 | 生成完成后第 1 天 `20:30-21:30` | 10 | 三回合家庭边界，偏现实婚姻故事口吻 | needs_task_creation |
-| `P2-H1-duck-bear` | `H1-family-rule-loop` | 小黄鸭与大熊 | 生成完成后第 2 天 `12:10-13:10`；加速时可提前到第 1 天 `22:00-22:40` | 10 | 同机制，表层故事和角色重新原创，避免重复发布同一素材 | needs_task_creation |
-| `P4-H2-duck-bear` | `H2-marriage-boundary-three-rounds` | 小黄鸭与大熊 | 生成完成后第 2 天 `20:30-21:30` | 10 | 同机制，表层故事和角色重新原创，避免重复发布同一素材 | needs_task_creation |
+| `P1-H1-walking-story` | `H1-family-rule-loop` | 行走的故事 | 暂不排期 | 10 | H1 暂停，需重定义为安全化成年身份错位机制 | paused_needs_mechanism_revalidation |
+| `P3-H2-walking-story` | `H2-marriage-boundary-three-rounds` | 行走的故事 | 生成完成后第 1 天 `12:10-13:10` | 10 | 压抑三连 + 延迟行动兑现，真实县城婚姻故事 | needs_task_creation |
+| `P2-H1-duck-bear` | `H1-family-rule-loop` | 小黄鸭与大熊 | 暂不排期 | 10 | H1 暂停；账号名不再决定拟人化内容形态 | paused_needs_mechanism_revalidation |
+| `P4-H2-duck-bear` | `H2-marriage-boundary-three-rounds` | 小黄鸭与大熊 | 生成完成后第 1 天 `20:30-21:30` | 10 | 同机制第二账号版本，内容人格优先于账号昵称 | needs_task_creation |
 
-说明：不建议两个账号发布完全相同的图文素材。每个假设保留同一 hook/payoff/comment_trigger，但故事表层、角色和具体冲突要原创变化，降低重复内容风险。
+说明：第一波只发布 H2。两个账号不发布完全相同素材，保留同一“压抑累积 + 延迟兑现”结构，但故事表层、角色和具体冲突要原创变化，降低重复内容风险。
 
 ## 发布频率护栏
 
-- 基础节奏：总账号池每天 2 条，2 天完成 4 条最小实验。
-- 加速节奏：总账号池每天最多 3 条；仅在当天素材已完成审核、没有明显平台风险时使用。
+- 基础节奏：第一波总账号池当天 2 条，只发布 H2 两个账号版本。
+- 加速节奏：H1 暂停期间不启用第 3 条加速窗口，不为了频率发布机制不确定内容。
 - 单账号同日最多 2 条；同账号两条之间至少间隔 3 小时。
 - 同一假设的两个账号版本不要连续挨着发，避免互相干扰判断。
 - 24h 数据复盘时必须按实际发布时间计算窗口，不能按自然日粗略统计。
@@ -71,10 +71,10 @@
 
 | account | 初始判断 | 需要验证 |
 | --- | --- | --- |
-| 行走的故事 | 账号名更像真人故事、情感故事容器，可能更适合 H2，也能承接 H1 的现实家庭叙述。 | 是否能触发真实经历评论，而不是只获得低互动浏览。 |
-| 小黄鸭与大熊 | 账号名更像角色化、拟人化或轻漫画容器，可能更适合 H1 的荒诞规则，也可测试 H2 是否能被角色故事承接。 | 角色感是否削弱家庭婚姻现实代入，或反而降低尖锐题材风险。 |
+| 行走的故事 | 当前账号包装可调整，不作为内容形态约束。 | H2 的真实家庭关系叙事是否能触发真实经历评论，而不是只获得低互动浏览。 |
+| 小黄鸭与大熊 | 当前账号包装可调整，不再反推为拟人化角色内容。 | 同一 H2 机制换表层故事后，是否仍能在第二账号触发代入、评论和转发。 |
 
-以上只是账号名推断，不作为结论。结论必须来自发布后数据。
+账号名、头像、简介只是包装层，不作为机制判断依据。结论必须来自发布后数据。
 
 ## 指标记录表
 
@@ -101,15 +101,11 @@
 
 ### H1 最低继续线
 
-- 2h：出现至少 3 条非作者引导的规则化评论；点赞 >= 20；转发 >= 3。
-- 24h：点赞 >= 120；评论 >= 10；转发 >= 20。
-- 72h：点赞 >= 300；评论 >= 25；转发 >= 60。
+H1 第一波暂停，不记录发布指标。重启前需重新定义为安全化成年身份错位机制，并补同类证据。
 
 ### H1 爆点信号
 
-- 评论里自然出现 2 个以上规则梗。
-- 72h 转发 >= 点赞的 0.5 倍。
-- 两个账号中至少一个账号出现稳定复读句式。
+H1 第一波暂停，不判断爆点信号。
 
 ### H2 最低继续线
 
@@ -122,12 +118,13 @@
 - 评论区出现真实经历长评。
 - 24h 收藏 >= 30。
 - 72h 转发 >= 点赞的 0.3 倍。
+- 完读相关表现强于逐回合解决版预期：评论出现“我以为他又不管了”“憋到最后才爽”等压抑释放反馈。
 
 ## 诊断规则
 
-- 两个账号同一假设都低于最低继续线：优先判断机制或执行失败。
-- 一个账号过线、一个账号不过线：优先判断账号适配差异。
-- H1 评论多但转发弱：规则梗可能成立，但故事转发动机不足。
+- 两个账号的 H2 都低于最低继续线：优先判断 H2 机制或执行失败。
+- 一个账号过线、一个账号不过线：先检查内容执行和发布时间，再谨慎判断账号适配差异。
+- H1 不参与第一波诊断。
 - H2 收藏强但评论弱：实用判断成立，但情绪讨论弱，需要强化冲突和行动兑现。
 - 任何一条出现平台风险、限流或明显争议：先暂停同类发布，不进入规则升级。
 
@@ -138,22 +135,28 @@
 
 ## 已完成 generation_brief
 
-- `P1-H1-walking-story`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p1-h1-walking-story.md`
-- `P2-H1-duck-bear`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p2-h1-duck-bear.md`
-- `P3-H2-walking-story`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md`
-- `P4-H2-duck-bear`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md`
+- `P1-H1-walking-story`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p1-h1-walking-story.md`，已暂停。
+- `P2-H1-duck-bear`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p2-h1-duck-bear.md`，已暂停。
+- `P3-H2-walking-story`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md`，已按发布前审核改为压抑三连 + 延迟兑现。
+- `P4-H2-duck-bear`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md`，已按发布前审核改为真实家庭关系，不再使用账号名导出的拟人角色。
+
+## 发布前审核
+
+- 审核记录：`content-lab/prepublish_reviews/2026-06-16-huayigegushi-generation-brief-review.md`
+- 决策：H1 暂停；H2 修订后进入第一波任务创建；内容机制和叙事人格优先于账号包装。
 
 ## 当前阻塞
 
 本计划仍不能直接发布。进入发布前还需要：
 
-1. 创建真实生成任务并得到 `content_id` 或 `task_id`。
-2. 根据实际完成时间回填绝对 `planned_publish_time`，并确认是否启用第 3 条加速窗口。
+1. 为 H2 两条修正版 brief 创建真实生成任务并得到 `content_id` 或 `task_id`。
+2. 根据实际完成时间回填 H2 两条绝对 `planned_publish_time`。
+3. H1 补充同类样本或重写机制后再决定是否重启。
 
 ## 下一步
 
 进入 `task_creation`：
 
-- 用 4 份 `generation_brief` 创建 DoodleStory `故事方案` 模式任务。
-- 回填每个发布槽的 `content_id` 或 `task_id`。
+- 只用 `P3-H2-walking-story` 和 `P4-H2-duck-bear` 两份修正版 brief 创建 DoodleStory `故事方案` 模式任务。
+- 回填 H2 两个发布槽的 `content_id` 或 `task_id`。
 - 素材完成后根据实际完成时间回填绝对发布时间。

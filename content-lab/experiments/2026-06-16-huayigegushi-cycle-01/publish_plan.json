@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "generation_brief_ready_not_publishable",
+  "status": "h2_generation_brief_ready_h1_paused_not_publishable",
   "account_group": [
     "行走的故事",
     "小黄鸭与大熊"
@@ -10,8 +10,8 @@
     "keyword_tag": "画一个故事",
     "visual_style": "统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换",
     "story_length_pages": 10,
-    "publish_frequency": "总账号池每天 2-3 条",
-    "publish_window": "基础窗口 12:10-13:10、20:30-21:30；加速窗口 22:00-22:40 Asia/Shanghai",
+    "publish_frequency": "第一波只发 H2 两条；H1 暂停后不强行凑满 2-3 条",
+    "publish_window": "第一波 H2 基础窗口 12:10-13:10、20:30-21:30 Asia/Shanghai；H1 重启前不排期",
     "review_checkpoints": [
       "2h",
       "24h",
@@ -26,7 +26,7 @@
       "account": "行走的故事",
       "hypothesis_id": "H1-family-rule-loop",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 1 天 12:10-13:10 Asia/Shanghai",
+      "planned_publish_window": null,
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -41,21 +41,23 @@
       "generation_brief": {
         "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p1-h1-walking-story.md",
         "story_input_mode": "adapted",
-        "requested_image_count": 10
+        "requested_image_count": 10,
+        "status": "paused_by_prepublish_review"
       },
       "expected_metric": {
         "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "needs_task_creation"
+      "status": "paused_needs_mechanism_revalidation",
+      "blocked_reason": "发布前审核认为 H1 原始爆点更接近安全化后的伦理身份错位幻想，而不是家庭规则循环；当前 brief 删掉核心诱因，不进入第一波任务创建。"
     },
     {
       "slot_id": "P2-H1-duck-bear",
       "account": "小黄鸭与大熊",
       "hypothesis_id": "H1-family-rule-loop",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 2 天 12:10-13:10 Asia/Shanghai；加速时可提前到第 1 天 22:00-22:40 Asia/Shanghai",
+      "planned_publish_window": null,
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -70,21 +72,23 @@
       "generation_brief": {
         "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p2-h1-duck-bear.md",
         "story_input_mode": "adapted",
-        "requested_image_count": 10
+        "requested_image_count": 10,
+        "status": "paused_by_prepublish_review"
       },
       "expected_metric": {
         "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "needs_task_creation"
+      "status": "paused_needs_mechanism_revalidation",
+      "blocked_reason": "发布前审核认为账号名不应决定内容形态；当前拟人红围裙版本偏离 H1 源样本诱因，不进入第一波任务创建。"
     },
     {
       "slot_id": "P3-H2-walking-story",
       "account": "行走的故事",
       "hypothesis_id": "H2-marriage-boundary-three-rounds",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 1 天 20:30-21:30 Asia/Shanghai",
+      "planned_publish_window": "生成完成后第 1 天 12:10-13:10 Asia/Shanghai",
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -99,7 +103,8 @@
       "generation_brief": {
         "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md",
         "story_input_mode": "adapted",
-        "requested_image_count": 10
+        "requested_image_count": 10,
+        "revision": "压抑三连 + 延迟行动兑现"
       },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
@@ -113,7 +118,7 @@
       "account": "小黄鸭与大熊",
       "hypothesis_id": "H2-marriage-boundary-three-rounds",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 2 天 20:30-21:30 Asia/Shanghai",
+      "planned_publish_window": "生成完成后第 1 天 20:30-21:30 Asia/Shanghai",
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -128,7 +133,8 @@
       "generation_brief": {
         "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md",
         "story_input_mode": "adapted",
-        "requested_image_count": 10
+        "requested_image_count": 10,
+        "revision": "压抑三连 + 延迟行动兑现；内容机制优先于账号昵称"
       },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
@@ -152,16 +158,16 @@
     "shares"
   ],
   "cadence_guardrails": [
-    "基础节奏为总账号池每天 2 条，2 天完成 4 条最小实验",
-    "加速节奏为总账号池每天最多 3 条，仅在素材完成审核且没有明显平台风险时使用",
+    "第一波基础节奏改为总账号池当天 2 条，只发布 H2 两个账号版本",
+    "H1 暂停期间不启用第 3 条加速窗口，不为了频率发布机制不确定内容",
     "单账号同日最多 2 条，同账号两条之间至少间隔 3 小时",
     "同一假设的两个账号版本不要连续挨着发布",
     "24h 数据必须按实际 planned_publish_time 计算，不按自然日粗略统计"
   ],
   "blocked_until": [
-    "创建真实生成任务并回填 content_id 或 task_id",
-    "回填 planned_publish_time 的绝对发布时间",
-    "确认是否启用第 3 条加速窗口"
+    "为 H2 两条修正版 brief 创建真实生成任务并回填 content_id 或 task_id",
+    "回填 H2 两条 planned_publish_time 的绝对发布时间",
+    "H1 补充同类样本或重写机制后再决定是否重启"
   ],
-  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表。H1/H2 均已完成 full_story_extract 和 generation_brief，下一步需要创建真实生成任务并回填 content_id 或 task_id。当前仍未生成真实内容，不能直接发布。"
+  "notes": "发布前审核后调整：第一波只发布 H2 两条，H2 brief 已从逐回合解决改为压抑三连后延迟兑现；H1 暂停，不进入任务创建。当前仍未生成真实内容，不能直接发布。"
 }
