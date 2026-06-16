@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "h2_generation_brief_ready_h1_paused_not_publishable",
+  "status": "h2_persona_generation_brief_ready_h1_paused_not_publishable",
   "account_group": [
     "行走的故事",
     "小黄鸭与大熊"
@@ -17,9 +17,10 @@
       "24h",
       "72h"
     ],
-    "cta": "不做强引导关注或私信，只保留自然评论触发"
+    "cta": "不做强引导关注或私信，只保留自然评论触发",
+    "narrative_persona": "H2 第一波使用 intimacy_trial / 亲密关系审判型；账号包装服务内容人格。"
   },
-  "changed_variable": "story_mechanism",
+  "changed_variable": "H2 两个账号版本的表层故事不同；固定叙事人格为 intimacy_trial / 亲密关系审判型，固定结构为三次压抑累积 + 最后行动兑现。H1 暂停。",
   "posts": [
     {
       "slot_id": "P1-H1-walking-story",
@@ -49,8 +50,8 @@
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "paused_needs_mechanism_revalidation",
-      "blocked_reason": "发布前审核认为 H1 原始爆点更接近安全化后的伦理身份错位幻想，而不是家庭规则循环；当前 brief 删掉核心诱因，不进入第一波任务创建。"
+      "status": "paused_needs_persona_rehypothesis",
+      "blocked_reason": "H1 暂停；若重启，需按冷眼旁观型或命运荒诞型重新定义安全化成年身份错位机制。"
     },
     {
       "slot_id": "P2-H1-duck-bear",
@@ -80,8 +81,8 @@
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "paused_needs_mechanism_revalidation",
-      "blocked_reason": "发布前审核认为账号名不应决定内容形态；当前拟人红围裙版本偏离 H1 源样本诱因，不进入第一波任务创建。"
+      "status": "paused_needs_persona_rehypothesis",
+      "blocked_reason": "H1 暂停；若重启，需按冷眼旁观型或命运荒诞型重新定义安全化成年身份错位机制。"
     },
     {
       "slot_id": "P3-H2-walking-story",
@@ -104,7 +105,13 @@
         "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md",
         "story_input_mode": "adapted",
         "requested_image_count": 10,
-        "revision": "压抑三连 + 延迟行动兑现"
+        "revision": "persona_injected: intimacy_trial / 亲密关系审判型",
+        "narrative_persona_profile": {
+          "profile_id": "intimacy_trial",
+          "label": "亲密关系审判型",
+          "emotion_curve": "压抑 -> 怀疑 -> 失望 -> 审判 -> 释放",
+          "comment_trigger": "他到底会不会为了我站出来"
+        }
       },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
@@ -134,7 +141,13 @@
         "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md",
         "story_input_mode": "adapted",
         "requested_image_count": 10,
-        "revision": "压抑三连 + 延迟行动兑现；内容机制优先于账号昵称"
+        "revision": "persona_injected: intimacy_trial / 亲密关系审判型",
+        "narrative_persona_profile": {
+          "profile_id": "intimacy_trial",
+          "label": "亲密关系审判型",
+          "emotion_curve": "压抑 -> 怀疑 -> 失望 -> 审判 -> 释放",
+          "comment_trigger": "他到底会不会为了我站出来"
+        }
       },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
@@ -169,5 +182,5 @@
     "回填 H2 两条 planned_publish_time 的绝对发布时间",
     "H1 补充同类样本或重写机制后再决定是否重启"
   ],
-  "notes": "发布前审核后调整：第一波只发布 H2 两条，H2 brief 已从逐回合解决改为压抑三连后延迟兑现；H1 暂停，不进入任务创建。当前仍未生成真实内容，不能直接发布。"
+  "notes": "已按新版 Skill 补齐叙事人格：第一波只发布 H2 两条，叙事人格为 intimacy_trial / 亲密关系审判型；H1 暂停，不进入任务创建。当前仍未生成真实内容，不能直接发布。"
 }

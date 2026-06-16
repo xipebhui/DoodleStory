@@ -3,7 +3,7 @@
 - experiment_id: `2026-06-16-huayigegushi-cycle-01`
 - keyword: `画一个故事`
 - created_at: `2026-06-16`
-- workflow_step: `h2_generation_brief_ready_h1_paused`
+- workflow_step: `h2_persona_generation_brief_ready_h1_paused`
 - evidence_source: `content-lab/market_scans/2026-06-16-huayigegushi-topic-hypothesis.md`
 
 ## 用户输入
@@ -17,7 +17,7 @@
 
 ## 实验目标
 
-验证 `画一个故事` 第一波是否应该主攻 `family_marriage` 中的 H2 机制：
+验证 `画一个故事` 第一波是否应该主攻 `family_marriage` 中的 H2 机制，并使用 `intimacy_trial` / 亲密关系审判型叙事人格：
 
 - `H1-family-rule-loop`：暂停。当前提炼偏离源样本诱因，需二次验证。
 - `H2-marriage-boundary-three-rounds`：三回合家庭边界测试。
@@ -33,6 +33,7 @@
 | keyword_tag | `画一个故事` |
 | visual_style | 统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换 |
 | story_length | 每条 10 页 |
+| narrative_persona | H2 第一波使用 `intimacy_trial` / 亲密关系审判型 |
 | publish_frequency | 第一波只发 H2 两条；H1 暂停后不强行凑满 `2-3` 条 |
 | publish_window | H2 第一波基础窗口：`12:10-13:10`、`20:30-21:30`，Asia/Shanghai；H1 重启前不排期 |
 | review_checkpoints | `2h`、`24h`、`72h` |
@@ -44,7 +45,7 @@
 唯一主要改变变量：故事机制。发布前审核后，第一波只验证 H2 的结构修正版。
 
 - H1：暂停。源样本更像“伦理身份错位幻想”，当前规则循环 brief 不代表有效机制。
-- H2：三次具体生活冲突连续压抑，最后一次性用行动兑现家庭边界。
+- H2：三次具体生活冲突连续压抑，最后一次性用行动兑现家庭边界；叙事人格为亲密关系审判型，让读者等待“他到底会不会站出来”。
 
 账号是观测维度，不是本轮主动优化变量。内容机制和叙事人格优先于账号昵称、头像和简介；必要时账号包装服务内容。
 
@@ -53,9 +54,9 @@
 | slot_id | hypothesis_id | account | planned_publish_window | page_count | controlled_variation | current_status |
 | --- | --- | --- | --- | ---: | --- | --- |
 | `P1-H1-walking-story` | `H1-family-rule-loop` | 行走的故事 | 暂不排期 | 10 | H1 暂停，需重定义为安全化成年身份错位机制 | paused_needs_mechanism_revalidation |
-| `P3-H2-walking-story` | `H2-marriage-boundary-three-rounds` | 行走的故事 | 生成完成后第 1 天 `12:10-13:10` | 10 | 压抑三连 + 延迟行动兑现，真实县城婚姻故事 | needs_task_creation |
+| `P3-H2-walking-story` | `H2-marriage-boundary-three-rounds` | 行走的故事 | 生成完成后第 1 天 `12:10-13:10` | 10 | 亲密关系审判型；压抑三连 + 延迟行动兑现，真实县城婚姻故事 | needs_task_creation |
 | `P2-H1-duck-bear` | `H1-family-rule-loop` | 小黄鸭与大熊 | 暂不排期 | 10 | H1 暂停；账号名不再决定拟人化内容形态 | paused_needs_mechanism_revalidation |
-| `P4-H2-duck-bear` | `H2-marriage-boundary-three-rounds` | 小黄鸭与大熊 | 生成完成后第 1 天 `20:30-21:30` | 10 | 同机制第二账号版本，内容人格优先于账号昵称 | needs_task_creation |
+| `P4-H2-duck-bear` | `H2-marriage-boundary-three-rounds` | 小黄鸭与大熊 | 生成完成后第 1 天 `20:30-21:30` | 10 | 亲密关系审判型；同机制第二账号版本，内容人格优先于账号昵称 | needs_task_creation |
 
 说明：第一波只发布 H2。两个账号不发布完全相同素材，保留同一“压抑累积 + 延迟兑现”结构，但故事表层、角色和具体冲突要原创变化，降低重复内容风险。
 
@@ -137,13 +138,14 @@ H1 第一波暂停，不判断爆点信号。
 
 - `P1-H1-walking-story`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p1-h1-walking-story.md`，已暂停。
 - `P2-H1-duck-bear`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p2-h1-duck-bear.md`，已暂停。
-- `P3-H2-walking-story`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md`，已按发布前审核改为压抑三连 + 延迟兑现。
-- `P4-H2-duck-bear`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md`，已按发布前审核改为真实家庭关系，不再使用账号名导出的拟人角色。
+- `P3-H2-walking-story`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md`，已注入 `intimacy_trial` / 亲密关系审判型。
+- `P4-H2-duck-bear`：`content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md`，已注入 `intimacy_trial` / 亲密关系审判型，并不再使用账号名导出的拟人角色。
 
 ## 发布前审核
 
 - 审核记录：`content-lab/prepublish_reviews/2026-06-16-huayigegushi-generation-brief-review.md`
-- 决策：H1 暂停；H2 修订后进入第一波任务创建；内容机制和叙事人格优先于账号包装。
+- 人格注入记录：`content-lab/prepublish_reviews/2026-06-16-huayigegushi-persona-injection.md`
+- 决策：H1 暂停；H2 注入亲密关系审判型后进入第一波任务创建；内容机制和叙事人格优先于账号包装。
 
 ## 当前阻塞
 
