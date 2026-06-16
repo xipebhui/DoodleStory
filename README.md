@@ -98,6 +98,24 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 python .agents/skills/content-iteration-controller/scripts/validate_controller_state.py
 ```
 
+绑定发布账号画风并提交 DoodleStory 生成任务：
+
+```bash
+python .agents/skills/content-iteration-controller/scripts/submit_generation_task.py \
+  bind-style \
+  --account "行走的故事" \
+  --style-id "<DoodleStory style_id>" \
+  --style-name "<风格名>"
+
+DOODLESTORY_EMAIL="<email>" DOODLESTORY_PASSWORD="<password>" \
+python .agents/skills/content-iteration-controller/scripts/submit_generation_task.py \
+  submit-slot \
+  --experiment-id 2026-06-16-huayigegushi-cycle-01 \
+  --slot-id P3-H2-walking-story
+```
+
+内容实验提交任务时固定走 `提取分镜`：`story_input_mode=extracted_storyboard`、`image_count_mode=auto`、`use_character_references=false`。画风必须通过 `content-lab/strategy_state/account_style_bindings.json` 从发布账号绑定到具体 DoodleStory `style_id`，不会使用默认画风。
+
 控制器不自动发布、不自动读取后台、不自动修改 Skill。发布前必须先写 `prediction.json`；发布后有真实数据，才允许写 `prediction_errors.jsonl`、`deviation_review.md` 和 `strategy_update.json`。
 
 内容实验还需要记录叙事人格。控制器人格保持统一，负责证据和规则；内容叙事人格按人群欲望、情绪曲线、道德站位和风险边界配置，并写入 `prediction.json` 的 `narrative_persona_profile`。账号昵称、头像和简介是服务内容人格的包装，可以调整，不应反过来限制内容机制。
@@ -106,7 +124,7 @@ python .agents/skills/content-iteration-controller/scripts/validate_controller_s
 
 - [项目规格](docs/spec.md)
 - [进度记录](docs/progress.md)
-- [当前 Sprint 合同](docs/contracts/sprint-59-narrative-persona-injection.md)
+- [当前 Sprint 合同](docs/contracts/sprint-60-content-task-submission-entry.md)
 - [产品设计](docs/design/README.md)
 - [开发规范](docs/standards/)
 - [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

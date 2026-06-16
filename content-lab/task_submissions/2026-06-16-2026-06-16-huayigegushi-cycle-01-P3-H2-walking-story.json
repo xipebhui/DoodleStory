@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "submitted_at": "2026-06-16T19:01:18",
+  "experiment_id": "2026-06-16-huayigegushi-cycle-01",
+  "slot_id": "P3-H2-walking-story",
+  "account": "行走的故事",
+  "task_id": "3784275df2914e80905347b1f4bc4381",
+  "task_url": "/tasks/3784275df2914e80905347b1f4bc4381",
+  "style_id": "e11adbe3eeb44026806434483175e350",
+  "style_name": "低饱和手绘日常漫画风",
+  "source_storyboard": "content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md",
+  "forced_task_options": {
+    "story_input_mode": "extracted_storyboard",
+    "image_count_mode": "auto",
+    "requested_image_count": null,
+    "use_character_references": false
+  }
+}

@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-59-narrative-persona-injection.md`
+- `docs/contracts/sprint-60-content-task-submission-entry.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 60 内容实验提交 DoodleStory 任务入口：新增 `.agents/skills/content-iteration-controller/scripts/submit_generation_task.py`，支持账号画风绑定、绑定校验、按实验 slot 提交和按单文件提交；提交任务固定走现有 `/api/v1/tasks`，并强制使用 `story_input_mode=extracted_storyboard`、`image_count_mode=auto`、`requested_image_count=null`、`use_character_references=false`、`story_characters=[]`，避免沿用早期 brief 中的固定页数或固定角色。新增 `content-lab/strategy_state/account_style_bindings.json`，任务提交前必须从发布账号解析到具体 DoodleStory `style_id`，不会使用默认画风；提交成功后会回写实验 `publish_plan.json` 并归档 `content-lab/task_submissions/*.json`。
 - 完成 Sprint 59 内容叙事人格注入：在 `content-iteration-controller` 中明确“控制器人格统一、内容叙事人格按机制配置、账号包装服务内容人格”的三层架构；新增 `content-lab/strategy_state/narrative_persona_profiles.json`，沉淀冷眼旁观型、替女性出气型、成年人清醒型、命运荒诞型和亲密关系审判型等叙事人格模板；`create_experiment.py` 生成的 `prediction.json` 已包含 `narrative_persona_profile`，用于记录人群欲望、道德站位、情绪曲线、禁忌边界、评论触发点和账号包装方向；`validate_controller_state.py` 会校验叙事人格状态文件；`douyin-hot-sample-research` 的选题假设和生成 brief 输出要求补充叙事人格字段。文档同步强调大众内容可以放下文艺洁癖和伟光正表达，但不能放弃合规底线。
 - 完成 `画一个故事` 实验的第三步 `deep_probe_selection`：新增 `content-lab/market_scans/2026-06-16-huayigegushi-deep-probe-selection.md`，选择 `7649315939447871470` 家庭循环、`7650413089900236066` 婆媳三回合、`7651192895256480858` 纯爱治愈作为 primary 深挖样本，并把 `7651205691718698483` 女性安全样本标为 `risk_observation`，只做评论和风险边界观察。实验 `prediction.json` 已更新为 `needs_probe_collection`，下一步采集评论、账号主页和首尾页 `preview_vl`，仍不允许直接生成、发布、复盘或规则升级。
 - 完成 `画一个故事` 实验的第二步 `market_scoring`：用 `analyze_search_results.py` 处理 43 行原始抖音搜索结果，得到 33 个去重候选，机器评分为 A 8 个、B 13 个、C 7 个、D 5 个；A/B 全部为 `image_text`，其中 `family_marriage` 有 6 个 A/B，`pure_love_healing` 有 8 个 A/B。已归档 `content-lab/market_scans/2026-06-16-huayigegushi-market-scoring.md` 并更新实验 `prediction.json`；当前允许进入 `deep_probe_selection`，但仍不允许直接生成、发布、复盘或规则升级。

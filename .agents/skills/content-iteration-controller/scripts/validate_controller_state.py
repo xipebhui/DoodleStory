@@ -20,6 +20,7 @@ REQUIRED_STATE_FILES = [
     "keyword_weights.json",
     "category_weights.json",
     "account_fit_profile.json",
+    "account_style_bindings.json",
     "narrative_persona_profiles.json",
     "successful_hypotheses.jsonl",
     "failed_hypotheses.jsonl",
@@ -69,9 +70,20 @@ def validate_state(root: Path) -> tuple[list[str], list[str]]:
             continue
         if name.endswith(".json"):
             try:
-                load_json(path)
+                payload = load_json(path)
             except json.JSONDecodeError as exc:
                 errors.append(f"{path}: invalid JSON: {exc}")
+                continue
+            if name == "account_style_bindings.json":
+                if not isinstance(payload, dict) or not isinstance(payload.get("accounts"), dict):
+                    errors.append(f"{path}: account_style_bindings.json must contain an accounts object")
+                else:
+                    for account, binding in payload["accounts"].items():
+                        if not isinstance(binding, dict):
+                            errors.append(f"{path}: account `{account}` binding must be an object")
+                            continue
+                        if not binding.get("style_id"):
+                            errors.append(f"{path}: account `{account}` missing style_id")
         if name.endswith(".jsonl"):
             errors.extend(validate_jsonl(path))
     for folder in ["experiments", "market_scans", "content_library/items"]:

@@ -4,7 +4,7 @@
 
 ## 当前实现状态
 
-截至 Sprint 58，控制器已经有最小可调用实现：
+截至 Sprint 60，控制器已经有最小可调用实现：
 
 - 独立 Skill 入口：`.agents/skills/content-iteration-controller/SKILL.md`
 - 文件化状态目录：`content-lab/strategy_state/`
@@ -15,8 +15,9 @@
 - 实验目录创建脚本：`.agents/skills/content-iteration-controller/scripts/create_experiment.py`
 - 状态校验脚本：`.agents/skills/content-iteration-controller/scripts/validate_controller_state.py`
 - 预测误差写入脚本：`.agents/skills/content-iteration-controller/scripts/append_prediction_error.py`
+- 生成任务提交脚本：`.agents/skills/content-iteration-controller/scripts/submit_generation_task.py`
 
-当前实现仍然是文件化最小版本，不包含 API、数据库、前端页面、自动发布、自动读取抖音后台数据或自动修改 Skill。控制器可以直接被 Codex 调用，用来初始化状态、创建实验、检查预测前置条件、记录预测误差和提出策略更新建议。
+当前实现仍然是文件化最小版本，不新增控制器 API、数据库表、前端页面、自动发布、自动读取抖音后台数据或自动修改 Skill。控制器可以直接被 Codex 调用，用来初始化状态、创建实验、检查预测前置条件、提交 DoodleStory 生成任务、记录预测误差和提出策略更新建议。生成任务提交会调用既有 DoodleStory `/api/v1/tasks`，不绕过后端校验和入队逻辑。
 
 ## 设计背景
 
@@ -442,17 +443,20 @@ DoodleStory 生成链路仍是执行器：
 - `DY爆款复刻` 是单样本执行器。
 - `故事方案` 是预测型原创生成入口。
 - `提取分镜` 是结构化素材转生图入口。
+- 内容实验 Skill 提交任务时固定走 `提取分镜`，由账号绑定到具体画风，并使用自动页数、不使用固定角色。
 
 控制器不替代这些能力，只决定何时使用它们。
 
 ## 最小可实施版本
 
-第一版只做四件事，Sprint 58 已经落成文件化实现：
+第一版文件化实现已经落成，当前最小闭环包含：
 
 1. 建立 `controller_constitution.md`：由 `init_controller_state.py` 初始化。
 2. 每轮实验发布前写 `prediction.json`：由 `create_experiment.py` 创建空白结构，控制器或人工填写真实预测。
-3. 发布后写 `prediction_errors.jsonl` 和 `deviation_review.md`：由复盘后人工确认，必要时用 `append_prediction_error.py` 追加结构化预测误差。
-4. 每周由控制器输出一次 `strategy_update.json`，人工决定是否更新 Skill：当前先以实验目录内文件承载，不自动改 Skill。
+3. 生成前把发布账号绑定到 DoodleStory `style_id`：由 `submit_generation_task.py bind-style` 写入 `account_style_bindings.json`。
+4. 把实验 slot 提交为真实 DoodleStory 任务：由 `submit_generation_task.py submit-slot` 调用既有 `/api/v1/tasks` 并回写 `publish_plan.json`。
+5. 发布后写 `prediction_errors.jsonl` 和 `deviation_review.md`：由复盘后人工确认，必要时用 `append_prediction_error.py` 追加结构化预测误差。
+6. 每周由控制器输出一次 `strategy_update.json`，人工决定是否更新 Skill：当前先以实验目录内文件承载，不自动改 Skill。
 
 不做：
 

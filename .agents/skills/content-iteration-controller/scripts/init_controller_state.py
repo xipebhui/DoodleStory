@@ -112,6 +112,11 @@ JSON_FILES: dict[str, object] = {
     "keyword_weights.json": {"version": 1, "weights": {}, "notes": "由真实实验复盘后更新，不根据单次扫描自动修改。"},
     "category_weights.json": {"version": 1, "weights": {}, "notes": "由多轮实验表现更新，不等于市场热度排名。"},
     "account_fit_profile.json": {"version": 1, "accounts": {}, "notes": "账号适配画像来自发布数据和复盘，不来自主观感觉。"},
+    "account_style_bindings.json": {
+        "version": 1,
+        "accounts": {},
+        "notes": "抖音发布账号到 DoodleStory style_id 的显式绑定。生成任务提交前必须先绑定账号画风，不使用默认风格。",
+    },
     "narrative_persona_profiles.json": {
         "version": 1,
         "principle": "控制器人格统一；内容叙事人格按人群欲望、情绪曲线、道德站位和风险边界配置；账号包装服务内容人格。",

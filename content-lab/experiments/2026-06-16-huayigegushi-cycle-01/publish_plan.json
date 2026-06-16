@@ -91,7 +91,7 @@
       "planned_publish_time": null,
       "planned_publish_window": "生成完成后第 1 天 12:10-13:10 Asia/Shanghai",
       "content_id": null,
-      "task_id": null,
+      "task_id": "3784275df2914e80905347b1f4bc4381",
       "page_count": 10,
       "controlled_variation": "三回合家庭边界，偏现实婚姻故事口吻",
       "source_full_story_extract": {
@@ -118,7 +118,25 @@
         "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
         "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
       },
-      "status": "needs_task_creation"
+      "status": "task_created",
+      "task_submission": {
+        "version": 1,
+        "submitted_at": "2026-06-16T19:01:18",
+        "experiment_id": "2026-06-16-huayigegushi-cycle-01",
+        "slot_id": "P3-H2-walking-story",
+        "account": "行走的故事",
+        "task_id": "3784275df2914e80905347b1f4bc4381",
+        "task_url": "/tasks/3784275df2914e80905347b1f4bc4381",
+        "style_id": "e11adbe3eeb44026806434483175e350",
+        "style_name": "低饱和手绘日常漫画风",
+        "source_storyboard": "content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md",
+        "forced_task_options": {
+          "story_input_mode": "extracted_storyboard",
+          "image_count_mode": "auto",
+          "requested_image_count": null,
+          "use_character_references": false
+        }
+      }
     },
     {
       "slot_id": "P4-H2-duck-bear",

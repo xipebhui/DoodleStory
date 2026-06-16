@@ -40,7 +40,8 @@ description: DoodleStory 内容迭代控制器 Agent。用于迷宫控制器、�
 6. `content-lab/strategy_state/controller_constitution.md`
 7. `content-lab/strategy_state/strategy_memory.md`
 8. `content-lab/strategy_state/narrative_persona_profiles.json`
-9. 当前实验目录下的 `experiment.md`、`prediction.json`、`post_results/`、`deviation_review.md` 和 `strategy_update.json`。
+9. `content-lab/strategy_state/account_style_bindings.json`
+10. 当前实验目录下的 `experiment.md`、`prediction.json`、`publish_plan.json`、`post_results/`、`deviation_review.md` 和 `strategy_update.json`。
 
 如果 `content-lab/strategy_state/` 不存在，先执行 `init_state`，不要凭聊天历史假设状态已经存在。
 
@@ -55,6 +56,8 @@ description: DoodleStory 内容迭代控制器 Agent。用于迷宫控制器、�
 用户要开始一轮内容实验时，执行 `experiment_intake`，然后 `prediction_setup`。
 
 用户给发布后数据或要求复盘时，先检查是否存在同一实验的 `prediction.json`。没有预测时，只能做“记录”，不能做复盘，也不能升级规则。
+
+用户要求“生成这个故事”“提交任务”“开发提交任务入口”“把 brief 发到 DoodleStory”时，执行 `generation_task_submission`。这个步骤只负责提交真实 DoodleStory 生成任务，不代替发布，也不伪造任务 ID。
 
 用户要求“更新 Skill”“沉淀规则”“让 Skill 自动进化”时，执行 `rule_upgrade_review`。只有满足规则升级门槛，才能提出升级建议；实际修改 Skill 仍必须等待用户确认。
 
@@ -76,6 +79,7 @@ python .agents/skills/content-iteration-controller/scripts/init_controller_state
 - `content-lab/strategy_state/keyword_weights.json`
 - `content-lab/strategy_state/category_weights.json`
 - `content-lab/strategy_state/account_fit_profile.json`
+- `content-lab/strategy_state/account_style_bindings.json`
 - `content-lab/strategy_state/narrative_persona_profiles.json`
 - `content-lab/strategy_state/successful_hypotheses.jsonl`
 - `content-lab/strategy_state/failed_hypotheses.jsonl`
@@ -138,7 +142,58 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 - `comment_trigger`
 - `account_packaging`
 
-### 4. `post_result_intake`
+### 4. `generation_task_submission`
+
+生成提交是内容实验进入 DoodleStory 执行链路的入口。默认每次只提交一个 slot；只有用户明确要求一次性提交多条，才批量提交。
+
+硬规则：
+
+- 任务类型固定为 `story_input_mode=extracted_storyboard` / 提取分镜。
+- 图片数量固定为 `image_count_mode=auto`，不传固定页数。
+- 固定角色固定关闭：`use_character_references=false`，不传 `story_characters`。
+- 画风必须从账号解析到 `content-lab/strategy_state/account_style_bindings.json` 的 `style_id`。
+- 不能把账号未绑定时的任务提交到某个默认风格。
+- 暂停状态的 slot 不能提交；已有 `task_id` 的 slot 不能重复提交，除非用户明确要求 `--force-resubmit`。
+
+首次绑定账号画风：
+
+```bash
+python .agents/skills/content-iteration-controller/scripts/submit_generation_task.py \
+  bind-style \
+  --account "行走的故事" \
+  --style-id "<DoodleStory style_id>" \
+  --style-name "<风格名>"
+```
+
+如果要绑定前校验风格必须是 active，提供登录凭据并加 `--verify`：
+
+```bash
+DOODLESTORY_EMAIL="<email>" DOODLESTORY_PASSWORD="<password>" \
+python .agents/skills/content-iteration-controller/scripts/submit_generation_task.py \
+  bind-style \
+  --account "行走的故事" \
+  --style-id "<DoodleStory style_id>" \
+  --verify
+```
+
+提交实验 slot：
+
+```bash
+DOODLESTORY_EMAIL="<email>" DOODLESTORY_PASSWORD="<password>" \
+python .agents/skills/content-iteration-controller/scripts/submit_generation_task.py \
+  submit-slot \
+  --experiment-id 2026-06-16-huayigegushi-cycle-01 \
+  --slot-id P3-H2-walking-story
+```
+
+提交成功后会回写：
+
+- 当前实验 `publish_plan.json` 中对应 post 的 `task_id`、`status=task_created` 和 `task_submission`。
+- `content-lab/task_submissions/<date>-<experiment_id>-<slot_id>.json`。
+
+任务创建走 DoodleStory `/api/v1/tasks`，因此会复用后端风格校验、积分、任务入队、风格快照和现有任务 worker。
+
+### 5. `post_result_intake`
 
 发布后把后台数据写入：
 
@@ -155,7 +210,7 @@ content-lab/experiments/<experiment_id>/post_results/
 - 播放、点赞、评论、收藏、转发
 - 可选：涨粉、私信、转化、违规/限流备注
 
-### 5. `deviation_review`
+### 6. `deviation_review`
 
 只有同时存在 `prediction.json` 和真实 `post_results/`，才允许复盘。
 
@@ -184,7 +239,7 @@ python .agents/skills/content-iteration-controller/scripts/append_prediction_err
 
 不要把没有预测的发布数据写成“预测失败”。
 
-### 6. `strategy_update`
+### 7. `strategy_update`
 
 输出当前实验的 `strategy_update.json`，但不要自动修改 Skill。
 
@@ -197,7 +252,7 @@ python .agents/skills/content-iteration-controller/scripts/append_prediction_err
 - 每周最多一次：提出 Skill 升级建议。
 - Skill 文件修改必须人工确认。
 
-### 7. `rule_upgrade_review`
+### 8. `rule_upgrade_review`
 
 当用户要求升级 Skill 时，检查：
 

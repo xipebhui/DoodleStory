@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "accounts": {
+    "行走的故事": {
+      "style_id": "e11adbe3eeb44026806434483175e350",
+      "style_name": "低饱和手绘日常漫画风",
+      "style_verified": true,
+      "style_reference_mode": "prompt",
+      "aspect_ratio": "3:4",
+      "image_model_name": "gpt-image-2",
+      "updated_at": "2026-06-16T18:00:00",
+      "notes": "画一个故事 H2 第一波实验账号画风绑定；统一使用低饱和手绘日常漫画风。"
+    },
+    "小黄鸭与大熊": {
+      "style_id": "e11adbe3eeb44026806434483175e350",
+      "style_name": "低饱和手绘日常漫画风",
+      "style_verified": true,
+      "style_reference_mode": "prompt",
+      "aspect_ratio": "3:4",
+      "image_model_name": "gpt-image-2",
+      "updated_at": "2026-06-16T18:00:00",
+      "notes": "画一个故事 H2 第一波实验账号画风绑定；统一使用低饱和手绘日常漫画风。"
+    }
+  },
+  "notes": "抖音发布账号到 DoodleStory style_id 的显式绑定。生成任务提交前必须先绑定账号画风，不使用默认风格。"
+}
