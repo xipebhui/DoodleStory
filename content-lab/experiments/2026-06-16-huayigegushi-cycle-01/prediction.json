@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "draft",
+  "status": "probe_collected",
   "title": "画一个故事关键词图文赛道实验",
   "hypothesis": "`画一个故事` 可能不是单一赛道，而是一个宽入口关键词；如果最近 7 天搜索结果中存在多个高互动 image_text 故事样本，且它们共享可复用故事机制，那么该关键词值得进入 DoodleStory 图文实验。否则只能作为市场观察或换更窄关键词。",
   "expected_metric": "发布前暂不设具体阈值；market_scoring 后再根据候选样本的点赞、评论、收藏、转发和评论率定义 2h/24h/72h 预期指标。",
@@ -103,6 +103,23 @@
       ],
       "controller_status": "needs_probe_collection",
       "next_required_evidence": "需要对 primary 样本采集评论、账号主页和首尾页 preview_vl；risk_observation 样本只做风险和评论机制观察。"
+    },
+    {
+      "type": "probe_collection",
+      "source": "MediaCrawler detail/comments/creator + DoodleStory preview_vl",
+      "artifact": "content-lab/market_scans/2026-06-16-huayigegushi-probe-collection.md",
+      "detail_contents": "/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_probe_20260616/douyin/jsonl/detail_contents_2026-06-16.jsonl",
+      "detail_comments": "/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_probe_20260616/douyin/jsonl/detail_comments_2026-06-16.jsonl",
+      "creator_profiles": [
+        "/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_creator_probe_20260616/douyin/jsonl/creator_creators_2026-06-16.jsonl",
+        "/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_creator_probe_risk_20260616/douyin/jsonl/creator_creators_2026-06-16.jsonl"
+      ],
+      "probe_scoring_output_dir": "output/douyin-hot-sample-analysis/huayigegushi-week-20260616-probe-scoring",
+      "preview_vl_output": "output/douyin-hot-sample-analysis/huayigegushi-week-20260616-probe-vl/preview_vl_results.json",
+      "comments_collected_per_sample": 50,
+      "key_observation": "`画一个故事` 关键词下存在可实验空间；`家庭循环` 和 `婆媳三回合` 都来自低粉低作品账号但互动强，优先进入 family_marriage 方向的 topic_hypothesis。`一二小布布` 属于成熟账号结构参考；社会安全样本只做风险和评论机制观察。",
+      "controller_status": "needs_topic_hypothesis",
+      "next_required_evidence": "需要输出 2 个可发布假设，写清预测机制、用户需求、风险边界和 2h/24h/72h 指标。"
     }
   ],
   "risk_notes": [
@@ -113,6 +130,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 deep_probe_selection；允许进入 probe_collection，但尚未完成评论、账号主页和 VL 探测，不允许发布、复盘或规则升级。"
+    "reason": "已完成 probe_collection；允许进入 topic_hypothesis，但尚未形成发布假设、实验计划或全量故事提取，不允许发布、复盘或规则升级。"
   }
 }
