@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "status": "draft",
+  "strongest_evidence": "",
+  "largest_misread_risk": "",
+  "next_changed_variable": "",
+  "observations_only": [],
+  "rule_update_candidates": [],
+  "skill_update_allowed": false,
+  "skill_update_reason": "Rule upgrades require repeated evidence and user confirmation."
+}
