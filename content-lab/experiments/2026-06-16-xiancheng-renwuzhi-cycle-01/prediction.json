@@ -27,6 +27,21 @@
       "claim": "该博主发布县城人物志内容，把县城人物拆成县城刀枪炮、瑜伽裤、王漫妮、小布尔乔亚等类型。",
       "controller_status": "unverified_observation",
       "next_required_evidence": "需要账号主页样本、关键词搜索样本、评论区讨论点和最近 7 天同类样本验证。"
+    },
+    {
+      "type": "market_scan_raw",
+      "source": "MediaCrawler Douyin search",
+      "artifact": "content-lab/market_scans/2026-06-16-xiancheng-renwuzhi-market-scan.md",
+      "raw_jsonl": "/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/xiancheng_renwuzhi_week_20260616/douyin/jsonl/search_contents_2026-06-16.jsonl",
+      "keywords": [
+        "县城人物志",
+        "手写一条城",
+        "县城生活观察"
+      ],
+      "raw_rows": 66,
+      "unique_aweme": 48,
+      "controller_status": "raw_evidence_needs_scoring",
+      "next_required_evidence": "需要运行 market_scoring 做去重评分、图文候选筛选和类目横向对比。"
     }
   ],
   "risk_notes": [
