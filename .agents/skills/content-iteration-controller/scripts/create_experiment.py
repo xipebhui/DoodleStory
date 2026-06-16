@@ -50,6 +50,7 @@ def experiment_markdown(experiment_id: str, title: str) -> str:
 
 - 账号：
 - 类目：
+- 叙事人格：
 - 视觉风格：
 - 发布时间窗口：
 - 内容长度：
@@ -78,11 +79,26 @@ def prediction_json(title: str) -> dict[str, object]:
         "account_group": [],
         "fixed_variables": {
             "category": "",
+            "narrative_persona": "",
             "visual_style": "",
             "publish_window": "",
             "story_length": "",
         },
         "changed_variable": "",
+        "narrative_persona_profile": {
+            "profile_id": "",
+            "label": "",
+            "crowd_desire": "",
+            "moral_position": "",
+            "emotion_curve": "",
+            "taboo_boundary": "",
+            "comment_trigger": "",
+            "account_packaging": {
+                "nickname_direction": "",
+                "avatar_direction": "",
+                "bio_direction": "",
+            },
+        },
         "review_checkpoints": ["2h", "24h", "72h"],
         "market_evidence": [],
         "risk_notes": [],
@@ -109,6 +125,11 @@ def strategy_update_json() -> dict[str, object]:
         "strongest_evidence": "",
         "largest_misread_risk": "",
         "next_changed_variable": "",
+        "narrative_persona_review": {
+            "persona_matched_content": "",
+            "persona_misread_risk": "",
+            "account_packaging_adjustment": "",
+        },
         "observations_only": [],
         "rule_update_candidates": [],
         "skill_update_allowed": False,
@@ -142,6 +163,14 @@ def deviation_review_markdown() -> str:
 ## 偏差归因
 
 可选：`market_misread`、`account_mismatch`、`hook_failure`、`title_failure`、`story_mechanism_failure`、`visual_execution_failure`、`timing_noise`、`metric_mismatch`。
+
+## 叙事人格复盘
+
+- 本轮人格是否匹配内容机制：
+- 大众欲望判断是否准确：
+- 情绪曲线是否按预测发生：
+- 道德站位是否过弱、过正或过激：
+- 账号包装是否需要服务内容人格重新调整：
 
 ## 下一轮只改变一个主要变量
 

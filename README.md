@@ -100,11 +100,13 @@ python .agents/skills/content-iteration-controller/scripts/validate_controller_s
 
 控制器不自动发布、不自动读取后台、不自动修改 Skill。发布前必须先写 `prediction.json`；发布后有真实数据，才允许写 `prediction_errors.jsonl`、`deviation_review.md` 和 `strategy_update.json`。
 
+内容实验还需要记录叙事人格。控制器人格保持统一，负责证据和规则；内容叙事人格按人群欲望、情绪曲线、道德站位和风险边界配置，并写入 `prediction.json` 的 `narrative_persona_profile`。账号昵称、头像和简介是服务内容人格的包装，可以调整，不应反过来限制内容机制。
+
 开始较大实现工作前，请先阅读：
 
 - [项目规格](docs/spec.md)
 - [进度记录](docs/progress.md)
-- [当前 Sprint 合同](docs/contracts/sprint-58-content-iteration-controller-minimal-implementation.md)
+- [当前 Sprint 合同](docs/contracts/sprint-59-narrative-persona-injection.md)
 - [产品设计](docs/design/README.md)
 - [开发规范](docs/standards/)
 - [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

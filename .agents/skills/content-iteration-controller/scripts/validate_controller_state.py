@@ -20,6 +20,7 @@ REQUIRED_STATE_FILES = [
     "keyword_weights.json",
     "category_weights.json",
     "account_fit_profile.json",
+    "narrative_persona_profiles.json",
     "successful_hypotheses.jsonl",
     "failed_hypotheses.jsonl",
     "prediction_errors.jsonl",
@@ -31,6 +32,7 @@ REQUIRED_PREDICTION_FIELDS = [
     "account_group",
     "fixed_variables",
     "changed_variable",
+    "narrative_persona_profile",
     "review_checkpoints",
     "market_evidence",
     "risk_notes",
@@ -101,6 +103,22 @@ def validate_experiment(root: Path, experiment_id: str) -> tuple[list[str], list
             incomplete = [field for field in REQUIRED_PREDICTION_FIELDS if not prediction.get(field)]
             if incomplete:
                 warnings.append(f"{prediction_path}: incomplete prediction fields: {', '.join(incomplete)}")
+            persona = prediction.get("narrative_persona_profile")
+            if isinstance(persona, dict):
+                persona_missing = [
+                    field
+                    for field in [
+                        "profile_id",
+                        "crowd_desire",
+                        "moral_position",
+                        "emotion_curve",
+                        "taboo_boundary",
+                        "comment_trigger",
+                    ]
+                    if not persona.get(field)
+                ]
+                if persona_missing:
+                    warnings.append(f"{prediction_path}: incomplete narrative_persona_profile fields: {', '.join(persona_missing)}")
         except json.JSONDecodeError as exc:
             errors.append(f"{prediction_path}: invalid JSON: {exc}")
 

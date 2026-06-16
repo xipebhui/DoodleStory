@@ -86,7 +86,7 @@ export MEDIACRAWLER_HOME=/path/to/MediaCrawler
 3. `market_scoring`：筛选图文候选，按 A/B/C/D 评分，并输出类目横向对比。
 4. `deep_probe_selection`：从 A 类和强 B 类样本里选择需要账号、评论、首尾页 VL 探测的对象。
 5. `probe_collection`：采集详情、评论、账号数据，并对选中样本做 `preview_vl`。
-6. `topic_hypothesis`：输出可发布假设，写清预测机制、用户需求、风险和可验证指标。
+6. `topic_hypothesis`：输出可发布假设，写清预测机制、用户需求、叙事人格、风险和可验证指标。
 7. `experiment_plan`：把假设分配到账号，定义指标、检查点和最低实验数量。
 8. `full_story_extract`：对批准进入生成的种子样本运行 DoodleStory 全量 VL，先得到完整原文。
 9. `generation_brief`：分析全量原文后，再优化和原创改写为 DoodleStory 可直接生成的故事方案。
@@ -298,7 +298,8 @@ python .agents/skills/douyin-hot-sample-research/scripts/summarize_samples.py \
 决定下一次实验前，必须把文案和评论合并看：
 
 - 比较标题/首图承诺、故事兑现和高赞评论讨论点。
-- 输出 `topic_direction`、`story_archetype`、`hook_type`、`payoff_type`、`comment_trigger`、`audience_need`、`replication_angle`、`risk_note` 和 `next_iteration_hypothesis`。
+- 输出 `topic_direction`、`story_archetype`、`hook_type`、`payoff_type`、`comment_trigger`、`audience_need`、`narrative_persona_profile`、`replication_angle`、`risk_note` 和 `next_iteration_hypothesis`。
+- `narrative_persona_profile` 应写清人群欲望、道德站位、情绪曲线、禁忌边界、评论触发点和账号包装方向。内容机制优先，账号头像/昵称/简介只作为可调整包装，不作为内容机制约束。
 - 每一次策略变化都要写清 `observed_signal`、`strategy_change`、`expected_effect` 和 `review_after`。
 
 策略依据和标签见 `references/multidimensional-analysis-strategy.md`。重点是让未来 Skill 的自我迭代可检查，而不是隐含在聊天里。
@@ -373,5 +374,6 @@ Codex 用于探索、复核和决定下一步。只要流程需要 OCR、逐页�
 8. 评论聚类摘要：高赞/高回复讨论、选题种子，以及最可能解释转发或争议的评论触发点。
 9. 开头/结尾 VL 摘要，包括最后一页是否是真人照片或证据式结尾。
 10. 样本使用真人照片或证据式结尾时，给出原创真实感场景复现路线。
-11. 文案和评论综合字段，以及下一轮迭代假设。
-12. 下一步下载、评论、账号或 VL 检查动作，并明确标为 `preview_vl` 或 `full_story_document`。
+11. 叙事人格配置：人群欲望、道德站位、情绪曲线、禁忌边界、评论触发点和账号包装方向。
+12. 文案和评论综合字段，以及下一轮迭代假设。
+13. 下一步下载、评论、账号或 VL 检查动作，并明确标为 `preview_vl` 或 `full_story_document`。

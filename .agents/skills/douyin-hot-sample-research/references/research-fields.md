@@ -179,6 +179,12 @@ Fill these after combining work copy, story structure, comment clusters, and opt
 - `payoff_type`: reversal, tear point, justice, regret, reconciliation, open loop, truth reveal, or proof reveal.
 - `comment_trigger`: the comment cluster that best explains discussion.
 - `audience_need`: emotional release, moral judgment, realism, continuation, explanation, identity projection, practical advice, or other.
+- `narrative_persona_profile`: content-level narrative persona used to tell this mechanism. Include `profile_id`, `label`, `crowd_desire`, `moral_position`, `emotion_curve`, `taboo_boundary`, `comment_trigger`, and `account_packaging`.
+- `crowd_desire`: the mass-audience desire being served, such as identity projection, moral judgment, forbidden curiosity, delayed justice, emotional release, or "say what I cannot say".
+- `moral_position`: the stance of the narrator, such as cold observer, female venting, adult clarity, absurd fate, or intimacy trial.
+- `emotion_curve`: expected reading path, such as pressure accumulation -> delayed payoff, absurd escalation, first-page shock -> proof ending, or repeated humiliation -> final boundary.
+- `taboo_boundary`: how risky desire is made safe, such as adult-only, fictionalized, anonymized, no explicit intimacy, no real private evidence, or no harassment.
+- `account_packaging_direction`: how nickname, avatar, and bio should serve the content persona. Account skin is adjustable and must not override the content mechanism.
 - `replication_angle`: how to create an original work using the mechanism without copying the source story.
 - `realistic_replication_angle`: how to recreate real-photo/evidence feeling with original or generated assets.
 - `risk_note`: copyright, likeness, privacy, medical/legal/violent sensitivity, platform policy, weak evidence, or other risk.

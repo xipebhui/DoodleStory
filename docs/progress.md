@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-58-content-iteration-controller-minimal-implementation.md`
+- `docs/contracts/sprint-59-narrative-persona-injection.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 59 内容叙事人格注入：在 `content-iteration-controller` 中明确“控制器人格统一、内容叙事人格按机制配置、账号包装服务内容人格”的三层架构；新增 `content-lab/strategy_state/narrative_persona_profiles.json`，沉淀冷眼旁观型、替女性出气型、成年人清醒型、命运荒诞型和亲密关系审判型等叙事人格模板；`create_experiment.py` 生成的 `prediction.json` 已包含 `narrative_persona_profile`，用于记录人群欲望、道德站位、情绪曲线、禁忌边界、评论触发点和账号包装方向；`validate_controller_state.py` 会校验叙事人格状态文件；`douyin-hot-sample-research` 的选题假设和生成 brief 输出要求补充叙事人格字段。文档同步强调大众内容可以放下文艺洁癖和伟光正表达，但不能放弃合规底线。
 - 完成 `画一个故事` 实验的第三步 `deep_probe_selection`：新增 `content-lab/market_scans/2026-06-16-huayigegushi-deep-probe-selection.md`，选择 `7649315939447871470` 家庭循环、`7650413089900236066` 婆媳三回合、`7651192895256480858` 纯爱治愈作为 primary 深挖样本，并把 `7651205691718698483` 女性安全样本标为 `risk_observation`，只做评论和风险边界观察。实验 `prediction.json` 已更新为 `needs_probe_collection`，下一步采集评论、账号主页和首尾页 `preview_vl`，仍不允许直接生成、发布、复盘或规则升级。
 - 完成 `画一个故事` 实验的第二步 `market_scoring`：用 `analyze_search_results.py` 处理 43 行原始抖音搜索结果，得到 33 个去重候选，机器评分为 A 8 个、B 13 个、C 7 个、D 5 个；A/B 全部为 `image_text`，其中 `family_marriage` 有 6 个 A/B，`pure_love_healing` 有 8 个 A/B。已归档 `content-lab/market_scans/2026-06-16-huayigegushi-market-scoring.md` 并更新实验 `prediction.json`；当前允许进入 `deep_probe_selection`，但仍不允许直接生成、发布、复盘或规则升级。
 - 完成 `画一个故事` 实验的第一步 `market_scan`：通过项目内 `douyin-hot-sample-research` MediaCrawler 封装，以最近 7 天窗口采集抖音搜索结果，原始产物为 `/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_week_20260616/douyin/jsonl/search_contents_2026-06-16.jsonl`；共 43 行、33 个去重作品，并归档摘要到 `content-lab/market_scans/2026-06-16-huayigegushi-market-scan.md`。初步观察显示该关键词明显指向故事、漫画和情感共鸣方向，但存在超大 AI 动画/创作大赛样本，下一步必须做 `market_scoring` 判断高互动样本是否为 `image_text`。
@@ -235,6 +236,8 @@
 - `画一个故事` 内容实验完成 H1 `full_story_extract`：对源样本 `7649315939447871470` 全量 8 页运行 DoodleStory VL，产出 `content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.md` 和 `.json`；4 个发布槽均推进到 `needs_generation_brief`，H1 后续只提炼“家庭身份规则循环”机制，不沿用年轻后妈、后后妈、未成年人或暧昧继亲关系等高风险桥段。
 - `画一个故事` 内容实验完成 4 个 `generation_brief`：为 `P1-H1-walking-story`、`P2-H1-duck-bear`、`P3-H2-walking-story`、`P4-H2-duck-bear` 分别产出可直接进入 DoodleStory `故事方案` 模式的原创 brief；H1 两版保留家庭身份规则循环但换成门牌/红围裙表层机制，H2 两版保留三回合边界测试但避开旧床单、纸尿裤、剩菜和离家桥段。4 个发布槽状态推进到 `needs_task_creation`，下一步创建真实生成任务并回填 `content_id` 或 `task_id`。
 - 根据发布前审核调整 `画一个故事` 发布计划：读取 `output/tmp.txt` 后新增审核记录 `content-lab/prepublish_reviews/2026-06-16-huayigegushi-generation-brief-review.md`；H1 暂停第一波发布，原因是源样本诱因更接近安全化后的伦理身份错位幻想，而当前木牌/红围裙 brief 偏成规则游戏；H2 保留但重写为“三次压抑累积 + 最后行动兑现”，并取消用账号名反推拟人角色的做法。第一波只允许 H2 两条修正版 brief 进入任务创建。
+- 新增自媒体文案库：创建 `content-lab/self-media-scripts/`，用 `README.md` 约定口播文案、标题备选、结构说明和发布后迭代记录的保存方式；保存第一条构建者自媒体口播 `2026-06-16-ai-content-iteration-controller-v01.md`，主题是解释 AI 内容迭代控制器为什么不以批量生成为核心，而以发布前预测、真实数据回流和预测误差为核心，并用 `留言：内测` 作为第一阶段 CTA。
+- 迭代第一条自媒体口播 v02：结合 `画一个故事` 实验计划，把文案从抽象“AI 内容迭代控制器”改成有真实现场的构建者屏录口播；新稿保存到 `content-lab/self-media-scripts/2026-06-16-ai-content-iteration-controller-v02.md`，用 33 个候选、21 个 A/B 图文、2 个 family_marriage 假设、2 个账号和 4 个发布槽建立可信度，并按内容诊断、开头优化和小红书标题逻辑完成三轮迭代。
 
 ## 已知缺口
 

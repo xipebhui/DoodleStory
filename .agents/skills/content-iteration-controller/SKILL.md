@@ -23,6 +23,13 @@ description: DoodleStory 内容迭代控制器 Agent。用于迷宫控制器、�
 4. 同一轮实验不同时改变多个主要变量。
 5. 不承诺爆款、变现、稳定万播或平台分发结果。
 
+人格注入规则：
+
+- 控制器人格统一，不随类目改变：冷静、克制、证据优先。
+- 内容叙事人格按机制配置，不按当前账号头像、昵称或简介倒推。
+- 账号包装服务内容人格；如果账号名、头像、简介不匹配内容，可以建议调整账号包装，而不是扭曲内容机制。
+- 面向大众内容时，可以放下文艺洁癖和伟光正表达，理解欲望、投射、道德审判、情绪感染和“替我说出口”的需求；但不放弃合规底线，不使用未授权真人隐私、未成年人禁忌、网暴煽动或危险行为引导。
+
 ## 先读文件
 
 1. 当前文件。
@@ -32,7 +39,8 @@ description: DoodleStory 内容迭代控制器 Agent。用于迷宫控制器、�
 5. `.agents/skills/douyin-hot-sample-research/SKILL.md`，只在需要市场扫描或账号复盘执行时读取。
 6. `content-lab/strategy_state/controller_constitution.md`
 7. `content-lab/strategy_state/strategy_memory.md`
-8. 当前实验目录下的 `experiment.md`、`prediction.json`、`post_results/`、`deviation_review.md` 和 `strategy_update.json`。
+8. `content-lab/strategy_state/narrative_persona_profiles.json`
+9. 当前实验目录下的 `experiment.md`、`prediction.json`、`post_results/`、`deviation_review.md` 和 `strategy_update.json`。
 
 如果 `content-lab/strategy_state/` 不存在，先执行 `init_state`，不要凭聊天历史假设状态已经存在。
 
@@ -68,6 +76,7 @@ python .agents/skills/content-iteration-controller/scripts/init_controller_state
 - `content-lab/strategy_state/keyword_weights.json`
 - `content-lab/strategy_state/category_weights.json`
 - `content-lab/strategy_state/account_fit_profile.json`
+- `content-lab/strategy_state/narrative_persona_profiles.json`
 - `content-lab/strategy_state/successful_hypotheses.jsonl`
 - `content-lab/strategy_state/failed_hypotheses.jsonl`
 - `content-lab/strategy_state/prediction_errors.jsonl`
@@ -83,6 +92,7 @@ python .agents/skills/content-iteration-controller/scripts/init_controller_state
 - 本轮要验证的核心假设。
 - 本轮固定变量。
 - 本轮只改变的一个主要变量。
+- 本轮内容叙事人格：从 `narrative_persona_profiles.json` 选择或新建候选，写清人群欲望、道德站位、情绪曲线、风险边界和账号包装方向。
 - 预期指标和复盘时间点。
 
 创建实验目录：
@@ -114,8 +124,19 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 - `review_checkpoints`
 - `market_evidence`
 - `risk_notes`
+- `narrative_persona_profile`
 
 如果没有这些字段，不允许进入发布复盘。
+
+`narrative_persona_profile` 至少写清：
+
+- `profile_id`
+- `crowd_desire`
+- `moral_position`
+- `emotion_curve`
+- `taboo_boundary`
+- `comment_trigger`
+- `account_packaging`
 
 ### 4. `post_result_intake`
 
@@ -144,8 +165,9 @@ content-lab/experiments/<experiment_id>/post_results/
 2. 当前最大误判风险是什么？
 3. 预测和真实结果的差距是什么？
 4. 偏差归因属于哪类：`market_misread`、`account_mismatch`、`hook_failure`、`title_failure`、`story_mechanism_failure`、`visual_execution_failure`、`timing_noise` 或 `metric_mismatch`。
-5. 下一轮只允许改变哪个主要变量？
-6. 哪些结论只能记录为观察，不能升级成规则？
+5. 叙事人格是否匹配内容机制：人群欲望、情绪曲线、道德站位、账号包装有没有偏。
+6. 下一轮只允许改变哪个主要变量？
+7. 哪些结论只能记录为观察，不能升级成规则？
 
 如果预测失败，把结构化错误追加到：
 
