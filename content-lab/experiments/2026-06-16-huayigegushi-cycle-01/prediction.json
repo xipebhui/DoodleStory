@@ -26,6 +26,20 @@
       "keyword": "画一个故事",
       "controller_status": "needs_market_scan",
       "next_required_evidence": "需要采集最近 7 天抖音搜索结果，并运行 market_scoring 判断是否存在高信号 image_text 样本。"
+    },
+    {
+      "type": "market_scan_raw",
+      "source": "MediaCrawler Douyin search",
+      "artifact": "content-lab/market_scans/2026-06-16-huayigegushi-market-scan.md",
+      "raw_jsonl": "/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_week_20260616/douyin/jsonl/search_contents_2026-06-16.jsonl",
+      "keywords": [
+        "画一个故事"
+      ],
+      "raw_rows": 43,
+      "unique_aweme": 33,
+      "key_observation": "`画一个故事` 最近搜索结果明显指向故事、漫画和情感共鸣方向，但存在超大 AI 动画/创作大赛样本，下一步评分时必须防止单条异常值带偏。",
+      "controller_status": "raw_evidence_needs_scoring",
+      "next_required_evidence": "需要运行 market_scoring 做去重评分、图文候选筛选和类目横向对比。"
     }
   ],
   "risk_notes": [
@@ -36,6 +50,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "仅完成关键词 intake；尚未完成 market_scan 和 market_scoring，不允许发布、复盘或规则升级。"
+    "reason": "已完成 raw market scan，但尚未完成 market_scoring，不允许发布、复盘或规则升级。"
   }
 }
