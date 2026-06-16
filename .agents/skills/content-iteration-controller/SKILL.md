@@ -150,7 +150,8 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 
 - 任务类型固定为 `story_input_mode=extracted_storyboard` / 提取分镜。
 - 图片数量固定为 `image_count_mode=auto`，不传固定页数。
-- 固定角色固定关闭：`use_character_references=false`，不传 `story_characters`。
+- 人物参考开关与前端普通创建保持一致：`use_character_references=true`。
+- 不使用固定角色绑定：`story_characters=[]`。
 - 画风必须从账号解析到 `content-lab/strategy_state/account_style_bindings.json` 的 `style_id`。
 - 不能把账号未绑定时的任务提交到某个默认风格。
 - 暂停状态的 slot 不能提交；已有 `task_id` 的 slot 不能重复提交，除非用户明确要求 `--force-resubmit`。

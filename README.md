@@ -114,7 +114,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
   --slot-id P3-H2-walking-story
 ```
 
-内容实验提交任务时固定走 `提取分镜`：`story_input_mode=extracted_storyboard`、`image_count_mode=auto`、`use_character_references=false`。画风必须通过 `content-lab/strategy_state/account_style_bindings.json` 从发布账号绑定到具体 DoodleStory `style_id`，不会使用默认画风。
+内容实验提交任务时固定走 `提取分镜`：`story_input_mode=extracted_storyboard`、`image_count_mode=auto`、`use_character_references=true`、`story_characters=[]`。这与前端普通创建保持一致：不绑定固定角色，但仍走临时角色一致性链路。画风必须通过 `content-lab/strategy_state/account_style_bindings.json` 从发布账号绑定到具体 DoodleStory `style_id`，不会使用默认画风；提交正文只取 `图1/图2...` 开始的逐页分镜块。
 
 控制器不自动发布、不自动读取后台、不自动修改 Skill。发布前必须先写 `prediction.json`；发布后有真实数据，才允许写 `prediction_errors.jsonl`、`deviation_review.md` 和 `strategy_update.json`。
 

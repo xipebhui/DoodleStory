@@ -13,7 +13,7 @@
   - `story_input_mode=extracted_storyboard`
   - `image_count_mode=auto`
   - `requested_image_count=null`
-  - `use_character_references=false`
+  - `use_character_references=true`
   - `story_characters=[]`
 - 提交成功后回写 `publish_plan.json` 并归档 `content-lab/task_submissions/*.json`。
 - 更新 Skill 文档、README、进度记录和状态校验脚本。
@@ -41,6 +41,7 @@
 - 新对话中可以通过 `content-iteration-controller` 找到生成提交入口。
 - 账号没有绑定 style_id 时，任务提交失败并明确提示。
 - 任务提交 payload 不再沿用 generation brief 里的固定页数或固定角色配置。
+- 任务提交正文只包含 `图1/图2...` 开始的逐页分镜块，不包含 brief 前置说明、人物列表或生成要求。
 - `submit-slot --dry-run` 能从实验 `publish_plan.json` 和 generation brief 生成正确 payload。
 - 状态校验包含 `account_style_bindings.json`。
 
@@ -57,7 +58,8 @@ git diff --check
 
 Manual or QA checks:
 
-- 人工确认 dry-run 输出 payload 的任务类型为提取分镜，图片数量为 auto，固定角色为 false。
+- 人工确认 dry-run 输出 payload 的任务类型为提取分镜，图片数量为 auto，`use_character_references=true`，且 `story_characters=[]`。
+- 人工确认 dry-run 输出的 `original_text` 从 `图1：` 或 `第1页：` 开始。
 - 人工确认未绑定账号不会真实提交任务。
 
 ## 风险 / 说明

@@ -171,8 +171,18 @@ def extract_storyboard_text(path: Path) -> str:
         if next_heading:
             section = section[: next_heading.start()].strip()
         if section:
-            return section
-    return text
+            return extract_panel_block(section, path)
+    return extract_panel_block(text, path)
+
+
+def extract_panel_block(text: str, path: Path) -> str:
+    panel_heading = re.search(
+        r"(?m)^(?:图\s*[0-9０-９一二三四五六七八九十]+|第\s*[0-9０-９一二三四五六七八九十]+\s*页)\s*[:：]",
+        text,
+    )
+    if not panel_heading:
+        raise SubmitError(f"未在故事文件中找到 `图1：` 或 `第1页：` 开始的分镜正文：{path}")
+    return text[panel_heading.start() :].strip()
 
 
 def publish_plan_path(root: Path, experiment_id: str) -> Path:
@@ -216,7 +226,7 @@ def build_task_payload(storyboard_text: str, style_id: str) -> dict[str, Any]:
         "image_count_mode": "auto",
         "requested_image_count": None,
         "style_id": style_id,
-        "use_character_references": False,
+        "use_character_references": True,
         "story_characters": [],
     }
 
@@ -320,7 +330,8 @@ def submit_slot(args: argparse.Namespace) -> dict[str, Any]:
             "story_input_mode": "extracted_storyboard",
             "image_count_mode": "auto",
             "requested_image_count": None,
-            "use_character_references": False,
+            "use_character_references": True,
+            "story_characters": [],
         },
     }
     post["task_id"] = task["id"]
@@ -356,7 +367,8 @@ def submit_file(args: argparse.Namespace) -> dict[str, Any]:
             "story_input_mode": "extracted_storyboard",
             "image_count_mode": "auto",
             "requested_image_count": None,
-            "use_character_references": False,
+            "use_character_references": True,
+            "story_characters": [],
         },
     }
     submission_path = args.root / TASK_SUBMISSIONS_DIR / f"{datetime.now().strftime('%Y-%m-%d-%H%M%S')}-{args.account}.json"
