@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "experiment_planned_not_publishable",
+  "status": "full_story_extracted_not_publishable",
   "account_group": [
     "行走的故事",
     "小黄鸭与大熊"
@@ -65,12 +65,19 @@
       "task_id": null,
       "page_count": 10,
       "controlled_variation": "三回合家庭边界，偏现实婚姻故事口吻",
+      "source_full_story_extract": {
+        "aweme_id": "7650413089900236066",
+        "artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.md",
+        "json_artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.json",
+        "vl_scope": "full_story_document",
+        "image_count": 15
+      },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
         "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
         "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
       },
-      "status": "needs_full_story_extract_or_brief"
+      "status": "needs_generation_brief"
     },
     {
       "slot_id": "P4-H2-duck-bear",
@@ -82,12 +89,19 @@
       "task_id": null,
       "page_count": 10,
       "controlled_variation": "同机制，表层故事和角色重新原创，避免重复发布同一素材",
+      "source_full_story_extract": {
+        "aweme_id": "7650413089900236066",
+        "artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.md",
+        "json_artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.json",
+        "vl_scope": "full_story_document",
+        "image_count": 15
+      },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
         "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
         "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
       },
-      "status": "needs_full_story_extract_or_brief"
+      "status": "needs_generation_brief"
     }
   ],
   "result_fields_required": [
@@ -111,12 +125,11 @@
     "24h 数据必须按实际 planned_publish_time 计算，不按自然日粗略统计"
   ],
   "blocked_until": [
-    "选择先进入 full_story_extract 的源样本",
-    "完成 full_story_extract，获得完整原文结构",
-    "完成 generation_brief，形成 DoodleStory 原创故事方案",
+    "完成 H1 full_story_extract 或确认 H1 先不生成",
+    "完成 H2 generation_brief，形成 DoodleStory 原创故事方案",
     "创建真实生成任务并回填 content_id 或 task_id",
     "回填 planned_publish_time 的绝对发布时间",
     "确认是否启用第 3 条加速窗口"
   ],
-  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表，但仍未生成真实内容，不能直接发布。"
+  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表。H2 已完成 full_story_extract，下一步需要 generation_brief；H1 尚未完成 full_story_extract 或 brief。当前仍未生成真实内容，不能直接发布。"
 }

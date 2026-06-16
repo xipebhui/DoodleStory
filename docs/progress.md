@@ -231,6 +231,7 @@
 - `画一个故事` 内容实验完成 `topic_hypothesis`：新增 `content-lab/market_scans/2026-06-16-huayigegushi-topic-hypothesis.md`，形成 `H1-family-rule-loop` 和 `H2-marriage-boundary-three-rounds` 两个可发布假设；分别定义预测机制、用户需求、原创角度、风险边界和 2h/24h/72h 最低继续线与爆点信号线。控制器状态推进到 `needs_experiment_plan`，下一步需要固定账号、画风、页数、发布时间和实验条数。
 - `画一个故事` 内容实验完成 `experiment_plan`：用户确认仅有两个账号 `行走的故事` 和 `小黄鸭与大熊`，已将 H1/H2 都分配到两个账号，形成 4 个内容槽；`publish_plan.json` 固定账号组、10 页长度、晚间 `20:30-21:30` 发布窗口、2h/24h/72h 指标记录字段和每条最低继续线。当前计划状态为 `experiment_planned_not_publishable`，下一步进入 `full_story_extract`，优先建议提取 H2 源样本 `7650413089900236066`。
 - 根据用户反馈调高 `画一个故事` 实验发布频率：从单一晚间窗口改为总账号池每天 `2-3` 条，基础窗口为 `12:10-13:10` 和 `20:30-21:30`，素材审核顺利时可启用 `22:00-22:40` 第 3 条加速窗口；同时增加同账号同日最多 2 条、同账号间隔至少 3 小时、按实际发布时间计算 24h 数据的节奏护栏。
+- `画一个故事` 内容实验完成 H2 `full_story_extract`：对源样本 `7650413089900236066` 全量 15 页运行 DoodleStory VL，产出 `content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.md` 和 `.json`，确认可作为 `generation_brief` 的完整源故事文档；下一步需要原创改写，不得照搬源故事桥段。
 
 ## 已知缺口
 

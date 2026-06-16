@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "experiment_planned",
+  "status": "full_story_extracted",
   "title": "画一个故事关键词图文赛道实验",
   "hypothesis": "`画一个故事` 第一轮应优先验证 family_marriage 下的两个机制：H1 异常家庭规则怪谈，测试现实家庭关系被观众规则化解读后是否拉高评论和转发；H2 三回合家庭边界测试，测试具体生活冲突加行动兑现是否触发真实婚姻经验投射、收藏和转发。纯爱治愈作为第二优先，社会安全只做风险观察。",
   "expected_metric": "实验计划前先采用最低继续线：2h 出现目标评论簇且点赞 >= 20；24h 点赞 >= 100-120 且评论 >= 8-10；72h 点赞 >= 250-300 且评论 >= 20-25。H1 更看重规则化评论和转发/点赞比例，H2 更看重真实经历评论、收藏和转发。",
@@ -219,6 +219,21 @@
       "key_observation": "两个账号都测试 H1/H2，最小实验量为 4 条；发布频率调整为总账号池每天 2-3 条，基础节奏 2 天完成，素材审核顺利时可启用第 3 条加速窗口；当前尚未生成真实内容或绑定 task_id。",
       "controller_status": "needs_full_story_extract",
       "next_required_evidence": "需要选择一个源样本运行 full_story_extract；推荐优先提取 H2 源样本 7650413089900236066，备选为 H1 源样本 7649315939447871470。"
+    },
+    {
+      "type": "full_story_extract",
+      "source": "DoodleStory existing VL chain",
+      "artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.md",
+      "json_artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.json",
+      "aweme_id": "7650413089900236066",
+      "hypothesis_id": "H2-marriage-boundary-three-rounds",
+      "vl_scope": "full_story_document",
+      "image_count": 15,
+      "model": "Qwen/Qwen3.6-27B",
+      "extracted_text_source": "backend/app/services/media_text_extraction.py::extract_ordered_gallery_comic_content",
+      "key_observation": "H2 源样本已完成 15 页完整图集 VL 提取，故事结构是三次家庭生活冲突后由配偶用行动兑现边界；可进入 generation_brief，但必须原创改写，不能照搬源故事桥段、人物关系或具体生活细节。",
+      "controller_status": "needs_generation_brief",
+      "next_required_evidence": "需要分析 full_story_extract，提炼 H2 的可复用机制，并写成 DoodleStory 原创故事 generation_brief。"
     }
   ],
   "risk_notes": [
@@ -232,6 +247,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 experiment_plan；允许进入 full_story_extract，但尚未完成全量故事提取、generation_brief、任务生成和绝对发布时间回填，不允许发布、复盘或规则升级。"
+    "reason": "已完成 H2 full_story_extract；允许进入 H2 generation_brief，但尚未完成原创生成 brief、任务生成和绝对发布时间回填，不允许发布、复盘或规则升级。"
   }
 }
