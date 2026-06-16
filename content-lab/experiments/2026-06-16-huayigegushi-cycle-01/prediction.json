@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "status": "probe_collected",
+  "status": "topic_hypothesis_ready",
   "title": "画一个故事关键词图文赛道实验",
-  "hypothesis": "`画一个故事` 可能不是单一赛道，而是一个宽入口关键词；如果最近 7 天搜索结果中存在多个高互动 image_text 故事样本，且它们共享可复用故事机制，那么该关键词值得进入 DoodleStory 图文实验。否则只能作为市场观察或换更窄关键词。",
-  "expected_metric": "发布前暂不设具体阈值；market_scoring 后再根据候选样本的点赞、评论、收藏、转发和评论率定义 2h/24h/72h 预期指标。",
+  "hypothesis": "`画一个故事` 第一轮应优先验证 family_marriage 下的两个机制：H1 异常家庭规则怪谈，测试现实家庭关系被观众规则化解读后是否拉高评论和转发；H2 三回合家庭边界测试，测试具体生活冲突加行动兑现是否触发真实婚姻经验投射、收藏和转发。纯爱治愈作为第二优先，社会安全只做风险观察。",
+  "expected_metric": "实验计划前先采用最低继续线：2h 出现目标评论簇且点赞 >= 20；24h 点赞 >= 100-120 且评论 >= 8-10；72h 点赞 >= 250-300 且评论 >= 20-25。H1 更看重规则化评论和转发/点赞比例，H2 更看重真实经历评论、收藏和转发。",
   "account_group": [
     "待定：至少 1 个 DoodleStory 实验账号；重要假设建议 2 个账号隔离账号因素"
   ],
@@ -11,9 +11,9 @@
     "category": "关键词预测：画一个故事",
     "visual_style": "待定；发布前固定一种 DoodleStory 可生成风格",
     "publish_window": "待定；发布前固定发布时间窗口",
-    "story_length": "待定；市场扫描后根据高信号样本页数决定"
+    "story_length": "建议 8-12 页；H1 可偏短，H2 因三回合结构建议 10-12 页"
   },
-  "changed_variable": "关键词 `画一个故事` 所指向的可复制故事机制",
+  "changed_variable": "发布假设机制：H1 异常家庭规则怪谈 vs H2 三回合家庭边界测试",
   "review_checkpoints": [
     "2h",
     "24h",
@@ -120,16 +120,68 @@
       "key_observation": "`画一个故事` 关键词下存在可实验空间；`家庭循环` 和 `婆媳三回合` 都来自低粉低作品账号但互动强，优先进入 family_marriage 方向的 topic_hypothesis。`一二小布布` 属于成熟账号结构参考；社会安全样本只做风险和评论机制观察。",
       "controller_status": "needs_topic_hypothesis",
       "next_required_evidence": "需要输出 2 个可发布假设，写清预测机制、用户需求、风险边界和 2h/24h/72h 指标。"
+    },
+    {
+      "type": "topic_hypothesis",
+      "source": "content-iteration-controller + douyin-hot-sample-research synthesis",
+      "artifact": "content-lab/market_scans/2026-06-16-huayigegushi-topic-hypothesis.md",
+      "hypotheses": [
+        {
+          "hypothesis_id": "H1-family-rule-loop",
+          "topic_direction": "家庭关系异常循环",
+          "story_archetype": "family absurd loop / moral black comedy",
+          "hook_type": "强身份错位或关系不可能",
+          "payoff_type": "循环升级",
+          "comment_trigger": "规则怪谈式家庭规则二创",
+          "audience_need": [
+            "情绪释放",
+            "道德判断",
+            "参与感"
+          ],
+          "risk_note": "避免乱伦、未成年人性暗示、真实家庭爆料或低俗伦理刺激。",
+          "next_iteration_hypothesis": "如果 H1 发布后评论区自然生成规则怪谈式解释，且转发显著高于普通情感故事，则主攻现实家庭规则化。"
+        },
+        {
+          "hypothesis_id": "H2-marriage-boundary-three-rounds",
+          "topic_direction": "婆媳/亲密关系边界",
+          "story_archetype": "marriage test / family boundary / action payoff",
+          "hook_type": "具体生活细节冲突",
+          "payoff_type": "行动兑现",
+          "comment_trigger": "我老公/我婆婆/我家式真实经历投射",
+          "audience_need": [
+            "身份投射",
+            "实用判断",
+            "情绪补偿"
+          ],
+          "risk_note": "避免煽动性别对立、可识别真实投稿细节和咨询式建议。",
+          "next_iteration_hypothesis": "如果 H2 发布后收藏和转发强于 H1，且评论集中在真实家庭经验，则优先做三回合家庭边界。"
+        }
+      ],
+      "deprioritized": [
+        {
+          "topic": "纯爱治愈",
+          "reason": "账号成熟度和真人合照依赖较高，先作为结构参考。"
+        },
+        {
+          "topic": "社会安全",
+          "reason": "公共议题评论强但风险高，只保留证据式结尾和评论声援机制观察。"
+        }
+      ],
+      "controller_status": "needs_experiment_plan",
+      "next_required_evidence": "需要固定账号、画风、页数、发布时间、每个假设的发布条数和指标记录表。"
     }
   ],
   "risk_notes": [
     "`画一个故事` 可能混入绘画教程、AI 绘图过程、视频口播或泛娱乐内容，不能默认等于 DoodleStory 图文故事赛道。",
     "不能凭关键词直觉生成内容；必须先看最近样本和图文形态。",
     "如果高互动样本主要是 video_or_other，只能记录为可改编假设，不能证明图文赛道成立。",
-    "本轮只验证关键词对应机制，不同时测试多个账号、画风、标题结构和发布时间。"
+    "本轮只验证关键词对应机制，不同时测试多个账号、画风、标题结构和发布时间。",
+    "H1 不写乱伦、未成年人性暗示、真实家庭爆料或低俗伦理刺激。",
+    "H2 不煽动性别对立，不使用真实家庭投稿的可识别细节，不做法律或心理咨询式建议。",
+    "纯爱治愈暂不作为第一轮生成候选，避免依赖成熟账号 IP 和真人合照。"
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 probe_collection；允许进入 topic_hypothesis，但尚未形成发布假设、实验计划或全量故事提取，不允许发布、复盘或规则升级。"
+    "reason": "已完成 topic_hypothesis；允许进入 experiment_plan，但尚未固定账号、画风、页数、发布时间和发布条数，不允许发布、复盘或规则升级。"
   }
 }

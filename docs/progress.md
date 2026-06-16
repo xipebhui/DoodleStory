@@ -228,6 +228,7 @@
 - 完成 Sprint 53 抖音最近 7 天搜索结果处理流程：新增合同 `docs/contracts/sprint-53-douyin-seven-day-search-processing.md` 和 `references/seven-day-search-processing.md`；Skill 新增“搜索结果横向决策层”，先比较类目热度，再筛选账号模仿度和账号探查优先级，最后把真人/实景结尾转化为 image-2 可生成的真实感复刻策略；`analyze_search_results.py` 新增内容类目、账号探查优先级、可选 creator profile 模仿度字段，并输出 `category_summary.csv/json`。用 `画一个故事 + 最近一周` 14 条真实搜索结果验证，得到 4 个类目，其中家庭婚姻和纯爱治愈均有多条 A/B，社会安全为单条强爆点。
 - 完成 Sprint 54 抖音预测型内容链路架构：新增合同 `docs/contracts/sprint-54-douyin-prediction-workflow-architecture.md` 和 `references/prediction-workflow-architecture.md`；Skill 输入收敛为两个自然入口：新赛道关键词预测、账号复盘诊断；明确重要实验至少用 2 个账号发布以隔离账号因素；后台详细数据进入 experiment result 层，兼容手工粘贴、CSV/JSON 导入和未来 connector；内容库定位为已验证机制库而非资源包，沉淀 hook、故事母题、评论触发、真实感结尾、账号适配和偏差诊断，用于后续结合热点生成新内容。现有 `DY爆款复刻` 保持单条样本执行器定位，不改为预测策略入口。
 - `画一个故事` 内容实验推进到 `probe_collection`：对 3 个 primary 样本和 1 个 risk_observation 样本完成 detail、每条 50 条一级评论、账号主页卡和首尾页 `preview_vl`；报告写入 `content-lab/market_scans/2026-06-16-huayigegushi-probe-collection.md`。控制器判断该关键词下存在可实验空间，第一轮优先从低粉低作品账号也跑出强互动的 `family_marriage` 机制进入 `topic_hypothesis`，社会安全样本只做风险与评论机制观察。
+- `画一个故事` 内容实验完成 `topic_hypothesis`：新增 `content-lab/market_scans/2026-06-16-huayigegushi-topic-hypothesis.md`，形成 `H1-family-rule-loop` 和 `H2-marriage-boundary-three-rounds` 两个可发布假设；分别定义预测机制、用户需求、原创角度、风险边界和 2h/24h/72h 最低继续线与爆点信号线。控制器状态推进到 `needs_experiment_plan`，下一步需要固定账号、画风、页数、发布时间和实验条数。
 
 ## 已知缺口
 
