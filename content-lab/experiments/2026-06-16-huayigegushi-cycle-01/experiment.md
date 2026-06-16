@@ -1,54 +1,67 @@
 # 画一个故事关键词图文赛道实验
 
 - experiment_id: `2026-06-16-huayigegushi-cycle-01`
-- status: `draft`
+- status: `experiment_planned`
 - created_at: `2026-06-16T11:20:39`
 
 ## 实验目标
 
 验证 `画一个故事` 这个关键词背后的图文内容机制，是否能转成 DoodleStory 可持续生成和发布的选题方向。
 
-本轮不是直接生成“画一个故事”内容，而是先判断这个关键词最近 7 天到底在奖励什么：
+当前市场扫描、评分、深挖样本选择、评论/账号/VL 探测和 topic_hypothesis 均已完成。第一轮实验不再泛测整个关键词，只验证 `family_marriage` 下两个机制：
 
-- 纯故事图文
-- 漫画化情节
-- 情感/家庭/婚恋故事
-- 真实感结尾
-- AI 绘图过程或绘画教程
-- 其他和 DoodleStory 不匹配的内容形态
+- `H1-family-rule-loop`：异常家庭规则怪谈。
+- `H2-marriage-boundary-three-rounds`：三回合家庭边界测试。
 
 ## 市场证据
 
-当前只有关键词输入，还没有本轮市场证据。
+已形成以下证据链：
 
-下一步由 `douyin-hot-sample-research` 执行 `market_scan`，至少补齐：
-
-- `画一个故事` 最近 7 天抖音搜索结果。
-- 去重后的候选样本和 A/B/C/D 评分。
-- 类目横向对比：哪些子类目有多个高信号样本。
-- 是否有 `image_text` 图文样本，而不是只存在视频/口播/绘画过程。
-- 入选样本是否需要评论、账号主页和首尾页 VL 探测。
+- `content-lab/market_scans/2026-06-16-huayigegushi-market-scan.md`
+- `content-lab/market_scans/2026-06-16-huayigegushi-market-scoring.md`
+- `content-lab/market_scans/2026-06-16-huayigegushi-deep-probe-selection.md`
+- `content-lab/market_scans/2026-06-16-huayigegushi-probe-collection.md`
+- `content-lab/market_scans/2026-06-16-huayigegushi-topic-hypothesis.md`
+- `content-lab/market_scans/2026-06-16-huayigegushi-experiment-plan.md`
 
 ## 本轮固定变量
 
-- 账号：待定；重要假设建议至少 2 个账号测试。
-- 类目：关键词预测，初始关键词为 `画一个故事`。
-- 视觉风格：待定；发布前固定一种 DoodleStory 可生成风格。
-- 发布时间窗口：待定；发布前在 `publish_plan.json` 固定。
-- 内容长度：待定；市场扫描后根据高信号样本页数决定。
+- 账号：`行走的故事`、`小黄鸭与大熊`。
+- 类目：`family_marriage`。
+- 关键词标签：`画一个故事`。
+- 视觉风格：统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换。
+- 发布时间窗口：晚间 `20:30-21:30`，Asia/Shanghai。
+- 内容长度：每条 10 页。
+- 复盘检查点：`2h`、`24h`、`72h`。
 
 ## 本轮只改变的主要变量
 
-主要变量：`关键词 画一个故事 所指向的可复制故事机制`。
+主要变量：故事机制。
 
-本轮不同时改变账号、画风、发布时间和 CTA。未完成 `market_scan` 和 `market_scoring` 前，不进入发布计划。
+- H1：现实家庭关系被设计成可被评论区规则化解释的异常循环。
+- H2：三次具体生活冲突之后，用行动兑现家庭边界。
+
+账号是观测维度，不是本轮主动优化变量。两个账号都发 H1 和 H2。
 
 ## 发布计划摘要
 
-发布计划仍为草稿。发布前必须先完成市场扫描、评分、深挖样本选择和发布前预测。
+发布计划已形成，但仍不可直接发布。当前最小实验量为 4 条：
+
+- `P1-H1-walking-story`：H1，账号 `行走的故事`。
+- `P2-H1-duck-bear`：H1，账号 `小黄鸭与大熊`。
+- `P3-H2-walking-story`：H2，账号 `行走的故事`。
+- `P4-H2-duck-bear`：H2，账号 `小黄鸭与大熊`。
+
+发布前还必须完成：
+
+1. 选择先进入 `full_story_extract` 的源样本。
+2. 完成 `full_story_extract`，获得完整原文结构。
+3. 完成 `generation_brief`，形成 DoodleStory 原创故事方案。
+4. 创建真实生成任务并回填 `content_id` 或 `task_id`。
+5. 回填绝对 `planned_publish_time`。
 
 ## 复盘入口
 
 发布后把真实数据放入 `post_results/`，再更新 `deviation_review.md` 和 `strategy_update.json`。
 
-没有发布前预测时，本实验只能记录数据，不能做复盘结论。
+当前已有发布前预测和实验计划，但没有发布结果前，不能做复盘结论或规则升级。

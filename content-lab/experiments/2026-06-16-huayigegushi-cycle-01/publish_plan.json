@@ -1,12 +1,113 @@
 {
   "version": 1,
-  "status": "draft",
-  "posts": [],
-  "blocked_until": [
-    "完成 `画一个故事` 最近 7 天 market_scan",
-    "完成 market_scoring 并确认是否存在高信号 image_text 样本",
-    "完成 deep_probe_selection，选择需要评论、账号主页或 VL 探测的样本",
-    "补齐 `prediction.json` 的预期指标、账号组、固定变量和风险说明"
+  "status": "experiment_planned_not_publishable",
+  "account_group": [
+    "行走的故事",
+    "小黄鸭与大熊"
   ],
-  "notes": "本实验当前只完成关键词 intake。发布计划不能用空白预测直接执行；每条 post 后续必须包含 account、content_id、planned_publish_time、controlled_variation 和 expected_metric。"
+  "fixed_variables": {
+    "category": "family_marriage",
+    "keyword_tag": "画一个故事",
+    "visual_style": "统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换",
+    "story_length_pages": 10,
+    "publish_window": "20:30-21:30 Asia/Shanghai",
+    "review_checkpoints": [
+      "2h",
+      "24h",
+      "72h"
+    ],
+    "cta": "不做强引导关注或私信，只保留自然评论触发"
+  },
+  "changed_variable": "story_mechanism",
+  "posts": [
+    {
+      "slot_id": "P1-H1-walking-story",
+      "account": "行走的故事",
+      "hypothesis_id": "H1-family-rule-loop",
+      "planned_publish_time": null,
+      "planned_publish_window": "生成完成后第 1 个晚间 20:30-21:30 Asia/Shanghai",
+      "content_id": null,
+      "task_id": null,
+      "page_count": 10,
+      "controlled_variation": "异常家庭规则怪谈，偏真人故事叙述口吻",
+      "expected_metric": {
+        "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
+        "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
+        "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
+      },
+      "status": "needs_full_story_extract_or_brief"
+    },
+    {
+      "slot_id": "P2-H1-duck-bear",
+      "account": "小黄鸭与大熊",
+      "hypothesis_id": "H1-family-rule-loop",
+      "planned_publish_time": null,
+      "planned_publish_window": "生成完成后第 1 个晚间 20:30-21:30 Asia/Shanghai",
+      "content_id": null,
+      "task_id": null,
+      "page_count": 10,
+      "controlled_variation": "同机制，表层故事和角色重新原创，避免重复发布同一素材",
+      "expected_metric": {
+        "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
+        "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
+        "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
+      },
+      "status": "needs_full_story_extract_or_brief"
+    },
+    {
+      "slot_id": "P3-H2-walking-story",
+      "account": "行走的故事",
+      "hypothesis_id": "H2-marriage-boundary-three-rounds",
+      "planned_publish_time": null,
+      "planned_publish_window": "生成完成后第 2 个晚间 20:30-21:30 Asia/Shanghai",
+      "content_id": null,
+      "task_id": null,
+      "page_count": 10,
+      "controlled_variation": "三回合家庭边界，偏现实婚姻故事口吻",
+      "expected_metric": {
+        "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
+        "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
+        "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
+      },
+      "status": "needs_full_story_extract_or_brief"
+    },
+    {
+      "slot_id": "P4-H2-duck-bear",
+      "account": "小黄鸭与大熊",
+      "hypothesis_id": "H2-marriage-boundary-three-rounds",
+      "planned_publish_time": null,
+      "planned_publish_window": "生成完成后第 2 个晚间 20:30-21:30 Asia/Shanghai",
+      "content_id": null,
+      "task_id": null,
+      "page_count": 10,
+      "controlled_variation": "同机制，表层故事和角色重新原创，避免重复发布同一素材",
+      "expected_metric": {
+        "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
+        "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
+        "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
+      },
+      "status": "needs_full_story_extract_or_brief"
+    }
+  ],
+  "result_fields_required": [
+    "account",
+    "slot_id",
+    "hypothesis_id",
+    "post_url_or_id",
+    "publish_time",
+    "checkpoint",
+    "views",
+    "likes",
+    "comments",
+    "collects",
+    "shares"
+  ],
+  "blocked_until": [
+    "选择先进入 full_story_extract 的源样本",
+    "完成 full_story_extract，获得完整原文结构",
+    "完成 generation_brief，形成 DoodleStory 原创故事方案",
+    "创建真实生成任务并回填 content_id 或 task_id",
+    "回填 planned_publish_time 的绝对发布时间"
+  ],
+  "notes": "本计划已固定两个账号、两个假设、页数、发布时间窗口和指标记录表，但仍未生成真实内容，不能直接发布。"
 }

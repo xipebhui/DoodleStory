@@ -229,6 +229,7 @@
 - 完成 Sprint 54 抖音预测型内容链路架构：新增合同 `docs/contracts/sprint-54-douyin-prediction-workflow-architecture.md` 和 `references/prediction-workflow-architecture.md`；Skill 输入收敛为两个自然入口：新赛道关键词预测、账号复盘诊断；明确重要实验至少用 2 个账号发布以隔离账号因素；后台详细数据进入 experiment result 层，兼容手工粘贴、CSV/JSON 导入和未来 connector；内容库定位为已验证机制库而非资源包，沉淀 hook、故事母题、评论触发、真实感结尾、账号适配和偏差诊断，用于后续结合热点生成新内容。现有 `DY爆款复刻` 保持单条样本执行器定位，不改为预测策略入口。
 - `画一个故事` 内容实验推进到 `probe_collection`：对 3 个 primary 样本和 1 个 risk_observation 样本完成 detail、每条 50 条一级评论、账号主页卡和首尾页 `preview_vl`；报告写入 `content-lab/market_scans/2026-06-16-huayigegushi-probe-collection.md`。控制器判断该关键词下存在可实验空间，第一轮优先从低粉低作品账号也跑出强互动的 `family_marriage` 机制进入 `topic_hypothesis`，社会安全样本只做风险与评论机制观察。
 - `画一个故事` 内容实验完成 `topic_hypothesis`：新增 `content-lab/market_scans/2026-06-16-huayigegushi-topic-hypothesis.md`，形成 `H1-family-rule-loop` 和 `H2-marriage-boundary-three-rounds` 两个可发布假设；分别定义预测机制、用户需求、原创角度、风险边界和 2h/24h/72h 最低继续线与爆点信号线。控制器状态推进到 `needs_experiment_plan`，下一步需要固定账号、画风、页数、发布时间和实验条数。
+- `画一个故事` 内容实验完成 `experiment_plan`：用户确认仅有两个账号 `行走的故事` 和 `小黄鸭与大熊`，已将 H1/H2 都分配到两个账号，形成 4 个内容槽；`publish_plan.json` 固定账号组、10 页长度、晚间 `20:30-21:30` 发布窗口、2h/24h/72h 指标记录字段和每条最低继续线。当前计划状态为 `experiment_planned_not_publishable`，下一步进入 `full_story_extract`，优先建议提取 H2 源样本 `7650413089900236066`。
 
 ## 已知缺口
 
