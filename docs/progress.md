@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- 完成 `画一个故事` 实验的第三步 `deep_probe_selection`：新增 `content-lab/market_scans/2026-06-16-huayigegushi-deep-probe-selection.md`，选择 `7649315939447871470` 家庭循环、`7650413089900236066` 婆媳三回合、`7651192895256480858` 纯爱治愈作为 primary 深挖样本，并把 `7651205691718698483` 女性安全样本标为 `risk_observation`，只做评论和风险边界观察。实验 `prediction.json` 已更新为 `needs_probe_collection`，下一步采集评论、账号主页和首尾页 `preview_vl`，仍不允许直接生成、发布、复盘或规则升级。
 - 完成 `画一个故事` 实验的第二步 `market_scoring`：用 `analyze_search_results.py` 处理 43 行原始抖音搜索结果，得到 33 个去重候选，机器评分为 A 8 个、B 13 个、C 7 个、D 5 个；A/B 全部为 `image_text`，其中 `family_marriage` 有 6 个 A/B，`pure_love_healing` 有 8 个 A/B。已归档 `content-lab/market_scans/2026-06-16-huayigegushi-market-scoring.md` 并更新实验 `prediction.json`；当前允许进入 `deep_probe_selection`，但仍不允许直接生成、发布、复盘或规则升级。
 - 完成 `画一个故事` 实验的第一步 `market_scan`：通过项目内 `douyin-hot-sample-research` MediaCrawler 封装，以最近 7 天窗口采集抖音搜索结果，原始产物为 `/Users/pengfei.shi/workspace/tmp-project/MediaCrawler/data_test/huayigegushi_week_20260616/douyin/jsonl/search_contents_2026-06-16.jsonl`；共 43 行、33 个去重作品，并归档摘要到 `content-lab/market_scans/2026-06-16-huayigegushi-market-scan.md`。初步观察显示该关键词明显指向故事、漫画和情感共鸣方向，但存在超大 AI 动画/创作大赛样本，下一步必须做 `market_scoring` 判断高互动样本是否为 `image_text`。
 - 用 `content-iteration-controller` 创建新一轮 `画一个故事` 关键词图文赛道实验：新增 `content-lab/experiments/2026-06-16-huayigegushi-cycle-01/`，把关键词 `画一个故事` 记录为宽入口赛道假设。`prediction.json` 明确当前只完成关键词 intake，下一步必须由 `douyin-hot-sample-research` 采集最近 7 天搜索结果并运行 `market_scoring`，确认是否存在高信号 `image_text` 故事样本；发布、复盘和规则升级继续被阻止。

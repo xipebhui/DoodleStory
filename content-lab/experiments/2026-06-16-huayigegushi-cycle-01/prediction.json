@@ -70,6 +70,39 @@
       "key_observation": "`画一个故事` 有 21 个 A/B 图文候选，A/B 全部为 image_text；family_marriage 和 pure_love_healing 均有多个 A/B 样本，允许进入 deep_probe_selection。",
       "controller_status": "needs_deep_probe_selection",
       "next_required_evidence": "需要从 A 类样本中选择 2-4 个采集评论、账号主页和首尾页 preview_vl。"
+    },
+    {
+      "type": "deep_probe_selection",
+      "source": "douyin-hot-sample-research selection",
+      "artifact": "content-lab/market_scans/2026-06-16-huayigegushi-deep-probe-selection.md",
+      "selected_samples": [
+        {
+          "aweme_id": "7649315939447871470",
+          "role": "primary",
+          "category": "family_marriage",
+          "reason": "家庭/代际循环，评论和转发都高。"
+        },
+        {
+          "aweme_id": "7650413089900236066",
+          "role": "primary",
+          "category": "family_marriage",
+          "reason": "婆媳三回合，转发高，适合验证家庭婚姻结构。"
+        },
+        {
+          "aweme_id": "7651192895256480858",
+          "role": "primary",
+          "category": "pure_love_healing",
+          "reason": "纯爱治愈，评论高，可做连续验证。"
+        },
+        {
+          "aweme_id": "7651205691718698483",
+          "role": "risk_observation",
+          "category": "social_safety",
+          "reason": "互动强但题材敏感，只做风险和评论机制观察。"
+        }
+      ],
+      "controller_status": "needs_probe_collection",
+      "next_required_evidence": "需要对 primary 样本采集评论、账号主页和首尾页 preview_vl；risk_observation 样本只做风险和评论机制观察。"
     }
   ],
   "risk_notes": [
@@ -80,6 +113,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 raw market scan 和 market_scoring；允许进入 deep_probe_selection，但尚未完成评论、账号主页和 VL 探测，不允许发布、复盘或规则升级。"
+    "reason": "已完成 deep_probe_selection；允许进入 probe_collection，但尚未完成评论、账号主页和 VL 探测，不允许发布、复盘或规则升级。"
   }
 }
