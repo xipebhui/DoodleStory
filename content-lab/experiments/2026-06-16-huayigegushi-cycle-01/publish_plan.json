@@ -31,12 +31,19 @@
       "task_id": null,
       "page_count": 10,
       "controlled_variation": "异常家庭规则怪谈，偏真人故事叙述口吻",
+      "source_full_story_extract": {
+        "aweme_id": "7649315939447871470",
+        "artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.md",
+        "json_artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.json",
+        "vl_scope": "full_story_document",
+        "image_count": 8
+      },
       "expected_metric": {
         "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "needs_full_story_extract_or_brief"
+      "status": "needs_generation_brief"
     },
     {
       "slot_id": "P2-H1-duck-bear",
@@ -48,12 +55,19 @@
       "task_id": null,
       "page_count": 10,
       "controlled_variation": "同机制，表层故事和角色重新原创，避免重复发布同一素材",
+      "source_full_story_extract": {
+        "aweme_id": "7649315939447871470",
+        "artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.md",
+        "json_artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.json",
+        "vl_scope": "full_story_document",
+        "image_count": 8
+      },
       "expected_metric": {
         "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "needs_full_story_extract_or_brief"
+      "status": "needs_generation_brief"
     },
     {
       "slot_id": "P3-H2-walking-story",
@@ -125,11 +139,10 @@
     "24h 数据必须按实际 planned_publish_time 计算，不按自然日粗略统计"
   ],
   "blocked_until": [
-    "完成 H1 full_story_extract 或确认 H1 先不生成",
-    "完成 H2 generation_brief，形成 DoodleStory 原创故事方案",
+    "完成 H1/H2 generation_brief，形成 DoodleStory 原创故事方案",
     "创建真实生成任务并回填 content_id 或 task_id",
     "回填 planned_publish_time 的绝对发布时间",
     "确认是否启用第 3 条加速窗口"
   ],
-  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表。H2 已完成 full_story_extract，下一步需要 generation_brief；H1 尚未完成 full_story_extract 或 brief。当前仍未生成真实内容，不能直接发布。"
+  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表。H1/H2 均已完成 full_story_extract，下一步需要 generation_brief。当前仍未生成真实内容，不能直接发布。"
 }

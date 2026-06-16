@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "experiment_id": "2026-06-16-huayigegushi-cycle-01",
+  "hypothesis_id": "H1-family-rule-loop",
+  "aweme_id": "7649315939447871470",
+  "title": "命运里的家庭循环#情感 #画一个故事 #漫画",
+  "source_url": "https://www.douyin.com/video/7649315939447871470",
+  "vl_scope": "full_story_document",
+  "vl_input_orders": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "image_count": 8,
+  "model": "Qwen/Qwen3.6-27B",
+  "content_extraction_id": null,
+  "extracted_text_source": "DoodleStory backend/app/services/media_text_extraction.py::extract_ordered_gallery_comic_content",
+  "created_at": "2026-06-16T16:12:10",
+  "metrics": {
+    "liked_count": 57294,
+    "comment_count": 14169,
+    "collected_count": 1702,
+    "share_count": 73903
+  },
+  "image_urls": [
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813/oEBQnDvUAuKf1iAAES7CANC8iEIA1EygeXAAaL~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=lClPK2K2XTvTrUUN90W%2B%2FO6%2BXko%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F",
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/osAeBiguEQ1AXKADICnAKCiAyE9x1Avf7PAZUN~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=CQLsBX%2BzFiPct52ILfgsXPqp51Q%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F",
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813/ogPQECeh2DAD1lAZA9F2A9qAAAugVCqJIcf1nE~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=Rvx3fUxUubTXLzuhiaz8pT6Qm6o%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F",
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/o4nlgJDAAIqAFAuQQCfC9h2ND2VY19AcAEAftE~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=v2KwFOtDdeBvfR2eSm1kIYjxX%2BM%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F",
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/oIAAADLnbQ1IvCXA7ABfXENXCE1eiUigABuAAy~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=Aff%2BdJ5UwWCX8wD4Hg%2FY74e1zx4%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F",
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/o8PuWAxA9QhAGC2f2BIAlcDqA0CFEA29CgfQqJ~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=MW845hkVVq3lpHK5HKl8v4YhsDY%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F",
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/o0CXECbeLEQuA1yAi1fg2UB7iNvAACDAAIunAp~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=i1NJYHsRoRygw1PgfpR8IAM4Na8%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F",
+    "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813/ooAAfIANn71ADGY1yHiVCiEAeADBQgUCuEvAXL~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1784170800&x-signature=sPAxJ04ozgZ9bKIuy14iWfldBls%3D&from=327834062&s=PackSourceEnum_SEARCH&se=false&sc=image&biz_tag=aweme_images&l=20260616112528C418A74EC4955D1C338F"
+  ],
+  "extracted_text": "第1页：\n【分格】单页\n画面：左侧站着一位身穿黑色连帽卫衣和黑色长裤、头顶有一根呆毛的少年（主角），表情平静。中间是一位戴眼镜、头发稀疏、身穿灰色中山装的老年男子（老爸），他正牵着右侧一位身穿白色吊带裙、长发披肩的年轻女子（后妈）的手。老爸头顶有一个对话气泡。\n旁白：老爸娶了一位年轻漂亮的后妈\n对话：快叫妈\n内心OS：无\n\n第2页：\n【分格】单页\n画面：左侧是那位身穿白色吊带裙的后妈，双手端着一杯冒着热气的茶。右侧是主角，身穿黑色连帽卫衣，头顶上方有一团黑色的乱线，表示烦躁或无语。\n旁白：她长得漂亮 性子也格外温柔 后妈年纪没比我大多少 我实在开不了口喊妈\n对话：无\n内心OS：无\n\n第3页：\n【分格】单页\n画面：左侧是主角，右侧是后妈，两人面对面站立。中间是一块墓碑，墓碑上镶嵌着老爸的照片。\n旁白：谁也没想到 才过了几天 爸爸就突然离世了 偌大的家里 只剩下我和后妈相互依靠 谁没落的墓地 墓地(17) 人都(25)\n对话：无\n内心OS：无\n\n第4页：\n【分格】单页\n画面：左侧是后妈，中间是一位戴着鸭舌帽、身穿白色T恤和灰色短裤的年轻男子（后爸），两人手牵手。右侧是主角，双眼圆睁，头顶有感叹号和震动线，表现出极度震惊。\n旁白：让我彻底震惊的是 后妈没过多久就给我找了个后爸 更离谱的是 这位后爸只比我大了几岁\n对话：无\n内心OS：无\n\n第5页：\n【分格】单页\n画面：主角和戴鸭舌帽的后爸站在一起，后爸的一只手搭在主角的肩膀上，另一只手竖起大拇指。\n旁白：后爸倒是豁达 让我直接喊他大哥\n对话：没事哥们 以后咱俩就以兄弟相称\n内心OS：无\n\n第6页：\n【分格】单页\n画面：左侧是一块墓碑，上面挂着后妈的照片。右侧是主角和戴鸭舌帽的后爸（兄弟）并排站立，神情落寞。\n旁白：狗血的是 我后妈没过多久也病死了 留下我和我的兄弟\n对话：无\n内心OS：无\n\n第7页：\n【分格】单页\n画面：左侧是戴鸭舌帽的后爸（兄弟），他牵着一位扎着双马尾、身穿水手服的小女孩（后后妈）的手。右侧是主角，整个人变成了由无数线条组成的乱码形状，仿佛身体正在崩解，表示崩溃。\n旁白：可命运的荒诞远未停止 他很快给我找了个后后妈 还比我小一岁 那个女孩 竟然比我还要小一岁 ......\n对话：无\n内心OS：无\n\n第8页：\n【分格】单页\n画面：主角和穿水手服的小女孩并排坐在一张长椅上，神情呆滞。他们身后是一块墓碑，上面挂着戴鸭舌帽的后爸（兄弟）的照片。\n旁白：再后来 我这个后爸也去世了 留下我和后后妈相依为命\n对话：无\n内心OS：无"
+}

@@ -234,6 +234,21 @@
       "key_observation": "H2 源样本已完成 15 页完整图集 VL 提取，故事结构是三次家庭生活冲突后由配偶用行动兑现边界；可进入 generation_brief，但必须原创改写，不能照搬源故事桥段、人物关系或具体生活细节。",
       "controller_status": "needs_generation_brief",
       "next_required_evidence": "需要分析 full_story_extract，提炼 H2 的可复用机制，并写成 DoodleStory 原创故事 generation_brief。"
+    },
+    {
+      "type": "full_story_extract",
+      "source": "DoodleStory existing VL chain",
+      "artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.md",
+      "json_artifact": "content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.json",
+      "aweme_id": "7649315939447871470",
+      "hypothesis_id": "H1-family-rule-loop",
+      "vl_scope": "full_story_document",
+      "image_count": 8,
+      "model": "Qwen/Qwen3.6-27B",
+      "extracted_text_source": "backend/app/services/media_text_extraction.py::extract_ordered_gallery_comic_content",
+      "key_observation": "H1 源样本已完成 8 页完整图集 VL 提取，故事结构是家庭身份关系不断递归和错位，触发规则怪谈式评论；可进入 generation_brief，但必须只提炼身份规则循环机制，不能照搬年轻后妈、后后妈、未成年人或暧昧继亲关系等高风险桥段。",
+      "controller_status": "needs_generation_brief",
+      "next_required_evidence": "需要分析 H1/H2 full_story_extract，分别提炼可复用机制，并写成 DoodleStory 原创故事 generation_brief。"
     }
   ],
   "risk_notes": [
@@ -247,6 +262,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 H2 full_story_extract；允许进入 H2 generation_brief，但尚未完成原创生成 brief、任务生成和绝对发布时间回填，不允许发布、复盘或规则升级。"
+    "reason": "已完成 H1/H2 full_story_extract；允许进入 generation_brief，但尚未完成原创生成 brief、任务生成和绝对发布时间回填，不允许发布、复盘或规则升级。"
   }
 }
