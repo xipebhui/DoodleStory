@@ -40,6 +40,36 @@
       "key_observation": "`画一个故事` 最近搜索结果明显指向故事、漫画和情感共鸣方向，但存在超大 AI 动画/创作大赛样本，下一步评分时必须防止单条异常值带偏。",
       "controller_status": "raw_evidence_needs_scoring",
       "next_required_evidence": "需要运行 market_scoring 做去重评分、图文候选筛选和类目横向对比。"
+    },
+    {
+      "type": "market_scoring",
+      "source": "douyin-hot-sample-research analyze_search_results.py",
+      "artifact": "content-lab/market_scans/2026-06-16-huayigegushi-market-scoring.md",
+      "output_dir": "output/douyin-hot-sample-analysis/huayigegushi-week-20260616-market-scoring",
+      "total_candidates_after_dedup": 33,
+      "grade_counts": {
+        "A": 8,
+        "B": 13,
+        "C": 7,
+        "D": 5
+      },
+      "media_type_by_grade": {
+        "A": {
+          "image_text": 8
+        },
+        "B": {
+          "image_text": 13
+        },
+        "C": {
+          "image_text": 7
+        },
+        "D": {
+          "video_or_other": 5
+        }
+      },
+      "key_observation": "`画一个故事` 有 21 个 A/B 图文候选，A/B 全部为 image_text；family_marriage 和 pure_love_healing 均有多个 A/B 样本，允许进入 deep_probe_selection。",
+      "controller_status": "needs_deep_probe_selection",
+      "next_required_evidence": "需要从 A 类样本中选择 2-4 个采集评论、账号主页和首尾页 preview_vl。"
     }
   ],
   "risk_notes": [
@@ -50,6 +80,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 raw market scan，但尚未完成 market_scoring，不允许发布、复盘或规则升级。"
+    "reason": "已完成 raw market scan 和 market_scoring；允许进入 deep_probe_selection，但尚未完成评论、账号主页和 VL 探测，不允许发布、复盘或规则升级。"
   }
 }
