@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "full_story_extracted",
+  "status": "generation_brief_ready",
   "title": "画一个故事关键词图文赛道实验",
   "hypothesis": "`画一个故事` 第一轮应优先验证 family_marriage 下的两个机制：H1 异常家庭规则怪谈，测试现实家庭关系被观众规则化解读后是否拉高评论和转发；H2 三回合家庭边界测试，测试具体生活冲突加行动兑现是否触发真实婚姻经验投射、收藏和转发。纯爱治愈作为第二优先，社会安全只做风险观察。",
   "expected_metric": "实验计划前先采用最低继续线：2h 出现目标评论簇且点赞 >= 20；24h 点赞 >= 100-120 且评论 >= 8-10；72h 点赞 >= 250-300 且评论 >= 20-25。H1 更看重规则化评论和转发/点赞比例，H2 更看重真实经历评论、收藏和转发。",
@@ -249,6 +249,41 @@
       "key_observation": "H1 源样本已完成 8 页完整图集 VL 提取，故事结构是家庭身份关系不断递归和错位，触发规则怪谈式评论；可进入 generation_brief，但必须只提炼身份规则循环机制，不能照搬年轻后妈、后后妈、未成年人或暧昧继亲关系等高风险桥段。",
       "controller_status": "needs_generation_brief",
       "next_required_evidence": "需要分析 H1/H2 full_story_extract，分别提炼可复用机制，并写成 DoodleStory 原创故事 generation_brief。"
+    },
+    {
+      "type": "generation_brief",
+      "source": "content-iteration-controller + douyin-hot-sample-research synthesis",
+      "artifacts": [
+        {
+          "slot_id": "P1-H1-walking-story",
+          "hypothesis_id": "H1-family-rule-loop",
+          "account": "行走的故事",
+          "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p1-h1-walking-story.md"
+        },
+        {
+          "slot_id": "P2-H1-duck-bear",
+          "hypothesis_id": "H1-family-rule-loop",
+          "account": "小黄鸭与大熊",
+          "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p2-h1-duck-bear.md"
+        },
+        {
+          "slot_id": "P3-H2-walking-story",
+          "hypothesis_id": "H2-marriage-boundary-three-rounds",
+          "account": "行走的故事",
+          "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md"
+        },
+        {
+          "slot_id": "P4-H2-duck-bear",
+          "hypothesis_id": "H2-marriage-boundary-three-rounds",
+          "account": "小黄鸭与大熊",
+          "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md"
+        }
+      ],
+      "story_input_mode": "adapted",
+      "requested_image_count": 10,
+      "key_observation": "已为 4 个发布槽分别形成可直接进入 DoodleStory 故事方案模式的原创 brief。同一假设保留机制但更换账号表层故事；H1 避开继亲/未成年人/暧昧关系，只提炼家庭身份规则循环；H2 避开旧床单、纸尿裤、剩菜和离家桥段，只提炼三回合边界测试和行动兑现。",
+      "controller_status": "needs_task_creation",
+      "next_required_evidence": "需要用 4 份 generation_brief 创建真实生成任务，回填 content_id 或 task_id，并在素材完成后回填绝对 planned_publish_time。"
     }
   ],
   "risk_notes": [
@@ -262,6 +297,6 @@
   ],
   "decision_gate": {
     "allow_publish_review": false,
-    "reason": "已完成 H1/H2 full_story_extract；允许进入 generation_brief，但尚未完成原创生成 brief、任务生成和绝对发布时间回填，不允许发布、复盘或规则升级。"
+    "reason": "已完成 H1/H2 generation_brief；允许进入任务创建，但尚未创建真实生成任务、回填 content_id/task_id 和绝对发布时间，不允许发布、复盘或规则升级。"
   }
 }

@@ -233,6 +233,7 @@
 - 根据用户反馈调高 `画一个故事` 实验发布频率：从单一晚间窗口改为总账号池每天 `2-3` 条，基础窗口为 `12:10-13:10` 和 `20:30-21:30`，素材审核顺利时可启用 `22:00-22:40` 第 3 条加速窗口；同时增加同账号同日最多 2 条、同账号间隔至少 3 小时、按实际发布时间计算 24h 数据的节奏护栏。
 - `画一个故事` 内容实验完成 H2 `full_story_extract`：对源样本 `7650413089900236066` 全量 15 页运行 DoodleStory VL，产出 `content-lab/full_story_extracts/2026-06-16-huayigegushi-h2-7650413089900236066.md` 和 `.json`，确认可作为 `generation_brief` 的完整源故事文档；下一步需要原创改写，不得照搬源故事桥段。
 - `画一个故事` 内容实验完成 H1 `full_story_extract`：对源样本 `7649315939447871470` 全量 8 页运行 DoodleStory VL，产出 `content-lab/full_story_extracts/2026-06-16-huayigegushi-h1-7649315939447871470.md` 和 `.json`；4 个发布槽均推进到 `needs_generation_brief`，H1 后续只提炼“家庭身份规则循环”机制，不沿用年轻后妈、后后妈、未成年人或暧昧继亲关系等高风险桥段。
+- `画一个故事` 内容实验完成 4 个 `generation_brief`：为 `P1-H1-walking-story`、`P2-H1-duck-bear`、`P3-H2-walking-story`、`P4-H2-duck-bear` 分别产出可直接进入 DoodleStory `故事方案` 模式的原创 brief；H1 两版保留家庭身份规则循环但换成门牌/红围裙表层机制，H2 两版保留三回合边界测试但避开旧床单、纸尿裤、剩菜和离家桥段。4 个发布槽状态推进到 `needs_task_creation`，下一步创建真实生成任务并回填 `content_id` 或 `task_id`。
 
 ## 已知缺口
 

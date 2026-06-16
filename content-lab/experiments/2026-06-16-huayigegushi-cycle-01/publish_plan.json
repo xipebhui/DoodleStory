@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "full_story_extracted_not_publishable",
+  "status": "generation_brief_ready_not_publishable",
   "account_group": [
     "行走的故事",
     "小黄鸭与大熊"
@@ -38,12 +38,17 @@
         "vl_scope": "full_story_document",
         "image_count": 8
       },
+      "generation_brief": {
+        "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p1-h1-walking-story.md",
+        "story_input_mode": "adapted",
+        "requested_image_count": 10
+      },
       "expected_metric": {
         "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "needs_generation_brief"
+      "status": "needs_task_creation"
     },
     {
       "slot_id": "P2-H1-duck-bear",
@@ -62,12 +67,17 @@
         "vl_scope": "full_story_document",
         "image_count": 8
       },
+      "generation_brief": {
+        "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p2-h1-duck-bear.md",
+        "story_input_mode": "adapted",
+        "requested_image_count": 10
+      },
       "expected_metric": {
         "2h": "至少 3 条规则化评论；点赞 >= 20；转发 >= 3",
         "24h": "点赞 >= 120；评论 >= 10；转发 >= 20",
         "72h": "点赞 >= 300；评论 >= 25；转发 >= 60"
       },
-      "status": "needs_generation_brief"
+      "status": "needs_task_creation"
     },
     {
       "slot_id": "P3-H2-walking-story",
@@ -86,12 +96,17 @@
         "vl_scope": "full_story_document",
         "image_count": 15
       },
+      "generation_brief": {
+        "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md",
+        "story_input_mode": "adapted",
+        "requested_image_count": 10
+      },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
         "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
         "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
       },
-      "status": "needs_generation_brief"
+      "status": "needs_task_creation"
     },
     {
       "slot_id": "P4-H2-duck-bear",
@@ -110,12 +125,17 @@
         "vl_scope": "full_story_document",
         "image_count": 15
       },
+      "generation_brief": {
+        "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md",
+        "story_input_mode": "adapted",
+        "requested_image_count": 10
+      },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
         "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
         "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
       },
-      "status": "needs_generation_brief"
+      "status": "needs_task_creation"
     }
   ],
   "result_fields_required": [
@@ -139,10 +159,9 @@
     "24h 数据必须按实际 planned_publish_time 计算，不按自然日粗略统计"
   ],
   "blocked_until": [
-    "完成 H1/H2 generation_brief，形成 DoodleStory 原创故事方案",
     "创建真实生成任务并回填 content_id 或 task_id",
     "回填 planned_publish_time 的绝对发布时间",
     "确认是否启用第 3 条加速窗口"
   ],
-  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表。H1/H2 均已完成 full_story_extract，下一步需要 generation_brief。当前仍未生成真实内容，不能直接发布。"
+  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表。H1/H2 均已完成 full_story_extract 和 generation_brief，下一步需要创建真实生成任务并回填 content_id 或 task_id。当前仍未生成真实内容，不能直接发布。"
 }
