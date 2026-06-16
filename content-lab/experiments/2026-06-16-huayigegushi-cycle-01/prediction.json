@@ -12,7 +12,8 @@
     "category": "family_marriage",
     "keyword_tag": "画一个故事",
     "visual_style": "统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换",
-    "publish_window": "20:30-21:30 Asia/Shanghai",
+    "publish_frequency": "总账号池每天 2-3 条",
+    "publish_window": "基础窗口 12:10-13:10、20:30-21:30；加速窗口 22:00-22:40 Asia/Shanghai",
     "story_length": "每条 10 页",
     "cta": "不做强引导关注或私信，只保留自然评论触发"
   },
@@ -207,14 +208,15 @@
       "fixed_variables": {
         "category": "family_marriage",
         "story_length_pages": 10,
-        "publish_window": "20:30-21:30 Asia/Shanghai",
+        "publish_frequency": "总账号池每天 2-3 条",
+        "publish_window": "基础窗口 12:10-13:10、20:30-21:30；加速窗口 22:00-22:40 Asia/Shanghai",
         "review_checkpoints": [
           "2h",
           "24h",
           "72h"
         ]
       },
-      "key_observation": "两个账号都测试 H1/H2，最小实验量为 4 条；当前只完成发布计划，尚未生成真实内容或绑定 task_id。",
+      "key_observation": "两个账号都测试 H1/H2，最小实验量为 4 条；发布频率调整为总账号池每天 2-3 条，基础节奏 2 天完成，素材审核顺利时可启用第 3 条加速窗口；当前尚未生成真实内容或绑定 task_id。",
       "controller_status": "needs_full_story_extract",
       "next_required_evidence": "需要选择一个源样本运行 full_story_extract；推荐优先提取 H2 源样本 7650413089900236066，备选为 H1 源样本 7649315939447871470。"
     }

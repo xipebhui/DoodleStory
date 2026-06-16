@@ -10,7 +10,8 @@
     "keyword_tag": "画一个故事",
     "visual_style": "统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换",
     "story_length_pages": 10,
-    "publish_window": "20:30-21:30 Asia/Shanghai",
+    "publish_frequency": "总账号池每天 2-3 条",
+    "publish_window": "基础窗口 12:10-13:10、20:30-21:30；加速窗口 22:00-22:40 Asia/Shanghai",
     "review_checkpoints": [
       "2h",
       "24h",
@@ -25,7 +26,7 @@
       "account": "行走的故事",
       "hypothesis_id": "H1-family-rule-loop",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 1 个晚间 20:30-21:30 Asia/Shanghai",
+      "planned_publish_window": "生成完成后第 1 天 12:10-13:10 Asia/Shanghai",
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -42,7 +43,7 @@
       "account": "小黄鸭与大熊",
       "hypothesis_id": "H1-family-rule-loop",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 1 个晚间 20:30-21:30 Asia/Shanghai",
+      "planned_publish_window": "生成完成后第 2 天 12:10-13:10 Asia/Shanghai；加速时可提前到第 1 天 22:00-22:40 Asia/Shanghai",
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -59,7 +60,7 @@
       "account": "行走的故事",
       "hypothesis_id": "H2-marriage-boundary-three-rounds",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 2 个晚间 20:30-21:30 Asia/Shanghai",
+      "planned_publish_window": "生成完成后第 1 天 20:30-21:30 Asia/Shanghai",
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -76,7 +77,7 @@
       "account": "小黄鸭与大熊",
       "hypothesis_id": "H2-marriage-boundary-three-rounds",
       "planned_publish_time": null,
-      "planned_publish_window": "生成完成后第 2 个晚间 20:30-21:30 Asia/Shanghai",
+      "planned_publish_window": "生成完成后第 2 天 20:30-21:30 Asia/Shanghai",
       "content_id": null,
       "task_id": null,
       "page_count": 10,
@@ -102,12 +103,20 @@
     "collects",
     "shares"
   ],
+  "cadence_guardrails": [
+    "基础节奏为总账号池每天 2 条，2 天完成 4 条最小实验",
+    "加速节奏为总账号池每天最多 3 条，仅在素材完成审核且没有明显平台风险时使用",
+    "单账号同日最多 2 条，同账号两条之间至少间隔 3 小时",
+    "同一假设的两个账号版本不要连续挨着发布",
+    "24h 数据必须按实际 planned_publish_time 计算，不按自然日粗略统计"
+  ],
   "blocked_until": [
     "选择先进入 full_story_extract 的源样本",
     "完成 full_story_extract，获得完整原文结构",
     "完成 generation_brief，形成 DoodleStory 原创故事方案",
     "创建真实生成任务并回填 content_id 或 task_id",
-    "回填 planned_publish_time 的绝对发布时间"
+    "回填 planned_publish_time 的绝对发布时间",
+    "确认是否启用第 3 条加速窗口"
   ],
-  "notes": "本计划已固定两个账号、两个假设、页数、发布时间窗口和指标记录表，但仍未生成真实内容，不能直接发布。"
+  "notes": "本计划已固定两个账号、两个假设、页数、发布频率、发布时间窗口和指标记录表，但仍未生成真实内容，不能直接发布。"
 }

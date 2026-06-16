@@ -33,7 +33,8 @@
 | keyword_tag | `画一个故事` |
 | visual_style | 统一使用一个 DoodleStory 手绘图文故事风格；生成前绑定具体 style，绑定后 H1/H2 不再更换 |
 | story_length | 每条 10 页 |
-| publish_window | 晚间 `20:30-21:30`，Asia/Shanghai |
+| publish_frequency | 总账号池每天 `2-3` 条 |
+| publish_window | 基础窗口：`12:10-13:10`、`20:30-21:30`；加速窗口：`22:00-22:40`，Asia/Shanghai |
 | review_checkpoints | `2h`、`24h`、`72h` |
 | CTA | 不做强引导关注或私信，只保留自然评论触发 |
 | source_handling | 不复刻源故事细节；只复用机制，生成前需走原创改写 |
@@ -51,12 +52,20 @@
 
 | slot_id | hypothesis_id | account | planned_publish_window | page_count | controlled_variation | current_status |
 | --- | --- | --- | --- | ---: | --- | --- |
-| `P1-H1-walking-story` | `H1-family-rule-loop` | 行走的故事 | 生成完成后第 1 个晚间 `20:30-21:30` | 10 | 异常家庭规则怪谈，偏真人故事叙述口吻 | needs_full_story_extract_or_brief |
-| `P2-H1-duck-bear` | `H1-family-rule-loop` | 小黄鸭与大熊 | 生成完成后第 1 个晚间 `20:30-21:30` | 10 | 同机制，表层故事和角色重新原创，避免重复发布同一素材 | needs_full_story_extract_or_brief |
-| `P3-H2-walking-story` | `H2-marriage-boundary-three-rounds` | 行走的故事 | 生成完成后第 2 个晚间 `20:30-21:30` | 10 | 三回合家庭边界，偏现实婚姻故事口吻 | needs_full_story_extract_or_brief |
-| `P4-H2-duck-bear` | `H2-marriage-boundary-three-rounds` | 小黄鸭与大熊 | 生成完成后第 2 个晚间 `20:30-21:30` | 10 | 同机制，表层故事和角色重新原创，避免重复发布同一素材 | needs_full_story_extract_or_brief |
+| `P1-H1-walking-story` | `H1-family-rule-loop` | 行走的故事 | 生成完成后第 1 天 `12:10-13:10` | 10 | 异常家庭规则怪谈，偏真人故事叙述口吻 | needs_full_story_extract_or_brief |
+| `P3-H2-walking-story` | `H2-marriage-boundary-three-rounds` | 行走的故事 | 生成完成后第 1 天 `20:30-21:30` | 10 | 三回合家庭边界，偏现实婚姻故事口吻 | needs_full_story_extract_or_brief |
+| `P2-H1-duck-bear` | `H1-family-rule-loop` | 小黄鸭与大熊 | 生成完成后第 2 天 `12:10-13:10`；加速时可提前到第 1 天 `22:00-22:40` | 10 | 同机制，表层故事和角色重新原创，避免重复发布同一素材 | needs_full_story_extract_or_brief |
+| `P4-H2-duck-bear` | `H2-marriage-boundary-three-rounds` | 小黄鸭与大熊 | 生成完成后第 2 天 `20:30-21:30` | 10 | 同机制，表层故事和角色重新原创，避免重复发布同一素材 | needs_full_story_extract_or_brief |
 
 说明：不建议两个账号发布完全相同的图文素材。每个假设保留同一 hook/payoff/comment_trigger，但故事表层、角色和具体冲突要原创变化，降低重复内容风险。
+
+## 发布频率护栏
+
+- 基础节奏：总账号池每天 2 条，2 天完成 4 条最小实验。
+- 加速节奏：总账号池每天最多 3 条；仅在当天素材已完成审核、没有明显平台风险时使用。
+- 单账号同日最多 2 条；同账号两条之间至少间隔 3 小时。
+- 同一假设的两个账号版本不要连续挨着发，避免互相干扰判断。
+- 24h 数据复盘时必须按实际发布时间计算窗口，不能按自然日粗略统计。
 
 ## 账号适配假设
 
@@ -130,6 +139,7 @@
 2. 对被选源样本运行 `full_story_extract`，获得完整原文结构。
 3. 写 `generation_brief`，把源机制改写为 DoodleStory 原创故事方案。
 4. 创建真实生成任务并得到 `content_id` 或 `task_id`。
+5. 根据实际完成时间回填绝对 `planned_publish_time`，并确认是否启用第 3 条加速窗口。
 
 ## 下一步
 
