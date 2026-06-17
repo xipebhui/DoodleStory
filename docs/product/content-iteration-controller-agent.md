@@ -317,6 +317,8 @@ market_scan
 -> topic_hypothesis
 -> experiment_plan
 -> generation_brief
+-> render_storyboard_design
+-> generation_task_submission
 -> publish
 -> post_result_intake
 -> deviation_review
@@ -443,7 +445,7 @@ DoodleStory 生成链路仍是执行器：
 - `DY爆款复刻` 是单样本执行器。
 - `故事方案` 是预测型原创生成入口。
 - `提取分镜` 是结构化素材转生图入口。
-- 内容实验 Skill 提交任务时固定走 `提取分镜`，由账号绑定到具体画风，使用自动页数；不绑定固定角色，但保留与前端一致的临时角色参考生成。
+- 内容实验 Skill 在提交任务前必须先产出 `render_storyboard` 可画分镜稿，再固定走 `提取分镜`，由账号绑定到具体画风，使用自动页数；不绑定固定角色，但保留与前端一致的临时角色参考生成。
 
 控制器不替代这些能力，只决定何时使用它们。
 
@@ -453,10 +455,11 @@ DoodleStory 生成链路仍是执行器：
 
 1. 建立 `controller_constitution.md`：由 `init_controller_state.py` 初始化。
 2. 每轮实验发布前写 `prediction.json`：由 `create_experiment.py` 创建空白结构，控制器或人工填写真实预测。
-3. 生成前把发布账号绑定到 DoodleStory `style_id`：由 `submit_generation_task.py bind-style` 写入 `account_style_bindings.json`。
-4. 把实验 slot 提交为真实 DoodleStory 任务：由 `submit_generation_task.py submit-slot` 调用既有 `/api/v1/tasks` 并回写 `publish_plan.json`。
-5. 发布后写 `prediction_errors.jsonl` 和 `deviation_review.md`：由复盘后人工确认，必要时用 `append_prediction_error.py` 追加结构化预测误差。
-6. 每周由控制器输出一次 `strategy_update.json`，人工决定是否更新 Skill：当前先以实验目录内文件承载，不自动改 Skill。
+3. 生成前把故事 brief 转成可画分镜稿：写入 `content-lab/render_storyboards/`，并在 `publish_plan.json` 的 slot 中记录 `render_storyboard.artifact`。
+4. 生成前把发布账号绑定到 DoodleStory `style_id`：由 `submit_generation_task.py bind-style` 写入 `account_style_bindings.json`。
+5. 把实验 slot 提交为真实 DoodleStory 任务：由 `submit_generation_task.py submit-slot` 调用既有 `/api/v1/tasks` 并回写 `publish_plan.json`。
+6. 发布后写 `prediction_errors.jsonl` 和 `deviation_review.md`：由复盘后人工确认，必要时用 `append_prediction_error.py` 追加结构化预测误差。
+7. 每周由控制器输出一次 `strategy_update.json`，人工决定是否更新 Skill：当前先以实验目录内文件承载，不自动改 Skill。
 
 不做：
 

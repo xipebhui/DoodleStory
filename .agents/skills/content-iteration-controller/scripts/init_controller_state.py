@@ -208,7 +208,7 @@ def main() -> None:
         else:
             skipped.append(str(path))
 
-    for relative in ["experiments", "market_scans", "content_library/items"]:
+    for relative in ["experiments", "market_scans", "render_storyboards", "content_library/items"]:
         keep = args.root / "content-lab" / relative / ".gitkeep"
         if write_if_needed(keep, "", force=False):
             written.append(str(keep))

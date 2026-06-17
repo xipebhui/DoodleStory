@@ -57,7 +57,9 @@ description: DoodleStory 内容迭代控制器 Agent。用于迷宫控制器、�
 
 用户给发布后数据或要求复盘时，先检查是否存在同一实验的 `prediction.json`。没有预测时，只能做“记录”，不能做复盘，也不能升级规则。
 
-用户要求“生成这个故事”“提交任务”“开发提交任务入口”“把 brief 发到 DoodleStory”时，执行 `generation_task_submission`。这个步骤只负责提交真实 DoodleStory 生成任务，不代替发布，也不伪造任务 ID。
+用户要求“生成这个故事”“做成可画分镜”“分镜设计”“给 gpt-image-2 画得更好”时，执行 `render_storyboard_design`。这个步骤把故事 brief 转成图片模型友好的逐页分镜稿。
+
+用户要求“提交任务”“开发提交任务入口”“把分镜发到 DoodleStory”时，执行 `generation_task_submission`。这个步骤只负责提交真实 DoodleStory 生成任务，不代替发布，也不伪造任务 ID。
 
 用户要求“更新 Skill”“沉淀规则”“让 Skill 自动进化”时，执行 `rule_upgrade_review`。只有满足规则升级门槛，才能提出升级建议；实际修改 Skill 仍必须等待用户确认。
 
@@ -84,6 +86,7 @@ python .agents/skills/content-iteration-controller/scripts/init_controller_state
 - `content-lab/strategy_state/successful_hypotheses.jsonl`
 - `content-lab/strategy_state/failed_hypotheses.jsonl`
 - `content-lab/strategy_state/prediction_errors.jsonl`
+- `content-lab/render_storyboards/.gitkeep`
 
 已有文件默认不覆盖。需要重建时必须由用户明确授权，再使用脚本的 `--force`。
 
@@ -142,7 +145,60 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 - `comment_trigger`
 - `account_packaging`
 
-### 4. `generation_task_submission`
+### 4. `render_storyboard_design`
+
+可画分镜设计是 `generation_brief` 和 DoodleStory 任务提交之间的独立步骤。它不重新判断选题，不改预测指标，只把已经通过发布前审核的故事机制转成图片模型更容易执行的逐页分镜。
+
+产物位置：
+
+```text
+content-lab/render_storyboards/<date>-<keyword>-<slot_id>.md
+```
+
+可复制模板：
+
+```text
+.agents/skills/content-iteration-controller/templates/render_storyboard_template.md
+```
+
+输出格式必须从 `图1：` 或 `第1页：` 开始，供 `submit_generation_task.py` 截取和提交：
+
+```text
+图1：
+【分格】单页漫画构图
+【画面】一个静态可见瞬间，写清前景、中景、背景、人物站位、动作、表情和关键道具。
+【人物锚点】首次出现人物必须写年龄阶段、发型、服装轮廓、体态、标志物。
+【旁白】短句。
+【对白】人物：台词。
+【内心OS】短句。
+【强调字】短句。
+【避免】本页最容易误画的 1-3 个禁区。
+```
+
+可画性硬规则：
+
+- 每页只设计一个静态瞬间，不写连续动作。
+- 每页图片内文字尽量 1-3 条，避免密集手机小字、聊天记录和复杂 UI。
+- 首次出现的人物必须给稳定视觉锚点，后续不随意换衣服、发型、年龄和体态。
+- 抽象情绪必须转成可见动作、站位、道具、表情和构图。
+- 分格布局必须明确阅读顺序；没有明确分格时写 `单页漫画构图`。
+- `【避免】` 用来限制模型常见误画，不写无关安全套话。
+
+完成后，必须把实验 `publish_plan.json` 对应 slot 补充：
+
+```json
+{
+  "render_storyboard": {
+    "artifact": "content-lab/render_storyboards/<file>.md",
+    "status": "ready_for_task_submission",
+    "source_generation_brief": "content-lab/generation_briefs/<file>.md"
+  }
+}
+```
+
+没有 `render_storyboard.artifact` 时，不允许执行 `generation_task_submission`。
+
+### 5. `generation_task_submission`
 
 生成提交是内容实验进入 DoodleStory 执行链路的入口。默认每次只提交一个 slot；只有用户明确要求一次性提交多条，才批量提交。
 
@@ -153,7 +209,9 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 - 人物参考开关与前端普通创建保持一致：`use_character_references=true`。
 - 不使用固定角色绑定：`story_characters=[]`。
 - 画风必须从账号解析到 `content-lab/strategy_state/account_style_bindings.json` 的 `style_id`。
+- 任务正文必须来自 `publish_plan.json` 中当前 slot 的 `render_storyboard.artifact`。
 - 不能把账号未绑定时的任务提交到某个默认风格。
+- 不能跳过 `render_storyboard_design` 直接提交 `generation_brief`。
 - 暂停状态的 slot 不能提交；已有 `task_id` 的 slot 不能重复提交，除非用户明确要求 `--force-resubmit`。
 
 首次绑定账号画风：
@@ -194,7 +252,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 
 任务创建走 DoodleStory `/api/v1/tasks`，因此会复用后端风格校验、积分、任务入队、风格快照和现有任务 worker。
 
-### 5. `post_result_intake`
+### 6. `post_result_intake`
 
 发布后把后台数据写入：
 
@@ -211,7 +269,7 @@ content-lab/experiments/<experiment_id>/post_results/
 - 播放、点赞、评论、收藏、转发
 - 可选：涨粉、私信、转化、违规/限流备注
 
-### 6. `deviation_review`
+### 7. `deviation_review`
 
 只有同时存在 `prediction.json` 和真实 `post_results/`，才允许复盘。
 
@@ -240,7 +298,7 @@ python .agents/skills/content-iteration-controller/scripts/append_prediction_err
 
 不要把没有预测的发布数据写成“预测失败”。
 
-### 7. `strategy_update`
+### 8. `strategy_update`
 
 输出当前实验的 `strategy_update.json`，但不要自动修改 Skill。
 
@@ -253,7 +311,7 @@ python .agents/skills/content-iteration-controller/scripts/append_prediction_err
 - 每周最多一次：提出 Skill 升级建议。
 - Skill 文件修改必须人工确认。
 
-### 8. `rule_upgrade_review`
+### 9. `rule_upgrade_review`
 
 当用户要求升级 Skill 时，检查：
 

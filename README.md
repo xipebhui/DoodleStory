@@ -98,6 +98,18 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 python .agents/skills/content-iteration-controller/scripts/validate_controller_state.py
 ```
 
+生成任务提交前，先把故事 brief 转成可画分镜稿，并在实验 `publish_plan.json` 的对应 slot 写入：
+
+```json
+{
+  "render_storyboard": {
+    "artifact": "content-lab/render_storyboards/<file>.md",
+    "status": "ready_for_task_submission",
+    "source_generation_brief": "content-lab/generation_briefs/<file>.md"
+  }
+}
+```
+
 绑定发布账号画风并提交 DoodleStory 生成任务：
 
 ```bash
@@ -114,7 +126,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
   --slot-id P3-H2-walking-story
 ```
 
-内容实验提交任务时固定走 `提取分镜`：`story_input_mode=extracted_storyboard`、`image_count_mode=auto`、`use_character_references=true`、`story_characters=[]`。这与前端普通创建保持一致：不绑定固定角色，但仍走临时角色一致性链路。画风必须通过 `content-lab/strategy_state/account_style_bindings.json` 从发布账号绑定到具体 DoodleStory `style_id`，不会使用默认画风；提交正文只取 `图1/图2...` 开始的逐页分镜块。
+内容实验提交任务时固定走 `提取分镜`：`story_input_mode=extracted_storyboard`、`image_count_mode=auto`、`use_character_references=true`、`story_characters=[]`。这与前端普通创建保持一致：不绑定固定角色，但仍走临时角色一致性链路。画风必须通过 `content-lab/strategy_state/account_style_bindings.json` 从发布账号绑定到具体 DoodleStory `style_id`，不会使用默认画风；提交正文必须来自 `render_storyboard.artifact`，只取 `图1/图2...` 开始的逐页可画分镜块。
 
 控制器不自动发布、不自动读取后台、不自动修改 Skill。发布前必须先写 `prediction.json`；发布后有真实数据，才允许写 `prediction_errors.jsonl`、`deviation_review.md` 和 `strategy_update.json`。
 
@@ -124,7 +136,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 
 - [项目规格](docs/spec.md)
 - [进度记录](docs/progress.md)
-- [当前 Sprint 合同](docs/contracts/sprint-60-content-task-submission-entry.md)
+- [当前 Sprint 合同](docs/contracts/sprint-61-render-storyboard-design-step.md)
 - [产品设计](docs/design/README.md)
 - [开发规范](docs/standards/)
 - [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

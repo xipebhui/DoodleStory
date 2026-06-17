@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Submit content-lab generation briefs to DoodleStory task API."""
+"""Submit content-lab render storyboards to DoodleStory task API."""
 
 from __future__ import annotations
 
@@ -287,6 +287,22 @@ def validate_bindings(args: argparse.Namespace) -> dict[str, Any]:
     return {"ok": all(item["ok"] for item in results), "results": results}
 
 
+def load_slot_storyboard_path(root: Path, post: dict[str, Any], slot_id: str) -> Path:
+    render_storyboard = post.get("render_storyboard")
+    if not isinstance(render_storyboard, dict) or not render_storyboard.get("artifact"):
+        raise SubmitError(
+            f"slot `{slot_id}` 缺少 render_storyboard.artifact。"
+            "请先执行 render_storyboard_design，把故事 brief 转成可画分镜稿后再提交任务。"
+        )
+    status = str(render_storyboard.get("status") or "").strip()
+    if status.startswith("paused") or status.startswith("blocked"):
+        raise SubmitError(f"slot `{slot_id}` 的 render_storyboard 状态为 `{status}`，不允许提交任务。")
+    story_path = (root / str(render_storyboard["artifact"])).resolve()
+    if not story_path.exists():
+        raise SubmitError(f"render storyboard 文件不存在：{story_path}")
+    return story_path
+
+
 def submit_slot(args: argparse.Namespace) -> dict[str, Any]:
     plan_path = publish_plan_path(args.root, args.experiment_id)
     if not plan_path.exists():
@@ -298,16 +314,10 @@ def submit_slot(args: argparse.Namespace) -> dict[str, Any]:
     if not account:
         raise SubmitError(f"slot `{args.slot_id}` 缺少 account 字段。")
 
-    brief = post.get("generation_brief")
-    if not isinstance(brief, dict) or not brief.get("artifact"):
-        raise SubmitError(f"slot `{args.slot_id}` 缺少 generation_brief.artifact。")
-    story_path = (args.root / str(brief["artifact"])).resolve()
-    if not story_path.exists():
-        raise SubmitError(f"generation brief 文件不存在：{story_path}")
-
     bindings = load_bindings(args.root)
     binding = account_binding(bindings, account)
     style_id = str(binding["style_id"])
+    story_path = load_slot_storyboard_path(args.root, post, args.slot_id)
     storyboard_text = extract_storyboard_text(story_path)
     payload = build_task_payload(storyboard_text, style_id)
 
@@ -377,7 +387,7 @@ def submit_file(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Submit content-lab stories as DoodleStory extracted-storyboard tasks.")
+    parser = argparse.ArgumentParser(description="Submit content-lab render storyboards as DoodleStory extracted-storyboard tasks.")
     parser.add_argument("--root", type=Path, default=PROJECT_ROOT, help="DoodleStory project root")
     parser.add_argument("--api-base-url", default=DEFAULT_API_BASE_URL, help="DoodleStory backend base URL")
     parser.add_argument("--email", help="DoodleStory login email; or DOODLESTORY_EMAIL")
@@ -397,7 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate-bindings", help="Validate all account-style bindings through DoodleStory API.")
     validate.set_defaults(func=validate_bindings)
 
-    slot = subparsers.add_parser("submit-slot", help="Submit a publish_plan slot as an extracted-storyboard task.")
+    slot = subparsers.add_parser("submit-slot", help="Submit a publish_plan slot render_storyboard as an extracted-storyboard task.")
     slot.add_argument("--experiment-id", required=True)
     slot.add_argument("--slot-id", required=True)
     slot.add_argument("--dry-run", action="store_true")
