@@ -184,6 +184,7 @@ def generate_image_with_policy_prompt_rewrite(
                 "reference_count": len(references),
             },
         )
+        rewritten_final_prompt = final_prompt_with_aspect_ratio_prefix(aspect_ratio, revision.final_prompt)
         logger.info(
             "story_drawing_debug policy_blocked_image_prompt_rewrite_done task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s original_prompt_chars=%s rewritten_prompt_chars=%s change_summary=%s",
             task_id,
@@ -192,18 +193,18 @@ def generate_image_with_policy_prompt_rewrite(
             image_id,
             image_model_name,
             len(prompt),
-            len(revision.final_prompt),
+            len(rewritten_final_prompt),
             revision.change_summary,
         )
         try:
             return (
                 generate_xg_image(
-                    prompt=revision.final_prompt,
+                    prompt=rewritten_final_prompt,
                     references=references,
                     image_model_name=image_model_name,
                     aspect_ratio=aspect_ratio,
                 ),
-                revision.final_prompt,
+                rewritten_final_prompt,
                 revision.change_summary,
             )
         except (ImageProviderConfigError, ImageProviderResponseError) as rewritten_exc:
@@ -737,13 +738,28 @@ def style_prompt_block(style_prompt: str | None) -> list[str]:
     ]
 
 
+def final_prompt_with_aspect_ratio_prefix(aspect_ratio: str, final_prompt: str) -> str:
+    cleaned_prompt = final_prompt.strip()
+    cleaned_ratio = (aspect_ratio or "").strip()
+    if not cleaned_ratio:
+        return cleaned_prompt
+
+    prefix = (
+        f"画面比例：{cleaned_ratio}。必须严格按 {cleaned_ratio} 宽高比构图和出图，"
+        "不要生成横竖方向或比例不一致的画面。"
+    )
+    if cleaned_prompt.startswith(f"画面比例：{cleaned_ratio}"):
+        return cleaned_prompt
+    return "\n".join([prefix, "", cleaned_prompt]).strip()
+
+
 def final_prompt_with_explicit_style(task: GenerationTask, final_prompt: str) -> str:
     cleaned_prompt = final_prompt.strip()
     style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
     cleaned_style = (style_prompt or "").strip()
     if not cleaned_style:
-        return cleaned_prompt
-    return "\n".join(
+        return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
+    styled_prompt = "\n".join(
         [
             "风格提示词（必须直接用于本张图的画风、人物比例、线条、色彩、构图、文字呈现和整体质感）：",
             cleaned_style,
@@ -759,6 +775,7 @@ def final_prompt_with_explicit_style(task: GenerationTask, final_prompt: str) ->
             cleaned_prompt,
         ]
     ).strip()
+    return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, styled_prompt)
 
 
 def build_original_story_final_prompt(
@@ -777,14 +794,14 @@ def build_original_story_final_prompt(
         "emphasis": None,
     }
     lines = [
+        f"画面比例：{aspect_ratio}",
+        "",
         "参考：",
         reference_notes_block(reference_notes),
     ]
     lines.extend(style_prompt_block(style_prompt))
     lines.extend(
         [
-            "",
-            f"画面比例：{aspect_ratio}",
             "",
             "结构化分镜：",
             structured_storyboard_block(
@@ -814,14 +831,14 @@ def build_adapted_story_final_prompt(
     panel_order: int = 1,
 ) -> str:
     lines = [
+        f"画面比例：{aspect_ratio}",
+        "",
         "参考：",
         reference_notes_block(reference_notes),
     ]
     lines.extend(style_prompt_block(style_prompt))
     lines.extend(
         [
-            "",
-            f"画面比例：{aspect_ratio}",
             "",
             "剧情意图：",
             story_beat.strip(),

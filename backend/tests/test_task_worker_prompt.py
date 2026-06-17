@@ -29,6 +29,7 @@ from app.services.task_worker import (
     build_generation_reference_pack,
     build_original_story_final_prompt,
     build_panel_final_prompt,
+    final_prompt_with_aspect_ratio_prefix,
     final_prompt_with_explicit_style,
     generate_panel_image_request,
     is_policy_blocked_image_error,
@@ -137,7 +138,8 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("低饱和手绘漫画风，细线条，浅色水彩，中文手写字要清晰偏大。", final_prompt)
-        self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("画面比例：3:4"))
+        self.assertTrue(final_prompt.startswith("画面比例：3:4"))
+        self.assertLess(final_prompt.index("画面比例：3:4"), final_prompt.index("风格提示词"))
 
     def test_multi_panel_narration_is_constrained_to_single_caption(self) -> None:
         final_prompt = build_adapted_story_final_prompt(
@@ -246,12 +248,22 @@ class TaskWorkerPromptTest(unittest.TestCase):
             "第 1 页（单页 | 3:4）\n男生保持黄色衬衫，女生保持橄榄绿上衣。",
         )
 
+        self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
         self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("低饱和手绘漫画风，人物比例极简，中文手写字清晰偏大。", final_prompt)
         self.assertIn("风格执行优先级：角色身份与外观锁定 > 当前剧情动作/情绪", final_prompt)
         self.assertIn("最终画面指令：", final_prompt)
         self.assertIn("男生保持黄色衬衫，女生保持橄榄绿上衣。", final_prompt)
+        self.assertLess(final_prompt.index("画面比例：3:4"), final_prompt.index("风格提示词"))
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
+
+    def test_aspect_ratio_prefix_is_not_duplicated(self) -> None:
+        final_prompt = final_prompt_with_aspect_ratio_prefix(
+            "3:4",
+            "画面比例：3:4。必须严格按 3:4 宽高比构图和出图。\n\n第 1 页\n女孩在窗边读书。",
+        )
+
+        self.assertEqual(1, final_prompt.count("画面比例：3:4"))
 
     def test_llm_final_prompt_does_not_add_style_prompt_in_image_mode(self) -> None:
         task = GenerationTask(
@@ -270,7 +282,8 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         final_prompt = final_prompt_with_explicit_style(task, "第 1 页\n女孩在窗边读书。")
 
-        self.assertEqual("第 1 页\n女孩在窗边读书。", final_prompt)
+        self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
+        self.assertIn("第 1 页\n女孩在窗边读书。", final_prompt)
         self.assertNotIn("这段风格提示词不应拼入最终生图 prompt", final_prompt)
 
     def test_generation_reference_pack_orders_character_before_style_reference(self) -> None:
@@ -405,7 +418,11 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         self.assertIs(result.generated, generated)
         self.assertIsNone(result.error)
-        self.assertEqual("画一个眼眶含泪但倔强微笑的小女孩，避免描述伤害动作", result.final_prompt)
+        rewritten_prompt = (
+            "画面比例：3:4。必须严格按 3:4 宽高比构图和出图，不要生成横竖方向或比例不一致的画面。\n\n"
+            "画一个眼眶含泪但倔强微笑的小女孩，避免描述伤害动作"
+        )
+        self.assertEqual(rewritten_prompt, result.final_prompt)
         self.assertEqual("把疼痛表达改成眼眶含泪和倔强微笑的中性视觉状态", result.prompt_change_summary)
         rewrite.assert_called_once()
         self.assertEqual(
@@ -417,7 +434,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
                     aspect_ratio="3:4",
                 ),
                 call(
-                    prompt="画一个眼眶含泪但倔强微笑的小女孩，避免描述伤害动作",
+                    prompt=rewritten_prompt,
                     references=[ImageReference(url="https://cdn.example.com/person.jpg")],
                     image_model_name="gpt-image-2",
                     aspect_ratio="3:4",
