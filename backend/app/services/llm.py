@@ -1013,6 +1013,11 @@ def extract_task_characters(
     panels: list[StorySegment],
     trace_context: dict[str, Any] | None = None,
 ) -> TaskCharacterExtractionResult:
+    settings = get_settings()
+    model = settings.character_extraction_model.strip()
+    if not model:
+        raise LLMConfigError("CHARACTER_EXTRACTION_MODEL 未配置")
+
     system_prompt = system_prompt_with_style(read_prompt("extract_task_characters_v1.md"), style_prompt)
     input_panels = [
         {
@@ -1039,6 +1044,8 @@ def extract_task_characters(
         user_prompt=user_prompt,
         prompt_name="extract_task_characters_v1.md",
         trace_context={**(trace_context or {}), "operation": "extract_task_characters"},
+        model=model,
+        temperature=settings.character_extraction_temperature,
     )
     try:
         result = TaskCharacterExtractionResult.model_validate(raw)

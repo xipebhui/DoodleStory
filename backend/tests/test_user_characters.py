@@ -12,7 +12,7 @@ from app.api.characters import create_character, fill_character_description_from
 from app.api.tasks import extract_character_names
 from app.core.database import Base
 from app.models.entities import FileAsset, GenerationTask, Style, TaskCharacter, TaskCharacterAppearance, TaskPanel, TaskPanelCharacterAppearance, User, UserCharacter
-from app.models.enums import FileAssetPurpose, GenerationStepName, ImageCountMode, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
+from app.models.enums import FileAssetPurpose, GenerationStepName, ImageCountMode, PanelType, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
 from app.schemas.character import CharacterNameExtractionRequest, StoryCharacterBindingCreate
 from app.schemas.task import TaskCreate
 from app.services.character_references import (
@@ -20,7 +20,7 @@ from app.services.character_references import (
     ensure_fixed_character_panel_links_by_name,
     persist_missing_generated_character_plans,
 )
-from app.services.llm import ExtractedCharacterNames, TaskCharacterPlan, extract_character_names_from_story
+from app.services.llm import ExtractedCharacterNames, StorySegment, TaskCharacterPlan, extract_character_names_from_story, extract_task_characters
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 
 
@@ -49,6 +49,49 @@ class UserCharacterTest(unittest.TestCase):
         call_json.assert_called_once()
         self.assertEqual("Qwen/Qwen3.6-27B", call_json.call_args.kwargs["model"])
         self.assertEqual(0.1, call_json.call_args.kwargs["temperature"])
+
+    @patch("app.services.llm.call_siliconflow_json")
+    @patch("app.services.llm.get_settings")
+    def test_task_character_extraction_uses_low_temperature_and_context_inference_prompt(self, get_settings, call_json) -> None:
+        get_settings.return_value = SimpleNamespace(
+            character_extraction_model="Qwen/Qwen3.6-27B",
+            character_extraction_temperature=0.05,
+        )
+        call_json.return_value = {
+            "characters": [
+                {
+                    "character_key": "character_1",
+                    "name": "我",
+                    "description": "第一人称叙述者，坐火车去上学的学生",
+                    "appearances": [
+                        {
+                            "appearance_key": "character_1_young_adult",
+                            "age_stage": "青年",
+                            "visual_prompt": "青年女性学生，黑色中长发，穿浅色休闲上衣和牛仔裤，背双肩包，体态略拘谨羞涩",
+                            "panel_orders": [1],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        result = extract_task_characters(
+            original_text="我坐火车去上学的途中，旁边的帅哥靠在我肩上睡着了，后来我们就在一起了。",
+            style_prompt="清爽校园漫画风",
+            panels=[
+                StorySegment(
+                    panel_order=1,
+                    panel_type=PanelType.scene,
+                    text="我坐火车去上学的途中，旁边的帅哥靠在我肩上睡着了。",
+                )
+            ],
+        )
+
+        self.assertEqual("青年女性学生", result.characters[0].appearances[0].visual_prompt[:6])
+        self.assertEqual("Qwen/Qwen3.6-27B", call_json.call_args.kwargs["model"])
+        self.assertEqual(0.05, call_json.call_args.kwargs["temperature"])
+        self.assertIn("第一人称叙述者也要根据全文推断形象", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("青年女性学生", call_json.call_args.kwargs["system_prompt"])
 
     @patch("app.api.tasks.extract_character_names_from_story")
     def test_character_extraction_api_returns_names_payload(self, extract_from_story) -> None:
