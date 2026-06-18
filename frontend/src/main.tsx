@@ -746,6 +746,8 @@ function TasksView({
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
+  const [previewReferenceId, setPreviewReferenceId] = useState<string | null>(null);
+  const [promptPreview, setPromptPreview] = useState<{ title: string; text: string } | null>(null);
   const [panelEditInputs, setPanelEditInputs] = useState<Record<string, string>>({});
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null);
   const [panelDebugById, setPanelDebugById] = useState<Record<string, TaskPanelDebug>>({});
@@ -763,6 +765,10 @@ function TasksView({
   const previewPanel = previewImage ? taskForDetail?.panels.find((panel) => panel.id === previewImage.panel_id) : null;
   const previewPanelDebug = previewImage ? panelDebugById[previewImage.panel_id] : undefined;
   const previewImageDebug = previewImage ? previewPanelDebug?.images.find((image) => image.id === previewImage.id) : undefined;
+  const previewPromptText = previewImageDebug?.final_prompt ?? previewImageDebug?.image_prompt ?? "";
+  const referencePreviewItems = taskForDetail?.character_references ?? [];
+  const referencePreviewIndex = referencePreviewItems.findIndex((reference) => reference.id === previewReferenceId);
+  const previewReference = referencePreviewIndex >= 0 ? referencePreviewItems[referencePreviewIndex] : null;
   const activeTaskSignature = tasks.map((task) => `${task.id}:${task.status}:${task.updated_at}`).join("|");
   const selectedImageSignature =
     selectedTask?.generated_images
@@ -845,6 +851,8 @@ function TasksView({
       setDetailOpen(true);
       setSelectedTask(null);
       setPreviewImageId(null);
+      setPreviewReferenceId(null);
+      setPromptPreview(null);
       setPanelDebugById({});
       setPanelDebugError({});
       setLoadingPanelDebugId(null);
@@ -865,6 +873,8 @@ function TasksView({
       setSelectedId("");
       setSelectedTask(null);
       setPreviewImageId(null);
+      setPreviewReferenceId(null);
+      setPromptPreview(null);
       setPanelDebugById({});
       setPanelDebugError({});
       setLoadingPanelDebugId(null);
@@ -904,15 +914,44 @@ function TasksView({
   }, [previewImageId, previewItems]);
 
   useEffect(() => {
+    if (!previewReferenceId) return;
+    previewCloseRef.current?.focus();
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setPreviewReferenceId(null);
+      }
+      if (event.key === "ArrowLeft") {
+        showReferencePreviewOffset(-1);
+      }
+      if (event.key === "ArrowRight") {
+        showReferencePreviewOffset(1);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [previewReferenceId, referencePreviewItems]);
+
+  useEffect(() => {
+    if (!promptPreview) return;
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setPromptPreview(null);
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [promptPreview]);
+
+  useEffect(() => {
     if (!detailOpen) return;
     function handleKey(event: KeyboardEvent) {
-	      if (event.key === "Escape" && !previewImageId) {
+	      if (event.key === "Escape" && !previewImageId && !previewReferenceId && !promptPreview) {
 	        closeTaskDetail();
 	      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [detailOpen, previewImageId]);
+  }, [detailOpen, previewImageId, previewReferenceId, promptPreview]);
 
   useEffect(() => {
     if (createOpen && !createStyleId && styles[0]) {
@@ -991,8 +1030,9 @@ function TasksView({
     }
   }
 
-  async function loadPanelDebug(panelId: string) {
-    if (!taskForDetail || panelDebugById[panelId]) return;
+  async function loadPanelDebug(panelId: string): Promise<TaskPanelDebug | null> {
+    if (!taskForDetail) return null;
+    if (panelDebugById[panelId]) return panelDebugById[panelId];
     try {
       setLoadingPanelDebugId(panelId);
       const debug = await api.taskPanelDebug(taskForDetail.id, panelId);
@@ -1002,11 +1042,13 @@ function TasksView({
         delete next[panelId];
         return next;
       });
+      return debug;
     } catch (err) {
       setPanelDebugError((items) => ({
         ...items,
         [panelId]: err instanceof Error ? err.message : "分镜调试信息加载失败",
       }));
+      return null;
     } finally {
       setLoadingPanelDebugId(null);
     }
@@ -1017,6 +1059,8 @@ function TasksView({
     setDetailOpen(true);
     setSelectedTask(null);
     setPreviewImageId(null);
+    setPreviewReferenceId(null);
+    setPromptPreview(null);
     setPanelDebugById({});
     setPanelDebugError({});
     setLoadingPanelDebugId(null);
@@ -1028,6 +1072,8 @@ function TasksView({
     setSelectedId("");
     setSelectedTask(null);
     setPreviewImageId(null);
+    setPreviewReferenceId(null);
+    setPromptPreview(null);
     setPanelDebugById({});
     setPanelDebugError({});
     setLoadingPanelDebugId(null);
@@ -1367,6 +1413,13 @@ function TasksView({
     setPreviewImageId(previewItems[nextIndex].id);
   }
 
+  function showReferencePreviewOffset(offset: number) {
+    if (!referencePreviewItems.length) return;
+    const current = Math.max(0, referencePreviewIndex);
+    const nextIndex = (current + offset + referencePreviewItems.length) % referencePreviewItems.length;
+    setPreviewReferenceId(referencePreviewItems[nextIndex].id);
+  }
+
   function downloadPreviewImage() {
     if (!previewImage?.asset) return;
     window.location.href = assetUrl(previewImage.asset, "original");
@@ -1375,6 +1428,27 @@ function TasksView({
   function openPreviewImage() {
     if (!previewImage?.asset) return;
     window.open(assetUrl(previewImage.asset, "original"), "_blank", "noopener,noreferrer");
+  }
+
+  function downloadPreviewReference() {
+    if (!previewReference?.asset) return;
+    window.location.href = assetUrl(previewReference.asset, "original");
+  }
+
+  function openPreviewReference() {
+    if (!previewReference?.asset) return;
+    window.open(assetUrl(previewReference.asset, "original"), "_blank", "noopener,noreferrer");
+  }
+
+  async function openImagePromptPreview(panelId: string, imageId: string, title: string) {
+    const debug = panelDebugById[panelId] ?? (await loadPanelDebug(panelId));
+    const imageDebug = debug?.images.find((item) => item.id === imageId);
+    const promptText = imageDebug?.final_prompt ?? imageDebug?.image_prompt ?? debug?.generated_prompt ?? "";
+    if (!promptText) {
+      setMessage("当前图片还没有可查看的生图提示词");
+      return;
+    }
+    setPromptPreview({ title, text: promptText });
   }
 
   async function downloadSelectedTask() {
@@ -1657,7 +1731,15 @@ function TasksView({
                     <div className="character-reference-grid">
                       {taskForDetail.character_references.map((reference) => (
                         <figure key={reference.id} className="character-reference-card">
-                          <LazyAssetImage asset={reference.asset} assetId={reference.asset.id} alt={reference.name} />
+                          <button
+                            type="button"
+                            className="character-reference-image-button"
+                            aria-label={`放大查看${reference.name}参考图`}
+                            onClick={() => setPreviewReferenceId(reference.id)}
+                          >
+                            <LazyAssetImage asset={reference.asset} assetId={reference.asset.id} alt={reference.name} />
+                            <Eye size={17} />
+                          </button>
                           <figcaption>
                             <strong>{reference.name}</strong>
                             {reference.age_stage ? <span>{reference.age_stage}</span> : null}
@@ -1738,8 +1820,19 @@ function TasksView({
                             onClick={() => loadPanelDebug(panel.id)}
                           >
                             {loadingPanelDebugId === panel.id ? <Loader2 size={15} className="spin" /> : <FileText size={15} />}
-                            {panelDebug ? "已加载分镜文本" : user.role === "admin" ? "查看图片文字和 Prompt" : "查看图片文字"}
+                            {panelDebug ? "已加载分镜文本" : "查看图片文字和 Prompt"}
                           </button>
+                          {image ? (
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              disabled={loadingPanelDebugId === panel.id}
+                              onClick={() => openImagePromptPreview(panel.id, image.id, `Panel ${panel.panel_order} 生图提示词`)}
+                            >
+                              {loadingPanelDebugId === panel.id ? <Loader2 size={15} className="spin" /> : <FileText size={15} />}
+                              查看生图提示词
+                            </button>
+                          ) : null}
                         </div>
                         {panelDebugError[panel.id] ? <small className="error">{panelDebugError[panel.id]}</small> : null}
                         {panelDebug ? (
@@ -1749,9 +1842,30 @@ function TasksView({
                             {panelDebug.dialogue_text ? <small>对白：{panelDebug.dialogue_text}</small> : null}
                             {imageText ? <small>图片文字：{imageText}</small> : null}
                             {textLayout ? <small>文字布局：{textLayout}</small> : null}
-                            {user.role === "admin" && promptText ? <small className="panel-generated-prompt">{promptText}</small> : null}
-                            {user.role === "admin" && imageDebug?.previous_prompt ? (
-                              <small className="panel-generated-prompt">上一版 Prompt：{imageDebug.previous_prompt}</small>
+                            {promptText ? (
+                              <button
+                                type="button"
+                                className="inline-prompt-button"
+                                onClick={() => setPromptPreview({ title: `Panel ${panel.panel_order} 生图提示词`, text: promptText })}
+                              >
+                                <FileText size={14} />
+                                打开完整生图提示词
+                              </button>
+                            ) : null}
+                            {imageDebug?.previous_prompt ? (
+                              <button
+                                type="button"
+                                className="inline-prompt-button"
+                                onClick={() =>
+                                  setPromptPreview({
+                                    title: `Panel ${panel.panel_order} 上一版 Prompt`,
+                                    text: imageDebug.previous_prompt ?? "",
+                                  })
+                                }
+                              >
+                                <FileText size={14} />
+                                打开上一版 Prompt
+                              </button>
                             ) : null}
                           </div>
                         ) : null}
@@ -2337,8 +2451,25 @@ function TasksView({
             <figcaption>
               <div>
                 <strong>Panel {previewPanel?.panel_order ?? previewIndex + 1}</strong>
-                {user.role === "admin" && (previewImageDebug?.final_prompt || previewImageDebug?.image_prompt) ? (
-                  <p className="preview-prompt">{previewImageDebug.final_prompt ?? previewImageDebug.image_prompt}</p>
+                {previewImage ? (
+                  <div className="preview-meta-actions">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      disabled={loadingPanelDebugId === previewImage.panel_id}
+                      onClick={() =>
+                        openImagePromptPreview(
+                          previewImage.panel_id,
+                          previewImage.id,
+                          `Panel ${previewPanel?.panel_order ?? previewIndex + 1} 生图提示词`,
+                        )
+                      }
+                    >
+                      {loadingPanelDebugId === previewImage.panel_id ? <Loader2 size={15} className="spin" /> : <FileText size={15} />}
+                      查看生图提示词
+                    </button>
+                    {previewPromptText ? <p>提示词已加载，可点击查看完整内容。</p> : null}
+                  </div>
                 ) : null}
               </div>
               <div className="preview-actions">
@@ -2356,6 +2487,56 @@ function TasksView({
           <button type="button" className="modal-nav right" aria-label="下一张图片" disabled={previewItems.length <= 1} onClick={(event) => { event.stopPropagation(); showPreviewOffset(1); }}>
             <ChevronRight size={22} />
           </button>
+        </div>
+      ) : null}
+
+      {previewReference ? (
+        <div className="image-modal" onClick={() => setPreviewReferenceId(null)}>
+          <button ref={previewCloseRef} type="button" className="modal-close" aria-label="关闭参考图预览" onClick={() => setPreviewReferenceId(null)}>
+            <X size={18} />
+          </button>
+          <button type="button" className="modal-nav left" aria-label="上一张参考图" disabled={referencePreviewItems.length <= 1} onClick={(event) => { event.stopPropagation(); showReferencePreviewOffset(-1); }}>
+            <ChevronLeft size={22} />
+          </button>
+          <figure className="image-preview-frame reference-preview-frame" onClick={(event) => event.stopPropagation()}>
+            <LazyAssetImage asset={previewReference.asset} assetId={previewReference.asset.id} alt={`${previewReference.name}参考图预览`} eager variant="original" />
+            <figcaption>
+              <div>
+                <strong>{previewReference.name}</strong>
+                {previewReference.age_stage ? <p>{previewReference.age_stage}</p> : null}
+              </div>
+              <div className="preview-actions">
+                <button type="button" className="secondary-button" onClick={downloadPreviewReference}>
+                  <Download size={16} />
+                  下载参考图
+                </button>
+                <button type="button" className="secondary-button" onClick={openPreviewReference}>
+                  <ArrowUpRight size={16} />
+                  打开原图
+                </button>
+              </div>
+            </figcaption>
+          </figure>
+          <button type="button" className="modal-nav right" aria-label="下一张参考图" disabled={referencePreviewItems.length <= 1} onClick={(event) => { event.stopPropagation(); showReferencePreviewOffset(1); }}>
+            <ChevronRight size={22} />
+          </button>
+        </div>
+      ) : null}
+
+      {promptPreview ? (
+        <div className="prompt-modal-backdrop" onClick={() => setPromptPreview(null)}>
+          <section className="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-preview-title" onClick={(event) => event.stopPropagation()}>
+            <div className="prompt-modal-head">
+              <div>
+                <span>生图提示词</span>
+                <h2 id="prompt-preview-title">{promptPreview.title}</h2>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭提示词" onClick={() => setPromptPreview(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <pre>{promptPreview.text}</pre>
+          </section>
         </div>
       ) : null}
     </section>

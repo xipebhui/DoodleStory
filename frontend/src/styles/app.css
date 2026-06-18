@@ -789,6 +789,8 @@ textarea {
 
 .panel-debug-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .panel-debug-actions .ghost-button {
@@ -811,6 +813,25 @@ textarea {
 .panel-debug-box p,
 .panel-debug-box small {
   overflow-wrap: anywhere;
+}
+
+.inline-prompt-button {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(224, 177, 93, 0.34);
+  border-radius: 8px;
+  background: rgba(224, 177, 93, 0.08);
+  color: #f1d39a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 9px;
+}
+
+.inline-prompt-button:hover {
+  border-color: rgba(224, 177, 93, 0.56);
+  background: rgba(224, 177, 93, 0.14);
 }
 
 .task-create-form label small {
@@ -907,13 +928,41 @@ textarea {
   min-width: 0;
 }
 
-.character-reference-card img {
+.character-reference-image-button {
+  position: relative;
+  display: grid;
+  place-items: center;
   width: 100%;
   aspect-ratio: 9 / 16;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   background: #151820;
-  object-fit: cover;
+  padding: 0;
+  overflow: hidden;
+}
+
+.character-reference-image-button img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.character-reference-image-button svg {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.58);
+  color: #fff;
+  padding: 4px;
+  box-sizing: content-box;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.character-reference-image-button:hover svg,
+.character-reference-image-button:focus-visible svg {
+  opacity: 1;
 }
 
 .character-reference-card figcaption {
@@ -3174,6 +3223,89 @@ textarea {
   max-height: calc(92vh - 86px);
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.preview-meta-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.preview-meta-actions .ghost-button {
+  width: fit-content;
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.reference-preview-frame img {
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+
+.prompt-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 5, 7, 0.76);
+  backdrop-filter: blur(12px);
+  padding: 24px;
+}
+
+.prompt-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(920px, 94vw);
+  max-height: 88vh;
+  min-height: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #10141b;
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.48);
+  overflow: hidden;
+}
+
+.prompt-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 18px;
+}
+
+.prompt-modal-head div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.prompt-modal-head span {
+  color: #8d96a6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.prompt-modal-head h2 {
+  overflow: hidden;
+  margin: 0;
+  color: #eef2f7;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-modal pre {
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  color: #dfe5ef;
+  font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  padding: 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .content-preview-frame figcaption p {

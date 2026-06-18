@@ -396,7 +396,6 @@ def get_task_panel_debug(
     if panel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分镜不存在")
 
-    include_prompts = user.role == UserRole.admin
     images = []
     for image in sorted(
         (item for item in task.generated_images if item.panel_id == panel_id),
@@ -414,9 +413,9 @@ def get_task_panel_debug(
                 prompt_change_summary=image.prompt_change_summary,
                 image_text_json=image.image_text_json,
                 text_layout=image.text_layout,
-                previous_prompt=image.previous_prompt if include_prompts else None,
-                image_prompt=image.image_prompt if include_prompts else None,
-                final_prompt=image.final_prompt if include_prompts else None,
+                previous_prompt=image.previous_prompt,
+                image_prompt=image.image_prompt,
+                final_prompt=image.final_prompt,
                 error_message=image.error_message,
             )
         )
@@ -430,7 +429,7 @@ def get_task_panel_debug(
             dialogue_text=panel.dialogue_text,
             image_text_json=panel.image_text_json,
             text_layout=panel.text_layout,
-            generated_prompt=panel.generated_prompt if include_prompts else None,
+            generated_prompt=panel.generated_prompt,
             images=images,
         )
     )
