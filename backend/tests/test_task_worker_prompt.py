@@ -33,6 +33,7 @@ from app.services.task_worker import (
     final_prompt_with_explicit_style,
     generate_panel_image_request,
     is_policy_blocked_image_error,
+    sanitize_compiled_final_prompt,
     trim_generation_reference_pack_for_model,
 )
 
@@ -285,6 +286,28 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
         self.assertIn("第 1 页\n女孩在窗边读书。", final_prompt)
         self.assertNotIn("这段风格提示词不应拼入最终生图 prompt", final_prompt)
+
+    def test_sanitize_compiled_final_prompt_removes_text_type_labels(self) -> None:
+        final_prompt = sanitize_compiled_final_prompt(
+            (
+                "第1页（单页 | 3:4）\n"
+                "画面为夜晚街道，女孩扶着喝醉的男孩回家。\n"
+                "【文字】\n"
+                "旁白：19岁的我扶着喝多了的24岁的他回家，\n"
+                "整体色调/风格：竖版绘本漫画风。"
+            ),
+            {
+                "title": None,
+                "narration": "19岁的我扶着喝多了的24岁的他回家，",
+                "dialogue": None,
+                "inner_os": None,
+                "emphasis": None,
+            },
+        )
+
+        self.assertIn("在留白文字区写入「19岁的我扶着喝多了的24岁的他回家，」", final_prompt)
+        self.assertNotIn("旁白：19岁的我扶着喝多了的24岁的他回家，", final_prompt)
+        self.assertIn("整体色调/风格：竖版绘本漫画风。", final_prompt)
 
     def test_generation_reference_pack_orders_character_before_style_reference(self) -> None:
         character_asset = FileAsset(

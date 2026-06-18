@@ -709,6 +709,70 @@ def text_rules_block(
     return "".join(rules)
 
 
+def normalize_prompt_text_for_label_match(value: str) -> str:
+    return re.sub(r"\s+", "", value.strip().strip("「」『』“”\"'"))
+
+
+def prompt_label_content_matches(content: str, expected: str | None) -> bool:
+    if not expected:
+        return False
+    normalized_content = normalize_prompt_text_for_label_match(content)
+    normalized_expected = normalize_prompt_text_for_label_match(expected)
+    if not normalized_content or not normalized_expected:
+        return False
+    return normalized_content == normalized_expected or normalized_expected.startswith(normalized_content)
+
+
+def render_image_text_instruction(label: str, content: str) -> str:
+    if label == "标题":
+        return f"以醒目标题字写入「{content}」"
+    if label == "对话":
+        return f"以对白气泡写入「{content}」"
+    if label == "内心OS":
+        return f"以心理独白框写入「{content}」"
+    if label == "强调":
+        return f"以强调字写入「{content}」"
+    return f"在留白文字区写入「{content}」"
+
+
+def sanitize_compiled_final_prompt(
+    final_prompt: str,
+    image_text: ImageTextPlan | dict[str, str | None] | None,
+) -> str:
+    values = image_text_to_dict(image_text)
+    labels = [
+        ("标题", "title"),
+        ("旁白", "narration"),
+        ("对话", "dialogue"),
+        ("内心OS", "inner_os"),
+        ("强调", "emphasis"),
+    ]
+    sanitized_lines: list[str] = []
+    for raw_line in final_prompt.splitlines():
+        stripped = raw_line.strip()
+        leading_space = raw_line[: len(raw_line) - len(raw_line.lstrip())]
+        rewritten_line: str | None = None
+        for label, key in labels:
+            for separator in ("：", ":"):
+                prefix = f"{label}{separator}"
+                if not stripped.startswith(prefix):
+                    continue
+                content = stripped[len(prefix):].strip()
+                if content in {"", "无", "null", "None"} and not values.get(key):
+                    rewritten_line = ""
+                    break
+                if prompt_label_content_matches(content, values.get(key)) or content:
+                    rewritten_line = leading_space + render_image_text_instruction(label, content)
+                    break
+            if rewritten_line is not None:
+                break
+        if rewritten_line is None:
+            sanitized_lines.append(raw_line)
+        elif rewritten_line:
+            sanitized_lines.append(rewritten_line)
+    return "\n".join(sanitized_lines).strip()
+
+
 def split_dialogue_speaker(line: str) -> tuple[str | None, str | None]:
     for separator in ("：", ":"):
         if separator not in line:
@@ -1078,9 +1142,14 @@ def compose_final_prompts_for_panels(
             panel_count=len(panels),
         ),
     )
-    prompt_by_order = {
-        panel.panel_order: final_prompt_with_explicit_style(task, panel.final_prompt) for panel in result.panels
-    }
+    image_text_by_order = {payload["panel_order"]: payload["image_text"] for payload in panel_payloads}
+    prompt_by_order = {}
+    for panel in result.panels:
+        sanitized_prompt = sanitize_compiled_final_prompt(
+            panel.final_prompt,
+            image_text_by_order.get(panel.panel_order),
+        )
+        prompt_by_order[panel.panel_order] = final_prompt_with_explicit_style(task, sanitized_prompt)
     for panel in result.panels:
         final_prompt = prompt_by_order[panel.panel_order]
         log_prompt_trace(
