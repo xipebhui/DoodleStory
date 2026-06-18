@@ -2,11 +2,11 @@ import asyncio
 import json
 import logging
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import monotonic
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -87,8 +87,11 @@ from app.services.style_references import build_task_style_reference_pack, is_pr
 _queue: asyncio.Queue[str] | None = None
 _queue_loop: asyncio.AbstractEventLoop | None = None
 _worker_tasks: list[asyncio.Task[None]] = []
+_image_worker_tasks: list[asyncio.Task[None]] = []
 _running_task_ids: set[str] = set()
 _running_task_ids_lock: asyncio.Lock | None = None
+_image_job_claim_lock: asyncio.Lock | None = None
+_image_worker_instance_id = uuid4().hex
 logger = logging.getLogger(__name__)
 POLICY_BLOCKED_ERROR_MARKERS = (
     "Unable to show the generated image",
@@ -311,29 +314,41 @@ def task_trace_context(task: GenerationTask, step: str, **extra: object) -> dict
 
 
 def init_task_queue() -> None:
-    global _queue, _queue_loop, _worker_tasks, _running_task_ids_lock
+    global _queue, _queue_loop, _worker_tasks, _image_worker_tasks, _running_task_ids_lock, _image_job_claim_lock
     settings = get_settings()
     _queue_loop = asyncio.get_running_loop()
     _queue = asyncio.Queue()
     _running_task_ids.clear()
     _running_task_ids_lock = asyncio.Lock()
+    _image_job_claim_lock = asyncio.Lock()
     _worker_tasks = [
         asyncio.create_task(worker_loop(worker_index=worker_index))
         for worker_index in range(settings.task_worker_concurrency)
     ]
-    logger.info("task queue initialized worker_count=%s", len(_worker_tasks))
+    _image_worker_tasks = [
+        asyncio.create_task(image_job_worker_loop(worker_index=worker_index))
+        for worker_index in range(settings.image_job_concurrency)
+    ]
+    logger.info(
+        "task queue initialized worker_count=%s image_worker_count=%s image_job_user_concurrency=%s",
+        len(_worker_tasks),
+        len(_image_worker_tasks),
+        settings.image_job_user_concurrency,
+    )
 
 
 async def shutdown_task_queue() -> None:
-    global _worker_tasks, _running_task_ids_lock, _queue_loop
-    if not _worker_tasks:
+    global _worker_tasks, _image_worker_tasks, _running_task_ids_lock, _image_job_claim_lock, _queue_loop
+    if not _worker_tasks and not _image_worker_tasks:
         return
-    for worker_task in _worker_tasks:
+    for worker_task in [*_worker_tasks, *_image_worker_tasks]:
         worker_task.cancel()
-    await asyncio.gather(*_worker_tasks, return_exceptions=True)
+    await asyncio.gather(*_worker_tasks, *_image_worker_tasks, return_exceptions=True)
     _worker_tasks = []
+    _image_worker_tasks = []
     _running_task_ids.clear()
     _running_task_ids_lock = None
+    _image_job_claim_lock = None
     _queue_loop = None
     logger.info("task queue shutdown complete")
 
@@ -353,27 +368,422 @@ def enqueue_task_from_thread(task_id: str) -> None:
 
 
 async def enqueue_panel_edit(generated_image_id: str) -> None:
-    asyncio.create_task(asyncio.to_thread(process_panel_edit, generated_image_id))
-    logger.info("panel edit enqueued generated_image_id=%s", generated_image_id)
+    logger.info("panel edit queued for image job worker generated_image_id=%s", generated_image_id)
+
+
+def image_job_owner_id(image: GeneratedImage) -> str:
+    return image.owner_user_id or image.task.owner_user_id
+
+
+def image_job_queue_group(image: GeneratedImage) -> str:
+    return image.queue_group or image_job_owner_id(image)
+
+
+def image_job_has_terminal_credit(db: Session, image_id: str) -> bool:
+    from app.models.entities import CreditTransaction
+    from app.models.enums import CreditTransactionType
+
+    transactions = db.scalars(
+        select(CreditTransaction).where(CreditTransaction.generated_image_id == image_id)
+    ).all()
+    has_reserve = any(
+        transaction.transaction_type == CreditTransactionType.image_generation_reserve
+        for transaction in transactions
+    )
+    has_terminal = any(
+        transaction.transaction_type
+        in {CreditTransactionType.image_generation_charge, CreditTransactionType.image_generation_release}
+        for transaction in transactions
+    )
+    return (not has_reserve) or has_terminal
+
+
+def release_interrupted_image_job_credit(db: Session, image: GeneratedImage) -> None:
+    if image_job_has_terminal_credit(db, image.id):
+        return
+    try:
+        release_reserved_image_credit(
+            db,
+            user_id=image_job_owner_id(image),
+            task_id=image.task_id,
+            panel_id=image.panel_id,
+            generated_image_id=image.id,
+            note="图片任务中断后释放旧占用",
+        )
+    except CreditError:
+        logger.info("image job interrupted credit release skipped image_id=%s", image.id)
+
+
+def recover_interrupted_image_jobs() -> int:
+    now = datetime.utcnow()
+    recovered_count = 0
+    with SessionLocal() as db:
+        images = db.scalars(
+            select(GeneratedImage)
+            .where(GeneratedImage.status == GeneratedImageStatus.running)
+            .options(selectinload(GeneratedImage.task))
+            .order_by(GeneratedImage.updated_at.asc())
+        ).all()
+        for image in images:
+            if image.asset_id is not None:
+                continue
+            release_interrupted_image_job_credit(db, image)
+            image.status = GeneratedImageStatus.queued
+            image.queued_at = image.queued_at or now
+            image.lease_until = None
+            image.locked_by = None
+            image.error_code = None
+            image.error_message = None
+            recovered_count += 1
+        db.commit()
+    if recovered_count:
+        logger.warning("recovered interrupted image jobs count=%s", recovered_count)
+    return recovered_count
+
+
+def claim_next_image_job() -> str | None:
+    settings = get_settings()
+    now = datetime.utcnow()
+    lease_until = now + timedelta(seconds=settings.image_job_lease_seconds)
+    with SessionLocal() as db:
+        candidates = db.scalars(
+            select(GeneratedImage)
+            .where(GeneratedImage.status == GeneratedImageStatus.queued)
+            .options(selectinload(GeneratedImage.task))
+            .order_by(GeneratedImage.priority.desc(), GeneratedImage.queued_at.asc(), GeneratedImage.created_at.asc())
+            .limit(100)
+        ).all()
+        for image in candidates:
+            owner_id = image_job_owner_id(image)
+            running_for_user = db.scalar(
+                select(func.count(GeneratedImage.id)).where(
+                    GeneratedImage.status == GeneratedImageStatus.running,
+                    GeneratedImage.owner_user_id == owner_id,
+                    GeneratedImage.lease_until.is_not(None),
+                    GeneratedImage.lease_until > now,
+                )
+            )
+            if (running_for_user or 0) >= settings.image_job_user_concurrency:
+                continue
+            image.owner_user_id = owner_id
+            image.queue_group = image.queue_group or owner_id
+            image.status = GeneratedImageStatus.running
+            image.started_at = image.started_at or now
+            image.lease_until = lease_until
+            image.locked_by = _image_worker_instance_id
+            image.attempts += 1
+            image.error_code = None
+            image.error_message = None
+            db.commit()
+            logger.info(
+                "image job claimed image_id=%s task_id=%s panel_id=%s source_type=%s owner_user_id=%s attempts=%s lease_until=%s",
+                image.id,
+                image.task_id,
+                image.panel_id,
+                image.source_type.value,
+                owner_id,
+                image.attempts,
+                lease_until.isoformat(),
+            )
+            return image.id
+    return None
+
+
+async def image_job_worker_loop(*, worker_index: int) -> None:
+    if _image_job_claim_lock is None:
+        raise RuntimeError("图片任务领取锁尚未初始化")
+    logger.info("image job worker loop started worker_index=%s", worker_index)
+    while True:
+        image_id: str | None = None
+        try:
+            async with _image_job_claim_lock:
+                image_id = claim_next_image_job()
+            if image_id is None:
+                await asyncio.sleep(1)
+                continue
+            await asyncio.to_thread(process_generated_image_job, image_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("image job worker unexpected error image_id=%s worker_index=%s", image_id, worker_index)
+            if image_id:
+                mark_image_job_failed_by_unhandled_error(image_id, exc)
+
+
+def process_generated_image_job(generated_image_id: str) -> None:
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is None:
+            logger.warning("image job skipped missing image_id=%s", generated_image_id)
+            return
+        source_type = image.source_type
+
+    if source_type == GeneratedImageSourceType.user_edit:
+        process_panel_edit(generated_image_id)
+    else:
+        process_initial_panel_image_job(generated_image_id)
+
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is not None and image.source_type != GeneratedImageSourceType.user_edit:
+            update_task_image_generation_state(db, image.task_id)
+
+
+def mark_image_job_failed_by_unhandled_error(generated_image_id: str, exc: Exception) -> None:
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is None:
+            return
+        release_interrupted_image_job_credit(db, image)
+        image.status = GeneratedImageStatus.failed
+        image.error_code = exc.__class__.__name__
+        image.error_message = str(exc)
+        image.finished_at = datetime.utcnow()
+        image.lease_until = None
+        image.locked_by = None
+        db.commit()
+        if image.source_type != GeneratedImageSourceType.user_edit:
+            update_task_image_generation_state(db, image.task_id)
+
+
+def process_initial_panel_image_job(generated_image_id: str) -> None:
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is None:
+            logger.warning("initial image job skipped missing image_id=%s", generated_image_id)
+            return
+        task = image.task
+        panel = image.panel
+        task_id = task.id
+        owner_user_id = task.owner_user_id
+        image_model_name = task.image_model_name_snapshot
+        aspect_ratio = task.style_aspect_ratio_snapshot
+        try:
+            reference_pack = build_generation_reference_pack(task, panel)
+        except ImageProviderConfigError as exc:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            db.commit()
+            update_task_image_generation_state(db, task.id)
+            return
+
+        request = PreparedPanelImageRequest(
+            panel_id=panel.id,
+            panel_order=panel.panel_order,
+            image_id=image.id,
+            final_prompt=image.final_prompt or "",
+            references=reference_pack.references,
+            reference_count=len(reference_pack.references),
+            character_reference_count=reference_pack.character_reference_count,
+            style_reference_count=reference_pack.style_reference_count,
+        )
+        try:
+            reserve_image_credit(
+                db,
+                user_id=owner_user_id,
+                task_id=task_id,
+                panel_id=panel.id,
+                generated_image_id=image.id,
+                note=f"任务分镜 {panel.panel_order} 生图占用",
+            )
+            db.commit()
+        except InsufficientCreditsError as exc:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            db.commit()
+            update_task_image_generation_state(db, task.id)
+            return
+
+    result = generate_panel_image_request(
+        task_id=task_id,
+        image_model_name=image_model_name,
+        aspect_ratio=aspect_ratio,
+        request=request,
+    )
+
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is None:
+            return
+        task = image.task
+        if result.error is not None:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = result.error.__class__.__name__
+            image.error_message = str(result.error)
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            try:
+                release_reserved_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    panel_id=image.panel_id,
+                    generated_image_id=image.id,
+                    note="任务分镜生图失败释放积分占用",
+                )
+            except CreditError:
+                logger.info("initial image job release skipped no reserved credit image_id=%s", image.id)
+            db.commit()
+            update_task_image_generation_state(db, task.id)
+            return
+        generated = result.generated
+        if generated is None:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = "ImageGenerationFailed"
+            image.error_message = "图片 Provider 未返回生成结果"
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            try:
+                release_reserved_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    panel_id=image.panel_id,
+                    generated_image_id=image.id,
+                    note="任务分镜生图未返回结果释放积分占用",
+                )
+            except CreditError:
+                logger.info("initial image job empty-result release skipped no reserved credit image_id=%s", image.id)
+            db.commit()
+            update_task_image_generation_state(db, task.id)
+            return
+        asset = FileAsset(
+            purpose=FileAssetPurpose.generated_image,
+            storage_backend=generated.storage_backend,
+            storage_key=generated.storage_key,
+            public_url=generated.public_url,
+            original_filename=generated.original_filename,
+            content_type=generated.content_type,
+            byte_size=generated.byte_size,
+            checksum_sha256=generated.checksum_sha256,
+        )
+        db.add(asset)
+        db.flush()
+        image.asset_id = asset.id
+        image.provider_request_id = generated.provider_request_id
+        if result.final_prompt and result.final_prompt != image.final_prompt:
+            image.final_prompt = result.final_prompt
+            image.prompt_change_summary = result.prompt_change_summary
+        charge_reserved_image_credit(
+            db,
+            user_id=task.owner_user_id,
+            task_id=task.id,
+            panel_id=image.panel_id,
+            generated_image_id=image.id,
+            note="任务分镜图片成功产出扣费",
+        )
+        image.status = GeneratedImageStatus.succeeded
+        image.finished_at = datetime.utcnow()
+        image.lease_until = None
+        image.locked_by = None
+        mark_image_current(db, image)
+        db.commit()
+        update_task_image_generation_state(db, task.id)
+
+
+def update_task_image_generation_state(db: Session, task_id: str) -> None:
+    task = load_task(db, task_id)
+    if task is None:
+        return
+    panel_count = len(task.panels)
+    if panel_count == 0:
+        return
+    current_success_count = len(current_succeeded_images_by_panel(task))
+    active_count = sum(
+        1
+        for image in task.generated_images
+        if image.source_type != GeneratedImageSourceType.user_edit
+        and image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running}
+    )
+    if active_count > 0:
+        task.status = TaskStatus.running
+        task.current_step = GenerationStepName.generate_images
+        set_step(db, task, GenerationStepName.generate_images, StepStatus.running)
+        db.commit()
+        return
+    set_step(
+        db,
+        task,
+        GenerationStepName.generate_images,
+        StepStatus.succeeded if current_success_count == panel_count else StepStatus.failed,
+    )
+    task.finished_at = datetime.utcnow()
+    if current_success_count == panel_count:
+        task.progress_current = task.progress_total
+        task.status = TaskStatus.succeeded
+        task.error_code = None
+        task.error_message = None
+    elif current_success_count > 0:
+        task.progress_current = max(task.progress_total - 1, 0)
+        task.status = TaskStatus.partial_succeeded
+        task.error_code = "ImageGenerationPartialFailed"
+        task.error_message = f"部分分镜图片生成失败：成功 {current_success_count} / 共 {panel_count} 张"
+    else:
+        task.progress_current = max(task.progress_total - 1, 0)
+        task.status = TaskStatus.failed
+        task.error_code = "ImageGenerationFailed"
+        task.error_message = "所有分镜图片生成失败"
+    db.commit()
+
+
+def active_initial_image_job_count(db: Session, task_id: str) -> int:
+    return db.scalar(
+        select(func.count(GeneratedImage.id)).where(
+            GeneratedImage.task_id == task_id,
+            GeneratedImage.source_type != GeneratedImageSourceType.user_edit,
+            GeneratedImage.status.in_([GeneratedImageStatus.queued, GeneratedImageStatus.running]),
+        )
+    ) or 0
 
 
 async def recover_queued_tasks() -> None:
     if _queue is None:
         raise RuntimeError("任务队列尚未初始化")
+    recover_interrupted_image_jobs()
     with SessionLocal() as db:
         interrupted_tasks = db.scalars(
             select(GenerationTask)
             .where(GenerationTask.status.in_([TaskStatus.running, TaskStatus.cancel_requested]))
             .order_by(GenerationTask.created_at.asc())
         ).all()
+        failed_count = 0
+        resumed_image_planning_count = 0
+        continued_image_job_count = 0
         for task in interrupted_tasks:
+            if task.current_step == GenerationStepName.generate_images:
+                if active_initial_image_job_count(db, task.id) > 0:
+                    continued_image_job_count += 1
+                    continue
+                task.status = TaskStatus.queued
+                task.error_code = None
+                task.error_message = None
+                task.finished_at = None
+                resumed_image_planning_count += 1
+                logger.warning("re-queued interrupted image-planning task without active image jobs task_id=%s", task.id)
+                continue
             task.status = TaskStatus.failed
             task.error_code = "WorkerInterrupted"
             task.error_message = "服务重启导致任务中断，请重新创建任务"
             task.finished_at = datetime.utcnow()
+            failed_count += 1
         db.commit()
-        if interrupted_tasks:
-            logger.warning("marked interrupted tasks as failed count=%s", len(interrupted_tasks))
+        if failed_count or resumed_image_planning_count or continued_image_job_count:
+            logger.warning(
+                "recovered interrupted tasks failed_count=%s resumed_image_planning_count=%s continued_image_job_count=%s",
+                failed_count,
+                resumed_image_planning_count,
+                continued_image_job_count,
+            )
 
         task_ids = db.scalars(
             select(GenerationTask.id)
@@ -1637,10 +2047,15 @@ def process_task(task_id: str) -> None:
         )
         success_count = 0
         skipped_count = 0
-        prepared_requests: list[PreparedPanelImageRequest] = []
         pending_panels: list[TaskPanel] = []
         reference_packs_by_panel_id: dict[str, GenerationReferencePack] = {}
         existing_successes = current_succeeded_images_by_panel(task)
+        active_panel_ids = {
+            image.panel_id
+            for image in task.generated_images
+            if image.source_type != GeneratedImageSourceType.user_edit
+            and image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running}
+        }
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
             if should_stop_for_cancel(db, task):
                 return
@@ -1653,6 +2068,15 @@ def process_task(task_id: str) -> None:
                     panel.id,
                     panel.panel_order,
                     existing_successes[panel.id].id,
+                )
+                continue
+            if panel.id in active_panel_ids:
+                skipped_count += 1
+                logger.info(
+                    "task panel image skipped existing active job task_id=%s panel_id=%s panel_order=%s",
+                    task.id,
+                    panel.id,
+                    panel.panel_order,
                 )
                 continue
             try:
@@ -1712,11 +2136,14 @@ def process_task(task_id: str) -> None:
             image = GeneratedImage(
                 task_id=task.id,
                 panel_id=panel.id,
-                status=GeneratedImageStatus.running,
+                owner_user_id=task.owner_user_id,
+                status=GeneratedImageStatus.queued,
                 generation_number=next_generation_number(db, panel.id),
                 is_current=False,
                 source_type=GeneratedImageSourceType.retry if task.attempts > 0 else GeneratedImageSourceType.initial,
                 workflow_step=GeneratedImageWorkflowStep.generate_image,
+                queued_at=datetime.utcnow(),
+                queue_group=task.owner_user_id,
                 image_prompt=panel.generated_prompt,
                 image_text_json=panel.image_text_json,
                 text_layout=panel.text_layout,
@@ -1727,33 +2154,8 @@ def process_task(task_id: str) -> None:
             db.add(image)
             db.commit()
             db.refresh(image)
-            try:
-                reserve_image_credit(
-                    db,
-                    user_id=task.owner_user_id,
-                    task_id=task.id,
-                    panel_id=panel.id,
-                    generated_image_id=image.id,
-                    note=f"任务分镜 {panel.panel_order} 生图占用",
-                )
-                db.commit()
-            except InsufficientCreditsError as exc:
-                image.status = GeneratedImageStatus.failed
-                image.error_code = exc.__class__.__name__
-                image.error_message = str(exc)
-                image.finished_at = datetime.utcnow()
-                db.commit()
-                logger.warning(
-                    "story_drawing_debug panel_image_credit_insufficient task_id=%s panel_id=%s panel_order=%s image_id=%s error=%s",
-                    task.id,
-                    panel.id,
-                    panel.panel_order,
-                    image.id,
-                    exc,
-                )
-                continue
             logger.info(
-                "story_drawing_debug generated_image_record_created task_id=%s panel_id=%s panel_order=%s image_id=%s generation_number=%s source_type=%s",
+                "story_drawing_debug generated_image_job_created task_id=%s panel_id=%s panel_order=%s image_id=%s generation_number=%s source_type=%s",
                 task.id,
                 panel.id,
                 panel.panel_order,
@@ -1761,175 +2163,13 @@ def process_task(task_id: str) -> None:
                 image.generation_number,
                 image.source_type.value,
             )
-            prepared_requests.append(
-                PreparedPanelImageRequest(
-                    panel_id=panel.id,
-                    panel_order=panel.panel_order,
-                    image_id=image.id,
-                    final_prompt=final_prompt,
-                    references=panel_references,
-                    reference_count=len(panel_references),
-                    character_reference_count=character_reference_count,
-                    style_reference_count=style_reference_count,
-                )
-            )
-
-        image_generation_concurrency = get_settings().image_generation_concurrency
-        image_generation_concurrency = min(image_generation_concurrency, len(prepared_requests) or 1)
+        update_task_image_generation_state(db, task.id)
         logger.info(
-            "story_drawing_debug provider_batch_ready task_id=%s request_count=%s concurrency=%s skipped_existing_success_count=%s",
+            "story_drawing_debug image_jobs_queued task_id=%s success_count=%s skipped_existing_count=%s pending_panel_count=%s elapsed_ms=%s image_step_elapsed_ms=%s",
             task.id,
-            len(prepared_requests),
-            image_generation_concurrency,
-            skipped_count,
-        )
-        if prepared_requests:
-            with ThreadPoolExecutor(max_workers=image_generation_concurrency) as executor:
-                futures = [
-                    executor.submit(
-                        generate_panel_image_request,
-                        task_id=task.id,
-                        image_model_name=task.image_model_name_snapshot,
-                        aspect_ratio=task.style_aspect_ratio_snapshot,
-                        request=request,
-                    )
-                    for request in prepared_requests
-                ]
-                for future in as_completed(futures):
-                    result = future.result()
-                    image = db.scalar(select(GeneratedImage).where(GeneratedImage.id == result.request.image_id))
-                    if image is None:
-                        logger.warning(
-                            "task panel image result skipped missing image task_id=%s panel_id=%s image_id=%s",
-                            task.id,
-                            result.request.panel_id,
-                            result.request.image_id,
-                        )
-                        continue
-                    if result.error is not None:
-                        logger.warning(
-                            "story_drawing_debug panel_image_failed task_id=%s panel_id=%s panel_order=%s image_id=%s error_type=%s error=%s",
-                            task.id,
-                            result.request.panel_id,
-                            result.request.panel_order,
-                            result.request.image_id,
-                            result.error.__class__.__name__,
-                            result.error,
-                        )
-                        image.status = GeneratedImageStatus.failed
-                        image.error_code = result.error.__class__.__name__
-                        image.error_message = str(result.error)
-                        image.finished_at = datetime.utcnow()
-                        release_reserved_image_credit(
-                            db,
-                            user_id=task.owner_user_id,
-                            task_id=task.id,
-                            panel_id=result.request.panel_id,
-                            generated_image_id=result.request.image_id,
-                            note="任务分镜生图失败释放积分占用",
-                        )
-                        db.commit()
-                        continue
-                    generated = result.generated
-                    if generated is None:
-                        logger.warning(
-                            "story_drawing_debug panel_image_empty_result task_id=%s panel_id=%s panel_order=%s image_id=%s",
-                            task.id,
-                            result.request.panel_id,
-                            result.request.panel_order,
-                            result.request.image_id,
-                        )
-                        image.status = GeneratedImageStatus.failed
-                        image.error_code = "ImageGenerationFailed"
-                        image.error_message = "图片 Provider 未返回生成结果"
-                        image.finished_at = datetime.utcnow()
-                        release_reserved_image_credit(
-                            db,
-                            user_id=task.owner_user_id,
-                            task_id=task.id,
-                            panel_id=result.request.panel_id,
-                            generated_image_id=result.request.image_id,
-                            note="任务分镜生图未返回结果释放积分占用",
-                        )
-                        db.commit()
-                        continue
-                    asset = FileAsset(
-                        purpose=FileAssetPurpose.generated_image,
-                        storage_backend=generated.storage_backend,
-                        storage_key=generated.storage_key,
-                        public_url=generated.public_url,
-                        original_filename=generated.original_filename,
-                        content_type=generated.content_type,
-                        byte_size=generated.byte_size,
-                        checksum_sha256=generated.checksum_sha256,
-                    )
-                    db.add(asset)
-                    db.flush()
-                    image.asset_id = asset.id
-                    image.provider_request_id = generated.provider_request_id
-                    if result.final_prompt and result.final_prompt != image.final_prompt:
-                        image.final_prompt = result.final_prompt
-                        image.prompt_change_summary = result.prompt_change_summary
-                    charge_reserved_image_credit(
-                        db,
-                        user_id=task.owner_user_id,
-                        task_id=task.id,
-                        panel_id=result.request.panel_id,
-                        generated_image_id=result.request.image_id,
-                        note="任务分镜图片成功产出扣费",
-                    )
-                    image.status = GeneratedImageStatus.succeeded
-                    mark_image_current(db, image)
-                    image.finished_at = datetime.utcnow()
-                    success_count += 1
-                    logger.info(
-                        "story_drawing_debug panel_image_succeeded task_id=%s panel_id=%s panel_order=%s image_id=%s asset_id=%s asset_storage_key=%s bytes=%s provider_request_id=%s",
-                        task.id,
-                        result.request.panel_id,
-                        result.request.panel_order,
-                        result.request.image_id,
-                        asset.id,
-                        generated.storage_key,
-                        generated.byte_size,
-                        generated.provider_request_id,
-                    )
-                    db.commit()
-                    if should_stop_for_cancel(db, task):
-                        logger.info("task image generation cancellation observed after result task_id=%s", task.id)
-                        return
-
-        task = load_task(db, task_id)
-        if task is None:
-            return
-        panel_count = len(task.panels)
-        set_step(
-            db,
-            task,
-            GenerationStepName.generate_images,
-            StepStatus.succeeded if success_count == panel_count else StepStatus.failed,
-        )
-        task.finished_at = datetime.utcnow()
-        if success_count == panel_count:
-            task.progress_current = task.progress_total
-            task.status = TaskStatus.succeeded
-        elif success_count > 0:
-            task.progress_current = max(task.progress_total - 1, 0)
-            task.status = TaskStatus.partial_succeeded
-            task.error_code = "ImageGenerationPartialFailed"
-            task.error_message = f"部分分镜图片生成失败：成功 {success_count} / 共 {panel_count} 张"
-        else:
-            task.progress_current = max(task.progress_total - 1, 0)
-            task.status = TaskStatus.failed
-            task.error_code = "ImageGenerationFailed"
-            task.error_message = "所有分镜图片生成失败"
-        db.commit()
-        logger.info(
-            "story_drawing_debug task_done task_id=%s status=%s success_count=%s skipped_existing_success_count=%s panel_count=%s elapsed_ms=%s image_step_elapsed_ms=%s",
-            task.id,
-            task.status.value,
             success_count,
             skipped_count,
-            panel_count,
+            len(pending_panels),
             round((monotonic() - task_started) * 1000),
             round((monotonic() - image_step_started) * 1000),
         )
@@ -1952,6 +2192,11 @@ def load_generated_image(db: Session, generated_image_id: str) -> GeneratedImage
             selectinload(GeneratedImage.asset),
         )
     )
+
+
+def clear_image_job_lock(image: GeneratedImage) -> None:
+    image.lease_until = None
+    image.locked_by = None
 
 
 def process_panel_edit(generated_image_id: str) -> None:
@@ -2050,6 +2295,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
             image.finished_at = datetime.utcnow()
+            clear_image_job_lock(image)
             db.commit()
             return
 
@@ -2060,6 +2306,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
             image.finished_at = datetime.utcnow()
+            clear_image_job_lock(image)
             db.commit()
             return
 
@@ -2070,6 +2317,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
             image.finished_at = datetime.utcnow()
+            clear_image_job_lock(image)
             db.commit()
             return
         references = reference_pack.references
@@ -2090,6 +2338,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
             image.finished_at = datetime.utcnow()
+            clear_image_job_lock(image)
             db.commit()
             return
         image.final_prompt = final_prompts_by_order[panel.panel_order]
@@ -2172,6 +2421,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             )
             image.status = GeneratedImageStatus.succeeded
             image.finished_at = datetime.utcnow()
+            clear_image_job_lock(image)
             panel.generated_prompt = image.image_prompt
             panel.image_text_json = image.image_text_json
             panel.text_layout = image.text_layout
@@ -2204,6 +2454,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
             image.finished_at = datetime.utcnow()
+            clear_image_job_lock(image)
         except (ImageProviderConfigError, ImageProviderResponseError) as exc:
             logger.warning(
                 "panel edit image failed generated_image_id=%s task_id=%s panel_id=%s error_type=%s error=%s",
@@ -2217,6 +2468,7 @@ def process_panel_edit(generated_image_id: str) -> None:
             image.error_code = exc.__class__.__name__
             image.error_message = str(exc)
             image.finished_at = datetime.utcnow()
+            clear_image_job_lock(image)
             try:
                 release_reserved_image_credit(
                     db,

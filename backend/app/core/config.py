@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     image_provider_timeout_retry_attempts: int = Field(default=3, ge=0)
     task_worker_concurrency: int = Field(default=3, ge=1)
     image_generation_concurrency: int = Field(default=3, ge=1)
+    image_job_concurrency: int = Field(default=6, ge=1)
+    image_job_user_concurrency: int = Field(default=2, ge=1)
+    image_job_lease_seconds: int = Field(default=1800, ge=60)
     image_provider_debug_log_raw_io: bool = False
     image_provider_debug_log_raw_max_chars: int = 20000
     douyin_import_service_base_url: str = "http://127.0.0.1:8010"

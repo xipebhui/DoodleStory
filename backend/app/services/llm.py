@@ -14,6 +14,7 @@ from app.services.prompt_logging import log_prompt_trace
 
 PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 logger = logging.getLogger(__name__)
+FINAL_IMAGE_PROMPT_MAX_ATTEMPTS = 3
 
 
 class LLMProviderError(Exception):
@@ -1302,42 +1303,78 @@ def compose_final_image_prompts(
     characters: list[dict[str, Any]],
     trace_context: dict[str, Any] | None = None,
 ) -> FinalImagePromptResult:
-    user_prompt = json.dumps(
-        {
-            "task": task_payload,
-            "characters": characters,
-            "panels": panels,
-        },
-        ensure_ascii=False,
-    )
-    raw = call_siliconflow_json(
-        system_prompt=read_prompt("compose_final_image_prompts_v1.md"),
-        user_prompt=user_prompt,
-        prompt_name="compose_final_image_prompts_v1.md",
-        trace_context={**(trace_context or {}), "operation": "compose_final_image_prompts"},
-        temperature=0.2,
-    )
-    try:
-        result = FinalImagePromptResult.model_validate(raw)
-    except ValidationError as exc:
+    expected_orders = [int(panel["panel_order"]) for panel in panels]
+    payload = {
+        "task": task_payload,
+        "characters": characters,
+        "panels": panels,
+    }
+    raw: dict[str, Any] | None = None
+    result: FinalImagePromptResult | None = None
+    returned_orders: list[int] = []
+    for attempt in range(1, FINAL_IMAGE_PROMPT_MAX_ATTEMPTS + 1):
+        if attempt == 1:
+            attempt_payload = payload
+        else:
+            attempt_payload = {
+                **payload,
+                "retry_instruction": (
+                    "上一次返回的 panels 顺序与输入不一致。必须严格按输入 panels 的顺序返回，"
+                    f"panel_order 必须依次为 {expected_orders}，不能缺失、重复、重排或新增 panel。"
+                ),
+            }
+        raw = call_siliconflow_json(
+            system_prompt=read_prompt("compose_final_image_prompts_v1.md"),
+            user_prompt=json.dumps(attempt_payload, ensure_ascii=False),
+            prompt_name="compose_final_image_prompts_v1.md",
+            trace_context={
+                **(trace_context or {}),
+                "operation": "compose_final_image_prompts",
+                "attempt": attempt,
+                "max_attempts": FINAL_IMAGE_PROMPT_MAX_ATTEMPTS,
+            },
+            temperature=0.2,
+        )
+        try:
+            result = FinalImagePromptResult.model_validate(raw)
+        except ValidationError as exc:
+            log_prompt_trace(
+                logger,
+                "llm_validation_failed",
+                prompt_name="compose_final_image_prompts_v1.md",
+                context={
+                    **(trace_context or {}),
+                    "attempt": attempt,
+                    "max_attempts": FINAL_IMAGE_PROMPT_MAX_ATTEMPTS,
+                },
+                errors=exc.errors(),
+                raw=raw,
+            )
+            raise LLMResponseError("LLM 最终生图提示词 JSON 结构不符合要求") from exc
+        returned_orders = [panel.panel_order for panel in result.panels]
+        if returned_orders == expected_orders:
+            if attempt > 1:
+                logger.info("final image prompt composition recovered after retry attempt=%s", attempt)
+            break
         log_prompt_trace(
             logger,
-            "llm_validation_failed",
+            "llm_panel_order_mismatch_retrying",
             prompt_name="compose_final_image_prompts_v1.md",
-            context=trace_context or {},
-            errors=exc.errors(),
+            context={
+                **(trace_context or {}),
+                "attempt": attempt,
+                "max_attempts": FINAL_IMAGE_PROMPT_MAX_ATTEMPTS,
+            },
+            expected_orders=expected_orders,
+            returned_orders=returned_orders,
             raw=raw,
         )
-        raise LLMResponseError("LLM 最终生图提示词 JSON 结构不符合要求") from exc
-
-    expected_orders = [int(panel["panel_order"]) for panel in panels]
-    returned_orders = [panel.panel_order for panel in result.panels]
-    if returned_orders != expected_orders:
+    if result is None or returned_orders != expected_orders:
         log_prompt_trace(
             logger,
             "llm_panel_order_mismatch",
             prompt_name="compose_final_image_prompts_v1.md",
-            context=trace_context or {},
+            context={**(trace_context or {}), "attempts": FINAL_IMAGE_PROMPT_MAX_ATTEMPTS},
             expected_orders=expected_orders,
             returned_orders=returned_orders,
             raw=raw,

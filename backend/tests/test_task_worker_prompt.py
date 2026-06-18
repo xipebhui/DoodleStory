@@ -89,13 +89,47 @@ class TaskWorkerPromptTest(unittest.TestCase):
         with patch(
             "app.services.llm.call_siliconflow_json",
             return_value={"panels": [{"panel_order": 2, "final_prompt": "第 2 页"}]},
-        ):
+        ) as call_json:
             with self.assertRaises(LLMResponseError):
                 compose_final_image_prompts(
                     task_payload={"aspect_ratio": "3:4"},
                     characters=[],
                     panels=[{"panel_order": 1, "visual_prompt": "女孩在窗边读书"}],
                 )
+        self.assertEqual(3, call_json.call_count)
+
+    def test_compose_final_image_prompts_retries_panel_order_mismatch(self) -> None:
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            side_effect=[
+                {
+                    "panels": [
+                        {"panel_order": 2, "final_prompt": "第 2 页"},
+                        {"panel_order": 1, "final_prompt": "第 1 页"},
+                    ]
+                },
+                {
+                    "panels": [
+                        {"panel_order": 1, "final_prompt": "第 1 页"},
+                        {"panel_order": 2, "final_prompt": "第 2 页"},
+                    ]
+                },
+            ],
+        ) as call_json:
+            result = compose_final_image_prompts(
+                task_payload={"aspect_ratio": "3:4"},
+                characters=[],
+                panels=[
+                    {"panel_order": 1, "visual_prompt": "女孩在窗边读书"},
+                    {"panel_order": 2, "visual_prompt": "女孩走出教室"},
+                ],
+            )
+
+        self.assertEqual([1, 2], [panel.panel_order for panel in result.panels])
+        self.assertEqual(2, call_json.call_count)
+        retry_payload = call_json.call_args_list[1].kwargs["user_prompt"]
+        self.assertIn("retry_instruction", retry_payload)
+        self.assertIn("panel_order 必须依次为 [1, 2]", retry_payload)
 
     def test_final_prompt_uses_visual_prompt_dialogue_once(self) -> None:
         final_prompt = build_adapted_story_final_prompt(
