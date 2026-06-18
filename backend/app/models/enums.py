@@ -106,6 +106,11 @@ class GeneratedImageSourceType(StrEnum):
     retry = "retry"
 
 
+class GeneratedImageJobKind(StrEnum):
+    panel_image = "panel_image"
+    character_reference = "character_reference"
+
+
 class GeneratedImageWorkflowStep(StrEnum):
     rewrite_prompt = "rewrite_prompt"
     generate_image = "generate_image"

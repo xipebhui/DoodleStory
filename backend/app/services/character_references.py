@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -7,26 +8,21 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.entities import (
     FileAsset,
+    GeneratedImage,
     GenerationTask,
     TaskCharacter,
     TaskCharacterAppearance,
     TaskPanel,
     TaskPanelCharacterAppearance,
 )
-from app.models.enums import FileAssetPurpose, WorkflowStatus
-from app.services.image_generation import (
-    ImageProviderConfigError,
-    ImageProviderResponseError,
-    ImageReference,
-    generate_xg_image,
+from app.models.enums import (
+    GeneratedImageJobKind,
+    GeneratedImageSourceType,
+    GeneratedImageStatus,
+    GeneratedImageWorkflowStep,
+    WorkflowStatus,
 )
-from app.services.credits import (
-    CreditError,
-    InsufficientCreditsError,
-    charge_reserved_image_credit,
-    release_reserved_image_credit,
-    reserve_image_credit,
-)
+from app.services.image_generation import ImageProviderConfigError, ImageReference
 from app.services.llm import LLMResponseError, TaskCharacterPlan
 from app.services.prompt_logging import log_prompt_trace
 from app.services.prompt_templates import render_prompt_template
@@ -40,6 +36,14 @@ class PanelReferencePack:
     references: list[ImageReference]
     notes: list[str]
     character_count: int
+
+
+@dataclass(frozen=True)
+class CharacterReferenceJobPlan:
+    created_count: int
+    active_count: int
+    succeeded_count: int
+    failed_count: int
 
 
 def load_task_characters(db: Session, task_id: str) -> list[TaskCharacter]:
@@ -171,17 +175,40 @@ def build_character_reference_prompt(
     )
 
 
-def ensure_character_reference_images(
+def ensure_character_reference_image_jobs(
     *,
     db: Session,
     task: GenerationTask,
-) -> None:
+) -> CharacterReferenceJobPlan:
     characters = load_task_characters(db, task.id)
+    created_count = 0
+    active_count = 0
+    succeeded_count = 0
+    failed_count = 0
     for character in characters:
         for appearance in sorted(character.appearances, key=lambda item: item.appearance_key):
             if appearance.status == WorkflowStatus.succeeded and appearance.reference_image_id:
+                succeeded_count += 1
                 continue
-            appearance.status = WorkflowStatus.running
+            active_job = db.scalar(
+                select(GeneratedImage)
+                .where(
+                    GeneratedImage.job_kind == GeneratedImageJobKind.character_reference,
+                    GeneratedImage.character_appearance_id == appearance.id,
+                    GeneratedImage.status.in_([GeneratedImageStatus.queued, GeneratedImageStatus.running]),
+                )
+                .order_by(GeneratedImage.created_at.desc())
+            )
+            if active_job is not None:
+                active_count += 1
+                if appearance.status not in {WorkflowStatus.queued, WorkflowStatus.running}:
+                    appearance.status = WorkflowStatus.running
+                continue
+            if appearance.status == WorkflowStatus.failed:
+                failed_count += 1
+                continue
+
+            appearance.status = WorkflowStatus.queued
             appearance.error_code = None
             appearance.error_message = None
             appearance.reference_prompt = build_character_reference_prompt(
@@ -211,82 +238,41 @@ def ensure_character_reference_images(
                 reference_prompt=appearance.reference_prompt,
                 reference_count=0,
             )
-            db.commit()
-            try:
-                reserve_image_credit(
-                    db,
-                    user_id=task.owner_user_id,
-                    task_id=task.id,
-                    character_appearance_id=appearance.id,
-                    note=f"人物参考图 {character.name} 占用",
-                )
-                db.commit()
-                logger.info(
-                    "character reference image request task_id=%s character_key=%s appearance_key=%s prompt_chars=%s reference_count=%s",
-                    task.id,
-                    character.character_key,
-                    appearance.appearance_key,
-                    len(appearance.reference_prompt or ""),
-                    0,
-                )
-                generated = generate_xg_image(
-                    prompt=appearance.reference_prompt or "",
-                    references=[],
-                    image_model_name=task.image_model_name_snapshot,
-                    aspect_ratio=task.style_aspect_ratio_snapshot,
-                )
-                asset = FileAsset(
-                    purpose=FileAssetPurpose.character_reference,
-                    storage_backend=generated.storage_backend,
-                    storage_key=generated.storage_key,
-                    public_url=generated.public_url,
-                    original_filename=generated.original_filename,
-                    content_type=generated.content_type,
-                    byte_size=generated.byte_size,
-                    checksum_sha256=generated.checksum_sha256,
-                )
-                db.add(asset)
-                db.flush()
-                appearance.reference_image_id = asset.id
-                appearance.provider_request_id = generated.provider_request_id
-                charge_reserved_image_credit(
-                    db,
-                    user_id=task.owner_user_id,
-                    task_id=task.id,
-                    character_appearance_id=appearance.id,
-                    note=f"人物参考图 {character.name} 成功产出扣费",
-                )
-                appearance.status = WorkflowStatus.succeeded
-                logger.info(
-                    "character reference image succeeded task_id=%s appearance_key=%s asset_storage_key=%s bytes=%s",
-                    task.id,
-                    appearance.appearance_key,
-                    generated.storage_key,
-                    generated.byte_size,
-                )
-            except InsufficientCreditsError as exc:
-                appearance.status = WorkflowStatus.failed
-                appearance.error_code = exc.__class__.__name__
-                appearance.error_message = str(exc)
-                db.commit()
-                raise
-            except (ImageProviderConfigError, ImageProviderResponseError) as exc:
-                appearance.status = WorkflowStatus.failed
-                appearance.error_code = exc.__class__.__name__
-                appearance.error_message = str(exc)
-                try:
-                    release_reserved_image_credit(
-                        db,
-                        user_id=task.owner_user_id,
-                        task_id=task.id,
-                        character_appearance_id=appearance.id,
-                        note=f"人物参考图 {character.name} 失败释放积分占用",
-                    )
-                except CreditError:
-                    logger.info("character reference release skipped no reserved credit appearance_id=%s", appearance.id)
-                db.commit()
-                raise
-            db.commit()
+            image = GeneratedImage(
+                task_id=task.id,
+                panel_id=None,
+                character_appearance_id=appearance.id,
+                owner_user_id=task.owner_user_id,
+                job_kind=GeneratedImageJobKind.character_reference,
+                status=GeneratedImageStatus.queued,
+                generation_number=1,
+                is_current=False,
+                source_type=GeneratedImageSourceType.retry if task.attempts > 0 else GeneratedImageSourceType.initial,
+                workflow_step=GeneratedImageWorkflowStep.generate_image,
+                queued_at=datetime.utcnow(),
+                queue_group=task.owner_user_id,
+                image_prompt=appearance.visual_prompt,
+                final_prompt=appearance.reference_prompt,
+                image_model_name_snapshot=task.image_model_name_snapshot,
+            )
+            db.add(image)
+            db.flush()
+            created_count += 1
+            logger.info(
+                "character reference image job created task_id=%s character_key=%s appearance_key=%s image_id=%s prompt_chars=%s",
+                task.id,
+                character.character_key,
+                appearance.appearance_key,
+                image.id,
+                len(appearance.reference_prompt or ""),
+            )
+    db.commit()
+    return CharacterReferenceJobPlan(
+        created_count=created_count,
+        active_count=active_count,
+        succeeded_count=succeeded_count,
+        failed_count=failed_count,
+    )
 
 
 def clear_panel_character_links(db: Session, task: GenerationTask) -> None:

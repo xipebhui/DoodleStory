@@ -15,6 +15,7 @@ from app.models.enums import (
     FileAssetPurpose,
     GenerationStepName,
     GeneratedImageStatus,
+    GeneratedImageJobKind,
     GeneratedImageSourceType,
     GeneratedImageWorkflowStep,
     ImageCountMode,
@@ -368,14 +369,25 @@ class GeneratedImage(Base, TimestampMixin):
     __table_args__ = (
         CheckConstraint("status != 'succeeded' OR asset_id IS NOT NULL", name="ck_generated_images_succeeded_asset"),
         CheckConstraint("generation_number > 0", name="ck_generated_images_generation_number_positive"),
+        CheckConstraint("job_kind != 'panel_image' OR panel_id IS NOT NULL", name="ck_generated_images_panel_job_panel"),
+        CheckConstraint(
+            "job_kind != 'character_reference' OR character_appearance_id IS NOT NULL",
+            name="ck_generated_images_character_job_appearance",
+        ),
         UniqueConstraint("panel_id", "generation_number"),
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="CASCADE"), index=True)
-    panel_id: Mapped[str] = mapped_column(ForeignKey("task_panels.id", ondelete="CASCADE"), index=True)
+    panel_id: Mapped[Optional[str]] = mapped_column(ForeignKey("task_panels.id", ondelete="CASCADE"), nullable=True, index=True)
+    character_appearance_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("task_character_appearances.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     owner_user_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    job_kind: Mapped[GeneratedImageJobKind] = mapped_column(
+        Enum(GeneratedImageJobKind), default=GeneratedImageJobKind.panel_image, index=True
     )
     status: Mapped[GeneratedImageStatus] = mapped_column(Enum(GeneratedImageStatus), default=GeneratedImageStatus.queued)
     generation_number: Mapped[int] = mapped_column(Integer, default=1)
@@ -407,7 +419,8 @@ class GeneratedImage(Base, TimestampMixin):
     internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     task: Mapped[GenerationTask] = relationship(back_populates="generated_images")
-    panel: Mapped[TaskPanel] = relationship(back_populates="generated_images")
+    panel: Mapped[Optional[TaskPanel]] = relationship(back_populates="generated_images")
+    character_appearance: Mapped[Optional[TaskCharacterAppearance]] = relationship()
     asset: Mapped[Optional[FileAsset]] = relationship()
 
 

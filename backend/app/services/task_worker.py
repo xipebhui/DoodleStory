@@ -27,6 +27,7 @@ from app.models.entities import (
 )
 from app.models.enums import (
     FileAssetPurpose,
+    GeneratedImageJobKind,
     GeneratedImageStatus,
     GeneratedImageSourceType,
     GeneratedImageWorkflowStep,
@@ -43,7 +44,7 @@ from app.services.character_references import (
     characters_to_plans,
     clear_panel_character_links,
     ensure_fixed_character_panel_links_by_name,
-    ensure_character_reference_images,
+    ensure_character_reference_image_jobs,
     is_fixed_task_character,
     load_task_characters,
     persist_character_plans,
@@ -379,6 +380,15 @@ def image_job_queue_group(image: GeneratedImage) -> str:
     return image.queue_group or image_job_owner_id(image)
 
 
+def image_claim_is_current(image: GeneratedImage, *, attempts: int, locked_by: str | None) -> bool:
+    return (
+        image.status == GeneratedImageStatus.running
+        and image.attempts == attempts
+        and image.locked_by == locked_by
+        and image.asset_id is None
+    )
+
+
 def image_job_has_terminal_credit(db: Session, image_id: str) -> bool:
     from app.models.entities import CreditTransaction
     from app.models.enums import CreditTransactionType
@@ -408,6 +418,7 @@ def release_interrupted_image_job_credit(db: Session, image: GeneratedImage) -> 
             task_id=image.task_id,
             panel_id=image.panel_id,
             generated_image_id=image.id,
+            character_appearance_id=image.character_appearance_id,
             note="图片任务中断后释放旧占用",
         )
     except CreditError:
@@ -476,10 +487,12 @@ def claim_next_image_job() -> str | None:
             image.error_message = None
             db.commit()
             logger.info(
-                "image job claimed image_id=%s task_id=%s panel_id=%s source_type=%s owner_user_id=%s attempts=%s lease_until=%s",
+                "image job claimed image_id=%s task_id=%s panel_id=%s character_appearance_id=%s job_kind=%s source_type=%s owner_user_id=%s attempts=%s lease_until=%s",
                 image.id,
                 image.task_id,
                 image.panel_id,
+                image.character_appearance_id,
+                image.job_kind.value,
                 image.source_type.value,
                 owner_id,
                 image.attempts,
@@ -517,15 +530,20 @@ def process_generated_image_job(generated_image_id: str) -> None:
             logger.warning("image job skipped missing image_id=%s", generated_image_id)
             return
         source_type = image.source_type
+        job_kind = image.job_kind
 
-    if source_type == GeneratedImageSourceType.user_edit:
+    if job_kind == GeneratedImageJobKind.character_reference:
+        process_character_reference_image_job(generated_image_id)
+    elif source_type == GeneratedImageSourceType.user_edit:
         process_panel_edit(generated_image_id)
     else:
         process_initial_panel_image_job(generated_image_id)
 
     with SessionLocal() as db:
         image = load_generated_image(db, generated_image_id)
-        if image is not None and image.source_type != GeneratedImageSourceType.user_edit:
+        if image is not None and image.job_kind == GeneratedImageJobKind.character_reference:
+            update_task_character_reference_state(db, image.task_id)
+        elif image is not None and image.source_type != GeneratedImageSourceType.user_edit:
             update_task_image_generation_state(db, image.task_id)
 
 
@@ -542,8 +560,193 @@ def mark_image_job_failed_by_unhandled_error(generated_image_id: str, exc: Excep
         image.lease_until = None
         image.locked_by = None
         db.commit()
-        if image.source_type != GeneratedImageSourceType.user_edit:
+        if image.job_kind == GeneratedImageJobKind.character_reference:
+            update_task_character_reference_state(db, image.task_id)
+        elif image.source_type != GeneratedImageSourceType.user_edit:
             update_task_image_generation_state(db, image.task_id)
+
+
+def process_character_reference_image_job(generated_image_id: str) -> None:
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is None:
+            logger.warning("character reference image job skipped missing image_id=%s", generated_image_id)
+            return
+        if image.character_appearance is None:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = "CharacterAppearanceMissing"
+            image.error_message = "人物参考图任务缺少人物外观记录"
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            db.commit()
+            return
+        task = image.task
+        appearance = image.character_appearance
+        character = appearance.character
+        claim_attempts = image.attempts
+        claim_locked_by = image.locked_by
+        prompt = image.final_prompt or appearance.reference_prompt or ""
+        appearance.status = WorkflowStatus.running
+        appearance.error_code = None
+        appearance.error_message = None
+        try:
+            reserve_image_credit(
+                db,
+                user_id=task.owner_user_id,
+                task_id=task.id,
+                generated_image_id=image.id,
+                character_appearance_id=appearance.id,
+                note=f"人物参考图 {character.name} 占用",
+            )
+            db.commit()
+        except InsufficientCreditsError as exc:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            appearance.status = WorkflowStatus.failed
+            appearance.error_code = exc.__class__.__name__
+            appearance.error_message = str(exc)
+            db.commit()
+            return
+
+        logger.info(
+            "character reference image request task_id=%s character_key=%s appearance_key=%s image_id=%s prompt_chars=%s reference_count=%s",
+            task.id,
+            character.character_key,
+            appearance.appearance_key,
+            image.id,
+            len(prompt),
+            0,
+        )
+        image_model_name = task.image_model_name_snapshot
+        aspect_ratio = task.style_aspect_ratio_snapshot
+        task_id = task.id
+        appearance_id = appearance.id
+
+    try:
+        generated = generate_xg_image(
+            prompt=prompt,
+            references=[],
+            image_model_name=image_model_name,
+            aspect_ratio=aspect_ratio,
+        )
+        error: Exception | None = None
+    except (ImageProviderConfigError, ImageProviderResponseError) as exc:
+        generated = None
+        error = exc
+
+    with SessionLocal() as db:
+        image = load_generated_image(db, generated_image_id)
+        if image is None:
+            return
+        task = image.task
+        appearance = image.character_appearance
+        if appearance is None:
+            return
+        if not image_claim_is_current(image, attempts=claim_attempts, locked_by=claim_locked_by):
+            logger.warning(
+                "stale character reference image result ignored image_id=%s task_id=%s appearance_id=%s claim_attempts=%s current_attempts=%s claim_locked_by=%s current_locked_by=%s status=%s",
+                image.id,
+                task_id,
+                appearance_id,
+                claim_attempts,
+                image.attempts,
+                claim_locked_by,
+                image.locked_by,
+                image.status.value,
+            )
+            return
+        if error is not None:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = error.__class__.__name__
+            image.error_message = str(error)
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            appearance.status = WorkflowStatus.failed
+            appearance.error_code = error.__class__.__name__
+            appearance.error_message = str(error)
+            try:
+                release_reserved_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    generated_image_id=image.id,
+                    character_appearance_id=appearance.id,
+                    note="人物参考图失败释放积分占用",
+                )
+            except CreditError:
+                logger.info("character reference release skipped no reserved credit image_id=%s", image.id)
+            db.commit()
+            return
+        if generated is None:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = "ImageGenerationFailed"
+            image.error_message = "图片 Provider 未返回人物参考图"
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            appearance.status = WorkflowStatus.failed
+            appearance.error_code = image.error_code
+            appearance.error_message = image.error_message
+            try:
+                release_reserved_image_credit(
+                    db,
+                    user_id=task.owner_user_id,
+                    task_id=task.id,
+                    generated_image_id=image.id,
+                    character_appearance_id=appearance.id,
+                    note="人物参考图未返回结果释放积分占用",
+                )
+            except CreditError:
+                logger.info("character reference empty-result release skipped no reserved credit image_id=%s", image.id)
+            db.commit()
+            return
+
+        asset = FileAsset(
+            purpose=FileAssetPurpose.character_reference,
+            storage_backend=generated.storage_backend,
+            storage_key=generated.storage_key,
+            public_url=generated.public_url,
+            original_filename=generated.original_filename,
+            content_type=generated.content_type,
+            byte_size=generated.byte_size,
+            checksum_sha256=generated.checksum_sha256,
+        )
+        db.add(asset)
+        db.flush()
+        image.asset_id = asset.id
+        image.provider_request_id = generated.provider_request_id
+        image.status = GeneratedImageStatus.succeeded
+        image.finished_at = datetime.utcnow()
+        image.lease_until = None
+        image.locked_by = None
+        appearance.reference_image_id = asset.id
+        appearance.provider_request_id = generated.provider_request_id
+        appearance.status = WorkflowStatus.succeeded
+        appearance.error_code = None
+        appearance.error_message = None
+        charge_reserved_image_credit(
+            db,
+            user_id=task.owner_user_id,
+            task_id=task.id,
+            generated_image_id=image.id,
+            character_appearance_id=appearance.id,
+            note="人物参考图成功产出扣费",
+        )
+        logger.info(
+            "character reference image succeeded task_id=%s appearance_id=%s image_id=%s asset_storage_key=%s bytes=%s",
+            task.id,
+            appearance.id,
+            image.id,
+            generated.storage_key,
+            generated.byte_size,
+        )
+        db.commit()
 
 
 def process_initial_panel_image_job(generated_image_id: str) -> None:
@@ -554,10 +757,22 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
             return
         task = image.task
         panel = image.panel
+        if panel is None:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = "PanelMissing"
+            image.error_message = "分镜图片任务缺少 panel"
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            db.commit()
+            update_task_image_generation_state(db, task.id)
+            return
         task_id = task.id
         owner_user_id = task.owner_user_id
         image_model_name = task.image_model_name_snapshot
         aspect_ratio = task.style_aspect_ratio_snapshot
+        claim_attempts = image.attempts
+        claim_locked_by = image.locked_by
         try:
             reference_pack = build_generation_reference_pack(task, panel)
         except ImageProviderConfigError as exc:
@@ -614,6 +829,19 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
         if image is None:
             return
         task = image.task
+        if not image_claim_is_current(image, attempts=claim_attempts, locked_by=claim_locked_by):
+            logger.warning(
+                "stale panel image result ignored image_id=%s task_id=%s panel_id=%s claim_attempts=%s current_attempts=%s claim_locked_by=%s current_locked_by=%s status=%s",
+                image.id,
+                task_id,
+                image.panel_id,
+                claim_attempts,
+                image.attempts,
+                claim_locked_by,
+                image.locked_by,
+                image.status.value,
+            )
+            return
         if result.error is not None:
             image.status = GeneratedImageStatus.failed
             image.error_code = result.error.__class__.__name__
@@ -691,6 +919,42 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
         update_task_image_generation_state(db, task.id)
 
 
+def update_task_character_reference_state(db: Session, task_id: str) -> None:
+    task = load_task(db, task_id)
+    if task is None or not task.use_character_references:
+        return
+    appearances = [appearance for character in task.characters for appearance in character.appearances]
+    if not appearances:
+        return
+    active_count = active_character_reference_job_count(db, task_id)
+    if active_count > 0:
+        task.status = TaskStatus.running
+        task.current_step = GenerationStepName.generate_character_references
+        set_step(db, task, GenerationStepName.generate_character_references, StepStatus.running)
+        return
+    failed = [
+        appearance
+        for appearance in appearances
+        if appearance.status == WorkflowStatus.failed or (appearance.status != WorkflowStatus.succeeded and not appearance.reference_image_id)
+    ]
+    if failed:
+        set_step(db, task, GenerationStepName.generate_character_references, StepStatus.failed)
+        task.status = TaskStatus.failed
+        task.error_code = "CharacterReferenceImageFailed"
+        task.error_message = f"人物参考图生成失败：{len(failed)} 个角色形象未生成成功"
+        task.finished_at = datetime.utcnow()
+        db.commit()
+        return
+    task.progress_current = max(task.progress_current, 3)
+    task.status = TaskStatus.queued
+    task.error_code = None
+    task.error_message = None
+    task.finished_at = None
+    set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
+    db.commit()
+    enqueue_task_from_thread(task.id)
+
+
 def update_task_image_generation_state(db: Session, task_id: str) -> None:
     task = load_task(db, task_id)
     if task is None:
@@ -702,7 +966,8 @@ def update_task_image_generation_state(db: Session, task_id: str) -> None:
     active_count = sum(
         1
         for image in task.generated_images
-        if image.source_type != GeneratedImageSourceType.user_edit
+        if image.job_kind == GeneratedImageJobKind.panel_image
+        and image.source_type != GeneratedImageSourceType.user_edit
         and image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running}
     )
     if active_count > 0:
@@ -740,10 +1005,29 @@ def active_initial_image_job_count(db: Session, task_id: str) -> int:
     return db.scalar(
         select(func.count(GeneratedImage.id)).where(
             GeneratedImage.task_id == task_id,
+            GeneratedImage.job_kind == GeneratedImageJobKind.panel_image,
             GeneratedImage.source_type != GeneratedImageSourceType.user_edit,
             GeneratedImage.status.in_([GeneratedImageStatus.queued, GeneratedImageStatus.running]),
         )
     ) or 0
+
+
+def active_character_reference_job_count(db: Session, task_id: str) -> int:
+    return db.scalar(
+        select(func.count(GeneratedImage.id)).where(
+            GeneratedImage.task_id == task_id,
+            GeneratedImage.job_kind == GeneratedImageJobKind.character_reference,
+            GeneratedImage.status.in_([GeneratedImageStatus.queued, GeneratedImageStatus.running]),
+        )
+    ) or 0
+
+
+def task_has_incomplete_character_references(task: GenerationTask) -> bool:
+    return any(
+        appearance.status != WorkflowStatus.succeeded or appearance.reference_image_id is None
+        for character in task.characters
+        for appearance in character.appearances
+    )
 
 
 async def recover_queued_tasks() -> None:
@@ -771,6 +1055,18 @@ async def recover_queued_tasks() -> None:
                 resumed_image_planning_count += 1
                 logger.warning("re-queued interrupted image-planning task without active image jobs task_id=%s", task.id)
                 continue
+            if task.current_step == GenerationStepName.generate_character_references:
+                if active_character_reference_job_count(db, task.id) > 0:
+                    continued_image_job_count += 1
+                    continue
+                if task_has_incomplete_character_references(task):
+                    task.status = TaskStatus.queued
+                    task.error_code = None
+                    task.error_message = None
+                    task.finished_at = None
+                    resumed_image_planning_count += 1
+                    logger.warning("re-queued interrupted character-reference task without active image jobs task_id=%s", task.id)
+                    continue
             task.status = TaskStatus.failed
             task.error_code = "WorkerInterrupted"
             task.error_message = "服务重启导致任务中断，请重新创建任务"
@@ -1581,7 +1877,11 @@ def current_succeeded_images_by_panel(task: GenerationTask) -> dict[str, Generat
     return {
         image.panel_id: image
         for image in task.generated_images
-        if image.is_current and image.status == GeneratedImageStatus.succeeded and image.asset_id is not None
+        if image.job_kind == GeneratedImageJobKind.panel_image
+        and image.panel_id is not None
+        and image.is_current
+        and image.status == GeneratedImageStatus.succeeded
+        and image.asset_id is not None
     }
 
 
@@ -1591,7 +1891,14 @@ def next_generation_number(db: Session, panel_id: str) -> int:
 
 
 def mark_image_current(db: Session, image: GeneratedImage) -> None:
-    for existing in db.scalars(select(GeneratedImage).where(GeneratedImage.panel_id == image.panel_id)).all():
+    if image.panel_id is None:
+        return
+    for existing in db.scalars(
+        select(GeneratedImage).where(
+            GeneratedImage.job_kind == GeneratedImageJobKind.panel_image,
+            GeneratedImage.panel_id == image.panel_id,
+        )
+    ).all():
         existing.is_current = existing.id == image.id
 
 
@@ -1877,10 +2184,32 @@ def process_task(task_id: str) -> None:
                     task.id,
                     len(task.style_reference_images),
                 )
-                ensure_character_reference_images(
+                job_plan = ensure_character_reference_image_jobs(
                     db=db,
                     task=task,
                 )
+                if job_plan.failed_count > 0:
+                    fail_step_and_task(
+                        db,
+                        task,
+                        GenerationStepName.generate_character_references,
+                        ImageProviderResponseError(f"人物参考图生成失败：{job_plan.failed_count} 个角色形象未生成成功"),
+                    )
+                    return
+                if job_plan.created_count > 0 or job_plan.active_count > 0:
+                    task.status = TaskStatus.running
+                    task.current_step = GenerationStepName.generate_character_references
+                    task.progress_current = max(task.progress_current, 2)
+                    db.commit()
+                    logger.info(
+                        "story_drawing_debug character_reference_jobs_waiting task_id=%s created_count=%s active_count=%s succeeded_count=%s elapsed_ms=%s",
+                        task.id,
+                        job_plan.created_count,
+                        job_plan.active_count,
+                        job_plan.succeeded_count,
+                        round((monotonic() - step_started) * 1000),
+                    )
+                    return
                 task.progress_current = 3
                 set_step(db, task, GenerationStepName.generate_character_references, StepStatus.succeeded)
                 logger.info(
@@ -1888,7 +2217,7 @@ def process_task(task_id: str) -> None:
                     task.id,
                     round((monotonic() - step_started) * 1000),
                 )
-            except (CreditError, ImageProviderConfigError, ImageProviderResponseError) as exc:
+            except ImageProviderConfigError as exc:
                 fail_step_and_task(db, task, GenerationStepName.generate_character_references, exc)
                 return
 
@@ -2053,7 +2382,8 @@ def process_task(task_id: str) -> None:
         active_panel_ids = {
             image.panel_id
             for image in task.generated_images
-            if image.source_type != GeneratedImageSourceType.user_edit
+            if image.job_kind == GeneratedImageJobKind.panel_image
+            and image.source_type != GeneratedImageSourceType.user_edit
             and image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running}
         }
         for panel in sorted(task.panels, key=lambda item: item.panel_order):
@@ -2136,6 +2466,7 @@ def process_task(task_id: str) -> None:
             image = GeneratedImage(
                 task_id=task.id,
                 panel_id=panel.id,
+                job_kind=GeneratedImageJobKind.panel_image,
                 owner_user_id=task.owner_user_id,
                 status=GeneratedImageStatus.queued,
                 generation_number=next_generation_number(db, panel.id),
@@ -2189,6 +2520,8 @@ def load_generated_image(db: Session, generated_image_id: str) -> GeneratedImage
             .selectinload(TaskPanel.character_appearances)
             .selectinload(TaskPanelCharacterAppearance.appearance)
             .selectinload(TaskCharacterAppearance.reference_image),
+            selectinload(GeneratedImage.character_appearance).selectinload(TaskCharacterAppearance.character),
+            selectinload(GeneratedImage.character_appearance).selectinload(TaskCharacterAppearance.reference_image),
             selectinload(GeneratedImage.asset),
         )
     )

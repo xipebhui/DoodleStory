@@ -163,7 +163,7 @@
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
-- 图片生成并发：任务队列由进程内 worker 池领取任务前置步骤，默认 `TASK_WORKER_CONCURRENCY=3`；真正调用图片 Provider 的单位是 `generated_images` 图片 job，由全局图片 worker 池调度。全站图片 job 并发通过 `IMAGE_JOB_CONCURRENCY` 配置，默认 6；单个普通用户同时运行的图片 job 通过 `IMAGE_JOB_USER_CONCURRENCY` 配置，默认 2。大任务会把每个 panel 排成独立图片 job 逐步推进，不能独占全站图片 Provider 并发。
+- 图片生成并发：任务队列由进程内 worker 池领取任务前置步骤，默认 `TASK_WORKER_CONCURRENCY=3`；真正调用图片 Provider 的单位是 `generated_images` 图片 job，由全局图片 worker 池调度。图片 job 使用 `job_kind` 区分 `panel_image` 和 `character_reference`，panel 图绑定 `panel_id`，人物参考图绑定 `character_appearance_id`。全站图片 job 并发通过 `IMAGE_JOB_CONCURRENCY` 配置，默认 6；单个普通用户同时运行的图片 job 通过 `IMAGE_JOB_USER_CONCURRENCY` 配置，默认 2。大任务会把人物参考图和每个 panel 都排成独立图片 job 逐步推进，不能独占全站图片 Provider 并发。
 - 图片 Provider timeout 重试：生图请求和结果图下载如果出现 timeout，会自动重试 `IMAGE_PROVIDER_TIMEOUT_RETRY_ATTEMPTS` 次，默认 3 次；任一重试成功即停止，最终仍失败时必须写入明确错误。
 - 文件存储：支持本地磁盘和七牛对象存储。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。QNY 公开访问域名优先使用 `QNY_PUBLIC_BASE_URL`，历史 `QNY_DOMAIN` 继续兼容；当 QNY 域名没有显式 `http://` 或 `https://` 时，由 `QNY_USE_HTTPS` 决定协议。七牛资产使用固定公开 CDN 原图 URL；为避免 CDN 忽略 query string 时用 `imageView2` 缩略图污染原图缓存，七牛任务列表、小尺寸预览和原图展示均直接使用无 query 的对象原图 URL。本地资产由后端按需生成 WebP 缩略图。
 - 使用七牛对象存储时，新写入资产必须在服务器存储根目录保留本地镜像；后端处理流程需要把七牛资产转成本地文件时，必须优先使用本地镜像或已有本地缓存，不能为了读取刚生成的资产从公开 CDN 回拉；任务批量下载只使用本地镜像或已有本地缓存打包，缺少本地文件时明确失败，不自动从公网回源下载；下载 zip 固定保存为本地资产，不上传到七牛。
@@ -201,7 +201,7 @@
 - 任务重试时，上一轮仍处于 `queued` 或 `running` 的旧图片版本必须明确标记为失败并从当前展示中移除；任务已经完成后，详情页不能因为旧的非当前运行中版本而显示生成中。
 - 用户显式点击任务重试时不限制重试次数；`attempts` 只用于排查和标记重试来源，不作为阻止用户操作的上限。
 - 任务队列支持最多按 `TASK_WORKER_CONCURRENCY` 并发执行多个生成任务前置步骤，默认 3；同一进程内同一个任务 ID 不允许并发执行两次。
-- 任务 `generate_images` 阶段只负责为缺少成功图的 panel 创建 `generated_images.status=queued` 图片 job；正式图片生成和单 panel 修改都由统一图片 job worker 执行。图片 job worker 使用 `IMAGE_JOB_CONCURRENCY` 控制全站并发，使用 `IMAGE_JOB_USER_CONCURRENCY` 控制单用户并发，并通过 `IMAGE_JOB_LEASE_SECONDS` 标记运行租约，服务重启后会恢复中断的 running 图片 job。
+- 任务 `generate_character_references` 阶段只负责为缺少成功参考图的人物外观创建 `generated_images.job_kind=character_reference` 图片 job；人物参考图成功后写回 `task_character_appearances.reference_image_id`，失败则让任务明确失败。任务 `generate_images` 阶段只负责为缺少成功图的 panel 创建 `generated_images.job_kind=panel_image` 图片 job；正式 panel 图片生成、任务内人物参考图生成和单 panel 修改都由统一图片 job worker 执行。图片 job worker 使用 `IMAGE_JOB_CONCURRENCY` 控制全站并发，使用 `IMAGE_JOB_USER_CONCURRENCY` 控制单用户并发，并通过 `IMAGE_JOB_LEASE_SECONDS` 标记运行租约，服务重启后会恢复中断的 running 图片 job。任务详情接口中的 `generated_images` 只返回 panel 图片版本；人物参考图通过 `character_references` 字段展示。
 - 任务生图请求和结果图下载遇到 timeout 时自动重试 3 次；非 timeout 的配置错误和校验错误不得因为该规则被隐藏。所选生图 Provider 的响应错误在既有重试耗尽后必须明确失败，不得在 DoodleStory 后端静默切换到 XG、QY 或其它 provider。
 - 当图片 Provider 明确返回 Google policy blocked 类错误，例如 `Unable to show the generated image`、`Generative AI Prohibited Use policy` 或 `filtered out`，说明当前 prompt 被上游策略拦截；此时先调用 LLM 改写最终生图提示词中的敏感动作意图表达，在不改变画面效果、主体、构图、风格、图片内文字和参考图关系的前提下，把疼痛、伤害、惩罚、触碰、危险意图等表达改为更中性客观的视觉状态，然后使用原图片模型和原参考图重新提交一次。该逻辑只适用于明确 policy blocked 错误，不适用于普通 Provider 响应错误。
 - 开启人物参考的任务如果没有识别到可用于参考图的主要人物，任务应失败并显示明确错误，不能静默降级为普通生图。

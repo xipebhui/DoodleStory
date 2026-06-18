@@ -27,6 +27,7 @@ from app.models.entities import (
 from app.models.enums import (
     DownloadStatus,
     FileAssetPurpose,
+    GeneratedImageJobKind,
     GeneratedImageSourceType,
     GeneratedImageStatus,
     GeneratedImageWorkflowStep,
@@ -70,7 +71,9 @@ def task_options():
     return (
         selectinload(GenerationTask.panels),
         selectinload(GenerationTask.steps),
-        selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
+        selectinload(
+            GenerationTask.generated_images.and_(GeneratedImage.job_kind == GeneratedImageJobKind.panel_image)
+        ).selectinload(GeneratedImage.asset),
         selectinload(GenerationTask.characters)
         .selectinload(TaskCharacter.appearances)
         .selectinload(TaskCharacterAppearance.reference_image),
@@ -87,8 +90,16 @@ def ensure_task_access(task: GenerationTask | None, user: User) -> GenerationTas
     return task
 
 
+def is_panel_image_job(image: GeneratedImage) -> bool:
+    return image.job_kind is None or image.job_kind == GeneratedImageJobKind.panel_image
+
+
 def current_or_latest_image_for_panel(task: GenerationTask, panel_id: str) -> GeneratedImage | None:
-    panel_images = [image for image in task.generated_images if image.panel_id == panel_id]
+    panel_images = [
+        image
+        for image in task.generated_images
+        if is_panel_image_job(image) and image.panel_id == panel_id
+    ]
     current = [image for image in panel_images if image.is_current]
     if current:
         return sorted(current, key=lambda image: image.generation_number, reverse=True)[0]
@@ -101,7 +112,13 @@ def current_or_latest_image_for_panel(task: GenerationTask, panel_id: str) -> Ge
 def current_succeeded_images_for_panels(task: GenerationTask) -> list[GeneratedImage]:
     images_by_panel: dict[str, GeneratedImage] = {}
     for image in task.generated_images:
-        if not image.is_current or image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
+        if (
+            not is_panel_image_job(image)
+            or not image.is_current
+            or image.status != GeneratedImageStatus.succeeded
+            or image.asset_id is None
+            or image.panel_id is None
+        ):
             continue
         existing = images_by_panel.get(image.panel_id)
         if existing is None or image.generation_number > existing.generation_number:
@@ -120,6 +137,8 @@ def task_has_all_panel_images(task: GenerationTask) -> bool:
 def retire_superseded_running_images(task: GenerationTask) -> int:
     count = 0
     for image in task.generated_images:
+        if not is_panel_image_job(image):
+            continue
         if image.status not in {GeneratedImageStatus.queued, GeneratedImageStatus.running}:
             continue
         image.status = GeneratedImageStatus.failed
@@ -221,6 +240,7 @@ def list_tasks(
             .join(GeneratedImage.panel)
             .where(
                 GeneratedImage.task_id.in_(task_ids),
+                GeneratedImage.job_kind == GeneratedImageJobKind.panel_image,
                 GeneratedImage.is_current.is_(True),
                 GeneratedImage.status == GeneratedImageStatus.succeeded,
                 GeneratedImage.asset_id.is_not(None),
@@ -315,6 +335,8 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
 
     retire_superseded_running_images(task)
     for image in list(task.generated_images):
+        if not is_panel_image_job(image):
+            continue
         if image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
             image.is_current = False
     for panel in list(task.panels):
@@ -389,7 +411,12 @@ def get_task_panel_debug(
     task = db.scalar(
         select(GenerationTask)
         .where(GenerationTask.id == task_id)
-        .options(selectinload(GenerationTask.panels), selectinload(GenerationTask.generated_images))
+        .options(
+            selectinload(GenerationTask.panels),
+            selectinload(
+                GenerationTask.generated_images.and_(GeneratedImage.job_kind == GeneratedImageJobKind.panel_image)
+            ),
+        )
     )
     task = ensure_task_access(task, user)
     panel = next((item for item in task.panels if item.id == panel_id), None)
@@ -479,7 +506,9 @@ async def edit_panel_image(
         (
             image
             for image in task.generated_images
-            if image.panel_id == panel_id and image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running}
+            if is_panel_image_job(image)
+            and image.panel_id == panel_id
+            and image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running}
         ),
         None,
     )
@@ -495,6 +524,7 @@ async def edit_panel_image(
     image = GeneratedImage(
         task_id=task.id,
         panel_id=panel.id,
+        job_kind=GeneratedImageJobKind.panel_image,
         owner_user_id=task.owner_user_id,
         status=GeneratedImageStatus.queued,
         generation_number=next_generation_number(db, panel.id),
