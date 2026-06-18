@@ -63,4 +63,5 @@ Manual or QA checks:
 
 ## Handoff
 
-- 下一步：为 `P4-H2-duck-bear` 先产出 `content-lab/render_storyboards/...md`，再提交 DoodleStory 任务。
+- 已完成：`P4-H2-duck-bear` 已产出 `content-lab/render_storyboards/2026-06-18-huayigegushi-p4-h2-duck-bear.md`，`submit-slot --dry-run` 已确认可从 `render_storyboard.artifact` 读取正文。
+- 下一步：用该 render storyboard 提交真实 DoodleStory 任务并回填 `publish_plan.json` 的 `task_id`；`P3-H2-walking-story` 已在旧流程下创建任务，除非显式确认重提，否则不要自动覆盖。

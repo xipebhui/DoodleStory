@@ -1,14 +1,14 @@
 # 画一个故事关键词图文赛道实验
 
 - experiment_id: `2026-06-16-huayigegushi-cycle-01`
-- status: `h2_persona_generation_brief_ready_h1_paused`
+- status: `h2_p4_render_storyboard_ready_p3_legacy_task_created_h1_paused`
 - created_at: `2026-06-16T11:20:39`
 
 ## 实验目标
 
 验证 `画一个故事` 这个关键词背后的图文内容机制，是否能转成 DoodleStory 可持续生成和发布的选题方向。
 
-当前市场扫描、评分、深挖样本选择、评论/账号/VL 探测、topic_hypothesis、experiment_plan、H1/H2 源样本 `full_story_extract` 和 4 个发布槽的 `generation_brief` 均已完成；发布前审核后，H1 暂停第一波发布，H2 brief 已按新版 Skill 注入 `intimacy_trial` / 亲密关系审判型。第一波不再同时验证 H1/H2，只先验证 H2：
+当前市场扫描、评分、深挖样本选择、评论/账号/VL 探测、topic_hypothesis、experiment_plan、H1/H2 源样本 `full_story_extract` 和 4 个发布槽的 `generation_brief` 均已完成；发布前审核后，H1 暂停第一波发布，H2 brief 已按新版 Skill 注入 `intimacy_trial` / 亲密关系审判型。控制器流程已改为 `generation_brief -> render_storyboard_design -> generation_task_submission`，因此未提交的 P4 已重新生成 story-only brief，并产出可提交的 render storyboard。第一波不再同时验证 H1/H2，只先验证 H2：
 
 - `H1-family-rule-loop`：异常家庭规则怪谈。
 - `H2-marriage-boundary-three-rounds`：三回合家庭边界测试。
@@ -29,6 +29,7 @@
 - `content-lab/generation_briefs/2026-06-16-huayigegushi-p2-h1-duck-bear.md`
 - `content-lab/generation_briefs/2026-06-16-huayigegushi-p3-h2-walking-story.md`
 - `content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md`
+- `content-lab/render_storyboards/2026-06-18-huayigegushi-p4-h2-duck-bear.md`
 - `content-lab/prepublish_reviews/2026-06-16-huayigegushi-generation-brief-review.md`
 - `content-lab/prepublish_reviews/2026-06-16-huayigegushi-persona-injection.md`
 
@@ -57,16 +58,17 @@
 
 发布计划已调整，但仍不可直接发布。第一波最小实验量为 2 条：
 
-- `P3-H2-walking-story`：H2，账号 `行走的故事`。
-- `P4-H2-duck-bear`：H2，账号 `小黄鸭与大熊`。
+- `P3-H2-walking-story`：H2，账号 `行走的故事`，已在旧流程下创建任务 `3784275df2914e80905347b1f4bc4381`，不在本轮自动重提。
+- `P4-H2-duck-bear`：H2，账号 `小黄鸭与大熊`，已完成 story-only brief 与 render storyboard，可进入 `generation_task_submission`。
 
 H1 源样本 `7649315939447871470` 已完成 8 页完整图集 VL 提取，但发布前审核认为当前 H1 brief 删除了核心诱因，不能进入第一波任务创建。H2 源样本 `7650413089900236066` 已完成 15 页完整图集 VL 提取，H2 两条 brief 已修订为“亲密关系审判型 + 压抑三连 + 延迟行动兑现”，可进入任务创建。
 
 发布前还必须完成：
 
-1. 为 H2 两条修正版 brief 创建真实生成任务并回填 `content_id` 或 `task_id`。
-2. 回填 H2 两条绝对 `planned_publish_time`。
-3. H1 补充同类样本或重写为安全化成年身份错位机制后，再决定是否重启。
+1. 用 P4 的 `render_storyboard.artifact` 创建真实生成任务并回填 `task_id`。
+2. 若要让 P3 也完全符合新流程，需要显式确认重提后再补 `render_storyboard`，不能默认覆盖旧任务。
+3. 回填 H2 两条绝对 `planned_publish_time`。
+4. H1 补充同类样本或重写为安全化成年身份错位机制后，再决定是否重启。
 
 ## 复盘入口
 

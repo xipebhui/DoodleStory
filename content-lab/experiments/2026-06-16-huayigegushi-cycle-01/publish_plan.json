@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "status": "h2_persona_generation_brief_ready_h1_paused_not_publishable",
+  "status": "h2_p4_render_storyboard_ready_p3_legacy_task_created_h1_paused_not_publishable",
   "account_group": [
     "行走的故事",
     "小黄鸭与大熊"
@@ -136,7 +136,8 @@
           "requested_image_count": null,
           "use_character_references": false
         }
-      }
+      },
+      "flow_note": "legacy_task_created_before_render_storyboard_gate; do not resubmit without explicit force-resubmit confirmation"
     },
     {
       "slot_id": "P4-H2-duck-bear",
@@ -159,20 +160,28 @@
         "artifact": "content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md",
         "story_input_mode": "adapted",
         "requested_image_count": 10,
-        "revision": "persona_injected: intimacy_trial / 亲密关系审判型",
+        "revision": "regenerated_for_render_storyboard_flow: story_brief_only",
         "narrative_persona_profile": {
           "profile_id": "intimacy_trial",
           "label": "亲密关系审判型",
           "emotion_curve": "压抑 -> 怀疑 -> 失望 -> 审判 -> 释放",
           "comment_trigger": "他到底会不会为了我站出来"
-        }
+        },
+        "status": "story_brief_ready"
       },
       "expected_metric": {
         "2h": "至少 2 条代入评论；点赞 >= 20；收藏 >= 3",
         "24h": "点赞 >= 100；评论 >= 8；转发 >= 20；收藏 >= 10",
         "72h": "点赞 >= 250；评论 >= 20；转发 >= 60；收藏 >= 25"
       },
-      "status": "needs_task_creation"
+      "status": "ready_for_task_submission",
+      "render_storyboard": {
+        "artifact": "content-lab/render_storyboards/2026-06-18-huayigegushi-p4-h2-duck-bear.md",
+        "status": "ready_for_task_submission",
+        "source_generation_brief": "content-lab/generation_briefs/2026-06-16-huayigegushi-p4-h2-duck-bear.md",
+        "created_at": "2026-06-18",
+        "workflow_step": "render_storyboard_design"
+      }
     }
   ],
   "result_fields_required": [
@@ -196,9 +205,10 @@
     "24h 数据必须按实际 planned_publish_time 计算，不按自然日粗略统计"
   ],
   "blocked_until": [
-    "为 H2 两条修正版 brief 创建真实生成任务并回填 content_id 或 task_id",
+    "用 P4-H2-duck-bear 的 render_storyboard.artifact 提交真实 DoodleStory 生成任务并回填 task_id",
+    "确认 P3-H2-walking-story 旧流程任务是否保留；如需重提，必须显式 force-resubmit 并先补 render_storyboard",
     "回填 H2 两条 planned_publish_time 的绝对发布时间",
     "H1 补充同类样本或重写机制后再决定是否重启"
   ],
-  "notes": "已按新版 Skill 补齐叙事人格：第一波只发布 H2 两条，叙事人格为 intimacy_trial / 亲密关系审判型；H1 暂停，不进入任务创建。当前仍未生成真实内容，不能直接发布。"
+  "notes": "P4 已按新流程完成 story-only generation_brief 重写，并产出 render_storyboard_design，可进入 generation_task_submission；P3 已在旧流程下创建 task_id，未按新流程自动重提。H1 暂停，不进入任务创建。"
 }
