@@ -149,6 +149,12 @@ python .agents/skills/content-iteration-controller/scripts/create_experiment.py 
 
 可画分镜设计是 `generation_brief` 和 DoodleStory 任务提交之间的独立步骤。它不重新判断选题，不改预测指标，只把已经通过发布前审核的故事机制转成图片模型更容易执行的逐页分镜。
 
+职责边界：
+
+- `generation_brief` 只负责故事：冲突、人物关系、情绪转折、真相揭示、旁白骨架和评论触发点。
+- `render_storyboard_design` 只负责画面：每页画什么、是否分格、分格阅读顺序、人物锚点、图片内文字和模型容易误画的禁区。
+- 如果一页需要多个画面，必须用 `【分格】` 说明，例如 `上格/下格`、`左格/右格`、`三格递进`；如果不需要分格，写 `单页漫画构图`。
+
 产物位置：
 
 ```text

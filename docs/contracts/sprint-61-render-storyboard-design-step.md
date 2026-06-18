@@ -36,7 +36,7 @@
 
 - Skill 明确流程为 `generation_brief -> render_storyboard_design -> generation_task_submission`。
 - `submit-slot` 缺少 `render_storyboard.artifact` 时失败，并提示先执行可画分镜设计。
-- `submit-slot --dry-run` 在包含 render storyboard 的临时实验中能生成正确 payload。
+- `submit-file --dry-run` 使用可画分镜模板能生成正确 payload；缺少 render storyboard 的真实 slot 会被阻止提交。
 - 可画分镜模板明确要求从 `图1：` 开始，并包含分格、画面、人物锚点、图片文字和避免项。
 
 ## 验证
