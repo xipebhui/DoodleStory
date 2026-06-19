@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- 修复本地重启后人物参考图任务未恢复的问题：定位到图片 worker 并发生成同一用户多张图时，积分账户通过 ORM 读旧值再写回会在 SQLite 下发生覆盖写，导致 `reserved_balance` 少记，角色参考图 provider 成功后扣费报“图片生成积分占用不存在”，进而留下任务 failed、appearance running 的不一致状态。已将图片积分 reserve/charge/release 改为数据库原子 update；角色参考图成功路径调整为先扣费成功再写 succeeded，扣费异常会同步标记 image 与 appearance failed；`scripts/restart-dev.sh` 增加等待端口释放和必要时强制停止旧监听进程，避免旧 uvicorn 未退出时新进程 bind 失败造成“假重启”。
 - 统一人物参考图与 panel 生图的图片 job 语义：`generated_images` 新增 `job_kind` 和 `character_appearance_id`，`panel_id` 改为可空；人物参考图生成阶段不再同步调用图片 Provider，而是创建 `character_reference` 图片 job，由统一 image worker 处理全站并发、单用户并发、lease、attempt、积分占用、释放和扣费。人物参考图 job 成功后写回 `task_character_appearances.reference_image_id`，失败则让任务明确失败；启动恢复现在能识别 `generate_character_references` 阶段的活跃人物图 job，避免服务重启后卡在人物参考图生成中。任务详情 API 继续只把 panel 图放入 `generated_images`，人物参考图仍通过 `character_references` 展示。新增恢复测试覆盖人物参考图 job 的重启恢复。
 - `画一个故事` 内容实验适配新版可画分镜流程：将 `P4-H2-duck-bear` 从可直接提交的 brief 重新生成 story-only brief，只保留叙事人格、故事机制、10 页旁白主线和禁用项；新增 `content-lab/render_storyboards/2026-06-18-huayigegushi-p4-h2-duck-bear.md`，按“旁白讲故事，画面给证据”拆成 10 页可提交分镜；`publish_plan.json` 将 P4 标记为 `ready_for_task_submission`，并记录 P3 已在旧流程下创建任务 `3784275df2914e80905347b1f4bc4381`，除非显式确认重提，否则不自动覆盖旧任务。
 - 任务详情补齐参考图和 prompt 检查交互：人物参考图现在可以在任务详情里点击放大，并在预览层下载或打开原图；生图提示词改为用户点击后按 panel 调用 debug 接口加载，不在列表或详情首屏预加载，加载后用独立弹窗查看完整 prompt。后端 panel debug 接口在完成任务访问校验后返回该任务的 prompt，方便任务所有者自查生成问题。

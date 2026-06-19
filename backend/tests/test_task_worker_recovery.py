@@ -13,12 +13,15 @@ from app.models.enums import (
     GeneratedImageStatus,
     GenerationStepName,
     ImageCountMode,
+    StorageBackend,
     StyleReferenceMode,
     StyleStatus,
     TaskStatus,
     WorkflowStatus,
 )
 from app.services import task_worker
+from app.services.credits import CreditError
+from app.services.image_generation import GeneratedImageFile
 
 
 class TaskWorkerRecoveryTest(unittest.TestCase):
@@ -226,6 +229,56 @@ class TaskWorkerRecoveryTest(unittest.TestCase):
         self.assertIsNotNone(task)
         self.assertEqual(TaskStatus.running, task.status)
         self.assertTrue(queue.empty())
+
+    def test_character_reference_credit_error_marks_appearance_failed(self) -> None:
+        task_id, appearance_id, user_id = self.create_running_character_reference_task()
+        db = self.Session()
+        image = GeneratedImage(
+            task_id=task_id,
+            panel_id=None,
+            character_appearance_id=appearance_id,
+            owner_user_id=user_id,
+            job_kind=GeneratedImageJobKind.character_reference,
+            status=GeneratedImageStatus.running,
+            generation_number=1,
+            source_type=GeneratedImageSourceType.initial,
+            attempts=1,
+            locked_by="test-worker",
+            final_prompt="生成角色参考图",
+            image_model_name_snapshot="gpt-image-2",
+        )
+        db.add(image)
+        db.commit()
+        image_id = image.id
+        db.close()
+        generated = GeneratedImageFile(
+            storage_backend=StorageBackend.local,
+            storage_key="generated/character.png",
+            public_url=None,
+            original_filename="character.png",
+            content_type="image/png",
+            byte_size=10,
+            checksum_sha256="checksum",
+            provider_request_id="request-1",
+        )
+
+        with patch("app.services.task_worker.SessionLocal", self.Session), patch(
+            "app.services.task_worker.generate_xg_image", return_value=generated
+        ), patch("app.services.task_worker.reserve_image_credit"), patch(
+            "app.services.task_worker.charge_reserved_image_credit",
+            side_effect=CreditError("图片生成积分占用不存在，无法扣费"),
+        ):
+            task_worker.process_character_reference_image_job(image_id)
+
+        db = self.Session()
+        image = db.scalar(select(GeneratedImage).where(GeneratedImage.id == image_id))
+        appearance = db.scalar(select(TaskCharacterAppearance).where(TaskCharacterAppearance.id == appearance_id))
+        self.assertIsNotNone(image)
+        self.assertIsNotNone(appearance)
+        self.assertEqual(GeneratedImageStatus.failed, image.status)
+        self.assertEqual(WorkflowStatus.failed, appearance.status)
+        self.assertEqual("CreditError", image.error_code)
+        self.assertEqual("CreditError", appearance.error_code)
 
 
 if __name__ == "__main__":

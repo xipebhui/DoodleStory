@@ -3,7 +3,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
@@ -171,12 +171,20 @@ def reserve_image_credit(
     note: str | None = None,
 ) -> CreditTransaction:
     account = ensure_credit_account(db, user_id)
-    if account.balance < IMAGE_CREDIT_COST:
+    result = db.execute(
+        update(UserCreditAccount)
+        .where(UserCreditAccount.user_id == user_id, UserCreditAccount.balance >= IMAGE_CREDIT_COST)
+        .values(
+            balance=UserCreditAccount.balance - IMAGE_CREDIT_COST,
+            reserved_balance=UserCreditAccount.reserved_balance + IMAGE_CREDIT_COST,
+        )
+    )
+    if result.rowcount != 1:
+        db.refresh(account)
         raise InsufficientCreditsError("积分不足，无法生成图片")
-    balance_before = account.balance
-    reserved_before = account.reserved_balance
-    account.balance -= IMAGE_CREDIT_COST
-    account.reserved_balance += IMAGE_CREDIT_COST
+    db.refresh(account)
+    balance_before = account.balance + IMAGE_CREDIT_COST
+    reserved_before = account.reserved_balance - IMAGE_CREDIT_COST
     return record_transaction(
         db,
         account=account,
@@ -205,11 +213,17 @@ def charge_reserved_image_credit(
     note: str | None = None,
 ) -> CreditTransaction:
     account = ensure_credit_account(db, user_id)
-    if account.reserved_balance < IMAGE_CREDIT_COST:
+    result = db.execute(
+        update(UserCreditAccount)
+        .where(UserCreditAccount.user_id == user_id, UserCreditAccount.reserved_balance >= IMAGE_CREDIT_COST)
+        .values(reserved_balance=UserCreditAccount.reserved_balance - IMAGE_CREDIT_COST)
+    )
+    if result.rowcount != 1:
+        db.refresh(account)
         raise CreditError("图片生成积分占用不存在，无法扣费")
+    db.refresh(account)
     balance_before = account.balance
-    reserved_before = account.reserved_balance
-    account.reserved_balance -= IMAGE_CREDIT_COST
+    reserved_before = account.reserved_balance + IMAGE_CREDIT_COST
     return record_transaction(
         db,
         account=account,
@@ -238,12 +252,20 @@ def release_reserved_image_credit(
     note: str | None = None,
 ) -> CreditTransaction:
     account = ensure_credit_account(db, user_id)
-    if account.reserved_balance < IMAGE_CREDIT_COST:
+    result = db.execute(
+        update(UserCreditAccount)
+        .where(UserCreditAccount.user_id == user_id, UserCreditAccount.reserved_balance >= IMAGE_CREDIT_COST)
+        .values(
+            balance=UserCreditAccount.balance + IMAGE_CREDIT_COST,
+            reserved_balance=UserCreditAccount.reserved_balance - IMAGE_CREDIT_COST,
+        )
+    )
+    if result.rowcount != 1:
+        db.refresh(account)
         raise CreditError("图片生成积分占用不存在，无法释放")
-    balance_before = account.balance
-    reserved_before = account.reserved_balance
-    account.balance += IMAGE_CREDIT_COST
-    account.reserved_balance -= IMAGE_CREDIT_COST
+    db.refresh(account)
+    balance_before = account.balance - IMAGE_CREDIT_COST
+    reserved_before = account.reserved_balance + IMAGE_CREDIT_COST
     return record_transaction(
         db,
         account=account,

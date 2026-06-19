@@ -52,6 +52,83 @@ kill_port() {
   done <<< "$pids"
 }
 
+kill_cwd_processes() {
+  local name="$1"
+  local cwd="$2"
+  local pattern="$3"
+
+  local pids
+  pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  if [ -z "$pids" ]; then
+    return
+  fi
+
+  while IFS= read -r pid; do
+    [ -z "$pid" ] && continue
+    local proc_cwd
+    proc_cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+    if [ "$proc_cwd" = "$cwd" ]; then
+      echo "[restart-dev] stopping orphan $name pid=$pid cwd=$proc_cwd"
+      kill "$pid" 2>/dev/null || true
+    fi
+  done <<< "$pids"
+}
+
+wait_for_port_free() {
+  local name="$1"
+  local port="$2"
+  local attempts="${3:-15}"
+
+  if ! command -v lsof >/dev/null 2>&1; then
+    return
+  fi
+
+  for _ in $(seq 1 "$attempts"); do
+    if ! lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+
+  local pids
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [ -z "$pids" ]; then
+    return
+  fi
+  echo "[restart-dev] force stopping $name listener(s) on port $port: $pids"
+  while IFS= read -r pid; do
+    [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
+  done <<< "$pids"
+
+  for _ in $(seq 1 5); do
+    if ! lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+
+  echo "[restart-dev] ERROR: $name port $port is still occupied" >&2
+  return 1
+}
+
+record_listener_pid() {
+  local name="$1"
+  local port="$2"
+  local pid_file="$3"
+
+  if ! command -v lsof >/dev/null 2>&1; then
+    return
+  fi
+
+  local pid
+  pid="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
+  if [ -z "$pid" ]; then
+    echo "[restart-dev] ERROR: cannot find $name listener pid on port $port" >&2
+    return 1
+  fi
+  echo "$pid" > "$pid_file"
+}
+
 wait_for_port() {
   local name="$1"
   local port="$2"
@@ -87,7 +164,10 @@ kill_pid_file "backend" "$BACKEND_PID_FILE"
 kill_pid_file "frontend" "$FRONTEND_PID_FILE"
 kill_port "backend" "$BACKEND_PORT"
 kill_port "frontend" "$FRONTEND_PORT"
-sleep 1
+kill_cwd_processes "backend" "$ROOT_DIR" "uvicorn app.main:app --host $BACKEND_HOST --port $BACKEND_PORT"
+kill_cwd_processes "frontend" "$ROOT_DIR/frontend" "vite .*--port $FRONTEND_PORT"
+wait_for_port_free "backend" "$BACKEND_PORT"
+wait_for_port_free "frontend" "$FRONTEND_PORT"
 
 BACKEND_PYTHON="$(backend_python)"
 if [ -x "$ROOT_DIR/backend/.venv/bin/alembic" ]; then
@@ -118,6 +198,9 @@ echo "[restart-dev] starting frontend: http://$FRONTEND_HOST:$FRONTEND_PORT"
 
 wait_for_port "backend" "$BACKEND_PORT"
 wait_for_port "frontend" "$FRONTEND_PORT"
+sleep 1
+record_listener_pid "backend" "$BACKEND_PORT" "$BACKEND_PID_FILE"
+record_listener_pid "frontend" "$FRONTEND_PORT" "$FRONTEND_PID_FILE"
 
 echo "[restart-dev] backend pid: $(cat "$BACKEND_PID_FILE")"
 echo "[restart-dev] frontend pid: $(cat "$FRONTEND_PID_FILE")"

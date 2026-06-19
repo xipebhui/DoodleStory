@@ -559,6 +559,10 @@ def mark_image_job_failed_by_unhandled_error(generated_image_id: str, exc: Excep
         image.finished_at = datetime.utcnow()
         image.lease_until = None
         image.locked_by = None
+        if image.job_kind == GeneratedImageJobKind.character_reference and image.character_appearance is not None:
+            image.character_appearance.status = WorkflowStatus.failed
+            image.character_appearance.error_code = exc.__class__.__name__
+            image.character_appearance.error_message = str(exc)
         db.commit()
         if image.job_kind == GeneratedImageJobKind.character_reference:
             update_task_character_reference_state(db, image.task_id)
@@ -719,6 +723,34 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
         )
         db.add(asset)
         db.flush()
+        try:
+            charge_reserved_image_credit(
+                db,
+                user_id=task.owner_user_id,
+                task_id=task.id,
+                generated_image_id=image.id,
+                character_appearance_id=appearance.id,
+                note="人物参考图成功产出扣费",
+            )
+        except CreditError as exc:
+            db.rollback()
+            image = load_generated_image(db, generated_image_id)
+            if image is None:
+                return
+            appearance = image.character_appearance
+            if appearance is None:
+                return
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            appearance.status = WorkflowStatus.failed
+            appearance.error_code = exc.__class__.__name__
+            appearance.error_message = str(exc)
+            db.commit()
+            return
         image.asset_id = asset.id
         image.provider_request_id = generated.provider_request_id
         image.status = GeneratedImageStatus.succeeded
@@ -730,14 +762,6 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
         appearance.status = WorkflowStatus.succeeded
         appearance.error_code = None
         appearance.error_message = None
-        charge_reserved_image_credit(
-            db,
-            user_id=task.owner_user_id,
-            task_id=task.id,
-            generated_image_id=image.id,
-            character_appearance_id=appearance.id,
-            note="人物参考图成功产出扣费",
-        )
         logger.info(
             "character reference image succeeded task_id=%s appearance_id=%s image_id=%s asset_storage_key=%s bytes=%s",
             task.id,
