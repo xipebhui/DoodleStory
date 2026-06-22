@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     lio_vision_model: str = DEFAULT_LIO_MODEL
     lio_audio_model: str = DEFAULT_LIO_MODEL
     lio_temperature: float = 0.8
+    llm_panel_batch_size: int = Field(default=10, ge=1)
     prompt_trace_log_max_chars: int = 60000
     image_provider: str = "qy"
     image_gateway_api_key: str = ""

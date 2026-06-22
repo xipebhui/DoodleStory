@@ -122,6 +122,23 @@ class GenerationReferencePack:
     style_reference_count: int
 
 
+def batched(items: list[Any], size: int) -> list[list[Any]]:
+    return [items[index : index + size] for index in range(0, len(items), max(size, 1))]
+
+
+def panel_batch_context(all_panels: list[StorySegment], batch_panels: list[StorySegment]) -> dict[str, Any]:
+    if not batch_panels:
+        return {}
+    positions = {panel.panel_order: index for index, panel in enumerate(all_panels)}
+    first_index = positions[batch_panels[0].panel_order]
+    last_index = positions[batch_panels[-1].panel_order]
+    return {
+        "batch_panel_orders": [panel.panel_order for panel in batch_panels],
+        "previous_panel_text": all_panels[first_index - 1].text if first_index > 0 else None,
+        "next_panel_text": all_panels[last_index + 1].text if last_index + 1 < len(all_panels) else None,
+    }
+
+
 @dataclass(frozen=True)
 class PanelImageGenerationResult:
     request: PreparedPanelImageRequest
@@ -1787,8 +1804,6 @@ def final_prompt_task_payload(task: GenerationTask) -> dict[str, Any]:
     return {
         "task_id": task.id,
         "story_input_mode": task.story_input_mode.value,
-        "original_text": task.original_text,
-        "story_context": story_text_for_generation(task),
         "aspect_ratio": task.style_aspect_ratio_snapshot,
         "style_name": task.style_name_snapshot,
         "style_reference_mode": task.style_reference_mode_snapshot.value,
@@ -1861,39 +1876,55 @@ def compose_final_prompts_for_panels(
             )
         )
 
-    result = compose_final_image_prompts(
-        task_payload=final_prompt_task_payload(task),
-        panels=panel_payloads,
-        characters=task_character_payload(db, task),
-        trace_context=task_trace_context(
-            task,
-            trace_step,
-            panel_orders=[panel.panel_order for panel in panels],
-            panel_count=len(panels),
-        ),
-    )
     image_text_by_order = {payload["panel_order"]: payload["image_text"] for payload in panel_payloads}
     prompt_by_order = {}
-    for panel in result.panels:
-        sanitized_prompt = sanitize_compiled_final_prompt(
-            panel.final_prompt,
-            image_text_by_order.get(panel.panel_order),
+    settings = get_settings()
+    task_payload = final_prompt_task_payload(task)
+    characters = task_character_payload(db, task)
+    panel_batches = batched(panel_payloads, settings.llm_panel_batch_size)
+    panel_count = len(panel_payloads)
+    for batch_index, panel_batch in enumerate(panel_batches, start=1):
+        result = compose_final_image_prompts(
+            task_payload=task_payload,
+            panels=panel_batch,
+            characters=characters,
+            trace_context=task_trace_context(
+                task,
+                trace_step,
+                panel_orders=[payload["panel_order"] for payload in panel_batch],
+                panel_count=panel_count,
+                batch_index=batch_index,
+                batch_count=len(panel_batches),
+                batch_size=len(panel_batch),
+            ),
         )
-        prompt_by_order[panel.panel_order] = final_prompt_with_explicit_style(task, sanitized_prompt)
-    for panel in result.panels:
-        final_prompt = prompt_by_order[panel.panel_order]
-        log_prompt_trace(
-            logger,
-            "final_image_prompt_composed_by_llm",
-            context=task_trace_context(task, trace_step, panel_order=panel.panel_order),
-            consistency_notes=panel.consistency_notes,
-            llm_final_prompt_chars=len(panel.final_prompt),
-            llm_final_prompt=panel.final_prompt,
-            style_prompt_included=is_prompt_reference_mode(task.style_reference_mode_snapshot)
-            and bool((task.style_prompt_snapshot or "").strip()),
-            final_prompt_chars=len(final_prompt),
-            final_prompt=final_prompt,
-        )
+        for panel in result.panels:
+            sanitized_prompt = sanitize_compiled_final_prompt(
+                panel.final_prompt,
+                image_text_by_order.get(panel.panel_order),
+            )
+            prompt_by_order[panel.panel_order] = final_prompt_with_explicit_style(task, sanitized_prompt)
+            log_prompt_trace(
+                logger,
+                "final_image_prompt_composed_by_llm",
+                context=task_trace_context(
+                    task,
+                    trace_step,
+                    panel_order=panel.panel_order,
+                    batch_index=batch_index,
+                    batch_count=len(panel_batches),
+                ),
+                consistency_notes=panel.consistency_notes,
+                llm_final_prompt_chars=len(panel.final_prompt),
+                llm_final_prompt=panel.final_prompt,
+                style_prompt_included=is_prompt_reference_mode(task.style_reference_mode_snapshot)
+                and bool((task.style_prompt_snapshot or "").strip()),
+                final_prompt_chars=len(prompt_by_order[panel.panel_order]),
+                final_prompt=prompt_by_order[panel.panel_order],
+            )
+    missing_orders = [panel.panel_order for panel in panels if panel.panel_order not in prompt_by_order]
+    if missing_orders:
+        raise LLMResponseError(f"LLM 缺少最终生图提示词：{missing_orders}")
     return prompt_by_order
 
 
@@ -2151,7 +2182,7 @@ def process_task(task_id: str) -> None:
                     character_result = extract_task_characters(
                         original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
-                        panels=story_segments,
+                        panels=None if task.story_input_mode == StoryInputMode.original else story_segments,
                         trace_context=task_trace_context(task, "extract_characters"),
                     )
                     if not character_result.characters:
@@ -2287,25 +2318,50 @@ def process_task(task_id: str) -> None:
                     task.use_character_references,
                     len(story_text_for_generation(task)),
                 )
+                settings = get_settings()
+                prompt_items_by_order: dict[int, Any] = {}
+                segment_batches = batched(story_segments, settings.llm_panel_batch_size)
                 if task.use_character_references:
                     character_plans = characters_to_plans(load_task_characters(db, task.id))
-                    prompt_result = generate_panel_prompts_with_characters(
-                        original_text=story_text_for_generation(task),
-                        style_prompt=task.style_prompt_snapshot,
-                        panels=story_segments,
-                        characters=character_plans,
-                        trace_context=task_trace_context(task, "generate_panel_prompts"),
-                    )
                     clear_panel_character_links(db, task)
+                    for batch_index, segment_batch in enumerate(segment_batches, start=1):
+                        prompt_result = generate_panel_prompts_with_characters(
+                            style_prompt=task.style_prompt_snapshot,
+                            panels=segment_batch,
+                            characters=character_plans,
+                            batch_context=panel_batch_context(story_segments, segment_batch),
+                            trace_context=task_trace_context(
+                                task,
+                                "generate_panel_prompts",
+                                panel_orders=[panel.panel_order for panel in segment_batch],
+                                panel_count=len(story_segments),
+                                batch_index=batch_index,
+                                batch_count=len(segment_batches),
+                                batch_size=len(segment_batch),
+                            ),
+                        )
+                        prompt_items_by_order.update({item.panel_order: item for item in prompt_result.panels})
                 else:
-                    prompt_result = generate_panel_prompts(
-                        original_text=story_text_for_generation(task),
-                        style_prompt=task.style_prompt_snapshot,
-                        panels=story_segments,
-                        trace_context=task_trace_context(task, "generate_panel_prompts"),
-                    )
+                    for batch_index, segment_batch in enumerate(segment_batches, start=1):
+                        prompt_result = generate_panel_prompts(
+                            style_prompt=task.style_prompt_snapshot,
+                            panels=segment_batch,
+                            batch_context=panel_batch_context(story_segments, segment_batch),
+                            trace_context=task_trace_context(
+                                task,
+                                "generate_panel_prompts",
+                                panel_orders=[panel.panel_order for panel in segment_batch],
+                                panel_count=len(story_segments),
+                                batch_index=batch_index,
+                                batch_count=len(segment_batches),
+                                batch_size=len(segment_batch),
+                            ),
+                        )
+                        prompt_items_by_order.update({item.panel_order: item for item in prompt_result.panels})
                 for panel in task.panels:
-                    prompt_item = next(item for item in prompt_result.panels if item.panel_order == panel.panel_order)
+                    prompt_item = prompt_items_by_order.get(panel.panel_order)
+                    if prompt_item is None:
+                        raise LLMResponseError(f"LLM 缺少第 {panel.panel_order} 个分镜的画面提示词")
                     panel.generated_prompt = prompt_item.visual_prompt
                     if task.story_input_mode == StoryInputMode.original:
                         panel.narration_text = None

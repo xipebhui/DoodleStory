@@ -95,6 +95,42 @@ class UserCharacterTest(unittest.TestCase):
         self.assertIn("第一人称叙述者也要根据全文推断形象", call_json.call_args.kwargs["system_prompt"])
         self.assertIn("青年女性学生", call_json.call_args.kwargs["system_prompt"])
 
+    @patch("app.services.llm.call_siliconflow_json")
+    @patch("app.services.llm.get_settings")
+    def test_task_character_extraction_can_use_story_without_panels(self, get_settings, call_json) -> None:
+        get_settings.return_value = SimpleNamespace(
+            lio_character_extraction_model=self.lio_model,
+            character_extraction_temperature=0.05,
+        )
+        call_json.return_value = {
+            "characters": [
+                {
+                    "character_key": "character_1",
+                    "name": "妈妈",
+                    "description": "长期卧床却坚持给孩子织毛裤的母亲",
+                    "appearances": [
+                        {
+                            "appearance_key": "character_1_adult",
+                            "age_stage": "成年",
+                            "visual_prompt": "中年女性，面容憔悴温柔，短发，穿浅色家居毛衣，体态虚弱但神情慈爱",
+                            "panel_orders": [],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        result = extract_task_characters(
+            original_text="我9岁那年，妈妈总躺在床上织毛裤，爸爸沉默着照顾她。",
+            style_prompt="温柔手绘漫画风",
+            panels=None,
+        )
+
+        self.assertEqual("妈妈", result.characters[0].name)
+        user_prompt = call_json.call_args.kwargs["user_prompt"]
+        self.assertIn('"panels": []', user_prompt)
+        self.assertIn('"panels_available": false', user_prompt)
+
     @patch("app.api.tasks.extract_character_names_from_story")
     def test_character_extraction_api_returns_names_payload(self, extract_from_story) -> None:
         extract_from_story.return_value = ExtractedCharacterNames(names=["我", "妈妈", "爸爸"])

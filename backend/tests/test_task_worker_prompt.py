@@ -31,6 +31,7 @@ from app.services.task_worker import (
     build_panel_final_prompt,
     final_prompt_with_aspect_ratio_prefix,
     final_prompt_with_explicit_style,
+    final_prompt_task_payload,
     generate_panel_image_request,
     is_policy_blocked_image_error,
     sanitize_compiled_final_prompt,
@@ -291,6 +292,28 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("男生保持黄色衬衫，女生保持橄榄绿上衣。", final_prompt)
         self.assertLess(final_prompt.index("画面比例：3:4"), final_prompt.index("风格提示词"))
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
+
+    def test_final_prompt_task_payload_omits_long_story_context(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="很长的原始故事文本",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="手绘风",
+            style_prompt_snapshot="低饱和手绘漫画风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+
+        payload = final_prompt_task_payload(task)
+
+        self.assertNotIn("original_text", payload)
+        self.assertNotIn("story_context", payload)
+        self.assertEqual("3:4", payload["aspect_ratio"])
+        self.assertEqual("低饱和手绘漫画风", payload["style_prompt"])
 
     def test_aspect_ratio_prefix_is_not_duplicated(self) -> None:
         final_prompt = final_prompt_with_aspect_ratio_prefix(

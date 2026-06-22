@@ -940,9 +940,9 @@ def parse_extracted_storyboard(
 
 def generate_panel_prompts(
     *,
-    original_text: str,
     style_prompt: str,
     panels: list[StorySegment],
+    batch_context: dict[str, Any] | None = None,
     trace_context: dict[str, Any] | None = None,
 ) -> PanelPromptResult:
     system_prompt = system_prompt_with_style(read_prompt("generate_panel_prompt_v1.md"), style_prompt)
@@ -961,8 +961,8 @@ def generate_panel_prompts(
     ]
     user_prompt = json.dumps(
         {
-            "original_text": original_text,
             "panels": input_panels,
+            "batch_context": batch_context or {},
         },
         ensure_ascii=False,
     )
@@ -1013,7 +1013,7 @@ def extract_task_characters(
     *,
     original_text: str,
     style_prompt: str,
-    panels: list[StorySegment],
+    panels: list[StorySegment] | None = None,
     trace_context: dict[str, Any] | None = None,
 ) -> TaskCharacterExtractionResult:
     settings = get_settings()
@@ -1033,12 +1033,13 @@ def extract_task_characters(
             "image_text": panel.image_text,
             "text_layout": panel.text_layout,
         }
-        for panel in panels
+        for panel in (panels or [])
     ]
     user_prompt = json.dumps(
         {
             "original_text": original_text,
             "panels": input_panels,
+            "panels_available": bool(panels),
         },
         ensure_ascii=False,
     )
@@ -1067,7 +1068,7 @@ def extract_task_characters(
 
     character_keys: set[str] = set()
     appearance_keys: set[str] = set()
-    panel_orders = {panel.panel_order for panel in panels}
+    panel_orders = {panel.panel_order for panel in (panels or [])}
     for character in result.characters:
         if character.character_key in character_keys:
             log_prompt_trace(
@@ -1105,7 +1106,7 @@ def extract_task_characters(
                     result=result,
                 )
                 raise LLMResponseError("appearance_key 必须以所属 character_key 开头")
-            if any(panel_order not in panel_orders for panel_order in appearance.panel_orders):
+            if panels is not None and any(panel_order not in panel_orders for panel_order in appearance.panel_orders):
                 log_prompt_trace(
                     logger,
                     "character_extraction_validation_failed",
@@ -1137,10 +1138,10 @@ def extract_task_characters(
 
 def generate_panel_prompts_with_characters(
     *,
-    original_text: str,
     style_prompt: str,
     panels: list[StorySegment],
     characters: list[TaskCharacterPlan],
+    batch_context: dict[str, Any] | None = None,
     trace_context: dict[str, Any] | None = None,
 ) -> PanelPromptWithCharactersResult:
     system_prompt = system_prompt_with_style(read_prompt("generate_panel_prompt_with_characters_v1.md"), style_prompt)
@@ -1165,9 +1166,9 @@ def generate_panel_prompts_with_characters(
     }
     user_prompt = json.dumps(
         {
-            "original_text": original_text,
             "panels": input_panels,
             "characters": character_payload,
+            "batch_context": batch_context or {},
         },
         ensure_ascii=False,
     )

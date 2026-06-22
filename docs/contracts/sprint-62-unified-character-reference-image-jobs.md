@@ -60,3 +60,4 @@ git diff --check
 - 远程部署前必须先备份数据库并执行 Alembic 迁移；远程当前如果仍停留在 `n9c0d1e2f3a4`，需要先补上 `p0d1e2f3a4b5`，再升级到本 Sprint 的 `q1e2f3a4b5c6`。
 - 历史孤儿 `generated_images.running` 不应盲目重新排队，需要在部署前按任务上下文清理或标记中断，避免重复出图和扣费。
 - 本 Sprint 期间根据线上硅基流动账号余额不足问题，将文本 LLM 与 VL 调用切换到 LIO OpenAI Chat Completions 兼容接口；该变更不改变图片 job 数据结构，但会影响人物提取、最终生图 prompt 编译、单图修改 prompt 重写、角色参考图描述和内容提取 VL 的外部模型配置。
+- 长故事上下文控制已纳入本 Sprint 的后续修正：完整故事人物提取只输入原始故事全文；完整故事 panel 画面设计和最终生图 prompt 编译按 `LLM_PANEL_BATCH_SIZE` 分批调用，默认 10。该变更不改数据库结构，也不改变图片 job 队列，只减少文本 LLM 单次请求上下文。
