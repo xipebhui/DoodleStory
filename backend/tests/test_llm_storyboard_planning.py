@@ -3,11 +3,11 @@ import unittest
 from unittest.mock import patch
 
 from app.models.enums import ImageCountMode, PanelType
-from app.services.llm import LLMResponseError, plan_adapted_story_panels, plan_original_storyboard, plan_storyboard_from_brief
+from app.services.llm import plan_adapted_story_panels, plan_original_storyboard, plan_storyboard_from_brief
 
 
 class StoryboardPlanningTest(unittest.TestCase):
-    def test_original_storyboard_uses_llm_chunks_and_preserves_text(self) -> None:
+    def test_original_storyboard_uses_llm_chunks_and_keeps_original_input(self) -> None:
         original_text = "今天下雨，我骑车回家。妻子说“慢点骑”。"
         with patch(
             "app.services.llm.call_siliconflow_json",
@@ -83,7 +83,7 @@ class StoryboardPlanningTest(unittest.TestCase):
         self.assertEqual(original_text, "".join(panel.story_beat for panel in result.panels))
         self.assertEqual("妻子", result.continuity_plan["speaker_map"][0]["speaker"])
 
-    def test_original_storyboard_rejects_changed_text(self) -> None:
+    def test_original_storyboard_allows_semantic_text_adjustment(self) -> None:
         with patch(
             "app.services.llm.call_siliconflow_json",
             return_value={
@@ -97,18 +97,21 @@ class StoryboardPlanningTest(unittest.TestCase):
                         "story_beat": "今天下雨，我骑车回家",
                         "visual_prompt": "雨天路上，丈夫骑着自行车回家。",
                         "text_layout": "单页漫画构图",
-                        "image_text": {"narration": "今天下雨，我骑车回家"},
+                        "image_text": {"narration": "旧旁白", "dialogue": "旧对白"},
                     }
                 ],
             },
         ):
-            with self.assertRaisesRegex(LLMResponseError, "逐字覆盖原文"):
-                plan_original_storyboard(
-                    original_text="今天下雨，我骑车回家。",
-                    style_prompt="手绘漫画风",
-                    image_count_mode=ImageCountMode.auto,
-                    requested_image_count=None,
-                )
+            result = plan_original_storyboard(
+                original_text="今天下雨，我骑车回家。",
+                style_prompt="手绘漫画风",
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+        self.assertEqual("今天下雨，我骑车回家", result.panels[0].story_beat)
+        self.assertEqual(result.panels[0].story_beat, result.panels[0].image_text.narration)
+        self.assertIsNone(result.panels[0].image_text.dialogue)
 
     def test_storyboard_from_brief_uses_requested_count_without_cover(self) -> None:
         with patch(

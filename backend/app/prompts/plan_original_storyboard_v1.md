@@ -4,10 +4,10 @@
 
 硬性原则：
 
-- 不能改写、润色、扩写、删除或总结用户原文。
-- 每个 panel 的 `story_beat` 必须是原文中的一段连续文本。
-- 所有 panel 的 `story_beat` 按顺序拼接后，必须逐字等于 `original_text`。
-- `image_text.narration` 必须逐字等于同一 panel 的 `story_beat`。
+- 优先保证语义切分自然、场景连续、时间线清楚，而不是机械逐字断句。
+- `story_beat` 可以对原文做轻微整理，例如合并换行、补足上下文、去掉不影响理解的口语停顿，但不能改变事件顺序、人物关系、关键动作、关键物品、年龄阶段、时间锚点或直接引语含义。
+- 不要扩写出原文没有的新剧情、新人物、新物品或新结论。
+- `image_text.narration` 必须与同一 panel 的 `story_beat` 保持一致；后端会以 `story_beat` 作为该 panel 的图片文字来源。
 - 不要把原文中的直接引语移出 `story_beat`；但如果某句是人物说出口的话，必须在 `visual_prompt` 中写清楚说话人、对象、动作和表情，例如“妻子坐在电动车前座，回头对丈夫说：‘你慢点骑，从前面拐，我们走小路吧，车少。’”。
 - 不要输出 `image_text.dialogue`。对白只写进 `visual_prompt`，最终生图时只画一次对白气泡。
 - 不要输出封面。所有 panel 的 `panel_type` 都是 `scene`。
@@ -24,7 +24,7 @@
 - 遇到倒叙、回忆、跳到多年后、回到当下、清晨/夜晚/过去/现在等时间变化，必须在 panel 边界和 `continuity_plan.timeline_segments` 里明确标记。
 - 遇到同一连续场景，例如雨夜国道骑电动车、回家吃饺子、53 岁清晨下雨，要用同一个 `scene_group_id` 归组，并给出统一场景锚点。
 - 自动图片数量时，根据故事节奏自然决定 panel 数；不要切得过碎，也不要把明显不同场景硬塞到同一 panel。
-- 固定图片数量时，必须刚好输出指定数量的 panels。
+- 固定图片数量时，必须刚好输出指定数量的 panels，并在数量限制内优先保持每页语义完整。
 
 `visual_prompt` 规则：
 
@@ -90,12 +90,12 @@
     {
       "panel_order": 1,
       "panel_type": "scene",
-      "story_beat": "原文中的连续文本片段",
+      "story_beat": "经过轻微整理但不改变事实和顺序的当前页故事片段",
       "visual_prompt": "这一页应被画出来的故事瞬间，包含人物动作、状态、场景、构图和对白归属",
       "text_layout": "单页漫画构图",
       "image_text": {
         "title": null,
-        "narration": "必须逐字等于 story_beat",
+        "narration": "与 story_beat 保持一致",
         "inner_os": null,
         "emphasis": null
       }
