@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from app.models.enums import ImageCountMode, PanelType
-from app.services.llm import plan_adapted_story_panels, plan_original_storyboard, plan_storyboard_from_brief
+from app.services.llm import LLMResponseError, plan_adapted_story_panels, plan_original_storyboard, plan_storyboard_from_brief
 
 
 class StoryboardPlanningTest(unittest.TestCase):
@@ -83,7 +83,7 @@ class StoryboardPlanningTest(unittest.TestCase):
         self.assertEqual(original_text, "".join(panel.story_beat for panel in result.panels))
         self.assertEqual("妻子", result.continuity_plan["speaker_map"][0]["speaker"])
 
-    def test_original_storyboard_allows_semantic_text_adjustment(self) -> None:
+    def test_original_storyboard_allows_whitespace_only_difference(self) -> None:
         with patch(
             "app.services.llm.call_siliconflow_json",
             return_value={
@@ -94,24 +94,59 @@ class StoryboardPlanningTest(unittest.TestCase):
                     {
                         "panel_order": 1,
                         "panel_type": "scene",
-                        "story_beat": "今天下雨，我骑车回家",
+                        "story_beat": "今天下雨，我骑车回家。",
                         "visual_prompt": "雨天路上，丈夫骑着自行车回家。",
                         "text_layout": "单页漫画构图",
                         "image_text": {"narration": "旧旁白", "dialogue": "旧对白"},
+                    },
+                    {
+                        "panel_order": 2,
+                        "panel_type": "scene",
+                        "story_beat": "妻子说“慢点骑”。",
+                        "visual_prompt": "妻子坐在后座，提醒丈夫说：“慢点骑”。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {"narration": "妻子说“慢点骑”。"},
                     }
                 ],
             },
         ):
             result = plan_original_storyboard(
-                original_text="今天下雨，我骑车回家。",
+                original_text="今天下雨，我骑车回家。\n妻子说“慢点骑”。",
                 style_prompt="手绘漫画风",
                 image_count_mode=ImageCountMode.auto,
                 requested_image_count=None,
             )
 
-        self.assertEqual("今天下雨，我骑车回家", result.panels[0].story_beat)
+        self.assertEqual("今天下雨，我骑车回家。", result.panels[0].story_beat)
         self.assertEqual(result.panels[0].story_beat, result.panels[0].image_text.narration)
         self.assertIsNone(result.panels[0].image_text.dialogue)
+
+    def test_original_storyboard_rejects_summarized_text(self) -> None:
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            return_value={
+                "story_title": "雨夜回家",
+                "story_hook": "雨夜里的夫妻对话",
+                "story_outline": "雨天骑车回家。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "今天下雨，我骑车回家。",
+                        "visual_prompt": "雨天路上，丈夫骑着自行车回家。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {"narration": "今天下雨，我骑车回家。"},
+                    }
+                ],
+            },
+        ):
+            with self.assertRaisesRegex(LLMResponseError, "仅允许换行或空白差异"):
+                plan_original_storyboard(
+                    original_text="今天下雨，我骑车回家。妻子说“慢点骑”。",
+                    style_prompt="手绘漫画风",
+                    image_count_mode=ImageCountMode.auto,
+                    requested_image_count=None,
+                )
 
     def test_storyboard_from_brief_uses_requested_count_without_cover(self) -> None:
         with patch(

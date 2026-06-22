@@ -678,7 +678,14 @@ def ensure_original_text_coverage(original_text: str, panels: list[StorySegment]
         raise LLMResponseError("完整故事断句结果未能逐字覆盖原文")
 
 
-def normalize_original_storyboard_panels(result: StoryboardPlanningResult) -> None:
+def normalize_storyboard_coverage_text(value: str) -> str:
+    return re.sub(r"\s+", "", value)
+
+
+def ensure_original_storyboard_text_coverage(original_text: str, result: StoryboardPlanningResult) -> None:
+    joined = "".join(panel.story_beat for panel in result.panels)
+    if normalize_storyboard_coverage_text(joined) != normalize_storyboard_coverage_text(original_text):
+        raise LLMResponseError("完整故事 LLM 分镜结果未能覆盖原文内容，仅允许换行或空白差异")
     for panel in result.panels:
         if panel.image_text.narration != panel.story_beat:
             panel.image_text.narration = panel.story_beat
@@ -699,7 +706,7 @@ def plan_original_storyboard(
 
     system_prompt = system_prompt_with_style(read_prompt("plan_original_storyboard_v1.md"), style_prompt)
     count_instruction = (
-        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，并优先按语义、场景和情绪节奏切分。"
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，并优先按语义、场景和情绪节奏选择切分边界。"
         if image_count_mode == ImageCountMode.fixed
         else "图片数量：自动判断。请根据故事时间线、场景变化、对白归属和情绪节奏自然切分 panels，不要额外生成封面。"
     )
@@ -740,7 +747,7 @@ def plan_original_storyboard(
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
         raise LLMResponseError("LLM 返回的完整故事分镜数量与用户指定图片数量不一致")
-    normalize_original_storyboard_panels(result)
+    ensure_original_storyboard_text_coverage(original_text, result)
     logger.info(
         "original storyboard planning succeeded image_count_mode=%s requested_image_count=%s panel_count=%s title=%s",
         image_count_mode.value,

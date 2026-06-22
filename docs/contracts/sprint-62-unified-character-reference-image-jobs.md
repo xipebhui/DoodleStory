@@ -60,4 +60,4 @@ git diff --check
 - 远程部署前必须先备份数据库并执行 Alembic 迁移；远程当前如果仍停留在 `n9c0d1e2f3a4`，需要先补上 `p0d1e2f3a4b5`，再升级到本 Sprint 的 `q1e2f3a4b5c6`。
 - 历史孤儿 `generated_images.running` 不应盲目重新排队，需要在部署前按任务上下文清理或标记中断，避免重复出图和扣费。
 - 本 Sprint 期间根据线上硅基流动账号余额不足问题，将文本 LLM 与 VL 调用切换到 LIO OpenAI Chat Completions 兼容接口；该变更不改变图片 job 数据结构，但会影响人物提取、最终生图 prompt 编译、单图修改 prompt 重写、角色参考图描述和内容提取 VL 的外部模型配置。
-- 长故事与入口统一已纳入本 Sprint 的后续修正：完整故事不再使用程序断句 chunk，改为 LIO 文本 LLM 按语义、场景和情绪节奏生成 storyboard panels 和 continuity_plan；用户原文仍原样保存，panel 文本允许轻微语义整理，但不得改变事实、顺序、人物关系、关键台词含义或新增剧情。故事方案、提取分镜和 DY 爆款复刻继续统一进入页式分镜中间态。最终生图 prompt 编译按 `LLM_PANEL_BATCH_SIZE` 分批调用，默认 10，并携带 compact storyboard context。该变更不改数据库结构，也不改变图片 job 队列。
+- 长故事与入口统一已纳入本 Sprint 的后续修正：完整故事不再使用程序断句 chunk，改为 LIO 文本 LLM 按语义、场景和情绪节奏选择 panel 边界，并生成 storyboard panels 和 continuity_plan；用户原文仍原样保存，panel 文本除换行和空白差异外必须覆盖完整原文，不允许摘要、改写、润色、删句、补句或新增剧情。故事方案、提取分镜和 DY 爆款复刻继续统一进入页式分镜中间态。最终生图 prompt 编译按 `LLM_PANEL_BATCH_SIZE` 分批调用，默认 10，并携带 compact storyboard context。该变更不改数据库结构，也不改变图片 job 队列。

@@ -13,7 +13,7 @@
 
 ## 最近完成的工作
 
-- 统一四种创建入口的前置分镜链路：完整故事不再使用程序断句 chunk，改为调用 LIO 文本 LLM 做完整故事 storyboard planning，按语义、场景和情绪节奏输出 panels、画面 prompt、文字结构和 continuity_plan；后端不再要求 `story_beat` 拼接后逐字等于用户原文，允许 LLM 为更自然的语义切分做轻微文本整理，但用户提交原文仍原样保存，且不得改变事实、顺序、人物关系、关键台词含义或新增剧情。故事方案和提取分镜继续走各自 LLM storyboard planning，DY 爆款复刻先做内容提取后进入提取分镜链路。完整故事新任务不再单独创建 `generate_panel_prompts` 步骤；角色提取在分镜后读取 panels 并保存 appearance 到 panel 的绑定；最终 prompt 编译输入新增 compact `storyboard_context`，用于约束时间线、连续场景、对白说话人和人物年龄阶段。
+- 统一四种创建入口的前置分镜链路：完整故事不再使用程序断句 chunk，改为调用 LIO 文本 LLM 做完整故事 storyboard planning，按语义、场景和情绪节奏选择 panel 边界，并输出画面 prompt、文字结构和 continuity_plan；后端要求 `story_beat` 拼接后除换行和空白差异外必须覆盖完整用户原文，不允许 LLM 摘要、改写、润色、删句、补句或新增剧情。故事方案和提取分镜继续走各自 LLM storyboard planning，DY 爆款复刻先做内容提取后进入提取分镜链路。完整故事新任务不再单独创建 `generate_panel_prompts` 步骤；角色提取在分镜后读取 panels 并保存 appearance 到 panel 的绑定；最终 prompt 编译输入新增 compact `storyboard_context`，用于约束时间线、连续场景、对白说话人和人物年龄阶段。
 - 优化长故事任务的文本 LLM 上下文：最终生图 prompt 编译按 `LLM_PANEL_BATCH_SIZE` 分批处理，不再携带完整原文或 story_context，但每批都会携带全局角色表、compact storyboard context、风格信息和参考图顺序，继续由编译层统一处理角色一致性、时间线、连续场景、风格冲突和文字呈现。默认批大小为 10，可通过环境变量调整。
 - 切换文本 LLM 与 VL 到 LIO OpenAI Chat Completions 兼容接口：新增 `LIO_API_KEY`、`LIO_BASE_URL`、`LIO_MODEL`、`LIO_CHARACTER_EXTRACTION_MODEL`、`LIO_VISION_MODEL`、`LIO_AUDIO_MODEL` 和 `LIO_TEMPERATURE` 配置，默认模型统一为已真实验证通过的 `gemini-3.1-flash-lite-preview-thinking-minimal`；后端会将不带 `/v1` 的 `LIO_BASE_URL` 自动规范化到 `/v1`。文本 JSON LLM、角色名提取、任务级临时角色提取、最终生图 prompt 编译、单图修改 prompt 重写、角色参考图外观理解和图文内容提取 VL 均改用 LIO，不再使用 SiliconFlow 文本/VL 配置。切换前用新 `LIO_API_KEY` 实测该模型文本 JSON 生成和图片理解均返回 200；同期 SiliconFlow 文本/VL 请求仍因账号余额不足返回 403 code 30001。
 - 修复本地重启后人物参考图任务未恢复的问题：定位到图片 worker 并发生成同一用户多张图时，积分账户通过 ORM 读旧值再写回会在 SQLite 下发生覆盖写，导致 `reserved_balance` 少记，角色参考图 provider 成功后扣费报“图片生成积分占用不存在”，进而留下任务 failed、appearance running 的不一致状态。已将图片积分 reserve/charge/release 改为数据库原子 update；角色参考图成功路径调整为先扣费成功再写 succeeded，扣费异常会同步标记 image 与 appearance failed；`scripts/restart-dev.sh` 增加等待端口释放和必要时强制停止旧监听进程，避免旧 uvicorn 未退出时新进程 bind 失败造成“假重启”。
@@ -103,7 +103,7 @@
 - 最终生图 prompt 的文字规则改为条件化：有对白时才写对白气泡规则；没有对白时明确禁止新增对白气泡或人物台词，避免图片模型自行补台词。
 - 新增本地开发一键重启脚本 `scripts/restart-dev.sh`，可同时重启 FastAPI 后端和 Vite 前端，并输出 PID 与 `/tmp` 下的日志路径。
 - 修复最终生图 prompt 对白规则冲突：条件化文字规则现在同时检查 `visual_prompt` 中的显式对白，不再只依赖 `image_text.dialogue`；无标题、旁白或字幕时的提示文案也改为更准确的“无标题、旁白或字幕”。
-- 拆分完整故事和故事方案的文字生成责任：该阶段曾将完整故事模式改为后端确定性断句，并要求所有 panel 拼接后逐字等于原文；该规则后来已被 LIO 文本 LLM storyboard planning 替代，当前完整故事以语义、场景和情绪节奏切分为准，允许轻微文本整理但必须原样保存用户源文本。
+- 拆分完整故事和故事方案的文字生成责任：该阶段曾将完整故事模式改为后端确定性断句，并要求所有 panel 拼接后逐字等于原文；该规则后来已被 LIO 文本 LLM storyboard planning 替代，当前完整故事以语义、场景和情绪节奏选择切分边界，但除换行和空白差异外仍必须覆盖完整用户源文本。
 - 增强 prompt 链路诊断日志：新增统一 `prompt_trace` 单行 JSON 日志，记录 LLM 请求/响应、原始 JSON、结构校验、panel prompt 采纳、最终生图 prompt、人物参考图 prompt 和单 panel 修改链路；所有关键日志带 task_id、step、panel_id 或 generated_image_id，便于后续按任务复盘生成问题。
 - 修复远程前端 API 地址推断：生产环境默认使用同源 `/api/v1` 走 nginx 代理，不再自动拼接公网主机的 `:8000` 端口；本地 loopback 开发仍默认请求 `http://127.0.0.1:8000`。
 - 开始并完成 Sprint 36 七牛原图 URL 缓存污染修复：远程任务 `260d1c030dfb437480d9a51b28b8b6d8` 的生成图本地镜像和 xgapi 直连结果均为完整 `896x1200`，但对象存储公网 URL 返回 `320x568 image/webp`；进一步确认 `?imageInfo`、`?imageMogr2/format/jpg` 等 query 也命中同一份 WebP，判断为 CDN 忽略 query string 后由 `imageView2` 缩略图请求污染同 key 缓存。现已取消七牛资产 `thumbnail_url` 和 `thumbnail` 变体的同 key query 缩略图，统一返回无 query 原图 URL；历史已污染缓存可能仍需刷新 CDN、等待过期或生成新 key。
