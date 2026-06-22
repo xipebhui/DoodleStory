@@ -3,10 +3,113 @@ import unittest
 from unittest.mock import patch
 
 from app.models.enums import ImageCountMode, PanelType
-from app.services.llm import plan_adapted_story_panels, plan_storyboard_from_brief
+from app.services.llm import LLMResponseError, plan_adapted_story_panels, plan_original_storyboard, plan_storyboard_from_brief
 
 
 class StoryboardPlanningTest(unittest.TestCase):
+    def test_original_storyboard_uses_llm_chunks_and_preserves_text(self) -> None:
+        original_text = "今天下雨，我骑车回家。妻子说“慢点骑”。"
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            return_value={
+                "story_title": "雨夜回家",
+                "story_hook": "雨夜里的夫妻对话",
+                "story_outline": "雨天骑车回家，妻子提醒丈夫慢点。",
+                "continuity_plan": {
+                    "story_structure": "单一雨天场景",
+                    "timeline_segments": [
+                        {
+                            "label": "当下",
+                            "panel_orders": [1, 2],
+                            "time_anchor": "雨天",
+                            "age_stage_notes": "成年夫妻",
+                        }
+                    ],
+                    "scene_groups": [
+                        {
+                            "scene_group_id": "scene_rain_road",
+                            "panel_orders": [1, 2],
+                            "location": "雨天路上",
+                            "time_of_day": "傍晚",
+                            "weather": "下雨",
+                            "stable_environment": "湿漉漉的路面",
+                            "stable_props": ["自行车", "雨水"],
+                            "continuity_notes": "保持同一路面和雨势",
+                        }
+                    ],
+                    "speaker_map": [
+                        {
+                            "panel_order": 2,
+                            "quote": "慢点骑",
+                            "speaker": "妻子",
+                            "reason": "原文直接写妻子说",
+                        }
+                    ],
+                    "panel_character_expectations": [
+                        {"panel_order": 1, "expected_appearances": ["丈夫成年"]},
+                        {"panel_order": 2, "expected_appearances": ["妻子成年"]},
+                    ],
+                },
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "今天下雨，我骑车回家。",
+                        "visual_prompt": "雨天路上，丈夫骑着自行车回家。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {"narration": "今天下雨，我骑车回家。"},
+                    },
+                    {
+                        "panel_order": 2,
+                        "panel_type": "scene",
+                        "story_beat": "妻子说“慢点骑”。",
+                        "visual_prompt": "妻子坐在后座，提醒丈夫说：“慢点骑”。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {"narration": "妻子说“慢点骑”。"},
+                    },
+                ],
+            },
+        ) as call_json:
+            result = plan_original_storyboard(
+                original_text=original_text,
+                style_prompt="手绘漫画风",
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+        user_payload = json.loads(call_json.call_args.kwargs["user_prompt"])
+        self.assertEqual(original_text, user_payload["original_text"])
+        self.assertIn("自然切分 panels", user_payload["count_instruction"])
+        self.assertEqual(original_text, "".join(panel.story_beat for panel in result.panels))
+        self.assertEqual("妻子", result.continuity_plan["speaker_map"][0]["speaker"])
+
+    def test_original_storyboard_rejects_changed_text(self) -> None:
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            return_value={
+                "story_title": "雨夜回家",
+                "story_hook": "雨夜里的夫妻对话",
+                "story_outline": "雨天骑车回家。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "今天下雨，我骑车回家",
+                        "visual_prompt": "雨天路上，丈夫骑着自行车回家。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {"narration": "今天下雨，我骑车回家"},
+                    }
+                ],
+            },
+        ):
+            with self.assertRaisesRegex(LLMResponseError, "逐字覆盖原文"):
+                plan_original_storyboard(
+                    original_text="今天下雨，我骑车回家。",
+                    style_prompt="手绘漫画风",
+                    image_count_mode=ImageCountMode.auto,
+                    requested_image_count=None,
+                )
+
     def test_storyboard_from_brief_uses_requested_count_without_cover(self) -> None:
         with patch(
             "app.services.llm.call_siliconflow_json",

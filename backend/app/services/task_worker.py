@@ -77,10 +77,10 @@ from app.services.llm import (
     generate_panel_prompts_with_characters,
     ImageTextPlan,
     parse_extracted_storyboard,
+    plan_original_storyboard,
     plan_storyboard_from_brief,
     revise_panel_prompt,
     rewrite_policy_blocked_image_prompt,
-    segment_story,
 )
 from app.services.prompt_logging import log_prompt_trace
 from app.services.style_references import build_task_style_reference_pack, is_prompt_reference_mode
@@ -1252,10 +1252,7 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
 
 def task_progress_total(task: GenerationTask) -> int:
     total = 1
-    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
-        total += 1
-    else:
-        total += 2
+    total += 1
     if task.use_character_references:
         total += 2
     return total
@@ -1283,6 +1280,15 @@ def story_text_for_generation(task: GenerationTask) -> str:
     if task.story_input_mode == StoryInputMode.extracted_storyboard and task.adapted_story_text:
         return f"内容提取原文：\n{task.original_text}\n\n提取分镜概要：\n{task.adapted_story_text}"
     return task.original_text
+
+
+def storyboard_context_text(storyboard: Any) -> str:
+    parts = [storyboard.story_outline]
+    continuity_plan = getattr(storyboard, "continuity_plan", None)
+    if continuity_plan:
+        parts.append("连续性规划：")
+        parts.append(json.dumps(continuity_plan, ensure_ascii=False))
+    return "\n".join(part for part in parts if part)
 
 
 def image_text_to_dict(image_text: ImageTextPlan | dict[str, str | None] | None) -> dict[str, str | None]:
@@ -1808,6 +1814,7 @@ def final_prompt_task_payload(task: GenerationTask) -> dict[str, Any]:
         "style_name": task.style_name_snapshot,
         "style_reference_mode": task.style_reference_mode_snapshot.value,
         "style_prompt": style_prompt,
+        "storyboard_context": task.adapted_story_text,
         "image_model_name": task.image_model_name_snapshot,
         "role_priority_rule": "角色身份 > 当前剧情动作/情绪 > 风格表现方式 > 风格模板默认人物外观",
     }
@@ -2030,7 +2037,7 @@ def process_task(task_id: str) -> None:
                         )
                     task.adapted_story_title = storyboard.story_title
                     task.adapted_story_hook = storyboard.story_hook
-                    task.adapted_story_text = storyboard.story_outline
+                    task.adapted_story_text = storyboard_context_text(storyboard)
                     task.display_title = storyboard.story_title[:120]
                     for existing_panel in list(task.panels):
                         db.delete(existing_panel)
@@ -2098,38 +2105,41 @@ def process_task(task_id: str) -> None:
                     task.image_count_mode.value,
                     task.requested_image_count,
                 )
-                segmentation = segment_story(
+                storyboard = plan_original_storyboard(
                     original_text=task.original_text,
+                    style_prompt=task.style_prompt_snapshot,
                     image_count_mode=task.image_count_mode,
                     requested_image_count=task.requested_image_count,
                     trace_context=task_trace_context(task, "segment_story"),
                 )
-                for panel in segmentation.panels:
+                task.adapted_story_title = storyboard.story_title
+                task.adapted_story_hook = storyboard.story_hook
+                task.adapted_story_text = storyboard_context_text(storyboard)
+                task.display_title = storyboard.story_title[:120]
+                for panel in storyboard.panels:
                     db.add(
                         TaskPanel(
                             task_id=task.id,
                             panel_order=panel.panel_order,
                             panel_type=panel.panel_type,
-                            original_text_segment=panel.text,
-                            narration_text=None,
+                            original_text_segment=panel.story_beat,
+                            narration_text=panel.image_text.narration,
                             dialogue_text=None,
-                            image_text_json=image_text_to_json(
-                                {
-                                    "title": None,
-                                    "narration": panel.text,
-                                    "dialogue": None,
-                                    "inner_os": None,
-                                    "emphasis": None,
-                                }
-                            ),
+                            image_text_json=image_text_to_json(panel.image_text),
+                            text_layout=panel.text_layout,
+                            prompt_status=PromptStatus.generated,
+                            generated_prompt=panel.visual_prompt,
+                            prompt_model_snapshot=get_settings().lio_model,
                         )
                     )
                 task.progress_current = 1
                 set_step(db, task, GenerationStepName.segment_story, StepStatus.succeeded)
                 logger.info(
-                    "story_drawing_debug segmentation_done task_id=%s panel_count=%s elapsed_ms=%s",
+                    "story_drawing_debug original_storyboard_done task_id=%s title=%s panel_count=%s outline_chars=%s elapsed_ms=%s",
                     task.id,
-                    len(segmentation.panels),
+                    storyboard.story_title,
+                    len(storyboard.panels),
+                    len(task.adapted_story_text or ""),
                     round((monotonic() - step_started) * 1000),
                 )
             except LLMProviderError as exc:
@@ -2182,7 +2192,7 @@ def process_task(task_id: str) -> None:
                     character_result = extract_task_characters(
                         original_text=story_text_for_generation(task),
                         style_prompt=task.style_prompt_snapshot,
-                        panels=None if task.story_input_mode == StoryInputMode.original else story_segments,
+                        panels=story_segments,
                         trace_context=task_trace_context(task, "extract_characters"),
                     )
                     if not character_result.characters:
@@ -2202,16 +2212,15 @@ def process_task(task_id: str) -> None:
                     else:
                         persist_character_plans(db, task, character_result.characters)
                         persisted_character_plans = character_result.characters
-                    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
-                        task = load_task(db, task_id)
-                        if task is None:
-                            return
-                        if persisted_character_plans:
-                            save_character_plan_panel_links(
-                                db=db,
-                                task=task,
-                                character_plans=persisted_character_plans,
-                            )
+                    task = load_task(db, task_id)
+                    if task is None:
+                        return
+                    if persisted_character_plans:
+                        save_character_plan_panel_links(
+                            db=db,
+                            task=task,
+                            character_plans=persisted_character_plans,
+                        )
                     task.progress_current = 2
                     set_step(db, task, GenerationStepName.extract_characters, StepStatus.succeeded)
                     logger.info(
@@ -2305,7 +2314,10 @@ def process_task(task_id: str) -> None:
             )
         elif prompts_ready:
             task.progress_current = max(task.progress_current, prompts_progress)
-            set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
+            if task.story_input_mode != StoryInputMode.original:
+                set_step(db, task, GenerationStepName.generate_panel_prompts, StepStatus.succeeded)
+            else:
+                db.commit()
             logger.info("story_drawing_debug panel_prompts_skipped task_id=%s existing_panel_count=%s", task.id, len(task.panels))
         else:
             try:

@@ -324,13 +324,12 @@ class UserCharacterTest(unittest.TestCase):
 
         self.assertTrue(task.use_character_references)
         self.assertEqual(0, len(task.characters))
-        self.assertEqual(5, task.progress_total)
+        self.assertEqual(4, task.progress_total)
         self.assertEqual(
             [
                 GenerationStepName.segment_story,
                 GenerationStepName.extract_characters,
                 GenerationStepName.generate_character_references,
-                GenerationStepName.generate_panel_prompts,
                 GenerationStepName.generate_images,
             ],
             [step.step_name for step in task.steps],

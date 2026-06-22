@@ -306,6 +306,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
             image_model_name_snapshot="gpt-image-2",
             style_aspect_ratio_snapshot="3:4",
             style_reference_mode_snapshot=StyleReferenceMode.prompt,
+            adapted_story_text="连续性规划：{\"scene_groups\": []}",
         )
 
         payload = final_prompt_task_payload(task)
@@ -314,6 +315,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertNotIn("story_context", payload)
         self.assertEqual("3:4", payload["aspect_ratio"])
         self.assertEqual("低饱和手绘漫画风", payload["style_prompt"])
+        self.assertEqual("连续性规划：{\"scene_groups\": []}", payload["storyboard_context"])
 
     def test_aspect_ratio_prefix_is_not_duplicated(self) -> None:
         final_prompt = final_prompt_with_aspect_ratio_prefix(

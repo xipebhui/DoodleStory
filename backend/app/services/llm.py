@@ -78,6 +78,7 @@ class StoryboardPlanningResult(BaseModel):
     story_title: str = Field(min_length=1, max_length=120)
     story_hook: str = Field(min_length=1, max_length=200)
     story_outline: str = Field(min_length=1)
+    continuity_plan: dict[str, Any] | None = None
     panels: list[StoryboardPanelPlan] = Field(min_length=1)
 
 
@@ -675,6 +676,95 @@ def ensure_original_text_coverage(original_text: str, panels: list[StorySegment]
     joined = "".join(panel.text for panel in panels)
     if joined != original_text:
         raise LLMResponseError("完整故事断句结果未能逐字覆盖原文")
+
+
+def ensure_original_storyboard_text_coverage(original_text: str, result: StoryboardPlanningResult) -> None:
+    joined = "".join(panel.story_beat for panel in result.panels)
+    if joined != original_text:
+        raise LLMResponseError("完整故事 LLM 分镜结果未能逐字覆盖原文")
+    for panel in result.panels:
+        if panel.image_text.narration != panel.story_beat:
+            panel.image_text.narration = panel.story_beat
+        panel.image_text.dialogue = None
+        panel.panel_type = PanelType.scene
+
+
+def plan_original_storyboard(
+    *,
+    original_text: str,
+    style_prompt: str,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+    trace_context: dict[str, Any] | None = None,
+) -> StoryboardPlanningResult:
+    if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
+        raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
+
+    system_prompt = system_prompt_with_style(read_prompt("plan_original_storyboard_v1.md"), style_prompt)
+    count_instruction = (
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels，且所有 story_beat 拼接后逐字等于 original_text。"
+        if image_count_mode == ImageCountMode.fixed
+        else "图片数量：自动判断。请根据故事时间线、场景变化、对白归属和情绪节奏自然切分 panels，不要额外生成封面。"
+    )
+    user_prompt = json.dumps(
+        {
+            "count_instruction": count_instruction,
+            "original_text": original_text,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="plan_original_storyboard_v1.md",
+        trace_context={**(trace_context or {}), "operation": "plan_original_storyboard"},
+    )
+    try:
+        result = StoryboardPlanningResult.model_validate(raw)
+    except ValidationError as exc:
+        logger.warning(
+            "original storyboard validation failed errors=%s raw_keys=%s",
+            exc.errors(),
+            sorted(raw.keys()),
+        )
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="plan_original_storyboard_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        first_error = exc.errors()[0] if exc.errors() else {}
+        location = ".".join(str(item) for item in first_error.get("loc", []))
+        message = first_error.get("msg", "未知结构错误")
+        raise LLMResponseError(f"LLM 完整故事分镜 JSON 结构不符合要求：{location} {message}") from exc
+
+    ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
+    if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
+        raise LLMResponseError("LLM 返回的完整故事分镜数量与用户指定图片数量不一致")
+    ensure_original_storyboard_text_coverage(original_text, result)
+    logger.info(
+        "original storyboard planning succeeded image_count_mode=%s requested_image_count=%s panel_count=%s title=%s",
+        image_count_mode.value,
+        requested_image_count,
+        len(result.panels),
+        result.story_title,
+    )
+    log_prompt_trace(
+        logger,
+        "original_storyboard_planning_result",
+        context=trace_context or {},
+        image_count_mode=image_count_mode.value,
+        requested_image_count=requested_image_count,
+        story_title=result.story_title,
+        story_hook=result.story_hook,
+        story_outline=result.story_outline,
+        continuity_plan=result.continuity_plan,
+        panel_count=len(result.panels),
+        panels=[panel.model_dump() for panel in result.panels],
+    )
+    return result
 
 
 def adapt_story_for_douyin(*, original_text: str, trace_context: dict[str, Any] | None = None) -> AdaptedStoryResult:

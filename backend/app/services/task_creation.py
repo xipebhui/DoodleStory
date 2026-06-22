@@ -34,10 +34,7 @@ class TaskCreationError(Exception):
 
 def task_progress_total_for_creation(task: GenerationTask) -> int:
     total = 1
-    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
-        total += 1
-    else:
-        total += 2
+    total += 1
     if task.use_character_references:
         total += 2
     return total
@@ -54,8 +51,6 @@ def generation_step_names_for_task(
         step_names = [GenerationStepName.segment_story]
     if use_character_references:
         step_names.extend([GenerationStepName.extract_characters, GenerationStepName.generate_character_references])
-    if story_input_mode not in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
-        step_names.append(GenerationStepName.generate_panel_prompts)
     step_names.append(GenerationStepName.generate_images)
     return step_names
 
