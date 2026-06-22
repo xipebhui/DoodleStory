@@ -73,7 +73,7 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
             captured["prompt_name"] = prompt_name
             return "第1页：测试"
 
-        settings = SimpleNamespace(siliconflow_vision_model="vision-model")
+        settings = SimpleNamespace(lio_vision_model="vision-model")
         images = [
             ImageExtractionReference(url="https://cdn.example.com/1.jpg", source_path="/source/1.jpg"),
             ImageExtractionReference(url="https://cdn.example.com/2.jpg", source_path="/source/2.jpg"),

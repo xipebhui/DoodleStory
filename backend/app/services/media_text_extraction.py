@@ -71,13 +71,15 @@ class AudioExtractionResult:
 
 def create_multimodal_client():
     settings = get_settings()
-    if not settings.siliconflow_api_key.strip():
-        raise LLMConfigError("SILICONFLOW_API_KEY 未配置")
+    if not settings.lio_api_key.strip():
+        raise LLMConfigError("LIO_API_KEY 未配置")
+    if not settings.lio_openai_base_url:
+        raise LLMConfigError("LIO_BASE_URL 未配置")
     try:
         from openai import OpenAI
     except ImportError as exc:
         raise LLMConfigError("缺少 openai 依赖，请安装 backend/requirements.txt") from exc
-    return OpenAI(api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url)
+    return OpenAI(api_key=settings.lio_api_key, base_url=settings.lio_openai_base_url)
 
 
 def _data_url_summary(url: str) -> str:
@@ -151,7 +153,7 @@ def data_url_from_bytes(content: bytes, content_type: str) -> str:
 
 def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
     if not model.strip():
-        raise LLMConfigError("SiliconFlow 多模态模型未配置")
+        raise LLMConfigError("LIO 多模态模型未配置")
     client = create_multimodal_client()
     trace_context = {"model": model, "prompt_name": prompt_name}
     started = monotonic()
@@ -165,7 +167,7 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
         logger,
         "content_extraction_multimodal_request",
         context=trace_context,
-        provider="siliconflow",
+        provider="lio",
         model=model,
         content_part_count=len(content),
     )
@@ -186,10 +188,10 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
         raise LLMProviderError(str(exc)) from exc
 
     if not response.choices:
-        raise LLMResponseError("SiliconFlow 多模态模型没有返回 choices")
+        raise LLMResponseError("LIO 多模态模型没有返回 choices")
     message_content = response.choices[0].message.content
     if message_content is None:
-        raise LLMResponseError("SiliconFlow 多模态模型返回内容为空")
+        raise LLMResponseError("LIO 多模态模型返回内容为空")
     text = str(message_content).strip()
     logger.info(
         "content_extraction_ai_debug multimodal_response prompt_name=%s model=%s response_id=%s finish_reason=%s content_chars=%s content=%s",
@@ -220,7 +222,7 @@ def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]
     if len(images) > MAX_CONTENT_EXTRACTION_IMAGES:
         raise LLMResponseError(f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}")
     settings = get_settings()
-    model = settings.siliconflow_vision_model.strip()
+    model = settings.lio_vision_model.strip()
     content: list[dict[str, object]] = [{"type": "text", "text": COMIC_CONTENT_EXTRACTION_PROMPT}]
     for index, image in enumerate(images, start=1):
         if not image.url.startswith(("http://", "https://")):
@@ -252,7 +254,7 @@ def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]
 
 def describe_character_reference_image(content: bytes, content_type: str) -> MediaTextResult:
     settings = get_settings()
-    model = settings.siliconflow_vision_model.strip()
+    model = settings.lio_vision_model.strip()
     text = _chat_multimodal(
         model=model,
         prompt_name="user_character_reference_description",
@@ -289,7 +291,7 @@ def split_audio_to_mp3(video_path: Path) -> bytes:
 
 def transcribe_video_audio(video_path: Path) -> AudioExtractionResult:
     settings = get_settings()
-    model = settings.siliconflow_audio_model.strip()
+    model = settings.lio_audio_model.strip()
     audio_bytes = split_audio_to_mp3(video_path)
     with TemporaryDirectory(prefix="doodlestory-content-audio-read-") as temp_dir:
         audio_path = Path(temp_dir) / "audio.mp3"

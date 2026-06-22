@@ -308,17 +308,19 @@ def normalize_character_extraction_result(result: TaskCharacterExtractionResult)
     return normalized_result
 
 
-def create_siliconflow_client():
+def create_lio_client():
     settings = get_settings()
-    if not settings.siliconflow_api_key.strip():
-        raise LLMConfigError("SILICONFLOW_API_KEY 未配置")
+    if not settings.lio_api_key.strip():
+        raise LLMConfigError("LIO_API_KEY 未配置")
+    if not settings.lio_openai_base_url:
+        raise LLMConfigError("LIO_BASE_URL 未配置")
 
     try:
         from openai import OpenAI
     except ImportError as exc:
         raise LLMConfigError("缺少 openai 依赖，请安装 backend/requirements.txt") from exc
 
-    return OpenAI(api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url)
+    return OpenAI(api_key=settings.lio_api_key, base_url=settings.lio_openai_base_url)
 
 
 def call_siliconflow_json(
@@ -331,11 +333,11 @@ def call_siliconflow_json(
     temperature: float | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
-    selected_model = (model if model is not None else settings.siliconflow_model).strip()
+    selected_model = (model if model is not None else settings.lio_model).strip()
     if not selected_model:
-        raise LLMConfigError("SILICONFLOW_MODEL 未配置")
-    selected_temperature = settings.siliconflow_temperature if temperature is None else temperature
-    client = create_siliconflow_client()
+        raise LLMConfigError("LIO_MODEL 未配置")
+    selected_temperature = settings.lio_temperature if temperature is None else temperature
+    client = create_lio_client()
     trace_id = uuid4().hex
     context = trace_context or {}
     log_prompt_trace(
@@ -344,7 +346,7 @@ def call_siliconflow_json(
         trace_id=trace_id,
         prompt_name=prompt_name,
         context=context,
-        provider="siliconflow",
+        provider="lio",
         model=selected_model,
         temperature=selected_temperature,
         response_format="json_object",
@@ -457,9 +459,9 @@ def extract_character_names_from_story(
     trace_context: dict[str, Any] | None = None,
 ) -> ExtractedCharacterNames:
     settings = get_settings()
-    model = settings.character_extraction_model.strip()
+    model = settings.lio_character_extraction_model.strip()
     if not model:
-        raise LLMConfigError("CHARACTER_EXTRACTION_MODEL 未配置")
+        raise LLMConfigError("LIO_CHARACTER_EXTRACTION_MODEL 未配置")
 
     raw = call_siliconflow_json(
         system_prompt=read_prompt("extract_character_names_v1.md"),
@@ -1015,9 +1017,9 @@ def extract_task_characters(
     trace_context: dict[str, Any] | None = None,
 ) -> TaskCharacterExtractionResult:
     settings = get_settings()
-    model = settings.character_extraction_model.strip()
+    model = settings.lio_character_extraction_model.strip()
     if not model:
-        raise LLMConfigError("CHARACTER_EXTRACTION_MODEL 未配置")
+        raise LLMConfigError("LIO_CHARACTER_EXTRACTION_MODEL 未配置")
 
     system_prompt = system_prompt_with_style(read_prompt("extract_task_characters_v1.md"), style_prompt)
     input_panels = [
