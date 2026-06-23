@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     image_provider_debug_log_raw_io: bool = False
     image_provider_debug_log_raw_max_chars: int = 20000
     douyin_import_service_base_url: str = "http://127.0.0.1:8010"
-    siliconflow_vision_model: str = ""
+    siliconflow_vision_model: str = "Qwen/Qwen3-VL-32B-Instruct"
     siliconflow_audio_model: str = ""
 
     model_config = SettingsConfigDict(

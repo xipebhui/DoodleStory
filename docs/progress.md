@@ -13,7 +13,7 @@
 
 ## 最近完成的工作
 
-- 将角色名提取和任务级临时角色提取的默认模型从 `Qwen/Qwen3.6-27B` 改为 `deepseek-ai/DeepSeek-V3.2`，仍通过 `CHARACTER_EXTRACTION_MODEL` 可配置，并继续使用 `CHARACTER_EXTRACTION_TEMPERATURE` 的低温配置。当前图文图片文案提取和用户角色参考图外观理解仍读取 `SILICONFLOW_VISION_MODEL`。
+- 将角色名提取和任务级临时角色提取的默认模型从 `Qwen/Qwen3.6-27B` 改为 `deepseek-ai/DeepSeek-V3.2`，仍通过 `CHARACTER_EXTRACTION_MODEL` 可配置，并继续使用 `CHARACTER_EXTRACTION_TEMPERATURE` 的低温配置。图文图片文案提取和用户角色参考图外观理解读取 `SILICONFLOW_VISION_MODEL`，当前默认模型为 `Qwen/Qwen3-VL-32B-Instruct`。
 - 统一人物参考图与 panel 生图的图片 job 语义：`generated_images` 新增 `job_kind` 和 `character_appearance_id`，`panel_id` 改为可空；人物参考图生成阶段不再同步调用图片 Provider，而是创建 `character_reference` 图片 job，由统一 image worker 处理全站并发、单用户并发、lease、attempt、积分占用、释放和扣费。人物参考图 job 成功后写回 `task_character_appearances.reference_image_id`，失败则让任务明确失败；启动恢复现在能识别 `generate_character_references` 阶段的活跃人物图 job，避免服务重启后卡在人物参考图生成中。任务详情 API 继续只把 panel 图放入 `generated_images`，人物参考图仍通过 `character_references` 展示。新增恢复测试覆盖人物参考图 job 的重启恢复。
 - `画一个故事` 内容实验适配新版可画分镜流程：将 `P4-H2-duck-bear` 从可直接提交的 brief 重新生成 story-only brief，只保留叙事人格、故事机制、10 页旁白主线和禁用项；新增 `content-lab/render_storyboards/2026-06-18-huayigegushi-p4-h2-duck-bear.md`，按“旁白讲故事，画面给证据”拆成 10 页可提交分镜；`publish_plan.json` 将 P4 标记为 `ready_for_task_submission`，并记录 P3 已在旧流程下创建任务 `3784275df2914e80905347b1f4bc4381`，除非显式确认重提，否则不自动覆盖旧任务。
 - 任务详情补齐参考图和 prompt 检查交互：人物参考图现在可以在任务详情里点击放大，并在预览层下载或打开原图；生图提示词改为用户点击后按 panel 调用 debug 接口加载，不在列表或详情首屏预加载，加载后用独立弹窗查看完整 prompt。后端 panel debug 接口在完成任务访问校验后返回该任务的 prompt，方便任务所有者自查生成问题。
