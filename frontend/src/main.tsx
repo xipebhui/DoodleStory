@@ -3382,6 +3382,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   const [editingStyleId, setEditingStyleId] = useState("");
   const [pendingReferenceFiles, setPendingReferenceFiles] = useState<File[]>([]);
   const [savingStyle, setSavingStyle] = useState(false);
+  const [styleSavePhase, setStyleSavePhase] = useState("");
   const [stylePage, setStylePage] = useState<"library" | "test">("library");
   const [testingStyleId, setTestingStyleId] = useState("");
   const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
@@ -3455,6 +3456,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
 
     try {
       setSavingStyle(true);
+      setStyleSavePhase(isEditMode ? "正在保存风格..." : "正在创建风格...");
       const saved =
         isEditMode && editingStyle
           ? await api.updateStyle(editingStyle.id, payload)
@@ -3464,7 +3466,8 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
       setStyleFormMode("edit");
       if (!isEditMode && selectedReferenceFiles.length > 0) {
         try {
-          for (const file of selectedReferenceFiles) {
+          for (const [index, file] of selectedReferenceFiles.entries()) {
+            setStyleSavePhase(`正在上传参考图 ${index + 1}/${selectedReferenceFiles.length}...`);
             await api.uploadStyleReferenceImage(saved.id, file);
           }
           setPendingReferenceFiles([]);
@@ -3490,6 +3493,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
       setMessage(error instanceof Error ? error.message : "保存失败");
     } finally {
       setSavingStyle(false);
+      setStyleSavePhase("");
     }
   }
 
@@ -3783,7 +3787,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
             {message ? <p className="form-message">{message}</p> : null}
             <button type="submit" disabled={savingStyle}>
               {savingStyle ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
-              {savingStyle ? "保存中..." : styleFormMode === "edit" ? "保存风格" : "创建风格"}
+              {savingStyle ? styleSavePhase || "保存中..." : styleFormMode === "edit" ? "保存风格" : "创建风格"}
             </button>
           </form>
 

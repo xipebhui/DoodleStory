@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -58,6 +59,13 @@ def normalize_image_model_name(value: str) -> str:
     return cleaned
 
 
+def normalize_style_name(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格名称不能为空")
+    return cleaned
+
+
 def normalize_aspect_ratio(value: str) -> str:
     cleaned = value.strip()
     if cleaned not in STYLE_ASPECT_RATIOS:
@@ -103,12 +111,20 @@ def list_styles(
 @router.post("", response_model=ApiData[StyleRead], status_code=status.HTTP_201_CREATED)
 def create_style(payload: StyleCreate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[StyleRead]:
     data = payload.model_dump()
+    data["name"] = normalize_style_name(data["name"])
     data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
     data["aspect_ratio"] = normalize_aspect_ratio(data["aspect_ratio"])
+    existing_style = db.scalar(select(Style).where(Style.name == data["name"]))
+    if existing_style:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格名称已存在，请换一个名称")
 
     style = Style(**data)
     db.add(style)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格名称已存在，请换一个名称") from exc
     style = db.scalar(select(Style).where(Style.id == style.id).options(*style_load_options()))
     return ApiData(data=style_to_read(style))
 
@@ -132,6 +148,11 @@ def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(curre
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
 
     data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        data["name"] = normalize_style_name(data["name"])
+        existing_style = db.scalar(select(Style).where(Style.name == data["name"], Style.id != style_id))
+        if existing_style:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格名称已存在，请换一个名称")
     if "image_model_name" in data:
         data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
     if "aspect_ratio" in data:
@@ -140,7 +161,11 @@ def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(curre
     for key, value in data.items():
         setattr(style, key, value)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格名称已存在，请换一个名称") from exc
     style = db.scalar(select(Style).where(Style.id == style_id, Style.deleted_at.is_(None)).options(*style_load_options()))
     return ApiData(data=style_to_read(style))
 
