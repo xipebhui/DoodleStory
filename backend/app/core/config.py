@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     siliconflow_model: str = ""
     siliconflow_temperature: float = 0.8
-    character_extraction_model: str = "Qwen/Qwen3.6-27B"
+    character_extraction_model: str = "deepseek-ai/DeepSeek-V3.2"
     character_extraction_temperature: float = 0.1
     prompt_trace_log_max_chars: int = 60000
     image_provider: str = "qy"

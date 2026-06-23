@@ -38,7 +38,7 @@ class UserCharacterTest(unittest.TestCase):
     @patch("app.services.llm.get_settings")
     def test_ai_extraction_uses_character_model_and_normalizes_names(self, get_settings, call_json) -> None:
         get_settings.return_value = SimpleNamespace(
-            character_extraction_model="Qwen/Qwen3.6-27B",
+            character_extraction_model="deepseek-ai/DeepSeek-V3.2",
             character_extraction_temperature=0.1,
         )
         call_json.return_value = {"names": [" 三只小猪 ", "小猪", "大灰狼", "大灰狼"]}
@@ -47,14 +47,14 @@ class UserCharacterTest(unittest.TestCase):
 
         self.assertEqual(["三只小猪", "大灰狼"], result.names)
         call_json.assert_called_once()
-        self.assertEqual("Qwen/Qwen3.6-27B", call_json.call_args.kwargs["model"])
+        self.assertEqual("deepseek-ai/DeepSeek-V3.2", call_json.call_args.kwargs["model"])
         self.assertEqual(0.1, call_json.call_args.kwargs["temperature"])
 
     @patch("app.services.llm.call_siliconflow_json")
     @patch("app.services.llm.get_settings")
     def test_task_character_extraction_uses_low_temperature_and_context_inference_prompt(self, get_settings, call_json) -> None:
         get_settings.return_value = SimpleNamespace(
-            character_extraction_model="Qwen/Qwen3.6-27B",
+            character_extraction_model="deepseek-ai/DeepSeek-V3.2",
             character_extraction_temperature=0.05,
         )
         call_json.return_value = {
@@ -88,7 +88,7 @@ class UserCharacterTest(unittest.TestCase):
         )
 
         self.assertEqual("青年女性学生", result.characters[0].appearances[0].visual_prompt[:6])
-        self.assertEqual("Qwen/Qwen3.6-27B", call_json.call_args.kwargs["model"])
+        self.assertEqual("deepseek-ai/DeepSeek-V3.2", call_json.call_args.kwargs["model"])
         self.assertEqual(0.05, call_json.call_args.kwargs["temperature"])
         self.assertIn("第一人称叙述者也要根据全文推断形象", call_json.call_args.kwargs["system_prompt"])
         self.assertIn("青年女性学生", call_json.call_args.kwargs["system_prompt"])
