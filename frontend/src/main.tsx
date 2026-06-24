@@ -1743,6 +1743,21 @@ function TasksView({
                           <figcaption>
                             <strong>{reference.name}</strong>
                             {reference.age_stage ? <span>{reference.age_stage}</span> : null}
+                            {reference.reference_prompt ? (
+                              <button
+                                type="button"
+                                className="inline-prompt-button character-reference-prompt-button"
+                                onClick={() =>
+                                  setPromptPreview({
+                                    title: `${reference.name} 人物参考图提示词`,
+                                    text: reference.reference_prompt ?? "",
+                                  })
+                                }
+                              >
+                                <FileText size={14} />
+                                查看提示词
+                              </button>
+                            ) : null}
                           </figcaption>
                         </figure>
                       ))}

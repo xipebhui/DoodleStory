@@ -14,7 +14,7 @@ from app.core.database import Base
 from app.models.entities import FileAsset, GenerationTask, Style, TaskCharacter, TaskCharacterAppearance, TaskPanel, TaskPanelCharacterAppearance, User, UserCharacter
 from app.models.enums import FileAssetPurpose, GenerationStepName, ImageCountMode, PanelType, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
 from app.schemas.character import CharacterNameExtractionRequest, StoryCharacterBindingCreate
-from app.schemas.task import TaskCreate
+from app.schemas.task import TaskCreate, TaskRead
 from app.services.character_references import (
     build_panel_reference_pack,
     ensure_fixed_character_panel_links_by_name,
@@ -485,6 +485,58 @@ class UserCharacterTest(unittest.TestCase):
         )
         self.assertEqual([generated_appearance.id, fixed_appearance.id], [link.task_character_appearance_id for link in links])
         self.assertEqual([1, 2], [link.reference_order for link in links])
+
+    def test_task_read_character_references_include_reference_prompt(self) -> None:
+        db = self.Session()
+        owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        asset = FileAsset(
+            purpose=FileAssetPurpose.character_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="characters/generated.png",
+            public_url="https://cdn.example.com/generated.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        db.add_all([owner, asset])
+        db.flush()
+        task = GenerationTask(
+            owner_user_id=owner.id,
+            display_title="任务",
+            original_text="妈妈回家了。",
+            story_input_mode=StoryInputMode.adapted,
+            image_count_mode=ImageCountMode.auto,
+            use_character_references=True,
+            style_id="style",
+            style_name_snapshot="风格",
+            style_prompt_snapshot="温暖绘本风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="9:16",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+        db.add(task)
+        db.flush()
+        character = TaskCharacter(task_id=task.id, character_key="character_1", name="妈妈", description="母亲")
+        db.add(character)
+        db.flush()
+        db.add(
+            TaskCharacterAppearance(
+                task_character_id=character.id,
+                appearance_key="character_1_adult",
+                age_stage="成年",
+                visual_prompt="成年女性，短发，神情温柔",
+                reference_prompt="人物参考图最终提示词",
+                reference_image_id=asset.id,
+                status=WorkflowStatus.succeeded,
+            )
+        )
+        db.commit()
+        db.expire_all()
+        task = db.get(GenerationTask, task.id)
+        self.assertIsNotNone(task)
+
+        payload = TaskRead.model_validate(task)
+
+        self.assertEqual("人物参考图最终提示词", payload.character_references[0].reference_prompt)
 
     def test_panel_reference_pack_includes_character_anchor_and_priority(self) -> None:
         db = self.Session()

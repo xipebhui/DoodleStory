@@ -258,6 +258,7 @@ export type TaskCharacterReference = {
   id: string;
   name: string;
   age_stage: string | null;
+  reference_prompt: string | null;
   asset: FileAsset;
 };
 

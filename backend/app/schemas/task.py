@@ -98,6 +98,7 @@ class TaskCharacterReferenceRead(BaseModel):
     id: str
     name: str
     age_stage: str | None
+    reference_prompt: str | None = None
     asset: FileAssetRead
 
 

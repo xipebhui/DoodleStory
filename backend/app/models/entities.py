@@ -239,6 +239,7 @@ class GenerationTask(Base, TimestampMixin):
                             "id": appearance.id,
                             "name": character.name,
                             "age_stage": appearance.age_stage,
+                            "reference_prompt": appearance.reference_prompt,
                             "asset": appearance.reference_image,
                         }
                     )
