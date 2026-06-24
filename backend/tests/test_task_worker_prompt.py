@@ -41,6 +41,7 @@ from app.services.task_worker import (
     sanitize_compiled_final_prompt,
     trim_generation_reference_pack_for_model,
 )
+from app.services.character_references import build_character_style_reference_pack
 
 
 class TaskWorkerPromptTest(unittest.TestCase):
@@ -435,6 +436,38 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ImageProviderConfigError, "任务风格参考图快照缺少资产"):
             build_generation_reference_pack(task, panel)
+
+    def test_character_style_reference_pack_uses_task_snapshot_references(self) -> None:
+        style_asset = FileAsset(
+            purpose=FileAssetPurpose.style_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="styles/minimal.png",
+            public_url="https://cdn.example.com/styles/minimal.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="极简黑白图片参考",
+            style_prompt_snapshot="极简黑白",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+        task.style_reference_images = [
+            TaskStyleReferenceImage(reference_order=1, asset=style_asset),
+        ]
+
+        pack = build_character_style_reference_pack(task)
+
+        self.assertEqual(["https://cdn.example.com/styles/minimal.png"], [reference.url for reference in pack.references])
+        self.assertEqual(["风格参考（参考图1）"], pack.notes)
+        self.assertEqual(1, pack.style_count)
 
     def test_generation_reference_pack_trims_extra_references_and_notes_for_model(self) -> None:
         pack = GenerationReferencePack(

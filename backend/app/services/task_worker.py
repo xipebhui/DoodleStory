@@ -40,6 +40,8 @@ from app.models.enums import (
     WorkflowStatus,
 )
 from app.services.character_references import (
+    build_character_reference_prompt,
+    build_character_style_reference_pack,
     build_panel_reference_pack,
     characters_to_plans,
     clear_panel_character_links,
@@ -586,7 +588,32 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
         character = appearance.character
         claim_attempts = image.attempts
         claim_locked_by = image.locked_by
+        try:
+            reference_pack = build_character_style_reference_pack(task)
+        except ImageProviderConfigError as exc:
+            image.status = GeneratedImageStatus.failed
+            image.error_code = exc.__class__.__name__
+            image.error_message = str(exc)
+            image.finished_at = datetime.utcnow()
+            image.lease_until = None
+            image.locked_by = None
+            appearance.status = WorkflowStatus.failed
+            appearance.error_code = exc.__class__.__name__
+            appearance.error_message = str(exc)
+            db.commit()
+            return
         prompt = image.final_prompt or appearance.reference_prompt or ""
+        if reference_pack.notes and not all(note in prompt for note in reference_pack.notes):
+            prompt = build_character_reference_prompt(
+                style_prompt=task.style_prompt_snapshot,
+                aspect_ratio=task.style_aspect_ratio_snapshot,
+                character_name=character.name,
+                age_stage=appearance.age_stage,
+                visual_prompt=appearance.visual_prompt,
+                style_reference_notes=reference_pack.notes,
+            )
+            image.final_prompt = prompt
+            appearance.reference_prompt = prompt
         appearance.status = WorkflowStatus.running
         appearance.error_code = None
         appearance.error_message = None
@@ -614,23 +641,27 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
             return
 
         logger.info(
-            "character reference image request task_id=%s character_key=%s appearance_key=%s image_id=%s prompt_chars=%s reference_count=%s",
+            "character reference image request task_id=%s character_key=%s appearance_key=%s image_id=%s prompt_chars=%s "
+            "reference_count=%s style_reference_count=%s reference_notes=%s",
             task.id,
             character.character_key,
             appearance.appearance_key,
             image.id,
             len(prompt),
-            0,
+            len(reference_pack.references),
+            reference_pack.style_count,
+            reference_pack.notes,
         )
         image_model_name = task.image_model_name_snapshot
         aspect_ratio = task.style_aspect_ratio_snapshot
+        references = list(reference_pack.references)
         task_id = task.id
         appearance_id = appearance.id
 
     try:
         generated = generate_xg_image(
             prompt=prompt,
-            references=[],
+            references=references,
             image_model_name=image_model_name,
             aspect_ratio=aspect_ratio,
         )

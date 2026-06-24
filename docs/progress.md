@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-64-style-reference-snapshot-integrity.md`
+- `docs/contracts/sprint-65-character-reference-style-images.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 65 人物参考图携带风格参考图修复：本地任务 `be89b6ec5b02444788892077654a216c` 的风格为“极简黑白图片参考”，任务快照中有 1 张有效风格参考图，但人物参考图生成日志显示 `character_reference_prompt_composed reference_count=0`，实际 `process_character_reference_image_job` 调用 `generate_xg_image` 时传入 `references=[]`；后续 panel 生图已经会通过 `build_generation_reference_pack` 携带 `风格参考（参考图X）`。现已把人物参考图 job 接入任务风格参考图快照：参考图模式下人物参考 prompt 会写入 `风格参考（参考图1）` 这类说明，不再拼入风格提示词正文，实际请求 Provider 时会携带同一批风格参考图；已排队的旧人物图 job 在执行前也会补齐 prompt。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_character_reference_prompt backend.tests.test_task_worker_prompt backend.tests.test_task_worker_recovery`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。已成功生成的人物参考图不会自动重建，是否对现有任务做数据修复需单独确认。
 - 完成 Sprint 64 风格参考图快照完整性修复：线上任务 `138f53d7e7be489e8f893a609f382773` 的 panel 9 和 panel 10 多次单图修改失败，直接错误不是图片 Provider 拒绝，而是 `process_panel_edit -> build_generation_reference_pack -> build_task_style_reference_pack` 读取任务风格参考图快照时拿到空资产，触发 `AttributeError: 'NoneType' object has no attribute 'public_url'`。远程数据库显示该任务 `task_style_reference_images` 有 7 条历史快照，但对应 `asset_id` 已不在 `file_assets` 表；当前风格“极简黑白”只有 2 张有效参考图。现已启用 SQLite 外键约束，删除风格参考图时保留仍被历史任务快照引用的文件资产，单图修改加载任务时补齐风格参考图快照资产，并把已损坏快照转成明确的 `ImageProviderConfigError`。该修复不会自动把损坏任务替换为当前风格参考图。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_style_delete backend.tests.test_task_worker_prompt`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 完成 Sprint 63 风格保存错误状态修复：线上排查确认近期 `POST /api/v1/styles` 500 的直接原因是创建同名风格触发 `styles.name` 唯一约束，后端未转换为业务错误。现已在创建和编辑风格时规范化名称并提前检查重复名，同时保留数据库唯一约束并把并发写入的 `IntegrityError` 转换为 400 业务错误；前端创建风格时把保存基础信息和逐张上传参考图拆成明确 loading 文案。风格测试仍是同步生图请求，历史存在 `style_tests.running` 残留，后续需要单独改造成图片 job。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_style_delete.py`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 将角色名提取和任务级临时角色提取的默认模型从 `Qwen/Qwen3.6-27B` 改为 `deepseek-ai/DeepSeek-V3.2`，仍通过 `CHARACTER_EXTRACTION_MODEL` 可配置，并继续使用 `CHARACTER_EXTRACTION_TEMPERATURE` 的低温配置。图文图片文案提取和用户角色参考图外观理解读取 `SILICONFLOW_VISION_MODEL`，当前默认模型为 `Qwen/Qwen3-VL-32B-Instruct`。

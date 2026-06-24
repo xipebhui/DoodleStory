@@ -22,6 +22,22 @@ class CharacterReferencePromptTest(unittest.TestCase):
         self.assertIn("左侧视图和右侧视图", prompt)
         self.assertIn("三张视图必须是同一个人物", prompt)
 
+    def test_character_reference_prompt_uses_style_reference_notes_without_style_prompt(self) -> None:
+        prompt = build_character_reference_prompt(
+            style_prompt="这段风格提示词不应进入图片参考模式的人物参考图 prompt",
+            aspect_ratio="3:4",
+            character_name="三叔",
+            age_stage="中年",
+            visual_prompt="中年男性，黑色短发，神情严肃，穿深色夹克。",
+            style_reference_notes=["风格参考（参考图1）"],
+        )
+
+        self.assertIn("风格参考图（必须直接用于这张人物参考图", prompt)
+        self.assertIn("风格参考（参考图1）", prompt)
+        self.assertIn("这些图片只作为风格参考，不代表人物身份或剧情内容", prompt)
+        self.assertNotIn("这段风格提示词不应进入图片参考模式的人物参考图 prompt", prompt)
+        self.assertIn("人物是 三叔，年龄阶段是 中年", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

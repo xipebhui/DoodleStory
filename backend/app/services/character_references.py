@@ -22,11 +22,12 @@ from app.models.enums import (
     GeneratedImageWorkflowStep,
     WorkflowStatus,
 )
-from app.services.image_generation import ImageProviderConfigError, ImageReference
+from app.services.image_generation import ImageProviderConfigError, ImageReference, image_gateway_reference_limit
 from app.services.llm import LLMResponseError, TaskCharacterPlan
 from app.services.prompt_logging import log_prompt_trace
 from app.services.prompt_templates import render_prompt_template
 from app.services.storage import asset_content_url
+from app.services.style_references import StyleReferencePack, build_task_style_reference_pack
 
 logger = logging.getLogger(__name__)
 
@@ -162,16 +163,64 @@ def build_character_reference_prompt(
     character_name: str,
     age_stage: str | None,
     visual_prompt: str,
+    style_reference_notes: list[str] | None = None,
 ) -> str:
+    style_instruction = character_reference_style_instruction(
+        style_prompt=style_prompt,
+        style_reference_notes=style_reference_notes,
+    )
     return render_prompt_template(
         "character_reference_image_prompt_v1.md",
         {
-            "style_prompt": style_prompt.strip(),
+            "style_instruction": style_instruction,
             "aspect_ratio": aspect_ratio,
             "character_name": character_name,
             "age_stage": age_stage.strip() if age_stage else "未指定",
             "visual_prompt": visual_prompt.strip(),
         },
+    )
+
+
+def character_reference_style_instruction(
+    *,
+    style_prompt: str,
+    style_reference_notes: list[str] | None = None,
+) -> str:
+    notes = [note.strip() for note in style_reference_notes or [] if note.strip()]
+    if notes:
+        return "\n".join(
+            [
+                "风格参考图（必须直接用于这张人物参考图的画风、人物比例、线条、色彩、服装质感、五官表达和整体气质）：",
+                f"请优先参考随请求提供的{'、'.join(notes)}。",
+                "这些图片只作为风格参考，不代表人物身份或剧情内容；人物身份、年龄阶段和外观以本文字设定为准。",
+            ]
+        )
+    return "\n".join(
+        [
+            "风格提示词（必须直接用于这张人物参考图的画风、人物比例、线条、色彩、服装质感、五官表达和整体气质）：",
+            style_prompt.strip(),
+        ]
+    )
+
+
+def build_character_style_reference_pack(task: GenerationTask) -> StyleReferencePack:
+    reference_pack = build_task_style_reference_pack(task, start_index=1)
+    reference_limit = image_gateway_reference_limit(task.image_model_name_snapshot)
+    if len(reference_pack.references) <= reference_limit:
+        return reference_pack
+
+    logger.warning(
+        "character style reference pack truncated task_id=%s image_model=%s original_reference_count=%s "
+        "kept_reference_count=%s",
+        task.id,
+        task.image_model_name_snapshot,
+        len(reference_pack.references),
+        reference_limit,
+    )
+    return StyleReferencePack(
+        references=reference_pack.references[:reference_limit],
+        notes=reference_pack.notes[:reference_limit],
+        style_count=reference_limit,
     )
 
 
@@ -185,6 +234,7 @@ def ensure_character_reference_image_jobs(
     active_count = 0
     succeeded_count = 0
     failed_count = 0
+    style_reference_pack: StyleReferencePack | None = None
     for character in characters:
         for appearance in sorted(character.appearances, key=lambda item: item.appearance_key):
             if appearance.status == WorkflowStatus.succeeded and appearance.reference_image_id:
@@ -211,12 +261,15 @@ def ensure_character_reference_image_jobs(
             appearance.status = WorkflowStatus.queued
             appearance.error_code = None
             appearance.error_message = None
+            if style_reference_pack is None:
+                style_reference_pack = build_character_style_reference_pack(task)
             appearance.reference_prompt = build_character_reference_prompt(
                 style_prompt=task.style_prompt_snapshot,
                 aspect_ratio=task.style_aspect_ratio_snapshot,
                 character_name=character.name,
                 age_stage=appearance.age_stage,
                 visual_prompt=appearance.visual_prompt,
+                style_reference_notes=style_reference_pack.notes,
             )
             log_prompt_trace(
                 logger,
@@ -236,7 +289,9 @@ def ensure_character_reference_image_jobs(
                 visual_prompt=appearance.visual_prompt,
                 reference_prompt_chars=len(appearance.reference_prompt or ""),
                 reference_prompt=appearance.reference_prompt,
-                reference_count=0,
+                reference_count=len(style_reference_pack.references),
+                style_reference_count=style_reference_pack.style_count,
+                reference_notes=style_reference_pack.notes,
             )
             image = GeneratedImage(
                 task_id=task.id,
