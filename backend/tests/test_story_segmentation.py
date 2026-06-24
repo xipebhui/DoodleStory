@@ -7,7 +7,7 @@ from app.services.llm import LLMConfigError, LLMResponseError, segment_story
 
 
 class StorySegmentationTest(unittest.TestCase):
-    def test_original_story_segmentation_uses_llm_and_preserves_text(self) -> None:
+    def test_original_story_segmentation_uses_llm_and_keeps_semantic_chunks(self) -> None:
         original_text = "我三叔特别的喜欢我是有原因的\n他有时候工地夜班干完活回来"
         with patch(
             "app.services.llm.call_siliconflow_json",
@@ -29,7 +29,10 @@ class StorySegmentationTest(unittest.TestCase):
         user_payload = json.loads(call_json.call_args.kwargs["user_prompt"])
         self.assertEqual(50, user_payload["max_panel_text_chars"])
         self.assertIn("自动判断", user_payload["count_instruction"])
-        self.assertEqual(original_text, "".join(panel.text for panel in result.panels))
+        self.assertEqual(
+            ["我三叔特别的喜欢我是有原因的\n", "他有时候工地夜班干完活回来"],
+            [panel.text for panel in result.panels],
+        )
         self.assertTrue(all(panel.panel_type == PanelType.scene for panel in result.panels))
 
     def test_fixed_original_story_segmentation_requires_requested_count(self) -> None:
@@ -65,17 +68,18 @@ class StorySegmentationTest(unittest.TestCase):
                     requested_image_count=None,
                 )
 
-    def test_original_story_segmentation_rejects_non_covering_llm_result(self) -> None:
+    def test_original_story_segmentation_allows_light_punctuation_normalization(self) -> None:
         with patch(
             "app.services.llm.call_siliconflow_json",
-            return_value={"panels": [{"panel_order": 1, "text": "我问他吃饭了"}]},
+            return_value={"panels": [{"panel_order": 1, "text": "我问他吃饭了没有。"}]},
         ):
-            with self.assertRaisesRegex(LLMResponseError, "逐字覆盖原文"):
-                segment_story(
-                    original_text="我问他吃饭了没有",
-                    image_count_mode=ImageCountMode.auto,
-                    requested_image_count=None,
-                )
+            result = segment_story(
+                original_text="我问他吃饭了没有",
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+        self.assertEqual("我问他吃饭了没有。", result.panels[0].text)
 
     def test_fixed_count_fails_before_llm_when_max_length_is_impossible(self) -> None:
         with patch("app.services.llm.call_siliconflow_json") as call_json:

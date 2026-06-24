@@ -543,7 +543,6 @@ def segment_story(
         panel.panel_type = PanelType.scene
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
         raise LLMResponseError("LLM 完整故事语义切分数量与用户指定图片数量不一致")
-    ensure_original_text_coverage(cleaned_original_text, result.panels)
     ensure_original_story_panel_text_lengths(result.panels)
     logger.info(
         "story segmentation succeeded via llm image_count_mode=%s requested_image_count=%s panel_count=%s",
