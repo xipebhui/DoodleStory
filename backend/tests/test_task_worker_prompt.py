@@ -241,7 +241,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("逐字一致", final_prompt)
         self.assertIn("不要把“画面”“旁白”“对话”“内心OS”等字段名画进图片", final_prompt)
 
-    def test_panel_final_prompt_omits_style_prompt_in_image_reference_mode(self) -> None:
+    def test_panel_final_prompt_keeps_style_prompt_in_image_reference_mode(self) -> None:
         task = GenerationTask(
             owner_user_id="user",
             display_title="任务",
@@ -250,7 +250,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
             image_count_mode=ImageCountMode.auto,
             style_id="style",
             style_name_snapshot="参考图风格",
-            style_prompt_snapshot="这段风格提示词不应直接进入最终生图 prompt",
+            style_prompt_snapshot="黑白线稿，白色背景，杂乱手绘线条。",
             image_model_name_snapshot="gpt-image-2",
             style_aspect_ratio_snapshot="3:4",
             style_reference_mode_snapshot=StyleReferenceMode.image,
@@ -266,10 +266,10 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
 
         self.assertIn("风格参考（参考图1）", final_prompt)
+        self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
+        self.assertIn("黑白线稿，白色背景，杂乱手绘线条。", final_prompt)
         self.assertIn("【分格】单页", final_prompt)
         self.assertIn("旁白：原文", final_prompt)
-        self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
-        self.assertNotIn("这段风格提示词不应直接进入最终生图 prompt", final_prompt)
 
     def test_llm_final_prompt_adds_explicit_style_prompt_in_prompt_mode(self) -> None:
         task = GenerationTask(
@@ -308,7 +308,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         self.assertEqual(1, final_prompt.count("画面比例：3:4"))
 
-    def test_llm_final_prompt_does_not_add_style_prompt_in_image_mode(self) -> None:
+    def test_llm_final_prompt_adds_isolated_style_prompt_in_image_mode(self) -> None:
         task = GenerationTask(
             owner_user_id="user",
             display_title="任务",
@@ -317,17 +317,23 @@ class TaskWorkerPromptTest(unittest.TestCase):
             image_count_mode=ImageCountMode.auto,
             style_id="style",
             style_name_snapshot="参考图风格",
-            style_prompt_snapshot="这段风格提示词不应拼入最终生图 prompt",
+            style_prompt_snapshot="黑白线稿，白色背景，杂乱手绘线条。",
             image_model_name_snapshot="gpt-image-2",
             style_aspect_ratio_snapshot="3:4",
             style_reference_mode_snapshot=StyleReferenceMode.image,
         )
 
-        final_prompt = final_prompt_with_explicit_style(task, "第 1 页\n女孩在窗边读书。")
+        final_prompt = final_prompt_with_explicit_style(
+            task,
+            "第 1 页\n女孩在窗边读书。",
+            reference_notes=["风格参考（参考图1）"],
+        )
 
         self.assertIn("画面比例：3:4。必须严格按 3:4 宽高比构图和出图", final_prompt)
+        self.assertIn("当前风格提示（仅对本任务选择的风格生效", final_prompt)
+        self.assertIn("黑白线稿，白色背景，杂乱手绘线条。", final_prompt)
         self.assertIn("第 1 页\n女孩在窗边读书。", final_prompt)
-        self.assertNotIn("这段风格提示词不应拼入最终生图 prompt", final_prompt)
+        self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
 
     def test_image_mode_final_prompt_appends_standard_task_reference_block(self) -> None:
         task = GenerationTask(
@@ -338,7 +344,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
             image_count_mode=ImageCountMode.auto,
             style_id="style",
             style_name_snapshot="极简黑白图片参考",
-            style_prompt_snapshot="极简黑白",
+            style_prompt_snapshot="极简黑白；黑白线稿；白色或浅灰留白背景；不要暖色纸张底色。",
             image_model_name_snapshot="gpt-image-2",
             style_aspect_ratio_snapshot="3:4",
             style_reference_mode_snapshot=StyleReferenceMode.image,
@@ -359,8 +365,11 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         self.assertTrue(final_prompt.startswith("任务参考（最高优先级，必须优先执行）："))
         self.assertIn("角色外观参考图1（三叔）\n风格参考（图2）", final_prompt)
+        self.assertIn("当前风格提示（仅对本任务选择的风格生效", final_prompt)
+        self.assertIn("极简黑白；黑白线稿；白色或浅灰留白背景；不要暖色纸张底色。", final_prompt)
         self.assertIn("以上参考图已随请求传入", final_prompt)
-        self.assertIn("不要把夜景、昏暗、室内、温暖、厨房等剧情氛围词", final_prompt)
+        self.assertIn("当剧情氛围词与当前风格提示或风格参考图冲突", final_prompt)
+        self.assertNotIn("禁止米黄色、黄色、暖色、棕色、复古纸色", final_prompt)
         self.assertNotIn("参考图2的极简黑白风格", final_prompt)
         self.assertNotIn("整体风格：", final_prompt)
         self.assertNotIn("整体色调/风格：", final_prompt)

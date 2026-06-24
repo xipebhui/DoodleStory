@@ -1550,18 +1550,29 @@ def normalized_task_reference_lines(reference_notes: list[str] | None) -> list[s
     return lines
 
 
-def task_reference_block(reference_notes: list[str] | None) -> str | None:
+def task_reference_block(reference_notes: list[str] | None, style_prompt: str | None = None) -> str | None:
     lines = normalized_task_reference_lines(reference_notes)
     if not lines:
         return None
-    return "\n".join(
+    cleaned_style_prompt = (style_prompt or "").strip()
+    block_lines = [
+        "任务参考（最高优先级，必须优先执行）：",
+        *lines,
+    ]
+    if cleaned_style_prompt:
+        block_lines.extend(
+            [
+                "当前风格提示（仅对本任务选择的风格生效，必须和风格参考图共同约束画面）：",
+                cleaned_style_prompt,
+            ]
+        )
+    block_lines.extend(
         [
-            "任务参考（最高优先级，必须优先执行）：",
-            *lines,
-            "以上参考图已随请求传入；画风、线条、色彩和背景质感必须以风格参考图为准。",
-            "不要把夜景、昏暗、室内、温暖、厨房等剧情氛围词转译成大面积黑色、黄色或其他独立背景色。",
+            "以上参考图已随请求传入；角色外观以角色参考图为准，画风、线条、色彩和背景质感以风格参考图为准。",
+            "当剧情氛围词与当前风格提示或风格参考图冲突时，必须优先保持当前风格，不要转译成脱离参考图的独立背景色、纸张材质或装饰底纹。",
         ]
     )
+    return "\n".join(block_lines)
 
 
 def remove_image_mode_reference_summary_lines(final_prompt: str) -> str:
@@ -1606,15 +1617,16 @@ def final_prompt_with_explicit_style(
     reference_notes: list[str] | None = None,
 ) -> str:
     cleaned_prompt = final_prompt.strip()
-    style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
+    style_prompt = task.style_prompt_snapshot
     cleaned_style = (style_prompt or "").strip()
+    if not is_prompt_reference_mode(task.style_reference_mode_snapshot):
+        cleaned_prompt = remove_image_mode_reference_summary_lines(cleaned_prompt)
+        reference_block = task_reference_block(reference_notes, style_prompt=cleaned_style)
+        prompt_with_ratio = final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
+        if reference_block:
+            return "\n\n".join([reference_block, prompt_with_ratio]).strip()
+        return prompt_with_ratio
     if not cleaned_style:
-        if not is_prompt_reference_mode(task.style_reference_mode_snapshot):
-            cleaned_prompt = remove_image_mode_reference_summary_lines(cleaned_prompt)
-            reference_block = task_reference_block(reference_notes)
-            if reference_block:
-                prompt_with_ratio = final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
-                return "\n\n".join([reference_block, prompt_with_ratio]).strip()
         return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
     styled_prompt = "\n".join(
         [
@@ -1732,7 +1744,7 @@ def build_panel_final_prompt(
     image_text: ImageTextPlan | dict[str, str | None] | None,
     reference_notes: list[str] | None = None,
 ) -> str:
-    style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
+    style_prompt = task.style_prompt_snapshot
     if task.story_input_mode == StoryInputMode.original:
         return build_original_story_final_prompt(
             aspect_ratio=task.style_aspect_ratio_snapshot,
@@ -1846,7 +1858,7 @@ def task_character_payload(db: Session, task: GenerationTask) -> list[dict[str, 
 
 
 def final_prompt_task_payload(task: GenerationTask) -> dict[str, Any]:
-    style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
+    style_prompt = task.style_prompt_snapshot
     return {
         "task_id": task.id,
         "story_input_mode": task.story_input_mode.value,
