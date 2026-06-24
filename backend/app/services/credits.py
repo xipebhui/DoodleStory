@@ -3,7 +3,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
@@ -33,6 +33,15 @@ class InsufficientCreditsError(CreditError):
 
 class ActivationCodeError(CreditError):
     pass
+
+
+@dataclass(frozen=True)
+class CreditMutationSnapshot:
+    user_id: str
+    balance_before: int
+    balance_after: int
+    reserved_balance_before: int
+    reserved_balance_after: int
 
 
 def normalize_activation_code(code: str) -> str:
@@ -121,6 +130,81 @@ def record_transaction(
     return transaction
 
 
+def record_transaction_snapshot(
+    db: Session,
+    *,
+    snapshot: CreditMutationSnapshot,
+    transaction_type: CreditTransactionType,
+    amount: int,
+    admin_user_id: str | None = None,
+    task_id: str | None = None,
+    panel_id: str | None = None,
+    generated_image_id: str | None = None,
+    style_test_id: str | None = None,
+    character_appearance_id: str | None = None,
+    activation_code_id: str | None = None,
+    note: str | None = None,
+) -> CreditTransaction:
+    transaction = CreditTransaction(
+        user_id=snapshot.user_id,
+        transaction_type=transaction_type,
+        amount=amount,
+        balance_before=snapshot.balance_before,
+        balance_after=snapshot.balance_after,
+        reserved_balance_before=snapshot.reserved_balance_before,
+        reserved_balance_after=snapshot.reserved_balance_after,
+        admin_user_id=admin_user_id,
+        task_id=task_id,
+        panel_id=panel_id,
+        generated_image_id=generated_image_id,
+        style_test_id=style_test_id,
+        character_appearance_id=character_appearance_id,
+        activation_code_id=activation_code_id,
+        note=note,
+    )
+    db.add(transaction)
+    db.flush()
+    return transaction
+
+
+def mutate_credit_account_atomic(
+    db: Session,
+    *,
+    user_id: str,
+    balance_delta: int,
+    reserved_balance_delta: int,
+    min_balance: int | None = None,
+    min_reserved_balance: int | None = None,
+    missing_error: CreditError,
+) -> CreditMutationSnapshot:
+    ensure_credit_account(db, user_id)
+    statement = update(UserCreditAccount).where(UserCreditAccount.user_id == user_id)
+    if min_balance is not None:
+        statement = statement.where(UserCreditAccount.balance >= min_balance)
+    if min_reserved_balance is not None:
+        statement = statement.where(UserCreditAccount.reserved_balance >= min_reserved_balance)
+    statement = (
+        statement.values(
+            balance=UserCreditAccount.balance + balance_delta,
+            reserved_balance=UserCreditAccount.reserved_balance + reserved_balance_delta,
+        )
+        .returning(UserCreditAccount.user_id, UserCreditAccount.balance, UserCreditAccount.reserved_balance)
+        .execution_options(synchronize_session=False)
+    )
+    row = db.execute(statement).one_or_none()
+    if row is None:
+        raise missing_error
+    balance_after = int(row.balance)
+    reserved_after = int(row.reserved_balance)
+    return CreditMutationSnapshot(
+        user_id=row.user_id,
+        balance_before=balance_after - balance_delta,
+        balance_after=balance_after,
+        reserved_balance_before=reserved_after - reserved_balance_delta,
+        reserved_balance_after=reserved_after,
+    )
+
+
 def grant_initial_credits(db: Session, user: User, amount: int = DEFAULT_NEW_USER_CREDITS) -> UserCreditAccount:
     return ensure_credit_account(
         db,
@@ -170,20 +254,19 @@ def reserve_image_credit(
     character_appearance_id: str | None = None,
     note: str | None = None,
 ) -> CreditTransaction:
-    account = ensure_credit_account(db, user_id)
-    if account.balance < IMAGE_CREDIT_COST:
-        raise InsufficientCreditsError("积分不足，无法生成图片")
-    balance_before = account.balance
-    reserved_before = account.reserved_balance
-    account.balance -= IMAGE_CREDIT_COST
-    account.reserved_balance += IMAGE_CREDIT_COST
-    return record_transaction(
+    snapshot = mutate_credit_account_atomic(
         db,
-        account=account,
+        user_id=user_id,
+        balance_delta=-IMAGE_CREDIT_COST,
+        reserved_balance_delta=IMAGE_CREDIT_COST,
+        min_balance=IMAGE_CREDIT_COST,
+        missing_error=InsufficientCreditsError("积分不足，无法生成图片"),
+    )
+    return record_transaction_snapshot(
+        db,
+        snapshot=snapshot,
         transaction_type=CreditTransactionType.image_generation_reserve,
         amount=-IMAGE_CREDIT_COST,
-        balance_before=balance_before,
-        reserved_balance_before=reserved_before,
         task_id=task_id,
         panel_id=panel_id,
         generated_image_id=generated_image_id,
@@ -204,19 +287,19 @@ def charge_reserved_image_credit(
     character_appearance_id: str | None = None,
     note: str | None = None,
 ) -> CreditTransaction:
-    account = ensure_credit_account(db, user_id)
-    if account.reserved_balance < IMAGE_CREDIT_COST:
-        raise CreditError("图片生成积分占用不存在，无法扣费")
-    balance_before = account.balance
-    reserved_before = account.reserved_balance
-    account.reserved_balance -= IMAGE_CREDIT_COST
-    return record_transaction(
+    snapshot = mutate_credit_account_atomic(
         db,
-        account=account,
+        user_id=user_id,
+        balance_delta=0,
+        reserved_balance_delta=-IMAGE_CREDIT_COST,
+        min_reserved_balance=IMAGE_CREDIT_COST,
+        missing_error=CreditError("图片生成积分占用不存在，无法扣费"),
+    )
+    return record_transaction_snapshot(
+        db,
+        snapshot=snapshot,
         transaction_type=CreditTransactionType.image_generation_charge,
         amount=-IMAGE_CREDIT_COST,
-        balance_before=balance_before,
-        reserved_balance_before=reserved_before,
         task_id=task_id,
         panel_id=panel_id,
         generated_image_id=generated_image_id,
@@ -237,20 +320,19 @@ def release_reserved_image_credit(
     character_appearance_id: str | None = None,
     note: str | None = None,
 ) -> CreditTransaction:
-    account = ensure_credit_account(db, user_id)
-    if account.reserved_balance < IMAGE_CREDIT_COST:
-        raise CreditError("图片生成积分占用不存在，无法释放")
-    balance_before = account.balance
-    reserved_before = account.reserved_balance
-    account.balance += IMAGE_CREDIT_COST
-    account.reserved_balance -= IMAGE_CREDIT_COST
-    return record_transaction(
+    snapshot = mutate_credit_account_atomic(
         db,
-        account=account,
+        user_id=user_id,
+        balance_delta=IMAGE_CREDIT_COST,
+        reserved_balance_delta=-IMAGE_CREDIT_COST,
+        min_reserved_balance=IMAGE_CREDIT_COST,
+        missing_error=CreditError("图片生成积分占用不存在，无法释放"),
+    )
+    return record_transaction_snapshot(
+        db,
+        snapshot=snapshot,
         transaction_type=CreditTransactionType.image_generation_release,
         amount=IMAGE_CREDIT_COST,
-        balance_before=balance_before,
-        reserved_balance_before=reserved_before,
         task_id=task_id,
         panel_id=panel_id,
         generated_image_id=generated_image_id,

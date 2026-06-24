@@ -1,5 +1,8 @@
+import threading
+import tempfile
 import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from sqlalchemy import create_engine, select
@@ -72,6 +75,96 @@ class CreditsTest(unittest.TestCase):
         db.refresh(user.credit_account)
         self.assertEqual(1, user.credit_account.balance)
         self.assertEqual(0, user.credit_account.reserved_balance)
+
+    def test_parallel_image_credit_mutations_keep_account_consistent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "credits.db"
+            engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+            Base.metadata.create_all(engine)
+            Session = sessionmaker(bind=engine)
+
+            db = Session()
+            user = User(email="parallel@example.com", password_hash="hash")
+            db.add(user)
+            db.flush()
+            user_id = user.id
+            grant_initial_credits(db, user, amount=8)
+            db.commit()
+            db.close()
+
+            errors: list[BaseException] = []
+
+            def run_parallel(worker) -> None:
+                barrier = threading.Barrier(8)
+                threads = [threading.Thread(target=worker, args=(index, barrier)) for index in range(8)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join()
+                if errors:
+                    raise errors[0]
+
+            def reserve_worker(index: int, barrier: threading.Barrier) -> None:
+                worker_db = Session()
+                try:
+                    barrier.wait()
+                    reserve_image_credit(
+                        worker_db,
+                        user_id=user_id,
+                        generated_image_id=f"reserve-{index}",
+                        note=f"并发占用 {index}",
+                    )
+                    worker_db.commit()
+                except BaseException as exc:
+                    errors.append(exc)
+                finally:
+                    worker_db.close()
+
+            run_parallel(reserve_worker)
+
+            check_db = Session()
+            account = check_db.scalar(select(User).where(User.id == user_id)).credit_account
+            self.assertEqual(0, account.balance)
+            self.assertEqual(8, account.reserved_balance)
+            self.assertEqual(
+                8,
+                check_db.query(CreditTransaction)
+                .filter(CreditTransaction.transaction_type == CreditTransactionType.image_generation_reserve)
+                .count(),
+            )
+            check_db.close()
+
+            errors.clear()
+
+            def charge_worker(index: int, barrier: threading.Barrier) -> None:
+                worker_db = Session()
+                try:
+                    barrier.wait()
+                    charge_reserved_image_credit(
+                        worker_db,
+                        user_id=user_id,
+                        generated_image_id=f"charge-{index}",
+                        note=f"并发扣费 {index}",
+                    )
+                    worker_db.commit()
+                except BaseException as exc:
+                    errors.append(exc)
+                finally:
+                    worker_db.close()
+
+            run_parallel(charge_worker)
+
+            check_db = Session()
+            account = check_db.scalar(select(User).where(User.id == user_id)).credit_account
+            self.assertEqual(0, account.balance)
+            self.assertEqual(0, account.reserved_balance)
+            self.assertEqual(
+                8,
+                check_db.query(CreditTransaction)
+                .filter(CreditTransaction.transaction_type == CreditTransactionType.image_generation_charge)
+                .count(),
+            )
+            check_db.close()
 
     def test_insufficient_credit_blocks_reserve(self) -> None:
         db = self.Session()
