@@ -1528,6 +1528,45 @@ def reference_notes_block(reference_notes: list[str] | None) -> str:
     return "\n".join(reference_notes)
 
 
+def normalized_task_reference_lines(reference_notes: list[str] | None) -> list[str]:
+    lines: list[str] = []
+    for note in reference_notes or []:
+        first_line = note.strip().splitlines()[0].strip() if note and note.strip() else ""
+        if not first_line:
+            continue
+        fixed_character_match = re.match(r"固定角色参考（参考图(\d+)）：(.+)", first_line)
+        if fixed_character_match:
+            index, name = fixed_character_match.groups()
+            lines.append(f"角色外观参考图{index}（{name.strip()}）")
+            continue
+        style_match = re.match(r"风格参考（参考图(\d+)）", first_line)
+        if style_match:
+            lines.append(f"风格参考（图{style_match.group(1)}）")
+            continue
+        character_match = re.match(r"(.+?)参考（参考图(\d+)）", first_line)
+        if character_match:
+            name, index = character_match.groups()
+            lines.append(f"角色外观参考图{index}（{name.strip()}）")
+    return lines
+
+
+def task_reference_block(reference_notes: list[str] | None) -> str | None:
+    lines = normalized_task_reference_lines(reference_notes)
+    if not lines:
+        return None
+    return "\n".join(["任务参考：", *lines])
+
+
+def remove_image_mode_reference_summary_lines(final_prompt: str) -> str:
+    kept_lines: list[str] = []
+    for raw_line in final_prompt.splitlines():
+        stripped = raw_line.strip()
+        if re.match(r"^(整体风格|整体色调/风格|整体色调|风格)[：:].*参考图\s*\d+", stripped):
+            continue
+        kept_lines.append(raw_line)
+    return "\n".join(kept_lines).strip()
+
+
 def style_prompt_block(style_prompt: str | None) -> list[str]:
     cleaned = (style_prompt or "").strip()
     if not cleaned:
@@ -1554,11 +1593,20 @@ def final_prompt_with_aspect_ratio_prefix(aspect_ratio: str, final_prompt: str) 
     return "\n".join([prefix, "", cleaned_prompt]).strip()
 
 
-def final_prompt_with_explicit_style(task: GenerationTask, final_prompt: str) -> str:
+def final_prompt_with_explicit_style(
+    task: GenerationTask,
+    final_prompt: str,
+    reference_notes: list[str] | None = None,
+) -> str:
     cleaned_prompt = final_prompt.strip()
     style_prompt = task.style_prompt_snapshot if is_prompt_reference_mode(task.style_reference_mode_snapshot) else None
     cleaned_style = (style_prompt or "").strip()
     if not cleaned_style:
+        if not is_prompt_reference_mode(task.style_reference_mode_snapshot):
+            cleaned_prompt = remove_image_mode_reference_summary_lines(cleaned_prompt)
+            reference_block = task_reference_block(reference_notes)
+            if reference_block:
+                cleaned_prompt = "\n\n".join([cleaned_prompt, reference_block]).strip()
         return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
     styled_prompt = "\n".join(
         [
@@ -1880,13 +1928,18 @@ def compose_final_prompts_for_panels(
         ),
     )
     image_text_by_order = {payload["panel_order"]: payload["image_text"] for payload in panel_payloads}
+    reference_notes_by_order = {payload["panel_order"]: payload["reference_notes"] for payload in panel_payloads}
     prompt_by_order = {}
     for panel in result.panels:
         sanitized_prompt = sanitize_compiled_final_prompt(
             panel.final_prompt,
             image_text_by_order.get(panel.panel_order),
         )
-        prompt_by_order[panel.panel_order] = final_prompt_with_explicit_style(task, sanitized_prompt)
+        prompt_by_order[panel.panel_order] = final_prompt_with_explicit_style(
+            task,
+            sanitized_prompt,
+            reference_notes=reference_notes_by_order.get(panel.panel_order),
+        )
     for panel in result.panels:
         final_prompt = prompt_by_order[panel.panel_order]
         log_prompt_trace(

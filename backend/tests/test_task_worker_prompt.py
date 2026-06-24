@@ -38,7 +38,9 @@ from app.services.task_worker import (
     final_prompt_with_explicit_style,
     generate_panel_image_request,
     is_policy_blocked_image_error,
+    normalized_task_reference_lines,
     sanitize_compiled_final_prompt,
+    task_reference_block,
     trim_generation_reference_pack_for_model,
 )
 from app.services.character_references import build_character_style_reference_pack
@@ -326,6 +328,52 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
         self.assertIn("第 1 页\n女孩在窗边读书。", final_prompt)
         self.assertNotIn("这段风格提示词不应拼入最终生图 prompt", final_prompt)
+
+    def test_image_mode_final_prompt_appends_standard_task_reference_block(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.adapted,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="极简黑白图片参考",
+            style_prompt_snapshot="极简黑白",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+        final_prompt = final_prompt_with_explicit_style(
+            task,
+            (
+                "第 9 页（单页 | 画面比例 3:4）\n"
+                "画面并置两个时空的意象。\n"
+                "整体风格：参考图2的极简黑白风格。角色外观参考图1（三叔）。"
+            ),
+            reference_notes=[
+                "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
+                "风格参考（参考图2）",
+            ],
+        )
+
+        self.assertIn("任务参考：\n角色外观参考图1（三叔）\n风格参考（图2）", final_prompt)
+        self.assertNotIn("参考图2的极简黑白风格", final_prompt)
+        self.assertNotIn("整体风格：", final_prompt)
+        self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
+
+    def test_task_reference_block_normalizes_reference_notes(self) -> None:
+        lines = normalized_task_reference_lines(
+            [
+                "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
+                "风格参考（参考图2）",
+            ]
+        )
+
+        self.assertEqual(["角色外观参考图1（三叔）", "风格参考（图2）"], lines)
+        self.assertEqual("任务参考：\n角色外观参考图1（三叔）\n风格参考（图2）", task_reference_block([
+            "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
+            "风格参考（参考图2）",
+        ]))
 
     def test_sanitize_compiled_final_prompt_removes_text_type_labels(self) -> None:
         final_prompt = sanitize_compiled_final_prompt(
