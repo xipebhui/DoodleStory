@@ -532,24 +532,23 @@ def segment_story(
         trace_context={**(trace_context or {}), "operation": "segment_story"},
         temperature=0.2,
     )
-    try:
-        result = StorySegmentationResult.model_validate(raw)
-    except ValidationError as exc:
-        log_prompt_trace(
-            logger,
-            "llm_validation_failed",
-            prompt_name="segment_story_v1.md",
-            context=trace_context or {},
-            errors=exc.errors(),
-            raw=raw,
+    result = parse_story_segmentation_result(raw, trace_context=trace_context)
+    validate_story_segmentation_result(
+        result,
+        image_count_mode=image_count_mode,
+        requested_image_count=requested_image_count,
+    )
+    if image_count_mode == ImageCountMode.auto and should_refine_fragmented_story_segments(result.panels):
+        result = refine_fragmented_story_segments(
+            original_text=cleaned_original_text,
+            initial_result=result,
+            trace_context=trace_context,
         )
-        raise LLMResponseError("LLM 完整故事语义切分 JSON 结构不符合要求") from exc
-    ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
-    for panel in result.panels:
-        panel.panel_type = PanelType.scene
-    if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
-        raise LLMResponseError("LLM 完整故事语义切分数量与用户指定图片数量不一致")
-    ensure_original_story_panel_text_lengths(result.panels)
+        validate_story_segmentation_result(
+            result,
+            image_count_mode=image_count_mode,
+            requested_image_count=requested_image_count,
+        )
     logger.info(
         "story segmentation succeeded via llm image_count_mode=%s requested_image_count=%s panel_count=%s",
         image_count_mode.value,
@@ -568,6 +567,77 @@ def segment_story(
         panels=[panel.model_dump() for panel in result.panels],
     )
     return result
+
+
+def parse_story_segmentation_result(raw: dict[str, Any], *, trace_context: dict[str, Any] | None) -> StorySegmentationResult:
+    try:
+        return StorySegmentationResult.model_validate(raw)
+    except ValidationError as exc:
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="segment_story_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        raise LLMResponseError("LLM 完整故事语义切分 JSON 结构不符合要求") from exc
+
+
+def validate_story_segmentation_result(
+    result: StorySegmentationResult,
+    *,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+) -> None:
+    ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
+    for panel in result.panels:
+        panel.panel_type = PanelType.scene
+    if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
+        raise LLMResponseError("LLM 完整故事语义切分数量与用户指定图片数量不一致")
+    ensure_original_story_panel_text_lengths(result.panels)
+
+
+def should_refine_fragmented_story_segments(panels: list[StorySegment]) -> bool:
+    if len(panels) < 4:
+        return False
+    short_count = sum(1 for panel in panels if len(panel.text.strip()) < ORIGINAL_STORY_PANEL_TEXT_TARGET_MIN_CHARS)
+    return short_count / len(panels) >= 0.5
+
+
+def refine_fragmented_story_segments(
+    *,
+    original_text: str,
+    initial_result: StorySegmentationResult,
+    trace_context: dict[str, Any] | None,
+) -> StorySegmentationResult:
+    user_prompt = json.dumps(
+        {
+            "retry_instruction": (
+                "上一次切割结果明显过碎。请重新按画面单元、情绪转折和叙事功能合并 panels。"
+                "不要把原文换行当作天然分镜边界；不要把十几个字的短句逐句拆开。"
+                "30-50 字只是次级偏好，不能为了凑长度硬合并两个本应分开的转折；"
+                "也不能把同一个核心行动的补充信息拆开，例如“煮面”和“放鸡蛋”应在同一 panel。"
+                "如果一句短句承担独立转折，例如提问、突然睡着、态度变化，可以单独成 panel。"
+            ),
+            "max_panel_text_chars": ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS,
+            "target_panel_text_chars": {
+                "min": ORIGINAL_STORY_PANEL_TEXT_TARGET_MIN_CHARS,
+                "max": ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS,
+            },
+            "original_text": original_text,
+            "fragmented_panels": [panel.model_dump() for panel in initial_result.panels],
+        },
+        ensure_ascii=False,
+    )
+    raw = call_siliconflow_json(
+        system_prompt=read_prompt("segment_story_v1.md"),
+        user_prompt=user_prompt,
+        prompt_name="segment_story_v1.md",
+        trace_context={**(trace_context or {}), "operation": "segment_story_refine_fragmented"},
+        temperature=0.2,
+    )
+    return parse_story_segmentation_result(raw, trace_context=trace_context)
 
 
 def split_original_story(

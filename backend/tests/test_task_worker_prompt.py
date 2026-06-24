@@ -155,7 +155,8 @@ class TaskWorkerPromptTest(unittest.TestCase):
             text_layout="主画面+右下角分镜",
         )
 
-        self.assertIn("第1页：", final_prompt)
+        self.assertIn("当前分镜：", final_prompt)
+        self.assertNotIn("第1页", final_prompt)
         self.assertIn("【分格】主画面+右下角分镜", final_prompt)
         self.assertIn("父亲伸手阻止孩子，焦急地对孩子说：“别拿这个乱玩，拿过来。”", final_prompt)
         self.assertIn("旁白：我急得朝他吼了一下\n他吓的哭了出来\n去喊我老婆", final_prompt)
@@ -232,7 +233,8 @@ class TaskWorkerPromptTest(unittest.TestCase):
             panel_order=3,
         )
 
-        self.assertIn("第3页：", final_prompt)
+        self.assertIn("当前分镜：", final_prompt)
+        self.assertNotIn("第3页", final_prompt)
         self.assertIn("【分格】单页", final_prompt)
         self.assertIn("画面：女生坐在教室靠窗位置低头看书，男生坐在右侧课桌前偷偷看她。", final_prompt)
         self.assertIn("旁白：我高中的时候暗恋一个女生\n而我当时只是一个自卑的小胖子...", final_prompt)
@@ -411,8 +413,31 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
 
         self.assertIn("在留白文字区写入「19岁的我扶着喝多了的24岁的他回家，」", final_prompt)
+        self.assertNotIn("第1页", final_prompt)
         self.assertNotIn("旁白：19岁的我扶着喝多了的24岁的他回家，", final_prompt)
         self.assertIn("整体色调/风格：竖版绘本漫画风。", final_prompt)
+
+    def test_sanitize_compiled_final_prompt_removes_page_number_instruction(self) -> None:
+        final_prompt = sanitize_compiled_final_prompt(
+            (
+                "当前单图（单页 | 3:4）\n"
+                "画面为孩子站在凳子上煮面，三叔在旁边睡着。\n"
+                "在右下角写入「第 2 页」。\n"
+                "【文字】\n"
+                "旁白：他刚回了我一句就累得睡着了。"
+            ),
+            {
+                "title": None,
+                "narration": "他刚回了我一句就累得睡着了。",
+                "dialogue": None,
+                "inner_os": None,
+                "emphasis": None,
+            },
+        )
+
+        self.assertNotIn("第 2 页", final_prompt)
+        self.assertNotIn("右下角", final_prompt)
+        self.assertIn("在留白文字区写入「他刚回了我一句就累得睡着了。」", final_prompt)
 
     def test_generation_reference_pack_orders_character_before_style_reference(self) -> None:
         character_asset = FileAsset(

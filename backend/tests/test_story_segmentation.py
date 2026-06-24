@@ -30,8 +30,9 @@ class StorySegmentationTest(unittest.TestCase):
         self.assertEqual(50, user_payload["max_panel_text_chars"])
         self.assertEqual({"min": 30, "max": 50}, user_payload["target_panel_text_chars"])
         self.assertIn("自动判断", user_payload["count_instruction"])
-        self.assertIn("30-50 字", call_json.call_args.kwargs["system_prompt"])
-        self.assertIn("合并相邻短句", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("首要目标是画面单元、情绪转折和叙事节奏自然", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("不要为了凑到 30-50 字", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("煮了一碗面", call_json.call_args.kwargs["system_prompt"])
         self.assertEqual(
             ["我三叔特别的喜欢我是有原因的\n", "他有时候工地夜班干完活回来"],
             [panel.text for panel in result.panels],
@@ -83,6 +84,55 @@ class StorySegmentationTest(unittest.TestCase):
             )
 
         self.assertEqual("我问他吃饭了没有。", result.panels[0].text)
+
+    def test_auto_original_story_segmentation_refines_fragmented_short_panels(self) -> None:
+        original_text = (
+            "我三叔特别的喜欢我是有原因的\n"
+            "他有时候工地夜班干完活回来\n"
+            "我问他吃饭了没有\n"
+            "他刚回了我一句就累得睡着了\n"
+            "7岁的我还没有灶台高\n"
+            "我站在凳子上给他煮了一碗面还放了好多的鸡蛋"
+        )
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            side_effect=[
+                {
+                    "panels": [
+                        {"panel_order": 1, "text": "我三叔特别的喜欢我是有原因的"},
+                        {"panel_order": 2, "text": "他有时候工地夜班干完活回来"},
+                        {"panel_order": 3, "text": "我问他吃饭了没有"},
+                        {"panel_order": 4, "text": "他刚回了我一句就累得睡着了"},
+                        {"panel_order": 5, "text": "7岁的我还没有灶台高"},
+                        {"panel_order": 6, "text": "我站在凳子上给他煮了一碗面还放了好多的鸡蛋"},
+                    ]
+                },
+                {
+                    "panels": [
+                        {"panel_order": 1, "text": "我三叔特别的喜欢我是有原因的。他有时候工地夜班干完活回来。"},
+                        {"panel_order": 2, "text": "我问他吃饭了没有。他刚回了我一句就累得睡着了。"},
+                        {"panel_order": 3, "text": "7岁的我还没有灶台高。我站在凳子上给他煮了一碗面，还放了好多的鸡蛋。"},
+                    ]
+                },
+            ],
+        ) as call_json:
+            result = segment_story(
+                original_text=original_text,
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+        self.assertEqual(2, call_json.call_count)
+        retry_payload = json.loads(call_json.call_args_list[1].kwargs["user_prompt"])
+        self.assertIn("上一次切割结果明显过碎", retry_payload["retry_instruction"])
+        self.assertEqual(
+            [
+                "我三叔特别的喜欢我是有原因的。他有时候工地夜班干完活回来。",
+                "我问他吃饭了没有。他刚回了我一句就累得睡着了。",
+                "7岁的我还没有灶台高。我站在凳子上给他煮了一碗面，还放了好多的鸡蛋。",
+            ],
+            [panel.text for panel in result.panels],
+        )
 
     def test_fixed_count_fails_before_llm_when_max_length_is_impossible(self) -> None:
         with patch("app.services.llm.call_siliconflow_json") as call_json:

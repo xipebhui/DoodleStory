@@ -1352,7 +1352,7 @@ def structured_storyboard_block(
 ) -> str:
     values = image_text_to_dict(image_text)
     lines = [
-        f"第{panel_order}页：",
+        "当前分镜：",
         f"【分格】{storyboard_layout_label(text_layout)}",
         f"画面：{visual_prompt.strip()}",
     ]
@@ -1487,6 +1487,8 @@ def sanitize_compiled_final_prompt(
     sanitized_lines: list[str] = []
     for raw_line in final_prompt.splitlines():
         stripped = raw_line.strip()
+        if is_page_number_heading_or_instruction(stripped):
+            continue
         leading_space = raw_line[: len(raw_line) - len(raw_line.lstrip())]
         rewritten_line: str | None = None
         for label, key in labels:
@@ -1508,6 +1510,19 @@ def sanitize_compiled_final_prompt(
         elif rewritten_line:
             sanitized_lines.append(rewritten_line)
     return "\n".join(sanitized_lines).strip()
+
+
+def is_page_number_heading_or_instruction(line: str) -> bool:
+    if not line:
+        return False
+    page_pattern = r"(?:第\s*\d+\s*[页頁格]|Page\s*\d+)"
+    if re.fullmatch(rf"{page_pattern}(?:[：:，,。.、\s]*|\s*[（(][^）)]*[）)])", line, flags=re.IGNORECASE):
+        return True
+    if re.search(page_pattern, line, flags=re.IGNORECASE) and re.search(
+        r"(写入|显示|标注|角落|右下角|左下角|页码|编号|角标)", line
+    ):
+        return True
+    return False
 
 
 def split_dialogue_speaker(line: str) -> tuple[str | None, str | None]:
