@@ -2511,7 +2511,9 @@ def load_generated_image(db: Session, generated_image_id: str) -> GeneratedImage
         select(GeneratedImage)
         .where(GeneratedImage.id == generated_image_id)
         .options(
-            selectinload(GeneratedImage.task),
+            selectinload(GeneratedImage.task)
+            .selectinload(GenerationTask.style_reference_images)
+            .selectinload(TaskStyleReferenceImage.asset),
             selectinload(GeneratedImage.panel)
             .selectinload(TaskPanel.character_appearances)
             .selectinload(TaskPanelCharacterAppearance.appearance)

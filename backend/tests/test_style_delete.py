@@ -4,10 +4,10 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.api.styles import create_style, delete_style, update_style
+from app.api.styles import create_style, delete_reference_image, delete_style, update_style
 from app.core.database import Base
-from app.models.entities import GenerationTask, Style, User
-from app.models.enums import ImageCountMode, StyleStatus
+from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, TaskStyleReferenceImage, User
+from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleStatus, StyleReferenceMode
 from app.schemas.style import StyleCreate, StyleUpdate
 
 
@@ -70,6 +70,52 @@ class StyleDeleteTest(unittest.TestCase):
 
         self.assertTrue(result.data["deleted"])
         self.assertIsNone(db.scalar(select(Style).where(Style.id == style_id)))
+
+    def test_delete_reference_image_keeps_asset_used_by_task_snapshot(self) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        asset = FileAsset(
+            purpose=FileAssetPurpose.style_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="style_reference/history.png",
+            public_url="https://cdn.example.com/style_reference/history.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        style = Style(
+            name="参考图风格",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_reference_mode=StyleReferenceMode.image,
+            style_prompt="手绘漫画风",
+            cover_asset=asset,
+        )
+        reference = StyleReferenceImage(style=style, asset=asset, display_order=1)
+        task = GenerationTask(
+            owner=user,
+            display_title="历史任务",
+            original_text="故事正文",
+            image_count_mode=ImageCountMode.auto,
+            style=style,
+            style_name_snapshot=style.name,
+            style_prompt_snapshot=style.style_prompt,
+            image_model_name_snapshot=style.image_model_name,
+            style_aspect_ratio_snapshot=style.aspect_ratio,
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+        task_snapshot = TaskStyleReferenceImage(task=task, asset=asset, reference_order=1)
+        db.add_all([user, asset, style, reference, task, task_snapshot])
+        db.commit()
+
+        result = delete_reference_image(style.id, reference.id, user, db)
+
+        self.assertTrue(result.data["deleted"])
+        self.assertIsNone(db.scalar(select(StyleReferenceImage).where(StyleReferenceImage.id == reference.id)))
+        self.assertIsNotNone(db.scalar(select(FileAsset).where(FileAsset.id == asset.id)))
+        self.assertIsNotNone(
+            db.scalar(select(TaskStyleReferenceImage).where(TaskStyleReferenceImage.id == task_snapshot.id))
+        )
 
     def test_create_style_duplicate_name_returns_business_error(self) -> None:
         db = self.Session()

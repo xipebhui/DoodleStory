@@ -20,7 +20,12 @@ from app.models.enums import (
     StyleReferenceMode,
     WorkflowStatus,
 )
-from app.services.image_generation import GeneratedImageFile, ImageReference, ImageProviderResponseError
+from app.services.image_generation import (
+    GeneratedImageFile,
+    ImageProviderConfigError,
+    ImageProviderResponseError,
+    ImageReference,
+)
 from app.services.llm import LLMResponseError, compose_final_image_prompts
 from app.services.task_worker import (
     GenerationReferencePack,
@@ -407,6 +412,29 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("固定角色身份 > 当前剧情动作/情绪 > 风格表现方式 > 风格模板默认人物外观", pack.notes[0])
         self.assertEqual(1, pack.character_reference_count)
         self.assertEqual(1, pack.style_reference_count)
+
+    def test_generation_reference_pack_rejects_missing_task_style_reference_asset(self) -> None:
+        panel = TaskPanel(panel_order=1, panel_type=PanelType.scene, original_text_segment="原文")
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            use_character_references=False,
+            style_id="style",
+            style_name_snapshot="参考图风格",
+            style_prompt_snapshot="手绘风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+        task.style_reference_images = [
+            TaskStyleReferenceImage(reference_order=1, asset_id="missing_asset"),
+        ]
+
+        with self.assertRaisesRegex(ImageProviderConfigError, "任务风格参考图快照缺少资产"):
+            build_generation_reference_pack(task, panel)
 
     def test_generation_reference_pack_trims_extra_references_and_notes_for_model(self) -> None:
         pack = GenerationReferencePack(

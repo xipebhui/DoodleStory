@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-63-style-save-error-state.md`
+- `docs/contracts/sprint-64-style-reference-snapshot-integrity.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 64 风格参考图快照完整性修复：线上任务 `138f53d7e7be489e8f893a609f382773` 的 panel 9 和 panel 10 多次单图修改失败，直接错误不是图片 Provider 拒绝，而是 `process_panel_edit -> build_generation_reference_pack -> build_task_style_reference_pack` 读取任务风格参考图快照时拿到空资产，触发 `AttributeError: 'NoneType' object has no attribute 'public_url'`。远程数据库显示该任务 `task_style_reference_images` 有 7 条历史快照，但对应 `asset_id` 已不在 `file_assets` 表；当前风格“极简黑白”只有 2 张有效参考图。现已启用 SQLite 外键约束，删除风格参考图时保留仍被历史任务快照引用的文件资产，单图修改加载任务时补齐风格参考图快照资产，并把已损坏快照转成明确的 `ImageProviderConfigError`。该修复不会自动把损坏任务替换为当前风格参考图。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_style_delete backend.tests.test_task_worker_prompt`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 完成 Sprint 63 风格保存错误状态修复：线上排查确认近期 `POST /api/v1/styles` 500 的直接原因是创建同名风格触发 `styles.name` 唯一约束，后端未转换为业务错误。现已在创建和编辑风格时规范化名称并提前检查重复名，同时保留数据库唯一约束并把并发写入的 `IntegrityError` 转换为 400 业务错误；前端创建风格时把保存基础信息和逐张上传参考图拆成明确 loading 文案。风格测试仍是同步生图请求，历史存在 `style_tests.running` 残留，后续需要单独改造成图片 job。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_style_delete.py`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 将角色名提取和任务级临时角色提取的默认模型从 `Qwen/Qwen3.6-27B` 改为 `deepseek-ai/DeepSeek-V3.2`，仍通过 `CHARACTER_EXTRACTION_MODEL` 可配置，并继续使用 `CHARACTER_EXTRACTION_TEMPERATURE` 的低温配置。图文图片文案提取和用户角色参考图外观理解读取 `SILICONFLOW_VISION_MODEL`，当前默认模型为 `Qwen/Qwen3-VL-32B-Instruct`。
 - 统一人物参考图与 panel 生图的图片 job 语义：`generated_images` 新增 `job_kind` 和 `character_appearance_id`，`panel_id` 改为可空；人物参考图生成阶段不再同步调用图片 Provider，而是创建 `character_reference` 图片 job，由统一 image worker 处理全站并发、单用户并发、lease、attempt、积分占用、释放和扣费。人物参考图 job 成功后写回 `task_character_appearances.reference_image_id`，失败则让任务明确失败；启动恢复现在能识别 `generate_character_references` 阶段的活跃人物图 job，避免服务重启后卡在人物参考图生成中。任务详情 API 继续只把 panel 图放入 `generated_images`，人物参考图仍通过 `character_references` 展示。新增恢复测试覆盖人物参考图 job 的重启恢复。

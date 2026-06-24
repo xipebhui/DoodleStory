@@ -24,7 +24,9 @@ def is_image_reference_mode(mode: StyleReferenceMode | str | None) -> bool:
     return (mode or StyleReferenceMode.prompt) == StyleReferenceMode.image
 
 
-def public_style_reference_url(asset: FileAsset) -> str:
+def public_style_reference_url(asset: FileAsset | None) -> str:
+    if asset is None:
+        raise ImageProviderConfigError("风格参考图资产不存在，请重新上传参考图或联系管理员修复历史任务快照")
     url = (asset.public_url or "").strip()
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -102,5 +104,9 @@ def build_task_style_reference_pack(
     if not sorted_references:
         raise ImageProviderConfigError("任务缺少风格参考图快照")
 
-    assets = [reference.asset for reference in sorted_references]
+    assets: list[FileAsset] = []
+    for reference in sorted_references:
+        if reference.asset is None:
+            raise ImageProviderConfigError("任务风格参考图快照缺少资产，可能是历史参考图已被删除")
+        assets.append(reference.asset)
     return build_style_reference_pack_from_assets(assets, start_index=start_index)

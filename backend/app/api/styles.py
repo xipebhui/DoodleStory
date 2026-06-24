@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
-from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, User
+from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, TaskStyleReferenceImage, User
 from app.models.enums import FileAssetPurpose, StyleStatus, WorkflowStatus
 from app.schemas.common import ApiData, ApiList
 from app.schemas.style import (
@@ -263,7 +263,8 @@ def delete_reference_image(
         style.cover_asset_id = next_reference.asset_id if next_reference else None
 
     remaining_asset_refs = db.query(StyleReferenceImage).filter(StyleReferenceImage.asset_id == asset_id).count()
-    if remaining_asset_refs == 0:
+    historical_task_refs = db.query(TaskStyleReferenceImage).filter(TaskStyleReferenceImage.asset_id == asset_id).count()
+    if remaining_asset_refs == 0 and historical_task_refs == 0:
         asset = db.scalar(select(FileAsset).where(FileAsset.id == asset_id))
         if asset:
             db.delete(asset)
