@@ -9,10 +9,10 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.api.characters import create_character, fill_character_description_from_reference
-from app.api.tasks import extract_character_names
+from app.api.tasks import extract_character_names, task_detail_statement
 from app.core.database import Base
-from app.models.entities import FileAsset, GenerationTask, Style, TaskCharacter, TaskCharacterAppearance, TaskPanel, TaskPanelCharacterAppearance, User, UserCharacter
-from app.models.enums import FileAssetPurpose, GenerationStepName, ImageCountMode, PanelType, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
+from app.models.entities import FileAsset, GeneratedImage, GenerationTask, Style, TaskCharacter, TaskCharacterAppearance, TaskPanel, TaskPanelCharacterAppearance, User, UserCharacter
+from app.models.enums import FileAssetPurpose, GeneratedImageJobKind, GeneratedImageSourceType, GeneratedImageStatus, GenerationStepName, ImageCountMode, PanelType, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
 from app.schemas.character import CharacterNameExtractionRequest, StoryCharacterBindingCreate
 from app.schemas.task import TaskCreate, TaskRead
 from app.services.character_references import (
@@ -536,6 +536,100 @@ class UserCharacterTest(unittest.TestCase):
 
         payload = TaskRead.model_validate(task)
 
+        self.assertEqual("人物参考图最终提示词", payload.character_references[0].reference_prompt)
+
+    def test_task_detail_read_excludes_character_reference_image_jobs(self) -> None:
+        db = self.Session()
+        owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        panel_asset = FileAsset(
+            purpose=FileAssetPurpose.generated_image,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="generated/panel.png",
+            public_url="https://cdn.example.com/panel.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        character_asset = FileAsset(
+            purpose=FileAssetPurpose.character_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="characters/generated.png",
+            public_url="https://cdn.example.com/generated.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        db.add_all([owner, panel_asset, character_asset])
+        db.flush()
+        task = GenerationTask(
+            owner_user_id=owner.id,
+            display_title="任务",
+            original_text="妈妈回家了。",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            use_character_references=True,
+            style_id="style",
+            style_name_snapshot="风格",
+            style_prompt_snapshot="温暖绘本风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="9:16",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+        db.add(task)
+        db.flush()
+        panel = TaskPanel(
+            task_id=task.id,
+            panel_order=1,
+            panel_type=PanelType.scene,
+            original_text_segment="妈妈回家了。",
+        )
+        character = TaskCharacter(task_id=task.id, character_key="character_1", name="妈妈", description="母亲")
+        db.add_all([panel, character])
+        db.flush()
+        appearance = TaskCharacterAppearance(
+            task_character_id=character.id,
+            appearance_key="character_1_adult",
+            age_stage="成年",
+            visual_prompt="成年女性，短发",
+            reference_prompt="人物参考图最终提示词",
+            reference_image_id=character_asset.id,
+            status=WorkflowStatus.succeeded,
+        )
+        db.add(appearance)
+        db.flush()
+        db.add_all(
+            [
+                GeneratedImage(
+                    task_id=task.id,
+                    panel_id=panel.id,
+                    owner_user_id=owner.id,
+                    job_kind=GeneratedImageJobKind.panel_image,
+                    status=GeneratedImageStatus.succeeded,
+                    generation_number=1,
+                    is_current=True,
+                    source_type=GeneratedImageSourceType.initial,
+                    image_model_name_snapshot="gpt-image-2",
+                    asset_id=panel_asset.id,
+                ),
+                GeneratedImage(
+                    task_id=task.id,
+                    character_appearance_id=appearance.id,
+                    owner_user_id=owner.id,
+                    job_kind=GeneratedImageJobKind.character_reference,
+                    status=GeneratedImageStatus.succeeded,
+                    generation_number=1,
+                    is_current=False,
+                    source_type=GeneratedImageSourceType.initial,
+                    image_model_name_snapshot="gpt-image-2",
+                    asset_id=character_asset.id,
+                ),
+            ]
+        )
+        db.commit()
+        db.expire_all()
+
+        task = db.scalar(task_detail_statement(task.id))
+        payload = TaskRead.model_validate(task)
+
+        self.assertEqual([panel.id], [image.panel_id for image in payload.generated_images])
         self.assertEqual("人物参考图最终提示词", payload.character_references[0].reference_prompt)
 
     def test_panel_reference_pack_includes_character_anchor_and_priority(self) -> None:

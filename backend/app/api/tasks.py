@@ -82,6 +82,15 @@ def task_options():
     )
 
 
+def task_detail_statement(task_id: str):
+    return (
+        select(GenerationTask)
+        .where(GenerationTask.id == task_id)
+        .options(*task_options())
+        .execution_options(populate_existing=True)
+    )
+
+
 def ensure_task_access(task: GenerationTask | None, user: User) -> GenerationTask:
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
@@ -302,21 +311,14 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
     db.refresh(task)
     await enqueue_task(task.id)
 
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task.id)
-        .options(*task_options())
-    )
+    db.expire_all()
+    task = db.scalar(task_detail_statement(task.id))
     return ApiData(data=TaskRead.model_validate(task))
 
 
 @router.post("/{task_id}/retry", response_model=ApiData[TaskRead], status_code=status.HTTP_202_ACCEPTED)
 async def retry_task(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task_id)
-        .options(*task_options())
-    )
+    task = db.scalar(task_detail_statement(task_id))
     task = ensure_task_access(task, user)
     if task.status not in {TaskStatus.failed, TaskStatus.partial_succeeded}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败或部分完成的任务可以重试")
@@ -381,21 +383,14 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
     db.commit()
     await enqueue_task(task.id)
 
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task.id)
-        .options(*task_options())
-    )
+    db.expire_all()
+    task = db.scalar(task_detail_statement(task.id))
     return ApiData(data=TaskRead.model_validate(task))
 
 
 @router.get("/{task_id}", response_model=ApiData[TaskRead])
 def get_task(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task_id)
-        .options(*task_options())
-    )
+    task = db.scalar(task_detail_statement(task_id))
     task = ensure_task_access(task, user)
 
     return ApiData(data=TaskRead.model_validate(task))
@@ -464,18 +459,15 @@ def get_task_panel_debug(
 
 @router.post("/{task_id}/cancel", response_model=ApiData[TaskRead])
 def cancel_task(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task_id)
-        .options(*task_options())
-    )
+    task = db.scalar(task_detail_statement(task_id))
     task = ensure_task_access(task, user)
     if task.status in {TaskStatus.succeeded, TaskStatus.failed, TaskStatus.partial_succeeded, TaskStatus.cancelled}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务状态不能取消")
 
     task.status = TaskStatus.cancelled if task.status == TaskStatus.queued else TaskStatus.cancel_requested
     db.commit()
-    db.refresh(task)
+    db.expire_all()
+    task = db.scalar(task_detail_statement(task.id))
     return ApiData(data=TaskRead.model_validate(task))
 
 
@@ -487,11 +479,7 @@ async def edit_panel_image(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[TaskRead]:
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task_id)
-        .options(*task_options())
-    )
+    task = db.scalar(task_detail_statement(task_id))
     task = ensure_task_access(task, user)
     if task.status in {TaskStatus.queued, TaskStatus.running, TaskStatus.retrying, TaskStatus.cancel_requested}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务生成中，暂不能修改单个分镜")
@@ -543,21 +531,14 @@ async def edit_panel_image(
     db.commit()
     await enqueue_panel_edit(image.id)
 
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task.id)
-        .options(*task_options())
-    )
+    db.expire_all()
+    task = db.scalar(task_detail_statement(task.id))
     return ApiData(data=TaskRead.model_validate(task))
 
 
 @router.post("/{task_id}/downloads", response_model=ApiData[TaskDownloadRead])
 def create_task_download(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskDownloadRead]:
-    task = db.scalar(
-        select(GenerationTask)
-        .where(GenerationTask.id == task_id)
-        .options(*task_options())
-    )
+    task = db.scalar(task_detail_statement(task_id))
     task = ensure_task_access(task, user)
 
     images = current_succeeded_images_for_panels(task)

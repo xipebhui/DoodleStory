@@ -8,6 +8,7 @@
 
 - 图片生成积分占用、成功扣费和失败释放必须使用数据库原子 `UPDATE` 表达式更新 `balance` 与 `reserved_balance`。
 - 余额不足、占用不存在时仍然明确失败，不能静默免费生成或吞掉扣费错误。
+- 任务详情、重试、取消和单图修改返回的 `generated_images` 只能包含 panel 图片；人物参考图 job 继续通过 `character_references` 展示，避免 `panel_id=None` 的内部 job 触发响应校验 500。
 - 新增并发回归测试，覆盖同一用户多张图同时占用和同时扣费后的账户余额、占用余额和流水数量。
 - 更新进度记录。
 
@@ -20,7 +21,9 @@
 ## 交付物
 
 - `backend/app/services/credits.py`
+- `backend/app/api/tasks.py`
 - `backend/tests/test_credits.py`
+- `backend/tests/test_user_characters.py`
 - `docs/progress.md`
 - `docs/contracts/sprint-69-credit-atomic-mutations.md`
 
@@ -28,12 +31,14 @@
 
 - 同一用户并发图片 job 不会因为账户行旧值覆盖而丢失 `reserved_balance`。
 - 没有可用积分或没有占用积分时继续返回原有明确错误。
+- 任务 API 的 `generated_images` 响应不混入人物参考图 job。
 - 相关测试和全量检查通过。
 
 ## 验证
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_credits
+PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_user_characters
 backend/.venv/bin/python -m compileall backend/app
 git diff --check
 ./scripts/check.sh
