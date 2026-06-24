@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-69-credit-atomic-mutations.md`
+- `docs/contracts/sprint-70-story-segmentation-target-length.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 70 完整故事切割目标长度优化：用户反馈当前 LLM 语义切割虽然不再要求逐字覆盖原文，但自动数量模式把故事切成大量十几个字的短 panel，画面节奏过碎。现已给 `segment_story` 输入增加 `target_panel_text_chars={"min":30,"max":50}`，并更新 `segment_story_v1.md`，要求自动数量模式优先合并相邻短句为 30-50 字连续语义块；只有自然段、强转折、时间地点切换、动作变化或结尾余句无法继续合并时，才允许少于 30 字。50 字上限继续作为硬校验，30 字下限只作为生成目标，不恢复逐字覆盖校验，也不增加本地兜底切割。
 - 完成 Sprint 69 图片积分并发原子变更：本地任务 `2a17e311b7f641feb2b23a1321991db2` 在 Sprint 68 放宽完整故事 LLM 语义切割后，`segment_story` 已成功切为 7 个不超过 50 字的 panel，但继续执行到人物参考图阶段时失败，失败点为三叔人物参考图成功返回后扣费报 `CreditError: 图片生成积分占用不存在，无法扣费`。根因是同一用户多个图片 job 并发时，`reserve_image_credit` / `charge_reserved_image_credit` 基于 ORM 旧账户行读写，SQLite 下 `with_for_update()` 不提供真实行锁，可能把 `reserved_balance` 覆盖成旧值。现已把图片生成积分占用、成功扣费和失败释放改为数据库原子 `UPDATE` 表达式，余额不足或占用不存在仍明确失败，不做免费生成或吞错；新增并发回归测试覆盖同一用户多图同时占用与同时扣费后的账户余额、占用余额和流水数量。真实重试时还发现任务重试接口在同一 session 提交后会把 `character_reference` 图片 job 懒加载进 `generated_images`，因 `panel_id=None` 导致 `TaskRead` 校验 500；现已统一任务详情查询并强制重新按 panel 图片过滤装载，人物参考图仍通过 `character_references` 字段展示。
 - 完成 Sprint 68 完整故事 LLM 语义切割：完整故事模式的 `segment_story` 主路径已从本地确定性断句改为调用 `segment_story_v1.md` 的 LLM JSON 输出，LLM 负责按语义和阅读节奏切分原文；后端硬校验 `panel_order` 连续、固定数量模式数量一致，并新增单个 panel 原文不超过 50 字的硬性校验。切割不再要求所有 panel 拼接后逐字等于原文，允许 LLM 为了切割流畅对标点、换行或空格做轻微规范化，但提示词要求尽量保留原文、避免改写句意。固定数量过少导致无法满足 50 字上限时会直接明确失败，不调用 LLM；不新增本地切割兜底。
 - 完成 Sprint 67 人物参考图提示词查看：任务详情接口现在会随 `character_references` 返回人物参考图生成时保存的 `reference_prompt`；前端人物参考卡片在提示词存在时展示“查看提示词”按钮，并复用现有 prompt 弹窗查看完整内容。固定角色参考图或历史任务中没有保存提示词的参考图不会显示空入口。新增序列化回归测试覆盖该字段。

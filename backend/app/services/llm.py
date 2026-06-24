@@ -16,6 +16,8 @@ PROMPT_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 logger = logging.getLogger(__name__)
 FINAL_IMAGE_PROMPT_MAX_ATTEMPTS = 3
 ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS = 50
+ORIGINAL_STORY_PANEL_TEXT_TARGET_MIN_CHARS = 30
+ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS = 50
 
 
 class LLMProviderError(Exception):
@@ -515,6 +517,10 @@ def segment_story(
         {
             "count_instruction": count_instruction,
             "max_panel_text_chars": ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS,
+            "target_panel_text_chars": {
+                "min": ORIGINAL_STORY_PANEL_TEXT_TARGET_MIN_CHARS,
+                "max": ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS,
+            },
             "original_text": cleaned_original_text,
         },
         ensure_ascii=False,

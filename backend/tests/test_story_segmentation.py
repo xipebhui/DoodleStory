@@ -28,7 +28,10 @@ class StorySegmentationTest(unittest.TestCase):
         self.assertEqual(0.2, call_json.call_args.kwargs["temperature"])
         user_payload = json.loads(call_json.call_args.kwargs["user_prompt"])
         self.assertEqual(50, user_payload["max_panel_text_chars"])
+        self.assertEqual({"min": 30, "max": 50}, user_payload["target_panel_text_chars"])
         self.assertIn("自动判断", user_payload["count_instruction"])
+        self.assertIn("30-50 字", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("合并相邻短句", call_json.call_args.kwargs["system_prompt"])
         self.assertEqual(
             ["我三叔特别的喜欢我是有原因的\n", "他有时候工地夜班干完活回来"],
             [panel.text for panel in result.panels],
