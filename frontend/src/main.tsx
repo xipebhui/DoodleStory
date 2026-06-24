@@ -727,6 +727,7 @@ function TasksView({
   const [creating, setCreating] = useState(false);
   const [createStyleId, setCreateStyleId] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
+  const [lastPanelRealPhoto, setLastPanelRealPhoto] = useState(false);
   const [storyInputMode, setStoryInputMode] = useState<CreateInputMode>("original");
   const [createOriginalText, setCreateOriginalText] = useState("");
   const [userCharacters, setUserCharacters] = useState<UserCharacter[]>([]);
@@ -1114,6 +1115,7 @@ function TasksView({
   function resetCreateForm() {
     setCreateOriginalText("");
     setCountMode("auto");
+    setLastPanelRealPhoto(false);
     setStoryInputMode("original");
     setCreateStyleId(styles[0]?.id ?? "");
     setFixedRoleFlowEnabled(false);
@@ -1297,6 +1299,7 @@ function TasksView({
           requested_image_count: countMode === "fixed" ? requested : null,
           style_id: createStyleId,
           use_character_references: true,
+          last_panel_real_photo: lastPanelRealPhoto,
         });
         resetCreateForm();
         setCreateOpen(false);
@@ -1316,6 +1319,7 @@ function TasksView({
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
         use_character_references: true,
+        last_panel_real_photo: lastPanelRealPhoto,
         story_characters: storyCharacters,
       });
       resetCreateForm();
@@ -1606,6 +1610,7 @@ function TasksView({
                       {" · "}
                       {task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}
                       {" · "}
+                      {task.last_panel_real_photo ? "最后一张真人 · " : ""}
                       {task.style_aspect_ratio_snapshot}
                     </small>
                   </div>
@@ -1765,6 +1770,13 @@ function TasksView({
                   ) : (
                     <div className="empty mini">人物参考图生成中</div>
                   )}
+                </section>
+              ) : null}
+
+              {taskForDetail.last_panel_real_photo ? (
+                <section className="story-panel compact-info-panel">
+                  <h2>真人结尾</h2>
+                  <p>最后一张启用真人照片风格，不携带漫画风格参考图或人物参考图。</p>
                 </section>
               ) : null}
 
@@ -2042,6 +2054,19 @@ function TasksView({
                 ) : (
                   <p className="field-hint">系统会根据故事长度和内容密度决定图片张数。</p>
                 )}
+              </section>
+              <section className="create-section">
+                <label className="character-reference-toggle real-photo-toggle">
+                  <input
+                    type="checkbox"
+                    checked={lastPanelRealPhoto}
+                    onChange={(event) => setLastPanelRealPhoto(event.target.checked)}
+                  />
+                  <span>
+                    <strong>最后一张真人图片</strong>
+                    <small>默认关闭；勾选后最后一个分镜按真实摄影/自拍照片生成，不跟随当前漫画风格。</small>
+                  </span>
+                </label>
               </section>
               <fieldset className="style-picker">
                 <legend>选择风格</legend>

@@ -192,6 +192,7 @@ export type Task = {
   image_count_mode: "auto" | "fixed";
   requested_image_count: number | null;
   use_character_references: boolean;
+  last_panel_real_photo: boolean;
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
@@ -237,6 +238,7 @@ export type TaskSummary = {
   image_count_mode: Task["image_count_mode"];
   requested_image_count: number | null;
   use_character_references: boolean;
+  last_panel_real_photo: boolean;
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
@@ -602,6 +604,7 @@ export const api = {
     requested_image_count?: number | null;
     style_id: string;
     use_character_references?: boolean;
+    last_panel_real_photo?: boolean;
     story_characters?: StoryCharacterBinding[];
   }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
   extractCharacterNames: (payload: { text: string }) =>
@@ -697,6 +700,7 @@ export const api = {
     requested_image_count?: number | null;
     style_id: string;
     use_character_references?: boolean;
+    last_panel_real_photo?: boolean;
   }) =>
     request<ApiData<ContentExtraction>>("/content-extractions/replicate-task", {
       method: "POST",

@@ -273,6 +273,7 @@ def list_tasks(
                 image_count_mode=task.image_count_mode,
                 requested_image_count=task.requested_image_count,
                 use_character_references=task.use_character_references,
+                last_panel_real_photo=task.last_panel_real_photo,
                 style_id=task.style_id,
                 style_name_snapshot=task.style_name_snapshot,
                 image_model_name_snapshot=task.image_model_name_snapshot,

@@ -377,6 +377,40 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertNotIn("整体色调/风格：", final_prompt)
         self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
 
+    def test_last_panel_real_photo_final_prompt_overrides_task_style(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.extracted_storyboard,
+            image_count_mode=ImageCountMode.auto,
+            use_character_references=True,
+            last_panel_real_photo=True,
+            style_id="style",
+            style_name_snapshot="极简黑白图片参考",
+            style_prompt_snapshot="极简黑白；黑白线稿；白色背景；手绘漫画风。",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+
+        final_prompt = final_prompt_with_explicit_style(
+            task,
+            "女生在夜间操场自拍，穿白色T恤，抱着一束红玫瑰。",
+            reference_notes=["风格参考（参考图1）"],
+            force_real_photo=True,
+        )
+
+        self.assertIn("最后一张真人图片", final_prompt)
+        self.assertIn("真实摄影照片", final_prompt)
+        self.assertIn("真实人物、真实环境、真实光线", final_prompt)
+        self.assertIn("不要生成漫画、手绘、绘本、水彩、线稿", final_prompt)
+        self.assertIn("女生在夜间操场自拍", final_prompt)
+        self.assertNotIn("任务参考（最高优先级", final_prompt)
+        self.assertNotIn("风格参考（图1）", final_prompt)
+        self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
+        self.assertNotIn("极简黑白；黑白线稿；白色背景；手绘漫画风。", final_prompt)
+
     def test_task_reference_block_normalizes_reference_notes(self) -> None:
         lines = normalized_task_reference_lines(
             [
@@ -503,6 +537,65 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("固定角色身份 > 当前剧情动作/情绪 > 风格表现方式 > 风格模板默认人物外观", pack.notes[0])
         self.assertEqual(1, pack.character_reference_count)
         self.assertEqual(1, pack.style_reference_count)
+
+    def test_last_panel_real_photo_reference_pack_is_empty_for_last_panel(self) -> None:
+        character_asset = FileAsset(
+            purpose=FileAssetPurpose.character_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="characters/zhangsan.png",
+            public_url="https://cdn.example.com/characters/zhangsan.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        style_asset = FileAsset(
+            purpose=FileAssetPurpose.style_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="styles/watercolor.png",
+            public_url="https://cdn.example.com/styles/watercolor.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        character = TaskCharacter(character_key="char_1", name="张三", description="主角")
+        appearance = TaskCharacterAppearance(
+            appearance_key="char_1_adult",
+            status=WorkflowStatus.succeeded,
+            reference_image=character_asset,
+        )
+        appearance.character = character
+        first_panel = TaskPanel(panel_order=1, panel_type=PanelType.scene, original_text_segment="前文")
+        last_panel = TaskPanel(panel_order=2, panel_type=PanelType.scene, original_text_segment="最后一张自拍")
+        last_panel.character_appearances = [
+            TaskPanelCharacterAppearance(
+                reference_order=1,
+                appearance=appearance,
+            )
+        ]
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.extracted_storyboard,
+            image_count_mode=ImageCountMode.auto,
+            use_character_references=True,
+            last_panel_real_photo=True,
+            style_id="style",
+            style_name_snapshot="参考图风格",
+            style_prompt_snapshot="手绘风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.image,
+        )
+        task.panels = [first_panel, last_panel]
+        task.style_reference_images = [
+            TaskStyleReferenceImage(reference_order=1, asset=style_asset),
+        ]
+
+        pack = build_generation_reference_pack(task, last_panel)
+
+        self.assertEqual([], pack.references)
+        self.assertEqual(0, pack.character_reference_count)
+        self.assertEqual(0, pack.style_reference_count)
+        self.assertIn("最后一张真人图片", pack.notes[0])
 
     def test_generation_reference_pack_rejects_missing_task_style_reference_asset(self) -> None:
         panel = TaskPanel(panel_order=1, panel_type=PanelType.scene, original_text_segment="原文")

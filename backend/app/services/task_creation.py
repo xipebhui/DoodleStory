@@ -166,6 +166,7 @@ def create_generation_task_record(
         image_count_mode=payload.image_count_mode,
         requested_image_count=payload.requested_image_count,
         use_character_references=use_character_references,
+        last_panel_real_photo=payload.last_panel_real_photo,
         style_id=style.id,
         style_name_snapshot=style.name,
         style_prompt_snapshot=style.style_prompt,

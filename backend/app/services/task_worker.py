@@ -1626,12 +1626,33 @@ def final_prompt_with_aspect_ratio_prefix(aspect_ratio: str, final_prompt: str) 
     return "\n".join([prefix, "", cleaned_prompt]).strip()
 
 
+def final_prompt_with_real_photo_style(aspect_ratio: str, final_prompt: str) -> str:
+    cleaned_prompt = final_prompt.strip()
+    real_photo_block = "\n".join(
+        [
+            "本张图片启用“最后一张真人图片”模式，必须按真实摄影照片生成。",
+            "画面风格覆盖：真实人物、真实环境、真实光线、真实相机拍摄质感，优先呈现真人自拍、纪实照片或生活照效果。",
+            "不要生成漫画、手绘、绘本、水彩、线稿、二次元、卡通人物、插画纸张质感或漫画分镜质感。",
+            "如果画面描述中出现“照片式构图”“自拍”“合影”“照片”，必须理解为真实照片拍摄，而不是漫画里的照片构图。",
+            "保留当前分镜中的人物身份、动作、场景、道具和所有图片内文字要求；如有文字，仍需放在画面安全区内并保持清晰可读。",
+            "",
+            "最终画面指令：",
+            cleaned_prompt,
+        ]
+    ).strip()
+    return final_prompt_with_aspect_ratio_prefix(aspect_ratio, real_photo_block)
+
+
 def final_prompt_with_explicit_style(
     task: GenerationTask,
     final_prompt: str,
     reference_notes: list[str] | None = None,
+    force_real_photo: bool = False,
 ) -> str:
     cleaned_prompt = final_prompt.strip()
+    if force_real_photo:
+        return final_prompt_with_real_photo_style(task.style_aspect_ratio_snapshot, cleaned_prompt)
+
     style_prompt = task.style_prompt_snapshot
     cleaned_style = (style_prompt or "").strip()
     if not is_prompt_reference_mode(task.style_reference_mode_snapshot):
@@ -1660,6 +1681,15 @@ def final_prompt_with_explicit_style(
         ]
     ).strip()
     return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, styled_prompt)
+
+
+def is_last_panel_real_photo_panel(task: GenerationTask, panel: TaskPanel) -> bool:
+    if not task.last_panel_real_photo:
+        return False
+    panel_orders = [item.panel_order for item in task.panels]
+    if not panel_orders:
+        return False
+    return panel.panel_order == max(panel_orders)
 
 
 def build_original_story_final_prompt(
@@ -1783,6 +1813,14 @@ def build_panel_final_prompt(
 
 
 def build_generation_reference_pack(task: GenerationTask, panel: TaskPanel) -> GenerationReferencePack:
+    if is_last_panel_real_photo_panel(task, panel):
+        return GenerationReferencePack(
+            references=[],
+            notes=["最后一张真人图片：本 panel 不携带漫画风格参考图或人物参考图，按真实摄影照片生成。"],
+            character_reference_count=0,
+            style_reference_count=0,
+        )
+
     if task.use_character_references:
         character_pack = build_panel_reference_pack(panel=panel)
         references = list(character_pack.references)
@@ -1964,6 +2002,11 @@ def compose_final_prompts_for_panels(
     )
     image_text_by_order = {payload["panel_order"]: payload["image_text"] for payload in panel_payloads}
     reference_notes_by_order = {payload["panel_order"]: payload["reference_notes"] for payload in panel_payloads}
+    real_photo_orders = {
+        panel.panel_order
+        for panel in panels
+        if is_last_panel_real_photo_panel(task, panel)
+    }
     prompt_by_order = {}
     for panel in result.panels:
         sanitized_prompt = sanitize_compiled_final_prompt(
@@ -1974,6 +2017,7 @@ def compose_final_prompts_for_panels(
             task,
             sanitized_prompt,
             reference_notes=reference_notes_by_order.get(panel.panel_order),
+            force_real_photo=panel.panel_order in real_photo_orders,
         )
     for panel in result.panels:
         final_prompt = prompt_by_order[panel.panel_order]
