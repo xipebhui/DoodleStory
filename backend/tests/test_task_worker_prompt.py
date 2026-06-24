@@ -325,7 +325,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
         final_prompt = final_prompt_with_explicit_style(task, "第 1 页\n女孩在窗边读书。")
 
-        self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
+        self.assertIn("画面比例：3:4。必须严格按 3:4 宽高比构图和出图", final_prompt)
         self.assertIn("第 1 页\n女孩在窗边读书。", final_prompt)
         self.assertNotIn("这段风格提示词不应拼入最终生图 prompt", final_prompt)
 
@@ -348,7 +348,8 @@ class TaskWorkerPromptTest(unittest.TestCase):
             (
                 "第 9 页（单页 | 画面比例 3:4）\n"
                 "画面并置两个时空的意象。\n"
-                "整体风格：参考图2的极简黑白风格。角色外观参考图1（三叔）。"
+                "整体风格：参考图2的极简黑白风格。角色外观参考图1（三叔）。\n"
+                "整体色调/风格：室内，温暖与疲惫的对比。"
             ),
             reference_notes=[
                 "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
@@ -356,9 +357,13 @@ class TaskWorkerPromptTest(unittest.TestCase):
             ],
         )
 
-        self.assertIn("任务参考：\n角色外观参考图1（三叔）\n风格参考（图2）", final_prompt)
+        self.assertTrue(final_prompt.startswith("任务参考（最高优先级，必须优先执行）："))
+        self.assertIn("角色外观参考图1（三叔）\n风格参考（图2）", final_prompt)
+        self.assertIn("以上参考图已随请求传入", final_prompt)
+        self.assertIn("不要把夜景、昏暗、室内、温暖、厨房等剧情氛围词", final_prompt)
         self.assertNotIn("参考图2的极简黑白风格", final_prompt)
         self.assertNotIn("整体风格：", final_prompt)
+        self.assertNotIn("整体色调/风格：", final_prompt)
         self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
 
     def test_task_reference_block_normalizes_reference_notes(self) -> None:
@@ -370,10 +375,13 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
 
         self.assertEqual(["角色外观参考图1（三叔）", "风格参考（图2）"], lines)
-        self.assertEqual("任务参考：\n角色外观参考图1（三叔）\n风格参考（图2）", task_reference_block([
+        reference_block = task_reference_block([
             "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
             "风格参考（参考图2）",
-        ]))
+        ])
+        self.assertIsNotNone(reference_block)
+        self.assertIn("任务参考（最高优先级，必须优先执行）：", reference_block)
+        self.assertIn("角色外观参考图1（三叔）\n风格参考（图2）", reference_block)
 
     def test_sanitize_compiled_final_prompt_removes_text_type_labels(self) -> None:
         final_prompt = sanitize_compiled_final_prompt(

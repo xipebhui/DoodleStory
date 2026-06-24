@@ -1554,14 +1554,21 @@ def task_reference_block(reference_notes: list[str] | None) -> str | None:
     lines = normalized_task_reference_lines(reference_notes)
     if not lines:
         return None
-    return "\n".join(["任务参考：", *lines])
+    return "\n".join(
+        [
+            "任务参考（最高优先级，必须优先执行）：",
+            *lines,
+            "以上参考图已随请求传入；画风、线条、色彩和背景质感必须以风格参考图为准。",
+            "不要把夜景、昏暗、室内、温暖、厨房等剧情氛围词转译成大面积黑色、黄色或其他独立背景色。",
+        ]
+    )
 
 
 def remove_image_mode_reference_summary_lines(final_prompt: str) -> str:
     kept_lines: list[str] = []
     for raw_line in final_prompt.splitlines():
         stripped = raw_line.strip()
-        if re.match(r"^(整体风格|整体色调/风格|整体色调|风格)[：:].*参考图\s*\d+", stripped):
+        if re.match(r"^(整体风格|整体色调/风格|整体色调|风格)[：:]", stripped):
             continue
         kept_lines.append(raw_line)
     return "\n".join(kept_lines).strip()
@@ -1606,7 +1613,8 @@ def final_prompt_with_explicit_style(
             cleaned_prompt = remove_image_mode_reference_summary_lines(cleaned_prompt)
             reference_block = task_reference_block(reference_notes)
             if reference_block:
-                cleaned_prompt = "\n\n".join([cleaned_prompt, reference_block]).strip()
+                prompt_with_ratio = final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
+                return "\n\n".join([reference_block, prompt_with_ratio]).strip()
         return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
     styled_prompt = "\n".join(
         [
