@@ -6,6 +6,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_LIO_MODEL = "gemini-3.1-flash-lite-preview-thinking-minimal"
 
 
 class Settings(BaseSettings):
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     siliconflow_model: str = ""
     siliconflow_temperature: float = 0.8
+    lio_api_key: str = ""
+    lio_base_url: str = ""
+    lio_model: str = DEFAULT_LIO_MODEL
+    lio_temperature: float = 0.8
     character_extraction_model: str = "deepseek-ai/DeepSeek-V3.2"
     character_extraction_temperature: float = 0.1
     prompt_trace_log_max_chars: int = 60000
@@ -101,6 +106,13 @@ class Settings(BaseSettings):
             for email in self.admin_emails.split(",")
             if email.strip()
         }
+
+    @property
+    def lio_openai_base_url(self) -> str:
+        base_url = self.lio_base_url.strip().rstrip("/")
+        if base_url and not base_url.endswith("/v1"):
+            return f"{base_url}/v1"
+        return base_url
 
 
 @lru_cache

@@ -10,7 +10,7 @@ class StorySegmentationTest(unittest.TestCase):
     def test_original_story_segmentation_uses_llm_and_keeps_semantic_chunks(self) -> None:
         original_text = "我三叔特别的喜欢我是有原因的\n他有时候工地夜班干完活回来"
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={
                 "panels": [
                     {"panel_order": 1, "text": "我三叔特别的喜欢我是有原因的\n"},
@@ -28,10 +28,13 @@ class StorySegmentationTest(unittest.TestCase):
         self.assertEqual(0.2, call_json.call_args.kwargs["temperature"])
         user_payload = json.loads(call_json.call_args.kwargs["user_prompt"])
         self.assertEqual(50, user_payload["max_panel_text_chars"])
-        self.assertEqual({"min": 30, "max": 50}, user_payload["target_panel_text_chars"])
+        self.assertEqual(40, user_payload["generation_panel_text_max_chars"])
+        self.assertEqual({"min": 30, "max": 40}, user_payload["target_panel_text_chars"])
+        self.assertIn("空格", user_payload["character_count_rule"])
         self.assertIn("自动判断", user_payload["count_instruction"])
         self.assertIn("首要目标是画面单元、情绪转折和叙事节奏自然", call_json.call_args.kwargs["system_prompt"])
-        self.assertIn("不要为了凑到 30-50 字", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("不要为了凑到 30-40 字", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("任何一段都不能超过 50 字硬上限", call_json.call_args.kwargs["system_prompt"])
         self.assertIn("煮了一碗面", call_json.call_args.kwargs["system_prompt"])
         self.assertEqual(
             ["我三叔特别的喜欢我是有原因的\n", "他有时候工地夜班干完活回来"],
@@ -41,7 +44,7 @@ class StorySegmentationTest(unittest.TestCase):
 
     def test_fixed_original_story_segmentation_requires_requested_count(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={
                 "panels": [
                     {"panel_order": 1, "text": "我问他吃饭了没有"},
@@ -62,7 +65,7 @@ class StorySegmentationTest(unittest.TestCase):
     def test_original_story_segmentation_rejects_overlong_panel_text(self) -> None:
         overlong_text = "一" * 51
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={"panels": [{"panel_order": 1, "text": overlong_text}]},
         ):
             with self.assertRaisesRegex(LLMResponseError, "超过 50 字"):
@@ -74,7 +77,7 @@ class StorySegmentationTest(unittest.TestCase):
 
     def test_original_story_segmentation_allows_light_punctuation_normalization(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={"panels": [{"panel_order": 1, "text": "我问他吃饭了没有。"}]},
         ):
             result = segment_story(
@@ -95,7 +98,7 @@ class StorySegmentationTest(unittest.TestCase):
             "我站在凳子上给他煮了一碗面还放了好多的鸡蛋"
         )
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             side_effect=[
                 {
                     "panels": [
@@ -135,7 +138,7 @@ class StorySegmentationTest(unittest.TestCase):
         )
 
     def test_fixed_count_fails_before_llm_when_max_length_is_impossible(self) -> None:
-        with patch("app.services.llm.call_siliconflow_json") as call_json:
+        with patch("app.services.llm.call_lio_json") as call_json:
             with self.assertRaisesRegex(LLMConfigError, "固定图片数量过少"):
                 segment_story(
                     original_text="一" * 101,
