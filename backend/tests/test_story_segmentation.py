@@ -32,10 +32,9 @@ class StorySegmentationTest(unittest.TestCase):
         self.assertEqual({"min": 30, "max": 40}, user_payload["target_panel_text_chars"])
         self.assertIn("空格", user_payload["character_count_rule"])
         self.assertIn("自动判断", user_payload["count_instruction"])
-        self.assertIn("首要目标是画面单元、情绪转折和叙事节奏自然", call_json.call_args.kwargs["system_prompt"])
-        self.assertIn("不要为了凑到 30-40 字", call_json.call_args.kwargs["system_prompt"])
-        self.assertIn("任何一段都不能超过 50 字硬上限", call_json.call_args.kwargs["system_prompt"])
-        self.assertIn("煮了一碗面", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("专业的分镜设计师", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("保留用户原文不变", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("长度控制在 30 个字左右", call_json.call_args.kwargs["system_prompt"])
         self.assertEqual(
             ["我三叔特别的喜欢我是有原因的\n", "他有时候工地夜班干完活回来"],
             [panel.text for panel in result.panels],
