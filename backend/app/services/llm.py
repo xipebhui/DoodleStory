@@ -18,6 +18,7 @@ FINAL_IMAGE_PROMPT_MAX_ATTEMPTS = 3
 ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS = 50
 ORIGINAL_STORY_PANEL_TEXT_TARGET_MIN_CHARS = 30
 ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS = 40
+ORIGINAL_STORY_OVERLONG_REPAIR_MAX_ATTEMPTS = 2
 
 
 class LLMProviderError(Exception):
@@ -638,10 +639,9 @@ def segment_story(
         if len(cleaned_original_text) > requested_count * ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS:
             raise LLMConfigError("固定图片数量过少，无法保证每个 panel 原文不超过 50 字")
 
-    count_instruction = (
-        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels。"
-        if image_count_mode == ImageCountMode.fixed
-        else "图片数量：自动判断。请按语义和阅读节奏自然切分 panels。"
+    count_instruction = story_segmentation_count_instruction(
+        image_count_mode=image_count_mode,
+        requested_image_count=requested_image_count,
     )
     user_prompt = json.dumps(
         {
@@ -665,10 +665,12 @@ def segment_story(
         temperature=0.2,
     )
     result = parse_story_segmentation_result(raw, trace_context=trace_context)
-    validate_story_segmentation_result(
+    result = validate_and_repair_story_segmentation_result(
         result,
+        original_text=cleaned_original_text,
         image_count_mode=image_count_mode,
         requested_image_count=requested_image_count,
+        trace_context=trace_context,
     )
     if image_count_mode == ImageCountMode.auto and should_refine_fragmented_story_segments(result.panels):
         result = refine_fragmented_story_segments(
@@ -676,10 +678,12 @@ def segment_story(
             initial_result=result,
             trace_context=trace_context,
         )
-        validate_story_segmentation_result(
+        result = validate_and_repair_story_segmentation_result(
             result,
+            original_text=cleaned_original_text,
             image_count_mode=image_count_mode,
             requested_image_count=requested_image_count,
+            trace_context=trace_context,
         )
     logger.info(
         "story segmentation succeeded via llm image_count_mode=%s requested_image_count=%s panel_count=%s",
@@ -722,12 +726,56 @@ def validate_story_segmentation_result(
     image_count_mode: ImageCountMode,
     requested_image_count: int | None,
 ) -> None:
+    validate_story_segmentation_shape(
+        result,
+        image_count_mode=image_count_mode,
+        requested_image_count=requested_image_count,
+    )
+    ensure_original_story_panel_text_lengths(result.panels)
+
+
+def validate_story_segmentation_shape(
+    result: StorySegmentationResult,
+    *,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+) -> None:
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
     for panel in result.panels:
         panel.panel_type = PanelType.scene
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
         raise LLMResponseError("LLM 完整故事语义切分数量与用户指定图片数量不一致")
-    ensure_original_story_panel_text_lengths(result.panels)
+
+
+def validate_and_repair_story_segmentation_result(
+    result: StorySegmentationResult,
+    *,
+    original_text: str,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+    trace_context: dict[str, Any] | None,
+) -> StorySegmentationResult:
+    validate_story_segmentation_shape(
+        result,
+        image_count_mode=image_count_mode,
+        requested_image_count=requested_image_count,
+    )
+    if not find_overlong_story_panels(result.panels):
+        return result
+
+    repaired_result = repair_overlong_story_segments(
+        original_text=original_text,
+        initial_result=result,
+        image_count_mode=image_count_mode,
+        requested_image_count=requested_image_count,
+        trace_context=trace_context,
+    )
+    validate_story_segmentation_result(
+        repaired_result,
+        image_count_mode=image_count_mode,
+        requested_image_count=requested_image_count,
+    )
+    return repaired_result
 
 
 def should_refine_fragmented_story_segments(panels: list[StorySegment]) -> bool:
@@ -772,6 +820,89 @@ def refine_fragmented_story_segments(
         temperature=0.2,
     )
     return parse_story_segmentation_result(raw, trace_context=trace_context)
+
+
+def repair_overlong_story_segments(
+    *,
+    original_text: str,
+    initial_result: StorySegmentationResult,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+    trace_context: dict[str, Any] | None,
+) -> StorySegmentationResult:
+    result = initial_result
+    for attempt in range(1, ORIGINAL_STORY_OVERLONG_REPAIR_MAX_ATTEMPTS + 1):
+        validate_story_segmentation_shape(
+            result,
+            image_count_mode=image_count_mode,
+            requested_image_count=requested_image_count,
+        )
+        overlong_panels = find_overlong_story_panels(result.panels)
+        if not overlong_panels:
+            return result
+
+        log_prompt_trace(
+            logger,
+            "original_story_segmentation_overlong_repair_requested",
+            context=trace_context or {},
+            attempt=attempt,
+            overlong_panel_orders=[panel.panel_order for panel in overlong_panels],
+            overlong_panel_lengths=[len(panel.text) for panel in overlong_panels],
+            max_panel_text_chars=ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS,
+        )
+        user_prompt = json.dumps(
+            {
+                "retry_instruction": (
+                    "上一次完整故事语义切分有 panel 原文超过后端 50 字硬上限。"
+                    "请只围绕超长 panel 做重新拆分或重新分配，保留原有事件顺序和句意，"
+                    "不要总结、扩写或改写人物关系。每个 panel 的生成目标上限是 40 字，"
+                    "最终绝对不能超过 50 字。"
+                ),
+                "count_instruction": story_segmentation_count_instruction(
+                    image_count_mode=image_count_mode,
+                    requested_image_count=requested_image_count,
+                ),
+                "max_panel_text_chars": ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS,
+                "generation_panel_text_max_chars": ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS,
+                "character_count_rule": "按后端 len(text) 口径计数：中文、英文、数字、空格、换行和所有标点符号都算 1 个字符。",
+                "target_panel_text_chars": {
+                    "min": ORIGINAL_STORY_PANEL_TEXT_TARGET_MIN_CHARS,
+                    "max": ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS,
+                },
+                "original_text": original_text,
+                "current_panels": [panel.model_dump() for panel in result.panels],
+                "overlong_panels": [
+                    {
+                        "panel_order": panel.panel_order,
+                        "text": panel.text,
+                        "char_count": len(panel.text),
+                    }
+                    for panel in overlong_panels
+                ],
+                "repair_attempt": attempt,
+            },
+            ensure_ascii=False,
+        )
+        raw = call_lio_json(
+            system_prompt=read_prompt("segment_story_v1.md"),
+            user_prompt=user_prompt,
+            prompt_name="segment_story_v1.md",
+            trace_context={**(trace_context or {}), "operation": "segment_story_repair_overlong"},
+            temperature=0.2,
+        )
+        result = parse_story_segmentation_result(raw, trace_context=trace_context)
+
+    return result
+
+
+def story_segmentation_count_instruction(
+    *,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+) -> str:
+    if image_count_mode == ImageCountMode.fixed:
+        return f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels。"
+    return "图片数量：自动判断。请按语义和阅读节奏自然切分 panels；为了满足 50 字硬上限，可以增加 panel 数量。"
 
 
 def split_original_story(
@@ -928,13 +1059,17 @@ def ensure_original_text_coverage(original_text: str, panels: list[StorySegment]
 
 
 def ensure_original_story_panel_text_lengths(panels: list[StorySegment]) -> None:
-    overlong_orders = [
-        panel.panel_order
+    overlong_orders = [panel.panel_order for panel in find_overlong_story_panels(panels)]
+    if overlong_orders:
+        raise LLMResponseError("完整故事语义切分结果存在超过 50 字的 panel 原文")
+
+
+def find_overlong_story_panels(panels: list[StorySegment]) -> list[StorySegment]:
+    return [
+        panel
         for panel in panels
         if len(panel.text) > ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS
     ]
-    if overlong_orders:
-        raise LLMResponseError("完整故事语义切分结果存在超过 50 字的 panel 原文")
 
 
 def adapt_story_for_douyin(*, original_text: str, trace_context: dict[str, Any] | None = None) -> AdaptedStoryResult:

@@ -67,13 +67,44 @@ class StorySegmentationTest(unittest.TestCase):
         with patch(
             "app.services.llm.call_lio_json",
             return_value={"panels": [{"panel_order": 1, "text": overlong_text}]},
-        ):
+        ) as call_json:
             with self.assertRaisesRegex(LLMResponseError, "超过 50 字"):
                 segment_story(
                     original_text=overlong_text,
                     image_count_mode=ImageCountMode.auto,
                     requested_image_count=None,
                 )
+
+        self.assertEqual(3, call_json.call_count)
+
+    def test_original_story_segmentation_repairs_overlong_panel_text(self) -> None:
+        overlong_text = "一" * 51
+        with patch(
+            "app.services.llm.call_lio_json",
+            side_effect=[
+                {"panels": [{"panel_order": 1, "text": overlong_text}]},
+                {
+                    "panels": [
+                        {"panel_order": 1, "text": "一" * 30},
+                        {"panel_order": 2, "text": "一" * 21},
+                    ]
+                },
+            ],
+        ) as call_json:
+            result = segment_story(
+                original_text=overlong_text,
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+        self.assertEqual(2, call_json.call_count)
+        repair_call = call_json.call_args_list[1]
+        repair_payload = json.loads(repair_call.kwargs["user_prompt"])
+        self.assertIn("超过后端 50 字硬上限", repair_payload["retry_instruction"])
+        self.assertIn("可以增加 panel 数量", repair_payload["count_instruction"])
+        self.assertEqual([{"panel_order": 1, "text": overlong_text, "char_count": 51}], repair_payload["overlong_panels"])
+        self.assertEqual("segment_story_repair_overlong", repair_call.kwargs["trace_context"]["operation"])
+        self.assertEqual([30, 21], [len(panel.text) for panel in result.panels])
 
     def test_original_story_segmentation_allows_light_punctuation_normalization(self) -> None:
         with patch(
