@@ -1,6 +1,7 @@
 import hashlib
 import mimetypes
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
@@ -13,6 +14,17 @@ from app.core.config import get_settings
 from app.models.enums import StorageBackend
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+IMAGE_FORMAT_CONTENT_TYPES = {
+    "PNG": "image/png",
+    "JPEG": "image/jpeg",
+    "WEBP": "image/webp",
+}
+IMAGE_TYPE_SUFFIXES = {
+    "image/png": {".png"},
+    "image/jpeg": {".jpg", ".jpeg"},
+    "image/webp": {".webp"},
+}
 ASSET_URL_VARIANT_ORIGINAL = "original"
 ASSET_URL_VARIANT_THUMBNAIL = "thumbnail"
 
@@ -61,6 +73,39 @@ def image_suffix_for_content_type(content_type: str) -> str:
     if clean_content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="仅支持 PNG、JPEG 或 WebP 图片")
     return mimetypes.guess_extension(clean_content_type) or ".png"
+
+
+async def read_upload_image_content(file: UploadFile) -> bytes:
+    content = await file.read(IMAGE_UPLOAD_MAX_BYTES + 1)
+    if len(content) > IMAGE_UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="图片不能超过 10MB")
+    return content
+
+
+def detect_verified_image_content_type(content: bytes, declared_content_type: str | None = None) -> str:
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件内容不能为空")
+    try:
+        with Image.open(BytesIO(content)) as image:
+            image.verify()
+            detected = IMAGE_FORMAT_CONTENT_TYPES.get((image.format or "").upper())
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件不是有效图片") from exc
+
+    if detected not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="仅支持 PNG、JPEG 或 WebP 图片")
+
+    declared = (declared_content_type or "").split(";", 1)[0].strip().lower()
+    if declared in ALLOWED_IMAGE_TYPES and declared != detected:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="图片内容与文件类型不一致")
+    return detected
+
+
+def image_suffix_for_upload(filename: str | None, content_type: str) -> str:
+    original_suffix = Path(filename or "").suffix.lower()
+    if original_suffix in IMAGE_TYPE_SUFFIXES.get(content_type, set()):
+        return original_suffix
+    return image_suffix_for_content_type(content_type)
 
 
 def safe_storage_key(purpose: str, suffix: str) -> str:
@@ -158,11 +203,9 @@ def store_local_content(purpose: str, content: bytes, suffix: str) -> StoredFile
 
 
 async def save_upload_file(purpose: str, file: UploadFile) -> StoredFile:
-    suffix = image_suffix_for_content_type(file.content_type or "")
-    original_suffix = Path(file.filename or "").suffix.lower()
-    if original_suffix in {".png", ".jpg", ".jpeg", ".webp"}:
-        suffix = original_suffix
-    content = await file.read()
+    content = await read_upload_image_content(file)
+    content_type = detect_verified_image_content_type(content, file.content_type)
+    suffix = image_suffix_for_upload(file.filename, content_type)
     return store_content(purpose, content, suffix)
 
 

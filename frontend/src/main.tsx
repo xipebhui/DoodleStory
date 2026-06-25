@@ -3423,6 +3423,8 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   const [pendingReferenceFiles, setPendingReferenceFiles] = useState<File[]>([]);
   const [savingStyle, setSavingStyle] = useState(false);
   const [styleSavePhase, setStyleSavePhase] = useState("");
+  const [uploadingStyleReferences, setUploadingStyleReferences] = useState(false);
+  const [styleUploadPhase, setStyleUploadPhase] = useState("");
   const [stylePage, setStylePage] = useState<"library" | "test">("library");
   const [testingStyleId, setTestingStyleId] = useState("");
   const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
@@ -3433,6 +3435,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
     () => styles.find((style) => style.id === testingStyleId) ?? styles[0] ?? null,
     [testingStyleId, styles],
   );
+  const styleBusy = savingStyle || uploadingStyleReferences;
 
   useEffect(() => {
     refresh();
@@ -3455,6 +3458,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   }
 
   function startCreate() {
+    if (styleBusy) return;
     setStyleFormMode("create");
     setEditingStyleId("");
     setPendingReferenceFiles([]);
@@ -3463,11 +3467,20 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   }
 
   function startEdit(style: Style) {
+    if (styleBusy) return;
     setEditingStyleId(style.id);
     setStyleFormMode("edit");
     setPendingReferenceFiles([]);
     setMessage("");
     setStyleDrawerOpen(true);
+  }
+
+  function closeStyleDrawer() {
+    if (styleBusy) {
+      setMessage(styleSavePhase || styleUploadPhase || "正在保存或上传参考图，请等待完成");
+      return;
+    }
+    setStyleDrawerOpen(false);
   }
 
   function openStyleTest(style: Style) {
@@ -3538,6 +3551,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   }
 
   async function deleteStyle(style: Style) {
+    if (styleBusy) return;
     if (!window.confirm(`删除风格「${style.name}」？历史任务会保留已保存的风格快照。`)) {
       return;
     }
@@ -3557,6 +3571,10 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   }
 
   async function uploadReferences(event: React.ChangeEvent<HTMLInputElement>) {
+    if (styleBusy) {
+      event.currentTarget.value = "";
+      return;
+    }
     if (styleFormMode === "create") {
       setPendingReferenceFiles(Array.from(event.target.files ?? []));
       event.target.value = "";
@@ -3565,19 +3583,32 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
     if (!editingStyle || !event.target.files?.length) {
       return;
     }
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    if (files.length === 0) {
+      input.value = "";
+      return;
+    }
     try {
-      for (const file of Array.from(event.target.files)) {
+      setUploadingStyleReferences(true);
+      setMessage("");
+      for (const [index, file] of files.entries()) {
+        setStyleUploadPhase(`正在上传参考图 ${index + 1}/${files.length}...`);
         await api.uploadStyleReferenceImage(editingStyle.id, file);
       }
-      setMessage("参考图已上传");
-      event.target.value = "";
+      setMessage(files.length > 1 ? `已上传 ${files.length} 张参考图` : "参考图已上传");
       await refresh(editingStyle.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "上传失败");
+    } finally {
+      setUploadingStyleReferences(false);
+      setStyleUploadPhase("");
+      input.value = "";
     }
   }
 
   async function deleteReference(referenceId: string) {
+    if (styleBusy) return;
     if (!editingStyle) return;
     try {
       await api.deleteStyleReferenceImage(editingStyle.id, referenceId);
@@ -3752,14 +3783,14 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
       </div>
 
       {styleDrawerOpen ? (
-        <div className="drawer-backdrop" role="presentation" onMouseDown={() => setStyleDrawerOpen(false)}>
+        <div className="drawer-backdrop" role="presentation" onMouseDown={closeStyleDrawer}>
           <aside className="task-create-drawer style-form-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
             <div className="drawer-head">
               <div>
                 <h2>{styleFormMode === "edit" && formStyle ? "编辑风格" : "新建风格"}</h2>
                 <p>{styleFormMode === "edit" && formStyle ? formStyle.name : "创建一个可复用的生图风格资产"}</p>
               </div>
-              <button className="icon-button" type="button" onClick={() => setStyleDrawerOpen(false)} aria-label="关闭">
+              <button className="icon-button" type="button" onClick={closeStyleDrawer} disabled={styleBusy} aria-label="关闭">
                 <X size={18} />
               </button>
             </div>
@@ -3770,7 +3801,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
                 <p>选择 Prompt 或参考图作为正式生图的风格参考来源。</p>
               </div>
               {styleFormMode === "edit" && formStyle ? (
-                <button type="button" className="danger-button" onClick={() => deleteStyle(formStyle)}>
+                <button type="button" className="danger-button" onClick={() => deleteStyle(formStyle)} disabled={styleBusy}>
                   <Trash2 size={16} />
                 </button>
               ) : null}
@@ -3825,7 +3856,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
             <textarea name="description" placeholder="描述" defaultValue={formStyle?.description ?? ""} />
             <textarea name="style_prompt" placeholder="风格提示词" defaultValue={formStyle?.style_prompt ?? ""} required />
             {message ? <p className="form-message">{message}</p> : null}
-            <button type="submit" disabled={savingStyle}>
+            <button type="submit" disabled={styleBusy}>
               {savingStyle ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
               {savingStyle ? styleSavePhase || "保存中..." : styleFormMode === "edit" ? "保存风格" : "创建风格"}
             </button>
@@ -3838,27 +3869,28 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
                   <p>{formStyle ? "当参考方式为参考图参考时，这些图片会作为生图模型输入。" : "创建时选择的参考图会在风格创建成功后自动上传。"}</p>
                 </div>
                 {formStyle ? (
-                  <label className="upload-button">
-                    <Upload size={16} />
-                    上传
-                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} />
+                  <label className={`upload-button ${styleBusy ? "disabled" : ""}`}>
+                    {uploadingStyleReferences ? <Loader2 size={16} className="spin" /> : <Upload size={16} />}
+                    {uploadingStyleReferences ? "上传中" : "上传"}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} disabled={styleBusy} />
                   </label>
                 ) : null}
               </div>
+              {styleUploadPhase ? <p className="form-message">{styleUploadPhase}</p> : null}
               <div className="reference-grid">
                 {!formStyle ? (
                   <label className={`reference-dropzone ${pendingReferenceFiles.length > 0 ? "has-files" : ""}`}>
                     <Upload size={22} />
                     <strong>{pendingReferenceFiles.length > 0 ? `已选择 ${pendingReferenceFiles.length} 张参考图` : "点击这里上传参考图"}</strong>
                     <span>{pendingReferenceFiles.length > 0 ? pendingReferenceNames : "支持 PNG、JPEG、WebP，可多选"}</span>
-                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} />
+                    <input type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={uploadReferences} disabled={styleBusy} />
                   </label>
                 ) : null}
                 {formStyle && formStyle.reference_images.length === 0 ? <div className="empty mini">暂无参考图</div> : null}
                 {formStyle?.reference_images.map((reference) => (
                   <figure key={reference.id} className="reference-item">
                     <LazyAssetImage asset={reference.asset} assetId={reference.asset.id} alt={reference.asset.original_filename ?? "参考图"} />
-                    <button type="button" onClick={() => deleteReference(reference.id)}>
+                    <button type="button" onClick={() => deleteReference(reference.id)} disabled={styleBusy}>
                       <Trash2 size={14} />
                     </button>
                   </figure>
