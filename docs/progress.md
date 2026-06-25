@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- 修复 xgapi 生图模型被系统默认值覆盖的问题：本地任务 `e26daf4fb3dd406eb60f6b0c3dd75f83` 的风格模型快照是 `gpt-image-2`，但本地 `IMAGE_PROVIDER=xgapi` 时，旧代码会读取 `Settings.xg_image_model` 的默认值 `gemini-3.1-flash-image-preview` 并覆盖任务风格模型，导致请求发到 `api.xgapi.top` 时使用的不是用户在风格里选择的模型。现已移除 `xg_image_model` 配置和 `XG_IMAGE_MODEL` 覆盖语义，xgapi adapter 的请求体 `model` 必须直接来自任务/风格模型快照；如果任务模型为空，直接明确报错，不使用系统兜底模型。
 - 收紧完整故事 chunk 长度提示：针对 `e26daf4fb3dd406eb60f6b0c3dd75f83` 里模型把 51/57 字 panel 返回给后端的问题，切分 prompt 不再把生成目标写成 30-50，而是改为 `generation_panel_text_max_chars=40`、`target_panel_text_chars={"min":30,"max":40}`，同时继续传入 `max_panel_text_chars=50` 作为后端硬校验上限；prompt 明确中文、英文、数字、空格、换行和所有标点符号都按 1 个字符计数，让模型为符号长度留出安全余量。后端 50 字硬校验不放宽，也不新增本地确定性兜底切割。
 - 调整完整故事 chunk 模型路由：本地任务 `e26daf4fb3dd406eb60f6b0c3dd75f83` 在完整故事语义切分阶段报 `完整故事语义切分结果存在超过 50 字的 panel 原文`，原因是 LLM 返回的某个 panel 文本超过后端 50 字硬上限，后端按规则明确失败。现已新增 LIO OpenAI 兼容文本配置，并把完整故事 `segment_story` 首轮切分和碎片化二次合并从默认 SiliconFlow/DeepSeek JSON 调用切到 LIO/Google 模型；角色提取、故事方案规划、最终生图 prompt 编译等其他 LLM 链路保持不变。本次不新增静默兜底，也不放宽 50 字硬校验。
 - 完成 Sprint 71 最后一张真人照片风格开关：创建任务弹窗新增默认不勾选的 `最后一张真人图片` 选项，任务 API、内容提取复刻任务和任务响应均保存并返回 `last_panel_real_photo`。用户勾选后，仅最后一个 panel 按真实摄影/真人自拍/生活照质感生成；该 panel 不携带漫画风格参考图或人物参考图，不拼接全局漫画风格提示词，最终 prompt 明确要求真实人物、真实环境、真实光线和真实相机拍摄质感，并禁止漫画、手绘、绘本、水彩、线稿、二次元、卡通或插画纸张质感。非最后一个 panel 继续使用原任务风格和人物参考链路。

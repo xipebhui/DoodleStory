@@ -19,7 +19,6 @@ def image_provider_settings(provider: str) -> SimpleNamespace:
         image_gateway_base_url="https://qy.example.com/v1",
         xg_api_key="xg-key",
         xg_base_url="https://api.xgapi.top",
-        xg_image_model="gemini-3.1-flash-image-preview",
         xg_image_quality="1k",
         xg_request_max_attempts=1,
         image_provider_timeout_retry_attempts=0,
@@ -180,7 +179,7 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
                 aspect_ratio="3:4",
             )
 
-    def test_xgapi_generation_payload_uses_env_model(self) -> None:
+    def test_xgapi_generation_payload_uses_task_style_model(self) -> None:
         with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")):
             payload = build_xgapi_generation_payload(
                 prompt="画一张连续漫画分镜",
@@ -188,10 +187,19 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
                 aspect_ratio="3:4",
             )
 
-        self.assertEqual("gemini-3.1-flash-image-preview", payload["model"])
+        self.assertEqual("gpt-image-2", payload["model"])
         self.assertEqual("3:4", payload["aspect_ratio"])
         self.assertEqual("1k", payload["quality"])
         self.assertEqual("url", payload["response_format"])
+
+    def test_xgapi_generation_payload_rejects_empty_style_model(self) -> None:
+        with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")):
+            with self.assertRaisesRegex(ImageProviderConfigError, "生图模型未配置"):
+                build_xgapi_generation_payload(
+                    prompt="画一张连续漫画分镜",
+                    image_model_name="",
+                    aspect_ratio="3:4",
+                )
 
     def test_xgapi_reference_images_use_json_image_url_array(self) -> None:
         FakeSession.calls = []
@@ -217,7 +225,7 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         self.assertEqual("xg-request", request_id)
         endpoint, kwargs = FakeSession.calls[0]
         self.assertEqual("https://api.xgapi.top/v1/images/edits", endpoint)
-        self.assertEqual("gemini-3.1-flash-image-preview", kwargs["json"]["model"])
+        self.assertEqual("gpt-image-2", kwargs["json"]["model"])
         self.assertEqual(
             ["https://cdn.example.com/first.png", "https://cdn.example.com/second.png"],
             kwargs["json"]["image"],
@@ -243,7 +251,7 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
 
         endpoint, kwargs = FakeSession.calls[0]
         self.assertEqual("https://api.xgapi.top/v1/images/generations", endpoint)
-        self.assertEqual("gemini-3.1-flash-image-preview", kwargs["json"]["model"])
+        self.assertEqual("gpt-image-2", kwargs["json"]["model"])
         self.assertNotIn("files", kwargs)
 
 

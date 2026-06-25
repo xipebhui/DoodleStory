@@ -11,7 +11,6 @@ SILICONFLOW_API_KEY=
 SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
 XG_API_KEY=
 XG_API_BASE_URL=https://api.xgapi.top
-XG_IMAGE_MODEL=gpt-image-2
 XG_IMAGE_ASPECT_RATIO=9:16
 ```
 

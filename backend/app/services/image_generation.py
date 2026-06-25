@@ -459,8 +459,10 @@ def xgapi_endpoint(base_url: str, path: str) -> str:
 
 
 def xgapi_model_name(image_model_name: str) -> str:
-    configured = get_settings().xg_image_model.strip()
-    return configured or image_model_name.strip()
+    model_name = image_model_name.strip()
+    if not model_name:
+        raise ImageProviderConfigError("生图模型未配置，不能调用 xgapi")
+    return model_name
 
 
 def build_xgapi_generation_payload(

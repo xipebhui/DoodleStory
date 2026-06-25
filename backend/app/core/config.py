@@ -47,7 +47,6 @@ class Settings(BaseSettings):
     image_gateway_base_url: str = "http://192.129.209.36:3001/v1"
     xg_api_key: str = ""
     xg_base_url: str = "https://api.xgapi.top"
-    xg_image_model: str = "gemini-3.1-flash-image-preview"
     xg_image_quality: str = "1k"
     apexerapi_api_key: str = ""
     apexerapi_base: str = ""
