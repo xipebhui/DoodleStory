@@ -7,6 +7,7 @@ from app.services.image_generation import (
     ImageProviderConfigError,
     ImageProviderResponseError,
     build_image_gateway_generation_payload,
+    build_xgapi_edit_payload,
     build_xgapi_generation_payload,
     request_xg_image,
 )
@@ -201,11 +202,17 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
                     aspect_ratio="3:4",
                 )
 
-    def test_xgapi_reference_images_use_json_image_url_array(self) -> None:
+    def test_xgapi_reference_images_use_multipart_files(self) -> None:
         FakeSession.calls = []
         with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")), patch(
             "app.services.image_generation.requests.Session",
             side_effect=FakeSession,
+        ), patch(
+            "app.services.image_generation.download_generated_image",
+            side_effect=[
+                (b"\x89PNG\r\n\x1a\nfirst", "image/png"),
+                (b"\xff\xd8\xffsecond", "image/jpeg"),
+            ],
         ), patch(
             "app.services.image_generation.read_image_gateway_generation_result",
             return_value=(b"\x89PNG\r\n\x1a\nimage", "image/png", "xg-request"),
@@ -225,13 +232,28 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         self.assertEqual("xg-request", request_id)
         endpoint, kwargs = FakeSession.calls[0]
         self.assertEqual("https://api.xgapi.top/v1/images/edits", endpoint)
-        self.assertEqual("gpt-image-2", kwargs["json"]["model"])
-        self.assertEqual(
-            ["https://cdn.example.com/first.png", "https://cdn.example.com/second.png"],
-            kwargs["json"]["image"],
-        )
-        self.assertEqual("application/json", kwargs["headers"]["Content-Type"])
-        self.assertNotIn("files", kwargs)
+        self.assertEqual("gpt-image-2", kwargs["data"]["model"])
+        self.assertEqual("high", kwargs["data"]["quality"])
+        self.assertEqual("url", kwargs["data"]["response_format"])
+        self.assertNotIn("Content-Type", kwargs["headers"])
+        self.assertNotIn("json", kwargs)
+        self.assertEqual(["image", "image"], [item[0] for item in kwargs["files"]])
+        self.assertEqual("reference-1.png", kwargs["files"][0][1][0])
+        self.assertEqual("reference-2.jpg", kwargs["files"][1][1][0])
+
+    def test_xgapi_edit_payload_translates_generation_quality_to_edit_quality(self) -> None:
+        with patch("app.services.image_generation.get_settings", return_value=image_provider_settings("xgapi")):
+            payload = build_xgapi_edit_payload(
+                prompt="画一张连续漫画分镜",
+                reference_urls=["https://cdn.example.com/reference.png"],
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+            )
+
+        self.assertEqual("gpt-image-2", payload["model"])
+        self.assertEqual("3:4", payload["aspect_ratio"])
+        self.assertEqual("high", payload["quality"])
+        self.assertNotIn("image", payload)
 
     def test_xgapi_without_reference_uses_generation_json(self) -> None:
         FakeSession.calls = []

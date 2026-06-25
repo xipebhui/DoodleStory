@@ -477,6 +477,17 @@ def build_xgapi_generation_payload(
     }
 
 
+def xgapi_edit_quality() -> str:
+    configured = (get_settings().xg_image_quality or "").strip().lower()
+    if not configured:
+        return "high"
+    if configured in {"auto", "low", "medium", "high"}:
+        return configured
+    if configured in {"1k", "2k", "4k"}:
+        return "high"
+    raise ImageProviderConfigError("XG_IMAGE_QUALITY 在 xgapi 图像编辑接口中只支持 auto、low、medium、high 或 1k/2k/4k")
+
+
 def xgapi_reference_urls(references: list[ImageReference]) -> list[str]:
     urls: list[str] = []
     for reference in references:
@@ -492,11 +503,23 @@ def build_xgapi_edit_payload(
     return {
         "model": xgapi_model_name(image_model_name),
         "prompt": prompt,
-        "image": reference_urls,
         "aspect_ratio": aspect_ratio,
-        "quality": get_settings().xg_image_quality.strip() or "1k",
+        "quality": xgapi_edit_quality(),
         "response_format": "url",
     }
+
+
+def build_xgapi_edit_files(reference_urls: list[str]) -> list[tuple[str, tuple[str, bytes, str]]]:
+    files: list[tuple[str, tuple[str, bytes, str]]] = []
+    for index, url in enumerate(reference_urls, start=1):
+        content, content_type = download_generated_image(
+            url,
+            provider_request_id=None,
+            provider_name="xgapi reference image",
+        )
+        extension = mimetypes.guess_extension(content_type) or ".png"
+        files.append(("image", (f"reference-{index}{extension}", content, content_type)))
+    return files
 
 
 def parse_openai_image_generation_item(response_body: dict[str, Any]) -> dict[str, Any]:
@@ -756,7 +779,8 @@ def request_xgapi_image(
                     image_model_name=image_model_name,
                     aspect_ratio=aspect_ratio,
                 )
-                headers["Content-Type"] = "application/json"
+                files = build_xgapi_edit_files(reference_urls)
+                headers.pop("Content-Type", None)
                 logger.info(
                     "xgapi image request prepared endpoint=%s model=%s aspect_ratio=%s attempt=%s/%s reference_count=%s reference_files=%s prompt_chars=%s timeout_seconds=%s",
                     endpoint,
@@ -777,7 +801,7 @@ def request_xgapi_image(
                         max_chars=settings.image_provider_debug_log_raw_max_chars,
                         sanitize_request=True,
                     )
-                response = session.post(endpoint, headers=headers, json=payload, timeout=300)
+                response = session.post(endpoint, headers=headers, data=payload, files=files, timeout=300)
             else:
                 payload = build_xgapi_generation_payload(
                     prompt=prompt,
