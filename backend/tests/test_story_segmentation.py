@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from app.models.enums import ImageCountMode, PanelType
-from app.services.llm import LLMConfigError, LLMResponseError, segment_story
+from app.services.llm import LLMConfigError, segment_story
 
 
 class StorySegmentationTest(unittest.TestCase):
@@ -62,20 +62,39 @@ class StorySegmentationTest(unittest.TestCase):
         self.assertIn("必须刚好输出 2 个 panels", user_payload["count_instruction"])
         self.assertEqual(2, len(result.panels))
 
-    def test_original_story_segmentation_rejects_overlong_panel_text(self) -> None:
+    def test_original_story_segmentation_falls_back_to_punctuation_when_llm_remains_overlong(self) -> None:
+        original_text = "一" * 21 + "，" + "二" * 21 + "。" + "三" * 10
         overlong_text = "一" * 51
         with patch(
             "app.services.llm.call_lio_json",
             return_value={"panels": [{"panel_order": 1, "text": overlong_text}]},
         ) as call_json:
-            with self.assertRaisesRegex(LLMResponseError, "超过 50 字"):
-                segment_story(
-                    original_text=overlong_text,
-                    image_count_mode=ImageCountMode.auto,
-                    requested_image_count=None,
-                )
+            result = segment_story(
+                original_text=original_text,
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
 
         self.assertEqual(3, call_json.call_count)
+        self.assertEqual(
+            ["一" * 21 + "，", "二" * 21 + "。", "三" * 10],
+            [panel.text for panel in result.panels],
+        )
+        self.assertTrue(all(len(panel.text) <= 50 for panel in result.panels))
+
+    def test_original_story_segmentation_punctuation_fallback_hard_splits_without_punctuation(self) -> None:
+        original_text = "一" * 51
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={"panels": [{"panel_order": 1, "text": original_text}]},
+        ):
+            result = segment_story(
+                original_text=original_text,
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+        self.assertEqual(["一" * 50, "一"], [panel.text for panel in result.panels])
 
     def test_original_story_segmentation_repairs_overlong_panel_text(self) -> None:
         overlong_text = "一" * 51

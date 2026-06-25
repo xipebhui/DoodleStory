@@ -19,6 +19,8 @@ ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS = 50
 ORIGINAL_STORY_PANEL_TEXT_TARGET_MIN_CHARS = 30
 ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS = 40
 ORIGINAL_STORY_OVERLONG_REPAIR_MAX_ATTEMPTS = 2
+ORIGINAL_STORY_PUNCTUATION_FALLBACK_MIN_CHARS = 20
+ORIGINAL_STORY_PUNCTUATION_BREAK_CHARS = set("。！？!?；;…\n，,、：:")
 
 
 class LLMProviderError(Exception):
@@ -657,36 +659,62 @@ def segment_story(
         },
         ensure_ascii=False,
     )
-    raw = call_lio_json(
-        system_prompt=read_prompt("segment_story_v1.md"),
-        user_prompt=user_prompt,
-        prompt_name="segment_story_v1.md",
-        trace_context={**(trace_context or {}), "operation": "segment_story"},
-        temperature=0.2,
-    )
-    result = parse_story_segmentation_result(raw, trace_context=trace_context)
-    result = validate_and_repair_story_segmentation_result(
-        result,
-        original_text=cleaned_original_text,
-        image_count_mode=image_count_mode,
-        requested_image_count=requested_image_count,
-        trace_context=trace_context,
-    )
-    if image_count_mode == ImageCountMode.auto and should_refine_fragmented_story_segments(result.panels):
-        result = refine_fragmented_story_segments(
-            original_text=cleaned_original_text,
-            initial_result=result,
-            trace_context=trace_context,
+    segmentation_source = "llm"
+    try:
+        raw = call_lio_json(
+            system_prompt=read_prompt("segment_story_v1.md"),
+            user_prompt=user_prompt,
+            prompt_name="segment_story_v1.md",
+            trace_context={**(trace_context or {}), "operation": "segment_story"},
+            temperature=0.2,
         )
         result = validate_and_repair_story_segmentation_result(
-            result,
+            parse_story_segmentation_result(raw, trace_context=trace_context),
             original_text=cleaned_original_text,
             image_count_mode=image_count_mode,
             requested_image_count=requested_image_count,
             trace_context=trace_context,
         )
+        if image_count_mode == ImageCountMode.auto and should_refine_fragmented_story_segments(result.panels):
+            result = refine_fragmented_story_segments(
+                original_text=cleaned_original_text,
+                initial_result=result,
+                trace_context=trace_context,
+            )
+            result = validate_and_repair_story_segmentation_result(
+                result,
+                original_text=cleaned_original_text,
+                image_count_mode=image_count_mode,
+                requested_image_count=requested_image_count,
+                trace_context=trace_context,
+            )
+    except LLMResponseError as exc:
+        segmentation_source = "punctuation_fallback"
+        result = split_original_story(
+            original_text=cleaned_original_text,
+            image_count_mode=image_count_mode,
+            requested_image_count=requested_image_count,
+        )
+        validate_story_segmentation_result(
+            result,
+            image_count_mode=image_count_mode,
+            requested_image_count=requested_image_count,
+        )
+        log_prompt_trace(
+            logger,
+            "original_story_segmentation_fallback_to_punctuation",
+            context=trace_context or {},
+            image_count_mode=image_count_mode.value,
+            requested_image_count=requested_image_count,
+            reason=str(exc),
+            min_chars_before_punctuation=ORIGINAL_STORY_PUNCTUATION_FALLBACK_MIN_CHARS,
+            max_panel_text_chars=ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS,
+            panel_count=len(result.panels),
+            panels=[panel.model_dump() for panel in result.panels],
+        )
     logger.info(
-        "story segmentation succeeded via llm image_count_mode=%s requested_image_count=%s panel_count=%s",
+        "story segmentation succeeded source=%s image_count_mode=%s requested_image_count=%s panel_count=%s",
+        segmentation_source,
         image_count_mode.value,
         requested_image_count,
         len(result.panels),
@@ -697,6 +725,7 @@ def segment_story(
         context=trace_context or {},
         image_count_mode=image_count_mode.value,
         requested_image_count=requested_image_count,
+        segmentation_source=segmentation_source,
         original_text_chars=len(cleaned_original_text),
         max_panel_text_chars=ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS,
         panel_count=len(result.panels),
@@ -916,7 +945,7 @@ def split_original_story(
         atoms = ensure_atom_count(atoms, requested_image_count or 0)
         segments = group_atoms_fixed(atoms, requested_image_count or 0)
     else:
-        segments = group_atoms_auto(atoms)
+        segments = atoms
     return StorySegmentationResult(
         panels=[
             StorySegment(panel_order=index + 1, panel_type=PanelType.scene, text=segment)
@@ -968,15 +997,21 @@ def split_text_atoms(text: str) -> list[str]:
         raise LLMResponseError("完整故事不能为空")
 
     atoms: list[str] = []
-    start = 0
-    hard_breaks = set("。！？!?；;…\n")
-    soft_breaks = set("，,、")
-    for index, char in enumerate(text):
-        if char in hard_breaks or char in soft_breaks:
-            atoms.append(text[start : index + 1])
-            start = index + 1
-    if start < len(text):
-        atoms.append(text[start:])
+    current: list[str] = []
+    for char in text:
+        current.append(char)
+        current_length = len(current)
+        if current_length >= ORIGINAL_STORY_PANEL_TEXT_MAX_CHARS:
+            atoms.append("".join(current))
+            current = []
+        elif (
+            current_length > ORIGINAL_STORY_PUNCTUATION_FALLBACK_MIN_CHARS
+            and char in ORIGINAL_STORY_PUNCTUATION_BREAK_CHARS
+        ):
+            atoms.append("".join(current))
+            current = []
+    if current:
+        atoms.append("".join(current))
     return [atom for atom in atoms if atom]
 
 

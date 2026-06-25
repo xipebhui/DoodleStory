@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-71-last-panel-real-photo.md`
+- `docs/contracts/sprint-72-story-punctuation-fallback.md`
 
 ## 最近完成的工作
 
+- 增加完整故事 chunk 标点兜底切割：在用户明确授权后，完整故事模式仍优先使用 LIO/Google 做语义切割，并在超长时先让 LIO 受限修复；如果 LLM 返回结构、顺序或长度等切割结果仍不合格，后端会退回确定性标点切割。兜底规则为从当前片段超过 20 字后开始等待下一个标点符号，遇到 `。！？!?；;…`、换行、逗号、顿号或冒号等标点就截断；如果连续 50 字都没有标点，则在 50 字硬切，保证不突破后端 panel 原文 50 字上限。自动图片数量模式直接使用该标点切割结果；固定数量模式仍必须满足用户指定数量和 50 字硬校验。该兜底只处理 LLM 切割结果不合格，不吞掉配置缺失或 Provider 调用异常。
 - 修复完整故事 chunk 超长直接失败的问题：远程任务 `4897f536f2c6443fa8843e2ebe531152` 已经使用最新 LIO/Google 切分链路，prompt 中也包含 `generation_panel_text_max_chars=40` 和 `max_panel_text_chars=50`，但模型首轮仍返回了多段超过 50 字的 panel，旧代码在 `segment_story` 校验时直接抛出 `完整故事语义切分结果存在超过 50 字的 panel 原文`，没有给同一模型修复机会。现已在完整故事语义切分首轮和碎片化二次合并之后增加超长 panel 修复重试：后端先校验 panel 顺序和固定数量要求，发现超过 50 字时，把当前 panels、超长 panel 的 order/text/char_count 和 40/50 字规则再次发给 LIO，要求只围绕超长 panel 重新拆分或分配；自动数量模式允许为了满足硬上限增加 panel 数量，固定数量模式仍必须保持用户指定数量。修复后继续执行 50 字硬校验，若模型两次修复后仍超长，任务仍明确失败，不做本地确定性兜底或静默放过。
 - 修复 xgapi 生图模型被系统默认值覆盖的问题：本地任务 `e26daf4fb3dd406eb60f6b0c3dd75f83` 的风格模型快照是 `gpt-image-2`，但本地 `IMAGE_PROVIDER=xgapi` 时，旧代码会读取 `Settings.xg_image_model` 的默认值 `gemini-3.1-flash-image-preview` 并覆盖任务风格模型，导致请求发到 `api.xgapi.top` 时使用的不是用户在风格里选择的模型。现已移除 `xg_image_model` 配置和 `XG_IMAGE_MODEL` 覆盖语义，xgapi adapter 的请求体 `model` 必须直接来自任务/风格模型快照；如果任务模型为空，直接明确报错，不使用系统兜底模型。
 - 收紧完整故事 chunk 长度提示：针对 `e26daf4fb3dd406eb60f6b0c3dd75f83` 里模型把 51/57 字 panel 返回给后端的问题，切分 prompt 不再把生成目标写成 30-50，而是改为 `generation_panel_text_max_chars=40`、`target_panel_text_chars={"min":30,"max":40}`，同时继续传入 `max_panel_text_chars=50` 作为后端硬校验上限；prompt 明确中文、英文、数字、空格、换行和所有标点符号都按 1 个字符计数，让模型为符号长度留出安全余量。后端 50 字硬校验不放宽，也不新增本地确定性兜底切割。
