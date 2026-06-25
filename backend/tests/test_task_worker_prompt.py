@@ -302,6 +302,35 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertLess(final_prompt.index("画面比例：3:4"), final_prompt.index("风格提示词"))
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
 
+    def test_prompt_mode_final_prompt_includes_character_reference_mapping(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="手绘风",
+            style_prompt_snapshot="低饱和手绘漫画风，中文手写字清晰偏大。",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+
+        final_prompt = final_prompt_with_explicit_style(
+            task,
+            "青年男性（我）站在工厂门口。",
+            reference_notes=["固定角色参考（参考图1）：我\n外观锁定：短发，工装，疲惫感"],
+        )
+
+        self.assertIn("任务参考（最高优先级，必须优先执行）：", final_prompt)
+        self.assertIn("角色外观参考图1（我）", final_prompt)
+        self.assertIn("以上参考图已随请求传入；角色外观以角色参考图为准。", final_prompt)
+        self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
+        self.assertIn("低饱和手绘漫画风，中文手写字清晰偏大。", final_prompt)
+        self.assertLess(final_prompt.index("任务参考"), final_prompt.index("风格提示词"))
+        self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
+
     def test_aspect_ratio_prefix_is_not_duplicated(self) -> None:
         final_prompt = final_prompt_with_aspect_ratio_prefix(
             "3:4",
@@ -332,10 +361,13 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
 
         self.assertIn("画面比例：3:4。必须严格按 3:4 宽高比构图和出图", final_prompt)
-        self.assertIn("当前风格提示（仅对本任务选择的风格生效", final_prompt)
+        self.assertIn("任务参考（最高优先级，必须优先执行）：", final_prompt)
+        self.assertIn("风格参考（图1）", final_prompt)
+        self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("黑白线稿，白色背景，杂乱手绘线条。", final_prompt)
         self.assertIn("第 1 页\n女孩在窗边读书。", final_prompt)
-        self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
+        self.assertLess(final_prompt.index("任务参考"), final_prompt.index("风格提示词"))
+        self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
 
     def test_image_mode_final_prompt_appends_standard_task_reference_block(self) -> None:
         task = GenerationTask(
@@ -365,17 +397,17 @@ class TaskWorkerPromptTest(unittest.TestCase):
             ],
         )
 
-        self.assertTrue(final_prompt.startswith("任务参考（最高优先级，必须优先执行）："))
+        self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
+        self.assertIn("任务参考（最高优先级，必须优先执行）：", final_prompt)
         self.assertIn("角色外观参考图1（三叔）\n风格参考（图2）", final_prompt)
-        self.assertIn("当前风格提示（仅对本任务选择的风格生效", final_prompt)
+        self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("极简黑白；黑白线稿；白色或浅灰留白背景；不要暖色纸张底色。", final_prompt)
         self.assertIn("以上参考图已随请求传入", final_prompt)
-        self.assertIn("当剧情氛围词与当前风格提示或风格参考图冲突", final_prompt)
+        self.assertIn("风格参考图不代表人物身份", final_prompt)
         self.assertNotIn("禁止米黄色、黄色、暖色、棕色、复古纸色", final_prompt)
         self.assertNotIn("参考图2的极简黑白风格", final_prompt)
         self.assertNotIn("整体风格：", final_prompt)
         self.assertNotIn("整体色调/风格：", final_prompt)
-        self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
 
     def test_last_panel_real_photo_final_prompt_overrides_task_style(self) -> None:
         task = GenerationTask(
@@ -427,6 +459,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIsNotNone(reference_block)
         self.assertIn("任务参考（最高优先级，必须优先执行）：", reference_block)
         self.assertIn("角色外观参考图1（三叔）\n风格参考（图2）", reference_block)
+        self.assertNotIn("当前风格提示", reference_block)
 
     def test_sanitize_compiled_final_prompt_removes_text_type_labels(self) -> None:
         final_prompt = sanitize_compiled_final_prompt(

@@ -1569,22 +1569,14 @@ def task_reference_block(reference_notes: list[str] | None, style_prompt: str | 
     lines = normalized_task_reference_lines(reference_notes)
     if not lines:
         return None
-    cleaned_style_prompt = (style_prompt or "").strip()
     block_lines = [
         "任务参考（最高优先级，必须优先执行）：",
         *lines,
     ]
-    if cleaned_style_prompt:
-        block_lines.extend(
-            [
-                "当前风格提示（仅对本任务选择的风格生效，必须和风格参考图共同约束画面）：",
-                cleaned_style_prompt,
-            ]
-        )
     block_lines.extend(
         [
-            "以上参考图已随请求传入；角色外观以角色参考图为准，画风、线条、色彩和背景质感以风格参考图为准。",
-            "当剧情氛围词与当前风格提示或风格参考图冲突时，必须优先保持当前风格，不要转译成脱离参考图的独立背景色、纸张材质或装饰底纹。",
+            "以上参考图已随请求传入；角色外观以角色参考图为准。",
+            "如果存在风格参考图，画风、线条、色彩和背景质感以风格参考图为准；风格参考图不代表人物身份。",
         ]
     )
     return "\n".join(block_lines)
@@ -1657,30 +1649,30 @@ def final_prompt_with_explicit_style(
     cleaned_style = (style_prompt or "").strip()
     if not is_prompt_reference_mode(task.style_reference_mode_snapshot):
         cleaned_prompt = remove_image_mode_reference_summary_lines(cleaned_prompt)
-        reference_block = task_reference_block(reference_notes, style_prompt=cleaned_style)
-        prompt_with_ratio = final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
-        if reference_block:
-            return "\n\n".join([reference_block, prompt_with_ratio]).strip()
-        return prompt_with_ratio
+
+    reference_block = task_reference_block(reference_notes)
+    prompt_sections = [section for section in [reference_block] if section]
     if not cleaned_style:
-        return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, cleaned_prompt)
-    styled_prompt = "\n".join(
-        [
-            "风格提示词（必须直接用于本张图的画风、人物比例、线条、色彩、构图、文字呈现和整体质感）：",
-            cleaned_style,
-            "",
-            (
-                "风格执行优先级：角色身份与外观锁定 > 当前剧情动作/情绪 > 风格表现方式 > "
-                "风格模板默认人物外观。风格模板只控制画风、人物比例、线条、色彩、构图、"
-                "文字呈现和整体质感；不得覆盖最终画面指令中已经锁定的角色年龄阶段、发型、"
-                "体态、服装轮廓和标志性配饰。"
-            ),
-            "",
-            "最终画面指令：",
-            cleaned_prompt,
-        ]
-    ).strip()
-    return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, styled_prompt)
+        prompt_sections.append(cleaned_prompt)
+        return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections))
+
+    prompt_sections.append(
+        "\n".join(
+            [
+                "风格提示词（必须直接用于本张图的画风、人物比例、线条、色彩、构图、文字呈现和整体质感）：",
+                cleaned_style,
+                "",
+                (
+                    "风格执行优先级：角色身份与外观锁定 > 当前剧情动作/情绪 > 风格表现方式 > "
+                    "风格模板默认人物外观。风格模板只控制画风、人物比例、线条、色彩、构图、"
+                    "文字呈现和整体质感；不得覆盖最终画面指令中已经锁定的角色年龄阶段、发型、"
+                    "体态、服装轮廓和标志性配饰。"
+                ),
+            ]
+        )
+    )
+    prompt_sections.extend(["最终画面指令：", cleaned_prompt])
+    return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections))
 
 
 def is_last_panel_real_photo_panel(task: GenerationTask, panel: TaskPanel) -> bool:
