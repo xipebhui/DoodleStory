@@ -36,10 +36,14 @@ from app.services.task_worker import (
     build_panel_final_prompt,
     final_prompt_with_aspect_ratio_prefix,
     final_prompt_with_explicit_style,
+    normalized_person_reference_lines,
+    normalized_style_reference_lines,
     generate_panel_image_request,
     is_policy_blocked_image_error,
     normalized_task_reference_lines,
+    person_reference_block,
     sanitize_compiled_final_prompt,
+    style_reference_block,
     task_reference_block,
     trim_generation_reference_pack_for_model,
 )
@@ -296,7 +300,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
         self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("低饱和手绘漫画风，人物比例极简，中文手写字清晰偏大。", final_prompt)
-        self.assertIn("风格执行优先级：角色身份与外观锁定 > 当前剧情动作/情绪", final_prompt)
+        self.assertIn("风格执行优先级：人物参考外观锁定 > 当前剧情动作/情绪", final_prompt)
         self.assertIn("最终画面指令：", final_prompt)
         self.assertIn("男生保持黄色衬衫，女生保持橄榄绿上衣。", final_prompt)
         self.assertLess(final_prompt.index("画面比例：3:4"), final_prompt.index("风格提示词"))
@@ -323,12 +327,13 @@ class TaskWorkerPromptTest(unittest.TestCase):
             reference_notes=["固定角色参考（参考图1）：我\n外观锁定：短发，工装，疲惫感"],
         )
 
-        self.assertIn("任务参考（最高优先级，必须优先执行）：", final_prompt)
-        self.assertIn("角色外观参考图1（我）", final_prompt)
-        self.assertIn("以上参考图已随请求传入；角色外观以角色参考图为准。", final_prompt)
+        self.assertIn("人物参考（第一优先级，必须严格执行）：", final_prompt)
+        self.assertIn("人物外观参考图1（我）", final_prompt)
+        self.assertIn("以上人物参考图已随请求传入；每张图是对应人物的唯一外观依据。", final_prompt)
+        self.assertIn("不能改变人物身份和外形锚点", final_prompt)
         self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("低饱和手绘漫画风，中文手写字清晰偏大。", final_prompt)
-        self.assertLess(final_prompt.index("任务参考"), final_prompt.index("风格提示词"))
+        self.assertLess(final_prompt.index("人物参考"), final_prompt.index("风格提示词"))
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
 
     def test_aspect_ratio_prefix_is_not_duplicated(self) -> None:
@@ -361,12 +366,13 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
 
         self.assertIn("画面比例：3:4。必须严格按 3:4 宽高比构图和出图", final_prompt)
-        self.assertIn("任务参考（最高优先级，必须优先执行）：", final_prompt)
+        self.assertNotIn("人物参考（第一优先级", final_prompt)
+        self.assertIn("风格参考（仅控制画风，不代表人物身份）：", final_prompt)
         self.assertIn("风格参考（图1）", final_prompt)
         self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("黑白线稿，白色背景，杂乱手绘线条。", final_prompt)
         self.assertIn("第 1 页\n女孩在窗边读书。", final_prompt)
-        self.assertLess(final_prompt.index("任务参考"), final_prompt.index("风格提示词"))
+        self.assertLess(final_prompt.index("风格参考"), final_prompt.index("风格提示词"))
         self.assertLess(final_prompt.index("风格提示词"), final_prompt.index("最终画面指令"))
 
     def test_image_mode_final_prompt_appends_standard_task_reference_block(self) -> None:
@@ -398,12 +404,16 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
 
         self.assertTrue(final_prompt.startswith("画面比例：3:4。必须严格按 3:4 宽高比构图和出图"))
-        self.assertIn("任务参考（最高优先级，必须优先执行）：", final_prompt)
-        self.assertIn("角色外观参考图1（三叔）\n风格参考（图2）", final_prompt)
+        self.assertIn("人物参考（第一优先级，必须严格执行）：", final_prompt)
+        self.assertIn("人物外观参考图1（三叔）", final_prompt)
+        self.assertIn("风格参考（仅控制画风，不代表人物身份）：", final_prompt)
+        self.assertIn("风格参考（图2）", final_prompt)
+        self.assertLess(final_prompt.index("人物参考"), final_prompt.index("风格参考"))
+        self.assertLess(final_prompt.index("风格参考"), final_prompt.index("风格提示词"))
         self.assertIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertIn("极简黑白；黑白线稿；白色或浅灰留白背景；不要暖色纸张底色。", final_prompt)
-        self.assertIn("以上参考图已随请求传入", final_prompt)
-        self.assertIn("风格参考图不代表人物身份", final_prompt)
+        self.assertIn("以上人物参考图已随请求传入", final_prompt)
+        self.assertIn("不代表任何人物身份或外观", final_prompt)
         self.assertNotIn("禁止米黄色、黄色、暖色、棕色、复古纸色", final_prompt)
         self.assertNotIn("参考图2的极简黑白风格", final_prompt)
         self.assertNotIn("整体风格：", final_prompt)
@@ -438,27 +448,59 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertIn("真实人物、真实环境、真实光线", final_prompt)
         self.assertIn("不要生成漫画、手绘、绘本、水彩、线稿", final_prompt)
         self.assertIn("女生在夜间操场自拍", final_prompt)
-        self.assertNotIn("任务参考（最高优先级", final_prompt)
+        self.assertNotIn("人物参考（第一优先级", final_prompt)
         self.assertNotIn("风格参考（图1）", final_prompt)
         self.assertNotIn("风格提示词（必须直接用于本张图", final_prompt)
         self.assertNotIn("极简黑白；黑白线稿；白色背景；手绘漫画风。", final_prompt)
 
-    def test_task_reference_block_normalizes_reference_notes(self) -> None:
-        lines = normalized_task_reference_lines(
+    def test_reference_blocks_normalize_person_and_style_notes(self) -> None:
+        person_lines = normalized_person_reference_lines(
+            [
+                "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
+                "风格参考（参考图2）",
+            ]
+        )
+        style_lines = normalized_style_reference_lines(
+            [
+                "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
+                "风格参考（参考图2）",
+            ]
+        )
+        task_lines = normalized_task_reference_lines(
             [
                 "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
                 "风格参考（参考图2）",
             ]
         )
 
-        self.assertEqual(["角色外观参考图1（三叔）", "风格参考（图2）"], lines)
+        self.assertEqual(["人物外观参考图1（三叔）"], person_lines)
+        self.assertEqual(["风格参考（图2）"], style_lines)
+        self.assertEqual(["人物外观参考图1（三叔）", "风格参考（图2）"], task_lines)
+        person_block = person_reference_block([
+            "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
+            "风格参考（参考图2）",
+        ])
+        style_block = style_reference_block([
+            "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
+            "风格参考（参考图2）",
+        ])
         reference_block = task_reference_block([
             "固定角色参考（参考图1）：三叔\n外观锁定：成年男性，建筑工人体态",
             "风格参考（参考图2）",
         ])
+        self.assertIsNotNone(person_block)
+        self.assertIsNotNone(style_block)
         self.assertIsNotNone(reference_block)
-        self.assertIn("任务参考（最高优先级，必须优先执行）：", reference_block)
-        self.assertIn("角色外观参考图1（三叔）\n风格参考（图2）", reference_block)
+        self.assertIn("人物参考（第一优先级，必须严格执行）：", person_block)
+        self.assertIn("人物外观参考图1（三叔）", person_block)
+        self.assertNotIn("风格参考（图2）", person_block)
+        self.assertIn("风格参考（仅控制画风，不代表人物身份）：", style_block)
+        self.assertIn("风格参考（图2）", style_block)
+        self.assertNotIn("人物外观参考图1（三叔）", style_block)
+        self.assertIn("人物参考（第一优先级，必须严格执行）：", reference_block)
+        self.assertIn("人物外观参考图1（三叔）", reference_block)
+        self.assertIn("风格参考（仅控制画风，不代表人物身份）：", reference_block)
+        self.assertIn("风格参考（图2）", reference_block)
         self.assertNotIn("当前风格提示", reference_block)
 
     def test_sanitize_compiled_final_prompt_removes_text_type_labels(self) -> None:

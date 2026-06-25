@@ -1543,43 +1543,85 @@ def reference_notes_block(reference_notes: list[str] | None) -> str:
     return "\n".join(reference_notes)
 
 
-def normalized_task_reference_lines(reference_notes: list[str] | None) -> list[str]:
+def normalized_person_reference_lines(reference_notes: list[str] | None) -> list[str]:
     lines: list[str] = []
     for note in reference_notes or []:
         first_line = note.strip().splitlines()[0].strip() if note and note.strip() else ""
         if not first_line:
             continue
+        if re.match(r"风格参考（参考图(\d+)）", first_line):
+            continue
         fixed_character_match = re.match(r"固定角色参考（参考图(\d+)）：(.+)", first_line)
         if fixed_character_match:
             index, name = fixed_character_match.groups()
-            lines.append(f"角色外观参考图{index}（{name.strip()}）")
-            continue
-        style_match = re.match(r"风格参考（参考图(\d+)）", first_line)
-        if style_match:
-            lines.append(f"风格参考（图{style_match.group(1)}）")
+            lines.append(f"人物外观参考图{index}（{name.strip()}）")
             continue
         character_match = re.match(r"(.+?)参考（参考图(\d+)）", first_line)
         if character_match:
             name, index = character_match.groups()
-            lines.append(f"角色外观参考图{index}（{name.strip()}）")
+            lines.append(f"人物外观参考图{index}（{name.strip()}）")
     return lines
 
 
-def task_reference_block(reference_notes: list[str] | None, style_prompt: str | None = None) -> str | None:
-    lines = normalized_task_reference_lines(reference_notes)
+def normalized_style_reference_lines(reference_notes: list[str] | None) -> list[str]:
+    lines: list[str] = []
+    for note in reference_notes or []:
+        first_line = note.strip().splitlines()[0].strip() if note and note.strip() else ""
+        if not first_line:
+            continue
+        style_match = re.match(r"风格参考（参考图(\d+)）", first_line)
+        if style_match:
+            lines.append(f"风格参考（图{style_match.group(1)}）")
+    return lines
+
+
+def normalized_task_reference_lines(reference_notes: list[str] | None) -> list[str]:
+    return [
+        *normalized_person_reference_lines(reference_notes),
+        *normalized_style_reference_lines(reference_notes),
+    ]
+
+
+def person_reference_block(reference_notes: list[str] | None) -> str | None:
+    lines = normalized_person_reference_lines(reference_notes)
     if not lines:
         return None
-    block_lines = [
-        "任务参考（最高优先级，必须优先执行）：",
-        *lines,
-    ]
-    block_lines.extend(
+    return "\n".join(
         [
-            "以上参考图已随请求传入；角色外观以角色参考图为准。",
-            "如果存在风格参考图，画风、线条、色彩和背景质感以风格参考图为准；风格参考图不代表人物身份。",
+            "人物参考（第一优先级，必须严格执行）：",
+            *lines,
+            "以上人物参考图已随请求传入；每张图是对应人物的唯一外观依据。",
+            "必须严格保持参考图中的脸型、发型、五官比例、服装轮廓、体态和年龄阶段。",
+            "当前剧情只能改变姿势、表情、动作、视角和光照，不能改变人物身份和外形锚点。",
         ]
     )
-    return "\n".join(block_lines)
+
+
+def style_reference_block(reference_notes: list[str] | None) -> str | None:
+    lines = normalized_style_reference_lines(reference_notes)
+    if not lines:
+        return None
+    return "\n".join(
+        [
+            "风格参考（仅控制画风，不代表人物身份）：",
+            *lines,
+            "以上风格参考图已随请求传入；仅用于画风、线条、色彩、背景质感和整体视觉气质，不代表任何人物身份或外观。",
+        ]
+    )
+
+
+def task_reference_block(reference_notes: list[str] | None, style_prompt: str | None = None) -> str | None:
+    blocks = [
+        block
+        for block in [
+            person_reference_block(reference_notes),
+            style_reference_block(reference_notes),
+        ]
+        if block
+    ]
+    if not blocks:
+        return None
+    return "\n\n".join(blocks)
 
 
 def remove_image_mode_reference_summary_lines(final_prompt: str) -> str:
@@ -1650,8 +1692,14 @@ def final_prompt_with_explicit_style(
     if not is_prompt_reference_mode(task.style_reference_mode_snapshot):
         cleaned_prompt = remove_image_mode_reference_summary_lines(cleaned_prompt)
 
-    reference_block = task_reference_block(reference_notes)
-    prompt_sections = [section for section in [reference_block] if section]
+    prompt_sections = [
+        section
+        for section in [
+            person_reference_block(reference_notes),
+            style_reference_block(reference_notes),
+        ]
+        if section
+    ]
     if not cleaned_style:
         prompt_sections.append(cleaned_prompt)
         return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections))
@@ -1663,7 +1711,7 @@ def final_prompt_with_explicit_style(
                 cleaned_style,
                 "",
                 (
-                    "风格执行优先级：角色身份与外观锁定 > 当前剧情动作/情绪 > 风格表现方式 > "
+                    "风格执行优先级：人物参考外观锁定 > 当前剧情动作/情绪 > 风格表现方式 > "
                     "风格模板默认人物外观。风格模板只控制画风、人物比例、线条、色彩、构图、"
                     "文字呈现和整体质感；不得覆盖最终画面指令中已经锁定的角色年龄阶段、发型、"
                     "体态、服装轮廓和标志性配饰。"
