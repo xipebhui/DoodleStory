@@ -36,6 +36,7 @@ from app.models.enums import (
     StyleStatus,
     TaskStatus,
     UserRole,
+    WorkflowStatus,
 )
 from app.schemas.common import ApiData, ApiList
 from app.schemas.character import CharacterNameExtractionRequest, CharacterNameExtractionResult, StoryCharacterMergeRequest, StoryCharacterMergeResult
@@ -157,6 +158,20 @@ def retire_superseded_running_images(task: GenerationTask) -> int:
         image.finished_at = image.finished_at or datetime.utcnow()
         count += 1
     return count
+
+
+def reset_failed_character_references_for_retry(task: GenerationTask) -> None:
+    if not task.use_character_references:
+        return
+    for character in task.characters:
+        for appearance in character.appearances:
+            if appearance.status != WorkflowStatus.failed:
+                continue
+            appearance.status = WorkflowStatus.queued
+            appearance.error_code = None
+            appearance.error_message = None
+            appearance.provider_request_id = None
+            appearance.reference_prompt = None
 
 
 def task_original_text_preview(task: GenerationTask) -> str:
@@ -342,6 +357,7 @@ async def retry_task(task_id: str, user: User = Depends(current_user), db: Sessi
             continue
         if image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
             image.is_current = False
+    reset_failed_character_references_for_retry(task)
     for panel in list(task.panels):
         if panel.prompt_status == PromptStatus.failed:
             panel.prompt_status = PromptStatus.pending

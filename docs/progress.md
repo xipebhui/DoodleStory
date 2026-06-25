@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-73-final-prompt-person-reference-priority.md`
+- `docs/contracts/sprint-74-character-reference-retry.md`
 
 ## 最近完成的工作
 
+- 修复人物参考图失败后的任务重试：本地任务 `c670fff321c644e3abc215f4abcb411d` 首轮失败点不是 panel 生图，而是 4 个 `character_reference` 图片 job 在人物参考图阶段被第三方返回 HTTP 500，错误为 `failed to parse multipart form` / `convert_request_failed`；使用同一模型、同一人物参考 prompt 和同一风格参考图 URL 手动 `curl` 统一图片网关后返回 HTTP 200，说明 prompt 和参考图并非必然不可用。真正导致“重试仍失败”的本地逻辑是 `retry_task` 只重置 panel 图片和 panel prompt，没有重置 `task_character_appearances.failed`；worker 再次执行时 `ensure_character_reference_image_jobs` 看到 failed appearance 直接计数失败，不会创建新的人物参考图 job。现已在任务重试时把失败的人物外观重置为 queued，清理错误码、错误信息、provider request id 和旧 reference prompt，保留旧失败图片 job 作为历史记录，让下一轮由现有人物参考图 worker 重新创建 job。
 - 修正最终生图 prompt 的人物参考优先级语义：用户确认此前写成 `任务参考（最高优先级，必须优先执行）` 是误导，实际应为人物参考第一优先级。现已把最终 prompt 外层参考说明拆成两个独立块：只要 panel 携带人物参考图，就在风格提示词前写入 `人物参考（第一优先级，必须严格执行）` 和 `人物外观参考图N（角色名）`；只有存在风格参考图时才写入 `风格参考（仅控制画风，不代表人物身份）`，且风格参考只控制画风、线条、色彩、背景质感和整体视觉气质，不参与人物身份或外观判断。`prompt` 和 `image` 风格参考模式共享同一套人物参考拼接逻辑；最后一张真人图片模式仍不携带漫画风格参考图或人物参考图。
 - 修复 prompt 风格模式下人物参考映射缺失：线上任务 `36a068b76b5543a09fe9565d25f01c87` 实际已生成 3 张人物参考图，且每个 panel 的 Provider 请求都带有 `character_reference_count`，但最终生图 prompt 中没有 `任务参考` / `角色外观参考图N（角色名）` 映射，导致多人物页模型不容易知道哪张参考图对应哪个人物。根因是最终 prompt 外层组装把 `prompt` 和 `image` 风格参考模式分成两条流程，`任务参考` 块只在 `image` 模式下拼接。现已改为统一最终 prompt 结构：人物参考映射只要存在就始终拼接；风格参考方式只决定风格参考图是否作为 Provider reference 传入，以及 reference_notes 中是否出现风格参考图；`prompt` 和 `image` 模式都继续显式拼接任务保存的风格提示词快照。最后一张真人图片模式仍不携带漫画风格参考图或人物参考图。
 - 更新完整故事语义切割 prompt：用户手动把 `segment_story_v1.md` 调整为更短的“专业分镜设计师”版本，强调按语义画面切换成分段、保留用户原文、优先使用用户明确设置的 panel 数量，并把长度控制描述为 30 字左右。同步更新语义切分单测断言以匹配当前 prompt 文案；后端仍保留 50 字硬校验、LLM 超长修复和标点兜底切割逻辑。

@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.api.characters import create_character, fill_character_description_from_reference
-from app.api.tasks import extract_character_names, task_detail_statement
+from app.api.tasks import extract_character_names, reset_failed_character_references_for_retry, task_detail_statement
 from app.core.database import Base
 from app.models.entities import FileAsset, GeneratedImage, GenerationTask, Style, TaskCharacter, TaskCharacterAppearance, TaskPanel, TaskPanelCharacterAppearance, User, UserCharacter
 from app.models.enums import FileAssetPurpose, GeneratedImageJobKind, GeneratedImageSourceType, GeneratedImageStatus, GenerationStepName, ImageCountMode, PanelType, StorageBackend, StyleReferenceMode, StyleStatus, StoryInputMode, UserRole, WorkflowStatus
@@ -631,6 +631,72 @@ class UserCharacterTest(unittest.TestCase):
 
         self.assertEqual([panel.id], [image.panel_id for image in payload.generated_images])
         self.assertEqual("人物参考图最终提示词", payload.character_references[0].reference_prompt)
+
+    def test_retry_resets_failed_character_reference_appearances(self) -> None:
+        db = self.Session()
+        owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        db.add(owner)
+        db.flush()
+        task = GenerationTask(
+            owner_user_id=owner.id,
+            display_title="任务",
+            original_text="妈妈回家了。",
+            story_input_mode=StoryInputMode.original,
+            image_count_mode=ImageCountMode.auto,
+            use_character_references=True,
+            style_id="style",
+            style_name_snapshot="风格",
+            style_prompt_snapshot="温暖绘本风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="9:16",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+        db.add(task)
+        db.flush()
+        character = TaskCharacter(task_id=task.id, character_key="character_1", name="妈妈", description="母亲")
+        db.add(character)
+        db.flush()
+        appearance = TaskCharacterAppearance(
+            task_character_id=character.id,
+            appearance_key="character_1_adult",
+            age_stage="成年",
+            visual_prompt="成年女性，短发",
+            reference_prompt="旧的人物参考图提示词",
+            status=WorkflowStatus.failed,
+            error_code="ImageProviderResponseError",
+            error_message="第三方接口失败",
+            provider_request_id="request-1",
+        )
+        db.add(appearance)
+        db.flush()
+        old_job = GeneratedImage(
+            task_id=task.id,
+            character_appearance_id=appearance.id,
+            owner_user_id=owner.id,
+            job_kind=GeneratedImageJobKind.character_reference,
+            status=GeneratedImageStatus.failed,
+            generation_number=1,
+            is_current=False,
+            source_type=GeneratedImageSourceType.initial,
+            image_model_name_snapshot="gpt-image-2",
+            error_code="ImageProviderResponseError",
+            error_message="第三方接口失败",
+        )
+        db.add(old_job)
+        db.commit()
+        db.expire_all()
+
+        task = db.scalar(task_detail_statement(task.id))
+        reset_failed_character_references_for_retry(task)
+        db.commit()
+
+        refreshed = db.get(TaskCharacterAppearance, appearance.id)
+        self.assertEqual(WorkflowStatus.queued, refreshed.status)
+        self.assertIsNone(refreshed.error_code)
+        self.assertIsNone(refreshed.error_message)
+        self.assertIsNone(refreshed.provider_request_id)
+        self.assertIsNone(refreshed.reference_prompt)
+        self.assertEqual(GeneratedImageStatus.failed, db.get(GeneratedImage, old_job.id).status)
 
     def test_panel_reference_pack_includes_character_anchor_and_priority(self) -> None:
         db = self.Session()
