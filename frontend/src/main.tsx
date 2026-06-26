@@ -16,6 +16,7 @@ import {
   Images,
   LogOut,
   Loader2,
+  MessageCircle,
   Pencil,
   Plus,
   RefreshCw,
@@ -59,8 +60,10 @@ import {
 } from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
+type View = "tasks" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings" | "contact";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
+const CONTACT_WECHAT_LABEL = "扫码添加微信";
+const CONTACT_WECHAT_QR_SRC = "/wechat-contact-qr.png";
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const imageModelNamePlaceholder = "生图模型名，例如 gpt-image-2";
 const styleReferenceModeLabels: Record<Style["style_reference_mode"], string> = {
@@ -75,6 +78,7 @@ const viewRoutes: Record<View, string> = {
   users: "/users",
   creditUsage: "/credit-usage",
   settings: "/settings",
+  contact: "/contact",
 };
 
 function normalizedPathname(pathname: string) {
@@ -90,6 +94,7 @@ function viewFromPathname(pathname: string): View | null {
   if (path === viewRoutes.users) return "users";
   if (path === viewRoutes.creditUsage) return "creditUsage";
   if (path === viewRoutes.settings) return "settings";
+  if (path === viewRoutes.contact) return "contact";
   return null;
 }
 
@@ -363,6 +368,7 @@ function App() {
           onLogout={() => setUser(null)}
         />
       ) : null}
+      {view === "contact" ? <ContactView /> : null}
     </Shell>
   );
 }
@@ -456,6 +462,7 @@ function Shell({
     ...(user.role === "admin" ? [{ key: "users" as const, label: "用户管理", icon: Users, path: viewRoutes.users }] : []),
     ...(user.role === "admin" ? [{ key: "creditUsage" as const, label: "积分消耗", icon: BarChart3, path: viewRoutes.creditUsage }] : []),
     { key: "settings" as const, label: "设置", icon: Settings, path: viewRoutes.settings },
+    { key: "contact" as const, label: "联系我们", icon: MessageCircle, path: viewRoutes.contact },
   ];
 
   async function logout() {
@@ -528,6 +535,32 @@ function NotFoundView() {
         </div>
       </header>
       <div className="empty">请从左侧导航进入任务、内容提取、风格或设置页面。</div>
+    </section>
+  );
+}
+
+function ContactView() {
+  return (
+    <section className="page contact-page">
+      <header className="page-header">
+        <div>
+          <h1>联系我们</h1>
+          <p>遇到任务生成、风格配置或积分问题，可以通过微信联系。</p>
+        </div>
+      </header>
+
+      <div className="contact-panel panel">
+        <div className="contact-info">
+          <span className="contact-icon">
+            <MessageCircle size={30} />
+          </span>
+          <div>
+            <h2>微信联系</h2>
+            <p>{CONTACT_WECHAT_LABEL}</p>
+          </div>
+        </div>
+        <img className="contact-qr" src={CONTACT_WECHAT_QR_SRC} alt="微信二维码" />
+      </div>
     </section>
   );
 }
@@ -716,6 +749,9 @@ function TasksView({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<Task["status"] | "all">("all");
   const [styleFilter, setStyleFilter] = useState("");
+  const [taskUserFilter, setTaskUserFilter] = useState("");
+  const [taskUserOptions, setTaskUserOptions] = useState<AdminUserCreditSummary[]>([]);
+  const [loadingTaskUsers, setLoadingTaskUsers] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
@@ -808,10 +844,35 @@ function TasksView({
     fixedRoleFlowEnabled &&
     Boolean(createTextForCharacterExtraction) &&
     characterExtractionCompletedForText === createTextForCharacterExtraction;
+  const hasTaskFilters = Boolean(query || statusFilter !== "all" || styleFilter || (user.role === "admin" && taskUserFilter));
 
   useEffect(() => {
     refresh(undefined, { quiet: false });
-  }, [query, statusFilter, styleFilter, cursor]);
+  }, [query, statusFilter, styleFilter, taskUserFilter, cursor]);
+
+  useEffect(() => {
+    if (user.role !== "admin") {
+      setTaskUserOptions([]);
+      setTaskUserFilter("");
+      return;
+    }
+    let cancelled = false;
+    async function loadTaskUsers() {
+      try {
+        setLoadingTaskUsers(true);
+        const result = await api.adminUsers({ limit: 200 });
+        if (!cancelled) setTaskUserOptions(result.items);
+      } catch (error) {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : "用户列表加载失败");
+      } finally {
+        if (!cancelled) setLoadingTaskUsers(false);
+      }
+    }
+    void loadTaskUsers();
+    return () => {
+      cancelled = true;
+    };
+  }, [user.role]);
 
   useEffect(() => {
     if (!createOpen) return;
@@ -1005,6 +1066,7 @@ function TasksView({
           query,
           status: statusFilter,
           style_id: styleFilter,
+          user_id: user.role === "admin" ? taskUserFilter || null : null,
           cursor,
           limit: 10,
         }),
@@ -1093,6 +1155,13 @@ function TasksView({
     setQuery("");
     setStatusFilter("all");
     setStyleFilter("");
+    setTaskUserFilter("");
+    setCursor(null);
+    setCursorStack([]);
+  }
+
+  function updateTaskUserFilter(value: string) {
+    setTaskUserFilter(value);
     setCursor(null);
     setCursorStack([]);
   }
@@ -1502,7 +1571,7 @@ function TasksView({
         </div>
       </header>
 
-      <form className="task-toolbar" onSubmit={applyFilters}>
+      <form className={`task-toolbar ${user.role === "admin" ? "with-user-filter" : ""}`} onSubmit={applyFilters}>
         <label className="search-box">
           <Search size={18} />
           <input
@@ -1513,7 +1582,14 @@ function TasksView({
         </label>
         <label>
           <Filter size={16} />
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as Task["status"] | "all")}>
+          <select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as Task["status"] | "all");
+              setCursor(null);
+              setCursorStack([]);
+            }}
+          >
             {taskStatusOptions.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
@@ -1523,7 +1599,14 @@ function TasksView({
         </label>
         <label>
           <Sparkles size={16} />
-          <select value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}>
+          <select
+            value={styleFilter}
+            onChange={(event) => {
+              setStyleFilter(event.target.value);
+              setCursor(null);
+              setCursorStack([]);
+            }}
+          >
             <option value="">全部风格</option>
             {styles.map((style) => (
               <option key={style.id} value={style.id}>
@@ -1532,6 +1615,19 @@ function TasksView({
             ))}
           </select>
         </label>
+        {user.role === "admin" ? (
+          <label>
+            <Users size={16} />
+            <select value={taskUserFilter} onChange={(event) => updateTaskUserFilter(event.target.value)} disabled={loadingTaskUsers}>
+              <option value="">{loadingTaskUsers ? "用户加载中" : "全部用户"}</option>
+              {taskUserOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.display_name || item.email}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <button type="submit" className="secondary-button">
           筛选
         </button>
@@ -1562,8 +1658,8 @@ function TasksView({
           {!loadingTasks && tasks.length === 0 ? (
             <div className="empty">
               <div>
-                <strong>{query || statusFilter !== "all" || styleFilter ? "没有匹配的任务" : "还没有任务"}</strong>
-                <p>{query || statusFilter !== "all" || styleFilter ? "调整筛选条件后再试。" : "创建第一条故事生成任务。"}</p>
+                <strong>{hasTaskFilters ? "没有匹配的任务" : "还没有任务"}</strong>
+                <p>{hasTaskFilters ? "调整筛选条件后再试。" : "创建第一条故事生成任务。"}</p>
                 <button type="button" onClick={() => setCreateOpen(true)}>
                   <Plus size={18} />
                   创建任务

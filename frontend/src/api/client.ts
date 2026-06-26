@@ -582,6 +582,7 @@ export const api = {
     query?: string;
     status?: Task["status"] | "all";
     style_id?: string;
+    user_id?: string | null;
     cursor?: string | null;
     limit?: number;
   }) => {
@@ -589,6 +590,7 @@ export const api = {
     if (params?.query) search.set("query", params.query);
     if (params?.status && params.status !== "all") search.set("status", params.status);
     if (params?.style_id) search.set("style_id", params.style_id);
+    if (params?.user_id) search.set("user_id", params.user_id);
     if (params?.cursor) search.set("cursor", params.cursor);
     if (params?.limit) search.set("limit", String(params.limit));
     const suffix = search.toString() ? `?${search.toString()}` : "";
