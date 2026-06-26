@@ -265,6 +265,36 @@ def subtitle_text(text: str) -> str:
     return cleaned or text.strip()
 
 
+def even_dimension(value: float) -> int:
+    dimension = max(64, int(round(value)))
+    return dimension if dimension % 2 == 0 else dimension + 1
+
+
+def video_resolution_for_aspect_ratio(
+    aspect_ratio: str,
+    *,
+    default_width: int,
+    default_height: int,
+) -> dict[str, int]:
+    cleaned = (aspect_ratio or "").strip()
+    match = re.fullmatch(r"(\d+)\s*:\s*(\d+)", cleaned)
+    if not match:
+        raise RuntimeError(f"无法解析视频画面比例：{aspect_ratio}")
+    ratio_width = int(match.group(1))
+    ratio_height = int(match.group(2))
+    if ratio_width <= 0 or ratio_height <= 0:
+        raise RuntimeError(f"视频画面比例必须大于 0：{aspect_ratio}")
+
+    long_side = max(default_width, default_height)
+    if ratio_width >= ratio_height:
+        width = even_dimension(long_side)
+        height = even_dimension(long_side * ratio_height / ratio_width)
+    else:
+        height = even_dimension(long_side)
+        width = even_dimension(long_side * ratio_width / ratio_height)
+    return {"width": width, "height": height}
+
+
 def file_suffix_for_audio(content_type: str, response_format: str) -> str:
     normalized = content_type.lower()
     if "wav" in normalized:
@@ -399,6 +429,11 @@ def generate_audio_segments(db: Session, video_task: VideoTask) -> None:
 def build_episode(video_task: VideoTask) -> dict[str, Any]:
     settings = get_settings()
     source_task = video_task.source_task
+    resolution = video_resolution_for_aspect_ratio(
+        source_task.style_aspect_ratio_snapshot,
+        default_width=settings.comic_video_episode_width,
+        default_height=settings.comic_video_episode_height,
+    )
     images = current_panel_images(source_task)
     audio_by_panel_id = {segment.panel_id: segment for segment in video_task.audio_segments}
     shots: list[dict[str, Any]] = []
@@ -429,7 +464,7 @@ def build_episode(video_task: VideoTask) -> dict[str, Any]:
         "version": "1.0",
         "title": video_task.display_title,
         "theme": settings.comic_video_episode_theme,
-        "resolution": {"width": settings.comic_video_episode_width, "height": settings.comic_video_episode_height},
+        "resolution": resolution,
         "fps": settings.comic_video_episode_fps,
         "shots": shots,
     }

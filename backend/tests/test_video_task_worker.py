@@ -34,7 +34,7 @@ from app.models.enums import (
     VideoTaskStatus,
     VideoTaskStepName,
 )
-from app.services.video_task_worker import process_video_task
+from app.services.video_task_worker import process_video_task, video_resolution_for_aspect_ratio
 
 
 class FakeVoiceClient:
@@ -71,14 +71,14 @@ class VideoTaskWorkerTest(unittest.TestCase):
         Base.metadata.create_all(engine)
         self.Session = sessionmaker(bind=engine)
 
-    def create_video_task(self, *, reference_text: str | None = "参考声音文本") -> str:
+    def create_video_task(self, *, reference_text: str | None = "参考声音文本", aspect_ratio: str = "9:16") -> str:
         db = self.Session()
         user = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
         style = Style(
             name="漫画风",
             status=StyleStatus.active,
             image_model_name="gpt-image-2",
-            aspect_ratio="9:16",
+            aspect_ratio=aspect_ratio,
             style_reference_mode=StyleReferenceMode.prompt,
             style_prompt="干净漫画风",
         )
@@ -205,8 +205,64 @@ class VideoTaskWorkerTest(unittest.TestCase):
         self.assertIsNotNone(video_task.output_video_asset_id)
         self.assertEqual("job_123", video_task.video_provider_job_id)
         self.assertIn('"shots"', video_task.video_episode_json)
+        self.assertIn('"resolution": {"width": 1080, "height": 1920}', video_task.video_episode_json)
         self.assertEqual(FileAssetPurpose.generated_video, db.get(FileAsset, video_task.output_video_asset_id).purpose)
         self.assertEqual([1.45], FakeVoiceClient.generated_speeds)
+
+    def test_video_resolution_follows_style_aspect_ratio(self) -> None:
+        self.assertEqual(
+            {"width": 1080, "height": 1920},
+            video_resolution_for_aspect_ratio("9:16", default_width=1080, default_height=1920),
+        )
+        self.assertEqual(
+            {"width": 1920, "height": 1080},
+            video_resolution_for_aspect_ratio("16:9", default_width=1080, default_height=1920),
+        )
+        self.assertEqual(
+            {"width": 1440, "height": 1920},
+            video_resolution_for_aspect_ratio("3:4", default_width=1080, default_height=1920),
+        )
+
+    def test_video_resolution_rejects_invalid_style_aspect_ratio(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "无法解析视频画面比例"):
+            video_resolution_for_aspect_ratio("横版", default_width=1080, default_height=1920)
+
+    @patch("app.services.video_task_worker.materialize_asset_to_local", return_value=Path("/tmp/fake-media"))
+    @patch("app.services.video_task_worker.ComicVideoServiceClient", return_value=FakeComicVideoClient())
+    @patch("app.services.video_task_worker.SiliconFlowVoiceClient", return_value=FakeVoiceClient())
+    @patch("app.services.video_task_worker.save_binary_file")
+    def test_process_video_task_uses_landscape_style_resolution(
+        self,
+        save_binary_file,
+        _voice_client,
+        _video_client,
+        _materialize,
+    ) -> None:
+        save_binary_file.side_effect = [
+            SimpleNamespace(
+                storage_backend=StorageBackend.local,
+                storage_key="generated-audio/panel.mp3",
+                public_url=None,
+                byte_size=9,
+                checksum_sha256="audio-sha",
+            ),
+            SimpleNamespace(
+                storage_backend=StorageBackend.local,
+                storage_key="generated-video/final.mp4",
+                public_url=None,
+                byte_size=11,
+                checksum_sha256="video-sha",
+            ),
+        ]
+        video_task_id = self.create_video_task(aspect_ratio="16:9")
+
+        with patch("app.services.video_task_worker.SessionLocal", self.Session):
+            process_video_task(video_task_id)
+
+        db = self.Session()
+        video_task = db.get(VideoTask, video_task_id)
+        self.assertEqual(VideoTaskStatus.succeeded, video_task.status)
+        self.assertIn('"resolution": {"width": 1920, "height": 1080}', video_task.video_episode_json)
 
     @patch("app.services.video_task_worker.materialize_asset_to_local", return_value=Path("/tmp/fake-media"))
     @patch("app.services.video_task_worker.SiliconFlowVoiceClient", return_value=FakeVoiceClient())

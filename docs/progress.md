@@ -5,14 +5,15 @@
 - 分支：`codex/video-audio-tasks`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 86 视频任务重试与最终生图 Prompt 编译 Google 优先实现后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 87 视频分辨率跟随画风比例实现后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-86-video-task-retry-and-google-final-prompt-llm.md`
+- `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 87 视频分辨率跟随画风比例：定位到最终视频比例由 `build_episode()` 中的 `settings.comic_video_episode_width/height` 写入 episode resolution，默认 `1080x1920` 导致统一 9:16；现已改为读取上游图片任务 `style_aspect_ratio_snapshot` 计算视频宽高，保持 9:16 为 `1080x1920`，16:9 为 `1920x1080`，3:4 为 `1440x1920`，无法解析比例时明确失败，不做静默兜底。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_task_worker`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 125 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 86 视频任务重试与最终生图 Prompt 编译 Google 优先：失败视频任务新增手动重试入口；上游图片失败时复用图片任务重试并让视频任务回到等待图片状态，图片已成功但音频阶段失败时重新生成旁白音频，视频阶段失败时保留已成功音频并重新进入图文视频提交阶段。最终生图 prompt 编译 LLM 从 SiliconFlow JSON 通道切换到 LIO/Google 通道，不新增 provider 兜底。前端视频任务详情在失败状态展示 `重试视频` 按钮。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_video_audio_tasks backend.tests.test_video_task_worker`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 122 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 85 无文字生图提示词结构化约束：针对 `去掉画面文字` 只加最高指令但最终 prompt 仍包含旁白写入的问题，已把 `remove_image_text` 传入最终 prompt 编译链路；开启时不再把 `image_text` 中的标题、旁白、对白、内心 OS 或强调文字作为画面文字传给编译器，编译系统 prompt 明确禁止输出 `【文字】` 段或任何文字绘制指令，并在最终拼接前清理旁白框、字幕框、对白气泡、留白文字区和写入文字等残留指令；普通未开启该选项的图片任务保持原文字流程。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 120 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 84 视频任务默认无文字画面：视频任务创建上游 `GenerationTask` 时固定传入 `remove_image_text=True`，让视频素材图默认在最终生图 prompt 最前面带上 `最高指令，图片中不能包含任何文字。`；普通图片任务的默认值仍保持关闭，视频任务前端不新增额外开关，已有视频任务不回写。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 116 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
