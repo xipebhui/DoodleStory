@@ -60,9 +60,8 @@ import {
 } from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings" | "contact";
+type View = "tasks" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
-const CONTACT_WECHAT_LABEL = "扫码添加微信";
 const CONTACT_WECHAT_QR_SRC = "/wechat-contact-qr.png";
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const imageModelNamePlaceholder = "生图模型名，例如 gpt-image-2";
@@ -78,7 +77,6 @@ const viewRoutes: Record<View, string> = {
   users: "/users",
   creditUsage: "/credit-usage",
   settings: "/settings",
-  contact: "/contact",
 };
 
 function normalizedPathname(pathname: string) {
@@ -94,7 +92,6 @@ function viewFromPathname(pathname: string): View | null {
   if (path === viewRoutes.users) return "users";
   if (path === viewRoutes.creditUsage) return "creditUsage";
   if (path === viewRoutes.settings) return "settings";
-  if (path === viewRoutes.contact) return "contact";
   return null;
 }
 
@@ -368,7 +365,6 @@ function App() {
           onLogout={() => setUser(null)}
         />
       ) : null}
-      {view === "contact" ? <ContactView /> : null}
     </Shell>
   );
 }
@@ -462,7 +458,6 @@ function Shell({
     ...(user.role === "admin" ? [{ key: "users" as const, label: "用户管理", icon: Users, path: viewRoutes.users }] : []),
     ...(user.role === "admin" ? [{ key: "creditUsage" as const, label: "积分消耗", icon: BarChart3, path: viewRoutes.creditUsage }] : []),
     { key: "settings" as const, label: "设置", icon: Settings, path: viewRoutes.settings },
-    { key: "contact" as const, label: "联系我们", icon: MessageCircle, path: viewRoutes.contact },
   ];
 
   async function logout() {
@@ -520,7 +515,19 @@ function Shell({
           </button>
         </div>
       </aside>
-      <main className="content">{children}</main>
+      <main className="content">
+        <div className="contact-hover">
+          <button type="button" className="contact-hover-trigger" aria-label="联系我们">
+            <MessageCircle size={17} />
+            联系
+          </button>
+          <div className="contact-hover-popover" role="tooltip">
+            <strong>使用微信扫一扫</strong>
+            <img src={CONTACT_WECHAT_QR_SRC} alt="微信二维码" />
+          </div>
+        </div>
+        {children}
+      </main>
     </div>
   );
 }
@@ -535,32 +542,6 @@ function NotFoundView() {
         </div>
       </header>
       <div className="empty">请从左侧导航进入任务、内容提取、风格或设置页面。</div>
-    </section>
-  );
-}
-
-function ContactView() {
-  return (
-    <section className="page contact-page">
-      <header className="page-header">
-        <div>
-          <h1>联系我们</h1>
-          <p>遇到任务生成、风格配置或积分问题，可以通过微信联系。</p>
-        </div>
-      </header>
-
-      <div className="contact-panel panel">
-        <div className="contact-info">
-          <span className="contact-icon">
-            <MessageCircle size={30} />
-          </span>
-          <div>
-            <h2>微信联系</h2>
-            <p>{CONTACT_WECHAT_LABEL}</p>
-          </div>
-        </div>
-        <img className="contact-qr" src={CONTACT_WECHAT_QR_SRC} alt="微信二维码" />
-      </div>
     </section>
   );
 }
