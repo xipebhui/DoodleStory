@@ -3119,7 +3119,7 @@ function VideoTasksView({
             </div>
             <div className="task-status-cell">
               <span className={`status-pill ${item.status}`}>{videoTaskStatusLabel(item.status)}</span>
-              <small>{videoTaskStepLabel(item.current_step)} · 图片任务 {taskStatusLabel(item.source_task.status)}</small>
+              <small>{videoTaskStepLabel(item.current_step)} · 图片任务 {taskStatusLabel(item.source_task.status)}{item.video_provider_status ? ` · 渲染 ${item.video_provider_status}` : ""}</small>
             </div>
             <span>{formatDateTime(item.created_at)}</span>
           </button>
@@ -3158,6 +3158,32 @@ function VideoTasksView({
                 <h2>参考音频</h2>
                 <p>{selected.audio_reference_name_snapshot}</p>
                 <audio src={assetUrl(selected.audio_reference_asset)} controls />
+                {selected.voice_provider_snapshot || selected.voice_model_snapshot ? (
+                  <small>{selected.voice_provider_snapshot || "voice"} · {selected.voice_model_snapshot || "默认模型"}</small>
+                ) : null}
+              </section>
+              <section className="story-panel">
+                <h2>旁白音频</h2>
+                {selected.audio_segments.length === 0 ? <p>等待生成旁白音频。</p> : null}
+                <div className="audio-segment-list">
+                  {selected.audio_segments.map((segment) => (
+                    <article key={segment.id} className="audio-segment-row">
+                      <div>
+                        <strong>第 {segment.panel_order} 段</strong>
+                        <p>{segment.narration_text}</p>
+                      </div>
+                      <audio src={assetUrl(segment.asset)} controls />
+                    </article>
+                  ))}
+                </div>
+              </section>
+              <section className="story-panel">
+                <h2>最终视频</h2>
+                {selected.output_video_asset ? (
+                  <video src={assetUrl(selected.output_video_asset)} controls className="video-output-player" />
+                ) : (
+                  <p>{selected.video_provider_job_id ? `渲染任务 ${selected.video_provider_job_id}：${selected.video_provider_status || "处理中"}` : "等待提交图文视频生成服务。"}</p>
+                )}
               </section>
               <section className="progress-panel">
                 <div>

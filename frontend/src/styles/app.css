@@ -2211,6 +2211,38 @@ textarea {
   align-items: center;
 }
 
+.audio-segment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.audio-segment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.audio-segment-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.audio-segment-row audio,
+.video-output-player {
+  width: 100%;
+}
+
+.video-output-player {
+  max-height: 520px;
+  border-radius: var(--radius-sm);
+  background: #000;
+}
+
 .video-list-head {
   grid-template-columns: minmax(220px, 3fr) minmax(110px, 3fr) minmax(150px, 2fr) minmax(150px, 2fr) minmax(120px, 1fr);
 }

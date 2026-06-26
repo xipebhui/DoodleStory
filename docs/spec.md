@@ -198,6 +198,7 @@
 - 内容提取创建使用轻量后台处理：提交后立即保存记录并返回列表，后台分阶段完成解析下载和内容提取；下载媒体登记后先提交，内容提取完成后标记成功。列表按需刷新处理状态；如果后端进程重启导致同进程后台任务中断，启动恢复会把遗留 `processing` 记录标记失败并提示重新提取。仍保留显式重新提取接口用于用户在详情中重新执行，不引入外部队列或复杂状态机。
 - DY 爆款复刻复用内容提取轻量后台处理；复刻请求中的风格、图片数量和人物参考配置只作为当前同进程后台任务参数使用，内容提取成功后通过普通任务创建服务创建 `提取分镜` 任务，任务执行仍由现有进程内任务队列负责。
 - 视频任务第一版复用现有图片任务轻量后台处理。视频任务自身保存独立状态，但上游 `GenerationTask` 仍是图片、panel、旁白结构和人物参考的事实来源。音频参考和后续生成音频、最终视频都必须保存为明确文件资产，不得返回 mock 路径或占位 URL。
+- 视频任务执行采用进程内队列 + 数据库状态。上游图片任务成功后自动入队视频任务；服务启动时恢复 `waiting_for_images`、`ready_for_audio`、`audio_generating`、`audio_ready` 和 `video_generating` 等可恢复状态。视频任务按 panel 生成旁白音频，因为 `comic-video-studio` 的 `episode.shots[*].audio` 是每个 shot 的时间基准。每段生成音频必须保存为 `generated_audio` 资产；最终 MP4 必须保存为 `generated_video` 资产。`comic-video-studio` 默认通过 `COMIC_VIDEO_SERVICE_BASE_URL` 指向 `http://127.0.0.1:51103`，如配置 `COMIC_VIDEO_SERVICE_API_KEY` 则请求必须携带 `X-API-Key`。TTS 第一版使用 SiliconFlow `/uploads/audio/voice` 和 `/audio/speech`；参考音频没有已注册 voice uri 时，必须用参考音频文件和参考文本注册声音，缺少参考文本时任务明确失败。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 
 ## 约束

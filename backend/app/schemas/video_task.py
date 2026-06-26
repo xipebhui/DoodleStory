@@ -32,6 +32,15 @@ class VideoTaskSourceTaskRead(BaseModel):
     preview_images: list[TaskPreviewImageRead] = []
 
 
+class VideoTaskAudioSegmentRead(TimestampFields):
+    id: str
+    panel_id: str
+    panel_order: int
+    narration_text: str
+    duration_ms: int | None = None
+    asset: FileAssetRead
+
+
 class VideoTaskListItem(TimestampFields):
     id: str
     owner_user_id: str
@@ -46,6 +55,8 @@ class VideoTaskListItem(TimestampFields):
     error_code: str | None
     error_message: str | None
     audio_reference_name_snapshot: str
+    video_provider_job_id: str | None = None
+    video_provider_status: str | None = None
     source_task: VideoTaskSourceTaskRead
     output_video_asset: FileAssetRead | None = None
 
@@ -69,6 +80,13 @@ class VideoTaskRead(TimestampFields):
     audio_reference_name_snapshot: str
     audio_reference_text_snapshot: str | None
     audio_reference_asset: FileAssetRead
+    voice_provider_snapshot: str | None = None
+    voice_model_snapshot: str | None = None
+    voice_name_snapshot: str | None = None
     narration_audio_asset: FileAssetRead | None = None
+    audio_segments: list[VideoTaskAudioSegmentRead] = []
     output_video_asset: FileAssetRead | None = None
+    video_provider_job_id: str | None = None
+    video_provider_status: str | None = None
+    video_provider_output_url: str | None = None
     source_task: VideoTaskSourceTaskRead

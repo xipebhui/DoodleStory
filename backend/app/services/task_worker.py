@@ -1030,6 +1030,14 @@ def update_task_image_generation_state(db: Session, task_id: str) -> None:
         task.error_code = "ImageGenerationFailed"
         task.error_message = "所有分镜图片生成失败"
     db.commit()
+    try:
+        from app.services.video_task_worker import trigger_video_tasks_for_source_task
+
+        trigger_video_tasks_for_source_task(task.id)
+    except RuntimeError:
+        logger.info("video task queue not ready for source task trigger task_id=%s", task.id)
+    except Exception:
+        logger.exception("failed to trigger video tasks for source task_id=%s", task.id)
 
 
 def active_initial_image_job_count(db: Session, task_id: str) -> int:

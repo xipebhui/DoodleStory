@@ -2,17 +2,18 @@
 
 ## 当前基线
 
-- 分支：`main`
+- 分支：`codex/video-audio-tasks`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：QY 图片接口尺寸参数修复后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 80 视频任务音频与图文视频生成闭环后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-79-video-audio-task-foundation.md`
+- `docs/contracts/sprint-80-video-task-render-pipeline.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 80 视频任务音频与图文视频生成闭环：在 Sprint 79 骨架上接入后台视频任务执行链路。上游图片任务成功后，视频任务会自动入队，读取真实 panels、当前图片和参考音频，按 panel 调用 SiliconFlow 生成旁白音频，再组装 `comic-video-studio` episode 提交图文视频渲染服务，最终 MP4 保存为 DoodleStory 资产。新增 `video_task_audio_segments`、视频任务渲染状态快照、TTS 客户端、图文视频服务客户端、视频任务 worker、启动恢复和上游任务完成触发；前端详情展示每段旁白音频、渲染状态和最终视频。本 sprint 不做 provider 兜底、不伪造音频/视频、不引入外部队列或独立 worker。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks backend.tests.test_video_task_worker`、空 SQLite Alembic `upgrade head`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本次验证未调用真实 SiliconFlow TTS 或真实 `comic-video-studio` 服务，外部服务链路由单元测试假客户端覆盖协议边界。
 - 完成 Sprint 79 视频任务与音频管理基础能力：新增音频管理 tab 和视频任务 tab。音频管理支持上传、搜索、查看、试听和软删除参考音频；视频任务创建时只让用户输入故事、选择现有画风和参考音频，后端会创建并关联真实的上游 `GenerationTask`，复用当前故事切分、旁白结构和图片生成链路。视频任务列表与详情会同步上游图片任务状态，图片任务成功后停在待生成音频状态；第一版不接入真实外部图文视频 provider，不伪造音频或视频结果，不改变现有图片任务生成与积分扣费逻辑。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、空 SQLite Alembic `upgrade head`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 修复 xgapi 无参考图质量参数：本地任务 `50c796217bdf4e299359c51e74e9f662` 的人物参考图仍失败，根因是该任务风格没有风格参考图，人物参考图请求 `reference_count=0`，因此走 xgapi `/v1/images/generations` JSON 分支；上一轮只把 `/v1/images/edits` multipart 分支的 `quality=1k` 转成 `high`，generation 分支仍发送 `1k`，第三方返回 HTTP 400：`quality must be one of: auto, low, medium, high`。现已把 xgapi 质量参数转换抽成通用逻辑，generation 和 edit 分支都统一把 `1k/2k/4k` 转为 `high`，无效配置继续明确报错，不引入 provider 或模型兜底。
 - 加固风格参考图上传流程：创建风格时仍保持先创建风格、再逐张上传参考图的既有流程，但保存和上传期间统一进入 busy 状态，禁止关闭抽屉、重复提交、重复上传、删除参考图或删除风格；编辑风格时选择参考图后新增独立上传中状态和逐张上传进度，避免上传慢时用户误以为没响应并重复操作。后端上传入口不再只相信客户端声明的 `content-type`，改为读取上传内容后用 PIL 校验真实 PNG/JPEG/WebP 图片，拒绝伪图片、声明类型与真实内容不一致的文件，并限制单张上传图片最大 10MB。本次不改变风格写接口的角色权限模型，也不把风格基础信息和参考图上传合并为事务接口。

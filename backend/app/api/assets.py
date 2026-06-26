@@ -17,6 +17,7 @@ from app.models.entities import (
     User,
     UserCharacter,
     VideoTask,
+    VideoTaskAudioSegment,
 )
 from app.models.enums import FileAssetPurpose, UserRole
 from app.schemas.common import ApiData
@@ -114,7 +115,17 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
                 VideoTask.owner_user_id == user.id,
             )
         )
-        return video_task is not None
+        if video_task is not None:
+            return True
+        audio_segment = db.scalar(
+            select(VideoTaskAudioSegment)
+            .join(VideoTaskAudioSegment.video_task)
+            .where(
+                VideoTaskAudioSegment.asset_id == asset.id,
+                VideoTask.owner_user_id == user.id,
+            )
+        )
+        return audio_segment is not None
     if asset.purpose == FileAssetPurpose.generated_video:
         video_task = db.scalar(
             select(VideoTask).where(

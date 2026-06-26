@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
-from app.models.entities import AudioReference, GeneratedImage, GenerationTask, TaskPanel, User, VideoTask
+from app.models.entities import AudioReference, GeneratedImage, GenerationTask, TaskPanel, User, VideoTask, VideoTaskAudioSegment
 from app.models.enums import (
     GeneratedImageJobKind,
     GeneratedImageStatus,
@@ -19,7 +19,7 @@ from app.models.enums import (
 )
 from app.schemas.common import ApiData, ApiList
 from app.schemas.task import TaskCreate, TaskPreviewImageRead
-from app.schemas.video_task import VideoTaskCreate, VideoTaskListItem, VideoTaskRead, VideoTaskSourceTaskRead
+from app.schemas.video_task import VideoTaskAudioSegmentRead, VideoTaskCreate, VideoTaskListItem, VideoTaskRead, VideoTaskSourceTaskRead
 from app.services.image_generation import ImageProviderConfigError
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 from app.services.task_worker import enqueue_task
@@ -50,6 +50,7 @@ def video_task_options():
         selectinload(VideoTask.source_task).selectinload(GenerationTask.generated_images).selectinload(GeneratedImage.asset),
         selectinload(VideoTask.audio_reference),
         selectinload(VideoTask.audio_reference_asset_snapshot),
+        selectinload(VideoTask.audio_segments).selectinload(VideoTaskAudioSegment.asset),
         selectinload(VideoTask.narration_audio_asset),
         selectinload(VideoTask.output_video_asset),
     )
@@ -146,6 +147,8 @@ def video_task_list_item(video_task: VideoTask) -> VideoTaskListItem:
         error_code=video_task.error_code,
         error_message=video_task.error_message,
         audio_reference_name_snapshot=video_task.audio_reference_name_snapshot,
+        video_provider_job_id=video_task.video_provider_job_id,
+        video_provider_status=video_task.video_provider_status,
         source_task=source_task_read(video_task.source_task),
         output_video_asset=video_task.output_video_asset,
         created_at=video_task.created_at,
@@ -173,8 +176,28 @@ def video_task_read(video_task: VideoTask) -> VideoTaskRead:
         audio_reference_name_snapshot=video_task.audio_reference_name_snapshot,
         audio_reference_text_snapshot=video_task.audio_reference_text_snapshot,
         audio_reference_asset=video_task.audio_reference_asset_snapshot,
+        voice_provider_snapshot=video_task.voice_provider_snapshot,
+        voice_model_snapshot=video_task.voice_model_snapshot,
+        voice_name_snapshot=video_task.voice_name_snapshot,
         narration_audio_asset=video_task.narration_audio_asset,
+        audio_segments=[
+            VideoTaskAudioSegmentRead(
+                id=segment.id,
+                panel_id=segment.panel_id,
+                panel_order=segment.panel_order,
+                narration_text=segment.narration_text,
+                duration_ms=segment.duration_ms,
+                asset=segment.asset,
+                created_at=segment.created_at,
+                updated_at=segment.updated_at,
+            )
+            for segment in sorted(video_task.audio_segments, key=lambda item: item.panel_order)
+            if segment.asset is not None
+        ],
         output_video_asset=video_task.output_video_asset,
+        video_provider_job_id=video_task.video_provider_job_id,
+        video_provider_status=video_task.video_provider_status,
+        video_provider_output_url=video_task.video_provider_output_url,
         source_task=source_task_read(video_task.source_task),
         created_at=video_task.created_at,
         updated_at=video_task.updated_at,
@@ -254,6 +277,9 @@ async def create_video_task(
         audio_reference_name_snapshot=reference.name,
         audio_reference_text_snapshot=reference.reference_text,
         audio_reference_asset_id_snapshot=reference.asset_id,
+        voice_provider_snapshot=reference.voice_provider,
+        voice_model_snapshot=reference.voice_model,
+        voice_name_snapshot=reference.voice_name,
         status=VideoTaskStatus.waiting_for_images,
         current_step=VideoTaskStepName.generate_source_images,
         progress_current=0,

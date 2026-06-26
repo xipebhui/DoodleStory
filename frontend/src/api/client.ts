@@ -317,6 +317,17 @@ export type VideoTaskSourceTask = {
   preview_images: TaskPreviewImage[];
 };
 
+export type VideoTaskAudioSegment = {
+  id: string;
+  panel_id: string;
+  panel_order: number;
+  narration_text: string;
+  duration_ms: number | null;
+  asset: FileAsset;
+  created_at: string;
+  updated_at: string;
+};
+
 export type VideoTask = {
   id: string;
   owner_user_id: string;
@@ -337,8 +348,15 @@ export type VideoTask = {
   audio_reference_name_snapshot: string;
   audio_reference_text_snapshot: string | null;
   audio_reference_asset: FileAsset;
+  voice_provider_snapshot: string | null;
+  voice_model_snapshot: string | null;
+  voice_name_snapshot: string | null;
   narration_audio_asset: FileAsset | null;
+  audio_segments: VideoTaskAudioSegment[];
   output_video_asset: FileAsset | null;
+  video_provider_job_id: string | null;
+  video_provider_status: string | null;
+  video_provider_output_url: string | null;
   source_task: VideoTaskSourceTask;
   created_at: string;
   updated_at: string;
@@ -346,7 +364,18 @@ export type VideoTask = {
 
 export type VideoTaskSummary = Omit<
   VideoTask,
-  "original_text" | "started_at" | "finished_at" | "audio_reference_id" | "audio_reference_text_snapshot" | "audio_reference_asset" | "narration_audio_asset"
+  | "original_text"
+  | "started_at"
+  | "finished_at"
+  | "audio_reference_id"
+  | "audio_reference_text_snapshot"
+  | "audio_reference_asset"
+  | "voice_provider_snapshot"
+  | "voice_model_snapshot"
+  | "voice_name_snapshot"
+  | "narration_audio_asset"
+  | "audio_segments"
+  | "video_provider_output_url"
 > & {
   original_text_preview: string;
 };
