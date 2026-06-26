@@ -419,6 +419,28 @@ class TaskWorkerPromptTest(unittest.TestCase):
         self.assertNotIn("整体风格：", final_prompt)
         self.assertNotIn("整体色调/风格：", final_prompt)
 
+    def test_remove_image_text_option_prefixes_highest_instruction(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.adapted,
+            image_count_mode=ImageCountMode.auto,
+            remove_image_text=True,
+            style_id="style",
+            style_name_snapshot="漫画风",
+            style_prompt_snapshot="手绘漫画风，文字清晰。",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+
+        final_prompt = final_prompt_with_explicit_style(task, "画面里有街道和人物。")
+
+        self.assertTrue(final_prompt.startswith("最高指令，图片中不能包含任何文字。"))
+        self.assertLess(final_prompt.index("最高指令"), final_prompt.index("画面比例：3:4"))
+        self.assertIn("最终画面指令：", final_prompt)
+
     def test_last_panel_real_photo_final_prompt_overrides_task_style(self) -> None:
         task = GenerationTask(
             owner_user_id="user",

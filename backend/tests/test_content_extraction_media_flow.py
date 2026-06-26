@@ -152,6 +152,7 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
             style_id="style-1",
             use_character_references=True,
             last_panel_real_photo=True,
+            remove_image_text=True,
         )
         user = SimpleNamespace(id="user-1")
         db = object()
@@ -164,6 +165,7 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
             self.assertEqual("style-1", payload.style_id)
             self.assertTrue(payload.use_character_references)
             self.assertTrue(payload.last_panel_real_photo)
+            self.assertTrue(payload.remove_image_text)
             return SimpleNamespace(id="task-1")
 
         with patch(

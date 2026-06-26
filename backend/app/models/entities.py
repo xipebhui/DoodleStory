@@ -220,6 +220,7 @@ class GenerationTask(Base, TimestampMixin):
     requested_image_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     use_character_references: Mapped[bool] = mapped_column(Boolean, default=False)
     last_panel_real_photo: Mapped[bool] = mapped_column(Boolean, default=False)
+    remove_image_text: Mapped[bool] = mapped_column(Boolean, default=False)
     style_id: Mapped[str] = mapped_column(ForeignKey("styles.id", ondelete="RESTRICT"), index=True)
     style_name_snapshot: Mapped[str] = mapped_column(String(80))
     style_prompt_snapshot: Mapped[str] = mapped_column(Text)

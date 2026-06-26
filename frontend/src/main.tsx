@@ -1415,6 +1415,7 @@ function TasksView({
       return;
     }
     const shouldUseDouyinReplicate = storyInputMode === "dy_replicate" || containsDouyinShareUrl(originalText);
+    const removeImageText = formData.get("remove_image_text") === "on";
     if (!shouldUseDouyinReplicate && fixedRoleFlowEnabled && !fixedRoleExtractionReady) {
       await extractRolesForCreate();
       return;
@@ -1437,6 +1438,7 @@ function TasksView({
           style_id: createStyleId,
           use_character_references: true,
           last_panel_real_photo: lastPanelRealPhoto,
+          remove_image_text: removeImageText,
         });
         resetCreateForm();
         setCreateOpen(false);
@@ -1457,6 +1459,7 @@ function TasksView({
         style_id: createStyleId,
         use_character_references: true,
         last_panel_real_photo: lastPanelRealPhoto,
+        remove_image_text: removeImageText,
         story_characters: storyCharacters,
       });
       resetCreateForm();
@@ -1776,6 +1779,7 @@ function TasksView({
                       {task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}
                       {" · "}
                       {task.last_panel_real_photo ? "最后一张真人 · " : ""}
+                      {task.remove_image_text ? "无文字 · " : ""}
                       {task.style_aspect_ratio_snapshot}
                     </small>
                   </div>
@@ -1942,6 +1946,13 @@ function TasksView({
                 <section className="story-panel compact-info-panel">
                   <h2>真人结尾</h2>
                   <p>最后一张启用真人照片风格，不携带漫画风格参考图或人物参考图。</p>
+                </section>
+              ) : null}
+
+              {taskForDetail.remove_image_text ? (
+                <section className="story-panel compact-info-panel">
+                  <h2>无文字画面</h2>
+                  <p>最终生图提示词最前面会加入最高指令，要求图片中不能包含任何文字。</p>
                 </section>
               ) : null}
 
@@ -2230,6 +2241,13 @@ function TasksView({
                   <span>
                     <strong>最后一张真人图片</strong>
                     <small>默认关闭；勾选后最后一个分镜按真实摄影/自拍照片生成，不跟随当前漫画风格。</small>
+                  </span>
+                </label>
+                <label className="character-reference-toggle remove-text-toggle">
+                  <input name="remove_image_text" type="checkbox" />
+                  <span>
+                    <strong>去掉画面文字</strong>
+                    <small>默认关闭；勾选后最终生图提示词最前面加入最高指令，要求图片中不能包含任何文字。</small>
                   </span>
                 </label>
               </section>

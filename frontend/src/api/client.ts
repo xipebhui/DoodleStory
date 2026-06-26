@@ -212,6 +212,7 @@ export type Task = {
   requested_image_count: number | null;
   use_character_references: boolean;
   last_panel_real_photo: boolean;
+  remove_image_text: boolean;
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
@@ -258,6 +259,7 @@ export type TaskSummary = {
   requested_image_count: number | null;
   use_character_references: boolean;
   last_panel_real_photo: boolean;
+  remove_image_text: boolean;
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
@@ -840,6 +842,7 @@ export const api = {
     style_id: string;
     use_character_references?: boolean;
     last_panel_real_photo?: boolean;
+    remove_image_text?: boolean;
     story_characters?: StoryCharacterBinding[];
   }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
   extractCharacterNames: (payload: { text: string }) =>
@@ -936,6 +939,7 @@ export const api = {
     style_id: string;
     use_character_references?: boolean;
     last_panel_real_photo?: boolean;
+    remove_image_text?: boolean;
   }) =>
     request<ApiData<ContentExtraction>>("/content-extractions/replicate-task", {
       method: "POST",

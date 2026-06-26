@@ -1685,6 +1685,16 @@ def final_prompt_with_real_photo_style(aspect_ratio: str, final_prompt: str) -> 
     return final_prompt_with_aspect_ratio_prefix(aspect_ratio, real_photo_block)
 
 
+def final_prompt_with_remove_text_instruction(task: GenerationTask, final_prompt: str) -> str:
+    cleaned_prompt = final_prompt.strip()
+    if not task.remove_image_text:
+        return cleaned_prompt
+    instruction = "最高指令，图片中不能包含任何文字。"
+    if cleaned_prompt.startswith(instruction):
+        return cleaned_prompt
+    return "\n".join([instruction, "", cleaned_prompt]).strip()
+
+
 def final_prompt_with_explicit_style(
     task: GenerationTask,
     final_prompt: str,
@@ -1693,7 +1703,10 @@ def final_prompt_with_explicit_style(
 ) -> str:
     cleaned_prompt = final_prompt.strip()
     if force_real_photo:
-        return final_prompt_with_real_photo_style(task.style_aspect_ratio_snapshot, cleaned_prompt)
+        return final_prompt_with_remove_text_instruction(
+            task,
+            final_prompt_with_real_photo_style(task.style_aspect_ratio_snapshot, cleaned_prompt),
+        )
 
     style_prompt = task.style_prompt_snapshot
     cleaned_style = (style_prompt or "").strip()
@@ -1710,7 +1723,10 @@ def final_prompt_with_explicit_style(
     ]
     if not cleaned_style:
         prompt_sections.append(cleaned_prompt)
-        return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections))
+        return final_prompt_with_remove_text_instruction(
+            task,
+            final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections)),
+        )
 
     prompt_sections.append(
         "\n".join(
@@ -1728,7 +1744,10 @@ def final_prompt_with_explicit_style(
         )
     )
     prompt_sections.extend(["最终画面指令：", cleaned_prompt])
-    return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections))
+    return final_prompt_with_remove_text_instruction(
+        task,
+        final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections)),
+    )
 
 
 def is_last_panel_real_photo_panel(task: GenerationTask, panel: TaskPanel) -> bool:
