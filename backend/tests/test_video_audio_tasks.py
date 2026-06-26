@@ -24,6 +24,7 @@ from app.models.enums import (
     VideoTaskStatus,
 )
 from app.schemas.video_task import VideoTaskCreate
+from app.services.local_whisper import normalize_transcription_text
 
 
 class VideoAudioTaskTest(unittest.TestCase):
@@ -109,6 +110,9 @@ class VideoAudioTaskTest(unittest.TestCase):
 
         self.assertEqual("自动识别出的参考文本", response.data.text)
         transcribe_audio_content.assert_called_once_with(b"audio-bytes", ".wav")
+
+    def test_local_whisper_transcription_is_normalized_to_simplified_chinese(self) -> None:
+        self.assertEqual("电台测试，欢迎来到故事里。", normalize_transcription_text("電臺測試，歡迎來到故事裡。"))
 
     @patch("app.api.video_tasks.enqueue_task", new_callable=AsyncMock)
     def test_create_video_task_creates_real_source_generation_task(self, enqueue_task) -> None:
