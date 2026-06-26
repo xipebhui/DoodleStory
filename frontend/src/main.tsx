@@ -509,25 +509,23 @@ function Shell({
           </div>
           <strong>{user.display_name || user.email}</strong>
           <span>{user.role === "admin" ? "管理员" : "普通用户"}</span>
+          <div className="contact-hover">
+            <button type="button" className="contact-hover-trigger" aria-label="联系我们">
+              <MessageCircle size={17} />
+              联系微信
+            </button>
+            <div className="contact-hover-popover" role="tooltip">
+              <strong>使用微信扫一扫</strong>
+              <img src={CONTACT_WECHAT_QR_SRC} alt="微信二维码" />
+            </div>
+          </div>
           <button onClick={logout}>
             <LogOut size={16} />
             退出
           </button>
         </div>
       </aside>
-      <main className="content">
-        <div className="contact-hover">
-          <button type="button" className="contact-hover-trigger" aria-label="联系我们">
-            <MessageCircle size={17} />
-            联系
-          </button>
-          <div className="contact-hover-popover" role="tooltip">
-            <strong>使用微信扫一扫</strong>
-            <img src={CONTACT_WECHAT_QR_SRC} alt="微信二维码" />
-          </div>
-        </div>
-        {children}
-      </main>
+      <main className="content">{children}</main>
     </div>
   );
 }

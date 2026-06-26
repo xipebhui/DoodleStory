@@ -241,36 +241,34 @@ textarea {
 }
 
 .content {
-  position: relative;
   min-width: 0;
   padding: var(--content-gutter);
   overflow: auto;
 }
 
 .contact-hover {
-  position: fixed;
-  top: 18px;
-  right: 24px;
-  z-index: 40;
+  position: relative;
+  z-index: 20;
   display: grid;
-  justify-items: end;
+  width: 100%;
 }
 
 .contact-hover-trigger {
-  min-height: 36px;
-  padding: 0 12px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
   border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(17, 19, 24, 0.92);
+  background: rgba(255, 255, 255, 0.04);
   color: #d7dde8;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
-  backdrop-filter: blur(10px);
 }
 
 .contact-hover-popover {
+  position: absolute;
+  left: calc(100% + 12px);
+  bottom: -10px;
   display: grid;
   gap: 10px;
   width: 196px;
-  margin-top: 8px;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
@@ -278,7 +276,7 @@ textarea {
   box-shadow: 0 18px 52px rgba(0, 0, 0, 0.34);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
+  transform: translateX(-4px);
   transition:
     opacity 0.16s ease,
     transform 0.16s ease;
@@ -288,7 +286,7 @@ textarea {
 .contact-hover:focus-within .contact-hover-popover {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: translateX(0);
 }
 
 .contact-hover-popover strong {
