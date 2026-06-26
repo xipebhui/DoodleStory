@@ -735,6 +735,7 @@ function TasksView({
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
+  const [loadingStyles, setLoadingStyles] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -828,6 +829,10 @@ function TasksView({
   useEffect(() => {
     refresh(undefined, { quiet: false });
   }, [query, statusFilter, styleFilter, taskUserFilter, cursor]);
+
+  useEffect(() => {
+    void refreshStyles();
+  }, []);
 
   useEffect(() => {
     if (user.role !== "admin") {
@@ -1040,20 +1045,16 @@ function TasksView({
       } else {
         setLoadingTasks(true);
       }
-      const [taskResult, styleResult] = await Promise.all([
-        api.tasks({
-          query,
-          status: statusFilter,
-          style_id: styleFilter,
-          user_id: user.role === "admin" ? taskUserFilter || null : null,
-          cursor,
-          limit: 10,
-        }),
-        api.styles({ status: "active" }),
-      ]);
+      const taskResult = await api.tasks({
+        query,
+        status: statusFilter,
+        style_id: styleFilter,
+        user_id: user.role === "admin" ? taskUserFilter || null : null,
+        cursor,
+        limit: 10,
+      });
       setTasks(taskResult.items);
       setPageInfo(taskResult.page);
-      setStyles(styleResult.items);
       setError("");
       const nextSelectedId = preferredTaskId || routeTaskId || selectedId;
       if (nextSelectedId && (detailOpen || routeTaskId)) {
@@ -1069,6 +1070,18 @@ function TasksView({
     } finally {
       setLoadingTasks(false);
       setRefreshing(false);
+    }
+  }
+
+  async function refreshStyles() {
+    try {
+      setLoadingStyles(true);
+      const styleResult = await api.styles({ status: "active" });
+      setStyles(styleResult.items);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "风格列表加载失败");
+    } finally {
+      setLoadingStyles(false);
     }
   }
 
@@ -1580,13 +1593,14 @@ function TasksView({
           <Sparkles size={16} />
           <select
             value={styleFilter}
+            disabled={loadingStyles}
             onChange={(event) => {
               setStyleFilter(event.target.value);
               setCursor(null);
               setCursorStack([]);
             }}
           >
-            <option value="">全部风格</option>
+            <option value="">{loadingStyles ? "风格加载中" : "全部风格"}</option>
             {styles.map((style) => (
               <option key={style.id} value={style.id}>
                 {style.name}
