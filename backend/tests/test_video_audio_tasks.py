@@ -10,9 +10,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.audio_references import create_audio_reference, test_audio_reference, transcribe_audio_reference, update_audio_reference
-from app.api.video_tasks import create_video_task, get_video_task
+from app.api.video_tasks import create_video_task, get_video_task, retry_video_task
 from app.core.database import Base
-from app.models.entities import AudioReference, FileAsset, Style, User, VideoTask
+from app.models.entities import AudioReference, FileAsset, Style, TaskPanel, User, VideoTask, VideoTaskAudioSegment
 from app.models.enums import (
     FileAssetPurpose,
     ImageCountMode,
@@ -22,6 +22,7 @@ from app.models.enums import (
     TaskStatus,
     UserRole,
     VideoTaskStatus,
+    VideoTaskStepName,
 )
 from app.schemas.audio import AudioReferenceTestRequest, AudioReferenceUpdate
 from app.schemas.video_task import VideoTaskCreate
@@ -280,6 +281,126 @@ class VideoAudioTaskTest(unittest.TestCase):
         self.assertEqual(VideoTaskStatus.ready_for_audio, response.data.status)
         self.assertEqual("generate_narration_audio", response.data.current_step)
         self.assertEqual(1, response.data.progress_current)
+
+    @patch("app.api.video_tasks.enqueue_video_task", new_callable=AsyncMock)
+    @patch("app.api.video_tasks.enqueue_task", new_callable=AsyncMock)
+    def test_retry_video_task_retries_failed_source_task(self, enqueue_task, enqueue_video_task) -> None:
+        db, user, style = self.create_user_and_style()
+        audio_asset = FileAsset(
+            purpose=FileAssetPurpose.audio_reference,
+            storage_backend=StorageBackend.local,
+            storage_key="audio-reference/ref.mp3",
+            content_type="audio/mpeg",
+            byte_size=12,
+        )
+        db.add(audio_asset)
+        db.flush()
+        reference = AudioReference(owner_user_id=user.id, name="温柔女声", reference_text="参考文本", asset_id=audio_asset.id)
+        db.add(reference)
+        db.commit()
+        created = asyncio.run(
+            create_video_task(
+                VideoTaskCreate(
+                    original_text="一只小狗找到回家的路。",
+                    style_id=style.id,
+                    audio_reference_id=reference.id,
+                ),
+                user=user,
+                db=db,
+            )
+        )
+        enqueue_task.reset_mock()
+        video_task = db.get(VideoTask, created.data.id)
+        video_task.status = VideoTaskStatus.failed
+        video_task.current_step = VideoTaskStepName.generate_source_images
+        video_task.error_code = "SourceImageTaskFailed"
+        video_task.error_message = "上游图片失败"
+        video_task.source_task.status = TaskStatus.failed
+        video_task.source_task.error_code = "ImageProviderResponseError"
+        video_task.source_task.error_message = "图片生成失败"
+        db.commit()
+
+        response = asyncio.run(retry_video_task(video_task.id, user=user, db=db))
+
+        db.refresh(video_task)
+        self.assertEqual(VideoTaskStatus.waiting_for_images, response.data.status)
+        self.assertEqual(TaskStatus.retrying, video_task.source_task.status)
+        self.assertIsNone(video_task.error_message)
+        enqueue_task.assert_awaited_once_with(video_task.source_task_id)
+        enqueue_video_task.assert_not_awaited()
+
+    @patch("app.api.video_tasks.enqueue_video_task", new_callable=AsyncMock)
+    @patch("app.api.video_tasks.enqueue_task", new_callable=AsyncMock)
+    def test_retry_video_task_restarts_video_stage_without_regenerating_audio(self, enqueue_task, enqueue_video_task) -> None:
+        db, user, style = self.create_user_and_style()
+        audio_asset = FileAsset(
+            purpose=FileAssetPurpose.audio_reference,
+            storage_backend=StorageBackend.local,
+            storage_key="audio-reference/ref.mp3",
+            content_type="audio/mpeg",
+            byte_size=12,
+        )
+        generated_audio = FileAsset(
+            purpose=FileAssetPurpose.generated_audio,
+            storage_backend=StorageBackend.local,
+            storage_key="generated-audio/panel.mp3",
+            content_type="audio/mpeg",
+            byte_size=12,
+        )
+        db.add_all([audio_asset, generated_audio])
+        db.flush()
+        reference = AudioReference(owner_user_id=user.id, name="温柔女声", reference_text="参考文本", asset_id=audio_asset.id)
+        db.add(reference)
+        db.commit()
+        created = asyncio.run(
+            create_video_task(
+                VideoTaskCreate(
+                    original_text="一只小狗找到回家的路。",
+                    style_id=style.id,
+                    audio_reference_id=reference.id,
+                ),
+                user=user,
+                db=db,
+            )
+        )
+        enqueue_task.reset_mock()
+        video_task = db.get(VideoTask, created.data.id)
+        panel = TaskPanel(
+            task_id=video_task.source_task_id,
+            panel_order=1,
+            original_text_segment="一只小狗找到回家的路。",
+            narration_text="一只小狗找到回家的路。",
+        )
+        db.add(panel)
+        db.flush()
+        segment = VideoTaskAudioSegment(
+            video_task_id=video_task.id,
+            panel_id=panel.id,
+            panel_order=1,
+            narration_text="一只小狗找到回家的路。",
+            asset_id=generated_audio.id,
+        )
+        db.add(segment)
+        video_task.status = VideoTaskStatus.failed
+        video_task.current_step = VideoTaskStepName.submit_video
+        video_task.progress_current = 3
+        video_task.error_code = "ComicVideoServiceError"
+        video_task.error_message = "视频渲染失败"
+        video_task.video_provider_job_id = "job_failed"
+        video_task.video_provider_status = "failed"
+        video_task.source_task.status = TaskStatus.succeeded
+        db.commit()
+
+        response = asyncio.run(retry_video_task(video_task.id, user=user, db=db))
+
+        db.refresh(video_task)
+        self.assertEqual(VideoTaskStatus.audio_ready, response.data.status)
+        self.assertEqual(VideoTaskStepName.submit_video, video_task.current_step)
+        self.assertEqual(1, len(video_task.audio_segments))
+        self.assertIsNone(video_task.video_provider_job_id)
+        self.assertIsNone(video_task.error_message)
+        enqueue_video_task.assert_awaited_once_with(video_task.id)
+        enqueue_task.assert_not_awaited()
 
 
 if __name__ == "__main__":

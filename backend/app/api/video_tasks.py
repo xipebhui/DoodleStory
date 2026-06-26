@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
+from app.api.tasks import prepare_generation_task_retry, task_detail_statement
 from app.core.database import get_db
 from app.models.entities import AudioReference, GeneratedImage, GenerationTask, TaskPanel, User, VideoTask, VideoTaskAudioSegment
 from app.models.enums import (
@@ -23,6 +24,7 @@ from app.schemas.video_task import VideoTaskAudioSegmentRead, VideoTaskCreate, V
 from app.services.image_generation import ImageProviderConfigError
 from app.services.task_creation import TaskCreationError, create_generation_task_record
 from app.services.task_worker import enqueue_task
+from app.services.video_task_worker import enqueue_video_task
 
 router = APIRouter(prefix="/video-tasks", tags=["video-tasks"])
 
@@ -105,6 +107,42 @@ def sync_video_task_from_source(video_task: VideoTask) -> bool:
         video_task.error_message = None
         return True
     return False
+
+
+def video_task_has_all_audio_segments(video_task: VideoTask) -> bool:
+    panel_ids = {panel.id for panel in video_task.source_task.panels}
+    if not panel_ids:
+        return False
+    segment_panel_ids = {
+        segment.panel_id
+        for segment in video_task.audio_segments
+        if segment.asset_id is not None
+    }
+    return panel_ids <= segment_panel_ids
+
+
+def clear_video_task_audio_outputs(db: Session, video_task: VideoTask) -> None:
+    for segment in list(video_task.audio_segments):
+        db.delete(segment)
+    video_task.audio_segments.clear()
+    video_task.narration_audio_asset_id = None
+
+
+def clear_video_task_render_outputs(video_task: VideoTask) -> None:
+    video_task.output_video_asset_id = None
+    video_task.video_provider_job_id = None
+    video_task.video_provider_status = None
+    video_task.video_provider_output_url = None
+    video_task.video_episode_json = None
+    video_task.video_provider_result_json = None
+
+
+def reset_video_task_runtime_state(video_task: VideoTask) -> None:
+    video_task.started_at = datetime.utcnow()
+    video_task.finished_at = None
+    video_task.error_code = None
+    video_task.error_message = None
+    video_task.internal_error_ref = None
 
 
 def source_task_read(source_task: GenerationTask) -> VideoTaskSourceTaskRead:
@@ -308,4 +346,54 @@ def get_video_task(
     if sync_video_task_from_source(video_task):
         db.commit()
         video_task = db.scalar(select(VideoTask).where(VideoTask.id == video_task_id).options(*video_task_options()))
+    return ApiData(data=video_task_read(video_task))
+
+
+@router.post("/{video_task_id}/retry", response_model=ApiData[VideoTaskRead], status_code=status.HTTP_202_ACCEPTED)
+async def retry_video_task(
+    video_task_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[VideoTaskRead]:
+    video_task = db.scalar(select(VideoTask).where(VideoTask.id == video_task_id).options(*video_task_options()))
+    video_task = ensure_video_task_access(video_task, user)
+    if sync_video_task_from_source(video_task):
+        db.flush()
+    if video_task.status != VideoTaskStatus.failed:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败的视频任务可以重试")
+
+    if video_task.source_task.status != TaskStatus.succeeded:
+        source_task = db.scalar(task_detail_statement(video_task.source_task_id))
+        if source_task is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频任务关联的上游图片任务不存在")
+        prepare_generation_task_retry(db, source_task)
+        clear_video_task_audio_outputs(db, video_task)
+        clear_video_task_render_outputs(video_task)
+        reset_video_task_runtime_state(video_task)
+        video_task.status = VideoTaskStatus.waiting_for_images
+        video_task.current_step = VideoTaskStepName.generate_source_images
+        video_task.progress_current = 0
+        db.commit()
+        await enqueue_task(source_task.id)
+    else:
+        restart_from_audio = (
+            video_task.current_step == VideoTaskStepName.generate_narration_audio
+            or not video_task_has_all_audio_segments(video_task)
+        )
+        if restart_from_audio:
+            clear_video_task_audio_outputs(db, video_task)
+            clear_video_task_render_outputs(video_task)
+            video_task.status = VideoTaskStatus.ready_for_audio
+            video_task.current_step = VideoTaskStepName.generate_narration_audio
+            video_task.progress_current = 1
+        else:
+            clear_video_task_render_outputs(video_task)
+            video_task.status = VideoTaskStatus.audio_ready
+            video_task.current_step = VideoTaskStepName.submit_video
+            video_task.progress_current = 2
+        reset_video_task_runtime_state(video_task)
+        db.commit()
+        await enqueue_video_task(video_task.id)
+
+    video_task = db.scalar(select(VideoTask).where(VideoTask.id == video_task_id).options(*video_task_options()))
     return ApiData(data=video_task_read(video_task))

@@ -801,6 +801,8 @@ export const api = {
     return request<ApiList<VideoTaskSummary>>(`/video-tasks${suffix}`);
   },
   videoTask: (id: string) => request<ApiData<VideoTask>>(`/video-tasks/${id}`).then((result) => result.data),
+  retryVideoTask: (id: string) =>
+    request<ApiData<VideoTask>>(`/video-tasks/${id}/retry`, { method: "POST" }).then((result) => result.data),
   createVideoTask: (payload: {
     original_text: string;
     image_count_mode: "auto" | "fixed";

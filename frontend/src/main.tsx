@@ -3195,6 +3195,7 @@ function VideoTasksView({
   const [message, setMessage] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [retryingVideoTaskId, setRetryingVideoTaskId] = useState<string | null>(null);
   const [styles, setStyles] = useState<Style[]>([]);
   const [audioReferences, setAudioReferences] = useState<AudioReference[]>([]);
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
@@ -3285,6 +3286,21 @@ function VideoTasksView({
   function closeDetail() {
     setSelected(null);
     onNavigatePath(viewRoutes.videoTasks);
+  }
+
+  async function retrySelectedVideoTask() {
+    if (!selected) return;
+    try {
+      setRetryingVideoTaskId(selected.id);
+      const task = await api.retryVideoTask(selected.id);
+      setSelected(task);
+      setMessage("视频任务已重新进入生成队列");
+      await refresh(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "视频任务重试失败");
+    } finally {
+      setRetryingVideoTaskId(null);
+    }
   }
 
   function nextPage() {
@@ -3389,6 +3405,12 @@ function VideoTasksView({
                   <span className={`status-pill ${selected.status}`}>{videoTaskStatusLabel(selected.status)}</span>
                   <h2>{selected.display_title}</h2>
                   <p>{videoTaskStepLabel(selected.current_step)} · 创建于 {formatDateTime(selected.created_at)}</p>
+                </div>
+                <div className="detail-actions">
+                  <button type="button" className="secondary-button" disabled={selected.status !== "failed" || retryingVideoTaskId === selected.id} onClick={retrySelectedVideoTask}>
+                    {retryingVideoTaskId === selected.id ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
+                    {retryingVideoTaskId === selected.id ? "重试中" : "重试视频"}
+                  </button>
                 </div>
                 {selected.error_message ? <p className="error">{selected.error_message}</p> : null}
               </section>

@@ -55,7 +55,7 @@ from app.services.character_references import build_character_style_reference_pa
 class TaskWorkerPromptTest(unittest.TestCase):
     def test_compose_final_image_prompts_returns_llm_final_prompts(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={
                 "panels": [
                     {
@@ -101,7 +101,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
     def test_compose_final_image_prompts_system_prompt_has_no_text_mode_rule(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={
                 "panels": [
                     {
@@ -137,7 +137,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
     def test_compose_final_image_prompts_rejects_panel_order_mismatch(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={"panels": [{"panel_order": 2, "final_prompt": "第 2 页"}]},
         ) as call_json:
             with self.assertRaises(LLMResponseError):
@@ -150,7 +150,7 @@ class TaskWorkerPromptTest(unittest.TestCase):
 
     def test_compose_final_image_prompts_retries_panel_order_mismatch(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             side_effect=[
                 {
                     "panels": [

@@ -174,6 +174,69 @@ def reset_failed_character_references_for_retry(task: GenerationTask) -> None:
             appearance.reference_prompt = None
 
 
+def prepare_generation_task_retry(db: Session, task: GenerationTask) -> None:
+    if task.status not in {TaskStatus.failed, TaskStatus.partial_succeeded}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败或部分完成的任务可以重试")
+
+    style = db.scalar(
+        select(Style)
+        .where(Style.id == task.style_id, Style.deleted_at.is_(None))
+        .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+    )
+    if not style:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务绑定的风格不存在")
+    if style.status != StyleStatus.active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格不是启用状态，不能重试")
+    if not style.image_model_name.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格尚未绑定生图模型名")
+
+    retire_superseded_running_images(task)
+    for image in list(task.generated_images):
+        if not is_panel_image_job(image):
+            continue
+        if image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
+            image.is_current = False
+    reset_failed_character_references_for_retry(task)
+    for panel in list(task.panels):
+        if panel.prompt_status == PromptStatus.failed:
+            panel.prompt_status = PromptStatus.pending
+            panel.generated_prompt = None
+            panel.error_code = None
+            panel.error_message = None
+    for step in task.steps:
+        step.status = StepStatus.queued
+        step.error_code = None
+        step.error_message = None
+        step.started_at = None
+        step.finished_at = None
+    db.flush()
+
+    task.status = TaskStatus.retrying
+    task.current_step = None
+    task.progress_total = task_progress_total(task)
+    prompts_ready = bool(task.panels) and all(
+        panel.prompt_status == PromptStatus.generated and panel.generated_prompt for panel in task.panels
+    )
+    task.progress_current = (task.progress_total - 1) if prompts_ready else 0
+    task.attempts += 1
+    task.next_run_at = None
+    task.cancel_requested_at = None
+    task.started_at = None
+    task.finished_at = None
+    task.error_code = None
+    task.error_message = None
+    task.internal_error_ref = None
+    task.style_name_snapshot = style.name
+    task.style_prompt_snapshot = style.style_prompt
+    task.image_model_name_snapshot = style.image_model_name
+    task.style_aspect_ratio_snapshot = style.aspect_ratio
+    task.style_reference_mode_snapshot = style.style_reference_mode
+    try:
+        snapshot_task_style_reference_images(db=db, task=task, style=style)
+    except ImageProviderConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
 def task_original_text_preview(task: GenerationTask) -> str:
     text = task.original_text.strip().replace("\n", " ")
     return text[:160]
@@ -337,66 +400,7 @@ async def create_task(payload: TaskCreate, user: User = Depends(current_user), d
 async def retry_task(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
     task = db.scalar(task_detail_statement(task_id))
     task = ensure_task_access(task, user)
-    if task.status not in {TaskStatus.failed, TaskStatus.partial_succeeded}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有失败或部分完成的任务可以重试")
-
-    style = db.scalar(
-        select(Style)
-        .where(Style.id == task.style_id, Style.deleted_at.is_(None))
-        .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
-    )
-    if not style:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务绑定的风格不存在")
-    if style.status != StyleStatus.active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格不是启用状态，不能重试")
-    if not style.image_model_name.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务绑定的风格尚未绑定生图模型名")
-
-    retire_superseded_running_images(task)
-    for image in list(task.generated_images):
-        if not is_panel_image_job(image):
-            continue
-        if image.status != GeneratedImageStatus.succeeded or image.asset_id is None:
-            image.is_current = False
-    reset_failed_character_references_for_retry(task)
-    for panel in list(task.panels):
-        if panel.prompt_status == PromptStatus.failed:
-            panel.prompt_status = PromptStatus.pending
-            panel.generated_prompt = None
-            panel.error_code = None
-            panel.error_message = None
-    for step in task.steps:
-        step.status = StepStatus.queued
-        step.error_code = None
-        step.error_message = None
-        step.started_at = None
-        step.finished_at = None
-    db.flush()
-
-    task.status = TaskStatus.retrying
-    task.current_step = None
-    task.progress_total = task_progress_total(task)
-    prompts_ready = bool(task.panels) and all(
-        panel.prompt_status == PromptStatus.generated and panel.generated_prompt for panel in task.panels
-    )
-    task.progress_current = (task.progress_total - 1) if prompts_ready else 0
-    task.attempts += 1
-    task.next_run_at = None
-    task.cancel_requested_at = None
-    task.started_at = None
-    task.finished_at = None
-    task.error_code = None
-    task.error_message = None
-    task.internal_error_ref = None
-    task.style_name_snapshot = style.name
-    task.style_prompt_snapshot = style.style_prompt
-    task.image_model_name_snapshot = style.image_model_name
-    task.style_aspect_ratio_snapshot = style.aspect_ratio
-    task.style_reference_mode_snapshot = style.style_reference_mode
-    try:
-        snapshot_task_style_reference_images(db=db, task=task, style=style)
-    except ImageProviderConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    prepare_generation_task_retry(db, task)
 
     db.commit()
     await enqueue_task(task.id)

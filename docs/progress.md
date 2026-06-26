@@ -5,14 +5,15 @@
 - 分支：`codex/video-audio-tasks`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 85 无文字生图提示词结构化约束实现后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 86 视频任务重试与最终生图 Prompt 编译 Google 优先实现后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-85-remove-image-text-structural-prompt.md`
+- `docs/contracts/sprint-86-video-task-retry-and-google-final-prompt-llm.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 86 视频任务重试与最终生图 Prompt 编译 Google 优先：失败视频任务新增手动重试入口；上游图片失败时复用图片任务重试并让视频任务回到等待图片状态，图片已成功但音频阶段失败时重新生成旁白音频，视频阶段失败时保留已成功音频并重新进入图文视频提交阶段。最终生图 prompt 编译 LLM 从 SiliconFlow JSON 通道切换到 LIO/Google 通道，不新增 provider 兜底。前端视频任务详情在失败状态展示 `重试视频` 按钮。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_video_audio_tasks backend.tests.test_video_task_worker`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 122 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 85 无文字生图提示词结构化约束：针对 `去掉画面文字` 只加最高指令但最终 prompt 仍包含旁白写入的问题，已把 `remove_image_text` 传入最终 prompt 编译链路；开启时不再把 `image_text` 中的标题、旁白、对白、内心 OS 或强调文字作为画面文字传给编译器，编译系统 prompt 明确禁止输出 `【文字】` 段或任何文字绘制指令，并在最终拼接前清理旁白框、字幕框、对白气泡、留白文字区和写入文字等残留指令；普通未开启该选项的图片任务保持原文字流程。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 120 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 84 视频任务默认无文字画面：视频任务创建上游 `GenerationTask` 时固定传入 `remove_image_text=True`，让视频素材图默认在最终生图 prompt 最前面带上 `最高指令，图片中不能包含任何文字。`；普通图片任务的默认值仍保持关闭，视频任务前端不新增额外开关，已有视频任务不回写。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 116 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 83 图片任务无文字选项：图片任务创建弹窗新增默认关闭的 `去掉画面文字` 开关，后端 `generation_tasks` 新增 `remove_image_text` 并随任务列表、详情返回；普通任务创建和 DY 爆款复刻创建都会保存该选项。实现保持最小处理，不改 storyboard、panel prompt、旁白/对白/内心 OS 或图片文字结构化字段，只在最终发送给图片模型的 prompt 最前面拼接 `最高指令，图片中不能包含任何文字。`；单 panel 修改重生成也沿用同一任务配置。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_content_extraction_media_flow`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 116 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。

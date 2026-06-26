@@ -1755,7 +1755,7 @@ def compose_final_image_prompts(
                     f"panel_order 必须依次为 {expected_orders}，不能缺失、重复、重排或新增 panel。"
                 ),
             }
-        raw = call_siliconflow_json(
+        raw = call_lio_json(
             system_prompt=read_prompt("compose_final_image_prompts_v1.md"),
             user_prompt=json.dumps(attempt_payload, ensure_ascii=False),
             prompt_name="compose_final_image_prompts_v1.md",
