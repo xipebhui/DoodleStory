@@ -38,10 +38,13 @@ from app.services.video_task_worker import process_video_task
 
 
 class FakeVoiceClient:
+    generated_speeds: list[float] = []
+
     def upload_reference_voice(self, **kwargs):
         return "speech:custom:doodlestory"
 
     def generate_speech(self, **kwargs):
+        self.generated_speeds.append(kwargs["speed"])
         return b"mp3-bytes", "audio/mpeg"
 
 
@@ -59,6 +62,7 @@ class FakeComicVideoClient:
 
 class VideoTaskWorkerTest(unittest.TestCase):
     def setUp(self) -> None:
+        FakeVoiceClient.generated_speeds = []
         engine = create_engine(
             "sqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -149,6 +153,7 @@ class VideoTaskWorkerTest(unittest.TestCase):
             audio_reference_name_snapshot=reference.name,
             audio_reference_text_snapshot=reference.reference_text,
             audio_reference_asset_id_snapshot=audio_asset.id,
+            voice_speed_snapshot=1.45,
             status=VideoTaskStatus.ready_for_audio,
             current_step=VideoTaskStepName.generate_narration_audio,
             progress_current=1,
@@ -201,6 +206,7 @@ class VideoTaskWorkerTest(unittest.TestCase):
         self.assertEqual("job_123", video_task.video_provider_job_id)
         self.assertIn('"shots"', video_task.video_episode_json)
         self.assertEqual(FileAssetPurpose.generated_video, db.get(FileAsset, video_task.output_video_asset_id).purpose)
+        self.assertEqual([1.45], FakeVoiceClient.generated_speeds)
 
     @patch("app.services.video_task_worker.materialize_asset_to_local", return_value=Path("/tmp/fake-media"))
     @patch("app.services.video_task_worker.SiliconFlowVoiceClient", return_value=FakeVoiceClient())

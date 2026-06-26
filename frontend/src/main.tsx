@@ -19,6 +19,7 @@ import {
   Loader2,
   MessageCircle,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Save,
@@ -2762,6 +2763,16 @@ function AudioReferencesView({ user }: { user: User }) {
   const [transcribing, setTranscribing] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
   const [transcriptionError, setTranscriptionError] = useState("");
+  const [editTarget, setEditTarget] = useState<AudioReference | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [testTarget, setTestTarget] = useState<AudioReference | null>(null);
+  const [testText, setTestText] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testAudioUrl, setTestAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+  }, [testAudioUrl]);
 
   async function refresh(nextCursor = cursor) {
     setLoading(true);
@@ -2791,6 +2802,7 @@ function AudioReferencesView({ user }: { user: User }) {
   async function createAudioReference(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const speechSpeed = Number(form.get("speech_speed") || "1");
     if (!selectedAudioFile || selectedAudioFile.size <= 0) {
       setMessage("请选择音频文件");
       return;
@@ -2805,6 +2817,7 @@ function AudioReferencesView({ user }: { user: User }) {
         name: String(form.get("name") || "").trim(),
         description: String(form.get("description") || "").trim(),
         reference_text: transcribedText.trim(),
+        speech_speed: speechSpeed,
         file: selectedAudioFile,
       });
       closeCreateAudioReference();
@@ -2833,6 +2846,71 @@ function AudioReferencesView({ user }: { user: User }) {
     setTranscriptionError("");
     setTranscribing(false);
     setCreateOpen(true);
+  }
+
+  function openEditAudioReference(item: AudioReference) {
+    setEditTarget(item);
+    setMessage("");
+  }
+
+  function closeEditAudioReference() {
+    setEditTarget(null);
+    setUpdating(false);
+  }
+
+  async function updateAudioReference(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editTarget) return;
+    const form = new FormData(event.currentTarget);
+    try {
+      setUpdating(true);
+      await api.updateAudioReference(editTarget.id, {
+        name: String(form.get("name") || "").trim(),
+        description: String(form.get("description") || "").trim(),
+        speech_speed: Number(form.get("speech_speed") || "1"),
+      });
+      closeEditAudioReference();
+      setMessage("音频参考已更新");
+      await refresh(cursor);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "音频参考更新失败");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  function openTestAudioReference(item: AudioReference) {
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+    setTestAudioUrl(null);
+    setTestTarget(item);
+    setTestText("");
+    setMessage("");
+  }
+
+  function closeTestAudioReference() {
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+    setTestAudioUrl(null);
+    setTestTarget(null);
+    setTestText("");
+    setTesting(false);
+  }
+
+  async function testAudioReference(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!testTarget) return;
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+    setTestAudioUrl(null);
+    try {
+      setTesting(true);
+      const blob = await api.testAudioReference(testTarget.id, { text: testText.trim() });
+      setTestAudioUrl(URL.createObjectURL(blob));
+      setMessage("测试音频已生成");
+      await refresh(cursor);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "测试音频生成失败");
+    } finally {
+      setTesting(false);
+    }
   }
 
   async function transcribeSelectedAudio(file: File) {
@@ -2915,14 +2993,25 @@ function AudioReferencesView({ user }: { user: User }) {
             <div className="task-story-cell">
               <Volume2 size={18} />
               <div>
-                <strong>{item.name}</strong>
+                <div className="audio-reference-title-line">
+                  <strong>{item.name}</strong>
+                  <span>{item.speech_speed.toFixed(2)}x</span>
+                  <a href={assetUrl(item.asset)} target="_blank" rel="noreferrer">原音</a>
+                </div>
                 <p>{item.description || item.asset.original_filename || "未填写描述"}</p>
-                <audio src={assetUrl(item.asset)} controls />
               </div>
             </div>
             <span>{user.role === "admin" ? item.owner_display_name || item.owner_email || shortId(item.owner_user_id) : "我的音频"}</span>
             <span>{formatDateTime(item.created_at)}</span>
             <span className="row-actions">
+              <button type="button" className="ghost-button" onClick={() => openTestAudioReference(item)}>
+                <Play size={15} />
+                测试
+              </button>
+              <button type="button" className="ghost-button" onClick={() => openEditAudioReference(item)}>
+                <Pencil size={15} />
+                编辑
+              </button>
               <button type="button" className="ghost-button" onClick={() => deleteAudioReference(item.id)}>
                 <Trash2 size={15} />
                 删除
@@ -2957,6 +3046,10 @@ function AudioReferencesView({ user }: { user: User }) {
               <label>名称<input name="name" required maxLength={120} placeholder="例如 温柔女声参考" /></label>
               <label>描述<textarea name="description" maxLength={500} placeholder="音色、语速或适用内容" /></label>
               <label>
+                产出语速
+                <input name="speech_speed" type="number" min="0.5" max="2" step="0.05" defaultValue="1" required />
+              </label>
+              <label>
                 音频文件
                 <input
                   name="file"
@@ -2984,6 +3077,76 @@ function AudioReferencesView({ user }: { user: User }) {
                 <button type="submit" disabled={creating || transcribing || !transcribedText.trim()}>
                   {creating ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
                   保存音频
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {editTarget ? (
+        <div className="task-create-backdrop" onClick={closeEditAudioReference}>
+          <section className="task-create-modal compact-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>编辑音频参考</h2>
+                <p>参考音频文件不可替换。</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭" onClick={closeEditAudioReference}>
+                <X size={18} />
+              </button>
+            </div>
+            <form className="task-create-form" onSubmit={updateAudioReference}>
+              <label>名称<input name="name" required maxLength={120} defaultValue={editTarget.name} /></label>
+              <label>描述<textarea name="description" maxLength={500} defaultValue={editTarget.description || ""} /></label>
+              <label>
+                产出语速
+                <input name="speech_speed" type="number" min="0.5" max="2" step="0.05" defaultValue={editTarget.speech_speed} required />
+              </label>
+              <div className="readonly-asset-line">
+                <Volume2 size={16} />
+                <span>{editTarget.asset.original_filename || "已上传参考音频"}</span>
+              </div>
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={closeEditAudioReference}>取消</button>
+                <button type="submit" disabled={updating}>
+                  {updating ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
+                  保存修改
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {testTarget ? (
+        <div className="task-create-backdrop" onClick={closeTestAudioReference}>
+          <section className="task-create-modal compact-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>测试参考音频</h2>
+                <p>{testTarget.name} · {testTarget.speech_speed.toFixed(2)}x</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭" onClick={closeTestAudioReference}>
+                <X size={18} />
+              </button>
+            </div>
+            <form className="task-create-form" onSubmit={testAudioReference}>
+              <label>
+                测试文本
+                <textarea value={testText} onChange={(event) => setTestText(event.target.value)} maxLength={2000} required rows={5} />
+              </label>
+              {testAudioUrl ? (
+                <div className="test-audio-preview">
+                  <span>参考音频输出</span>
+                  <audio src={testAudioUrl} controls autoPlay />
+                </div>
+              ) : null}
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={closeTestAudioReference}>关闭</button>
+                <button type="submit" disabled={testing || !testText.trim()}>
+                  {testing ? <Loader2 size={17} className="spin" /> : <Play size={17} />}
+                  生成试听
                 </button>
               </div>
             </form>

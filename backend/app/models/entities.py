@@ -4,7 +4,7 @@ import json
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -190,6 +190,7 @@ class AudioReference(Base, TimestampMixin):
     voice_provider: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     voice_model: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     voice_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    speech_speed: Mapped[float] = mapped_column(Float, default=1.0)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
 
     owner: Mapped[User] = relationship(back_populates="audio_references")
@@ -485,6 +486,7 @@ class VideoTask(Base, TimestampMixin):
     voice_provider_snapshot: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     voice_model_snapshot: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
     voice_name_snapshot: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    voice_speed_snapshot: Mapped[float] = mapped_column(Float, default=1.0)
     status: Mapped[VideoTaskStatus] = mapped_column(
         Enum(VideoTaskStatus), default=VideoTaskStatus.waiting_for_images, index=True
     )

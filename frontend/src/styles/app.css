@@ -2208,13 +2208,57 @@ textarea {
 }
 
 .audio-reference-row audio {
-  width: min(100%, 420px);
-  margin-top: 8px;
+  width: min(100%, 260px);
 }
 
 .audio-reference-row .task-story-cell {
   grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
+}
+
+.audio-reference-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.audio-reference-title-line strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-reference-title-line span,
+.audio-reference-title-line a {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.readonly-asset-line,
+.test-audio-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.test-audio-preview {
+  justify-content: space-between;
+}
+
+.test-audio-preview audio {
+  width: min(100%, 260px);
 }
 
 .audio-segment-list {

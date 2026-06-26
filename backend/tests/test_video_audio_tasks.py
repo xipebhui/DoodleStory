@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.audio_references import create_audio_reference, transcribe_audio_reference
+from app.api.audio_references import create_audio_reference, test_audio_reference, transcribe_audio_reference, update_audio_reference
 from app.api.video_tasks import create_video_task, get_video_task
 from app.core.database import Base
 from app.models.entities import AudioReference, FileAsset, Style, User, VideoTask
@@ -23,6 +23,7 @@ from app.models.enums import (
     UserRole,
     VideoTaskStatus,
 )
+from app.schemas.audio import AudioReferenceTestRequest, AudioReferenceUpdate
 from app.schemas.video_task import VideoTaskCreate
 from app.services.local_whisper import normalize_transcription_text
 
@@ -72,6 +73,7 @@ class VideoAudioTaskTest(unittest.TestCase):
                 voice_provider="siliconflow",
                 voice_model="FunAudioLLM/CosyVoice2-0.5B",
                 voice_name="FunAudioLLM/CosyVoice2-0.5B:alex",
+                speech_speed=1.25,
                 file=upload,
                 user=user,
                 db=db,
@@ -82,6 +84,89 @@ class VideoAudioTaskTest(unittest.TestCase):
         self.assertEqual(FileAssetPurpose.audio_reference, db.get(FileAsset, response.data.asset.id).purpose)
         self.assertEqual("audio/mpeg", response.data.asset.content_type)
         self.assertEqual("你好，欢迎来到故事里。", response.data.reference_text)
+        self.assertEqual(1.25, response.data.speech_speed)
+
+    def test_update_audio_reference_only_updates_editable_metadata(self) -> None:
+        db, user, _ = self.create_user_and_style()
+        audio_asset = FileAsset(
+            purpose=FileAssetPurpose.audio_reference,
+            storage_backend=StorageBackend.local,
+            storage_key="audio-reference/ref.mp3",
+            content_type="audio/mpeg",
+            byte_size=12,
+        )
+        db.add(audio_asset)
+        db.flush()
+        reference = AudioReference(
+            owner_user_id=user.id,
+            name="旧名称",
+            description="旧描述",
+            reference_text="参考文本",
+            asset_id=audio_asset.id,
+            voice_name="speech:old",
+            speech_speed=1.0,
+        )
+        db.add(reference)
+        db.commit()
+
+        response = update_audio_reference(
+            reference.id,
+            AudioReferenceUpdate(name="新名称", description="新描述", speech_speed=1.4),
+            user=user,
+            db=db,
+        )
+
+        saved = db.get(AudioReference, reference.id)
+        self.assertEqual("新名称", response.data.name)
+        self.assertEqual("新描述", saved.description)
+        self.assertEqual(1.4, saved.speech_speed)
+        self.assertEqual(audio_asset.id, saved.asset_id)
+        self.assertEqual("speech:old", saved.voice_name)
+
+    @patch("app.api.audio_references.materialize_asset_to_local", return_value="/tmp/ref.mp3")
+    def test_audio_reference_test_registers_voice_and_generates_preview(self, _materialize) -> None:
+        db, user, _ = self.create_user_and_style()
+        audio_asset = FileAsset(
+            purpose=FileAssetPurpose.audio_reference,
+            storage_backend=StorageBackend.local,
+            storage_key="audio-reference/ref.mp3",
+            content_type="audio/mpeg",
+            byte_size=12,
+        )
+        db.add(audio_asset)
+        db.flush()
+        reference = AudioReference(
+            owner_user_id=user.id,
+            name="温柔女声",
+            reference_text="参考文本",
+            asset_id=audio_asset.id,
+            speech_speed=1.35,
+        )
+        db.add(reference)
+        db.commit()
+
+        class FakeVoiceClient:
+            generated_speed = None
+
+            def upload_reference_voice(self, **kwargs):
+                return "speech:custom:test"
+
+            def generate_speech(self, **kwargs):
+                FakeVoiceClient.generated_speed = kwargs["speed"]
+                return b"preview-audio", "audio/mpeg"
+
+        with patch("app.api.audio_references.SiliconFlowVoiceClient", return_value=FakeVoiceClient()):
+            response = test_audio_reference(
+                reference.id,
+                AudioReferenceTestRequest(text="你好，欢迎收听。"),
+                user=user,
+                db=db,
+            )
+
+        saved = db.get(AudioReference, reference.id)
+        self.assertEqual(b"preview-audio", response.body)
+        self.assertEqual("speech:custom:test", saved.voice_name)
+        self.assertEqual(1.35, FakeVoiceClient.generated_speed)
 
     def test_create_audio_reference_requires_transcribed_text(self) -> None:
         db, user, _ = self.create_user_and_style()
@@ -131,6 +216,7 @@ class VideoAudioTaskTest(unittest.TestCase):
             name="温柔女声",
             reference_text="参考文本",
             asset_id=audio_asset.id,
+            speech_speed=1.2,
         )
         db.add(reference)
         db.commit()
@@ -153,6 +239,7 @@ class VideoAudioTaskTest(unittest.TestCase):
         self.assertEqual(VideoTaskStatus.waiting_for_images, video_task.status)
         self.assertEqual("温柔女声", video_task.audio_reference_name_snapshot)
         self.assertEqual("参考文本", video_task.audio_reference_text_snapshot)
+        self.assertEqual(1.2, video_task.voice_speed_snapshot)
         self.assertEqual("小女孩在雨里捡到一把发光的伞。", video_task.source_task.original_text)
         self.assertEqual(style.id, video_task.source_task.style_id)
         enqueue_task.assert_awaited_once_with(video_task.source_task_id)

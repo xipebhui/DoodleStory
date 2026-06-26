@@ -5,14 +5,15 @@
 - 分支：`codex/video-audio-tasks`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 81 音频参考本地转写创建流程后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 82 音频参考速度、编辑与测试试听完成后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-81-audio-reference-local-transcription.md`
+- `docs/contracts/sprint-82-audio-reference-speed-edit-test.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 82 音频参考速度、编辑与测试试听：音频参考新增 `speech_speed`，上传时可设置产出语速，编辑时只允许修改名称、描述和语速，不允许替换参考音频文件、参考文本、Provider、模型或音色名；新增音频参考测试接口，用户输入测试文本后后端使用当前参考音频注册或复用 SiliconFlow voice，并按语速返回一次性试听音频流，不保存测试音频资产。视频任务新增 `voice_speed_snapshot`，创建任务时从音频参考快照语速，生成每段旁白音频时使用该快照，后续编辑音频参考不会影响已创建视频任务。前端音频管理列表移除常驻长条播放器，改为紧凑速度标识、原音入口、测试和编辑弹窗。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks backend.tests.test_video_task_worker`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 115 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 81 音频参考本地转写创建流程：音频管理上传弹窗不再暴露参考文本、Provider、模型或音色名字段；用户选择音频文件后，前端自动调用后端 `/audio-references/transcribe`，后端使用本地最小 Whisper 配置转写参考文本，并通过 OpenCC `t2s` 统一转换为简体中文。转写过程中保存按钮禁用，转写失败时不能保存；转写成功后展示只读识别文本并随音频参考保存。后端创建音频参考接口新增空 `reference_text` 拒绝校验，避免后续 SiliconFlow 注册自定义音色时因为缺少参考文本失败。本次不做云端转写兜底、不做手动编辑转写文本、不做转写任务持久化。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 113 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建；本地 `.venv` 已安装并 import 验证 `faster-whisper==1.1.1`，手动 smoke 验证繁体转写片段会输出简体中文。
 - 完成 Sprint 80 视频任务音频与图文视频生成闭环：在 Sprint 79 骨架上接入后台视频任务执行链路。上游图片任务成功后，视频任务会自动入队，读取真实 panels、当前图片和参考音频，按 panel 调用 SiliconFlow 生成旁白音频，再组装 `comic-video-studio` episode 提交图文视频渲染服务，最终 MP4 保存为 DoodleStory 资产。新增 `video_task_audio_segments`、视频任务渲染状态快照、TTS 客户端、图文视频服务客户端、视频任务 worker、启动恢复和上游任务完成触发；前端详情展示每段旁白音频、渲染状态和最终视频。本 sprint 不做 provider 兜底、不伪造音频/视频、不引入外部队列或独立 worker。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks backend.tests.test_video_task_worker`、空 SQLite Alembic `upgrade head`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；本次验证未调用真实 SiliconFlow TTS 或真实 `comic-video-studio` 服务，外部服务链路由单元测试假客户端覆盖协议边界。
 - 完成 Sprint 79 视频任务与音频管理基础能力：新增音频管理 tab 和视频任务 tab。音频管理支持上传、搜索、查看、试听和软删除参考音频；视频任务创建时只让用户输入故事、选择现有画风和参考音频，后端会创建并关联真实的上游 `GenerationTask`，复用当前故事切分、旁白结构和图片生成链路。视频任务列表与详情会同步上游图片任务状态，图片任务成功后停在待生成音频状态；第一版不接入真实外部图文视频 provider，不伪造音频或视频结果，不改变现有图片任务生成与积分扣费逻辑。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、空 SQLite Alembic `upgrade head`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。

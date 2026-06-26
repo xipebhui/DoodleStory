@@ -369,7 +369,7 @@ def generate_audio_segments(db: Session, video_task: VideoTask) -> None:
             model=model,
             response_format=settings.video_tts_response_format,
             sample_rate=settings.video_tts_sample_rate,
-            speed=settings.video_tts_speed,
+            speed=video_task.voice_speed_snapshot,
             gain=settings.video_tts_gain,
             timeout=settings.video_tts_timeout_seconds,
         )

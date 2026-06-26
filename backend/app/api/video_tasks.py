@@ -179,6 +179,7 @@ def video_task_read(video_task: VideoTask) -> VideoTaskRead:
         voice_provider_snapshot=video_task.voice_provider_snapshot,
         voice_model_snapshot=video_task.voice_model_snapshot,
         voice_name_snapshot=video_task.voice_name_snapshot,
+        voice_speed_snapshot=video_task.voice_speed_snapshot,
         narration_audio_asset=video_task.narration_audio_asset,
         audio_segments=[
             VideoTaskAudioSegmentRead(
@@ -280,6 +281,7 @@ async def create_video_task(
         voice_provider_snapshot=reference.voice_provider,
         voice_model_snapshot=reference.voice_model,
         voice_name_snapshot=reference.voice_name,
+        voice_speed_snapshot=reference.speech_speed,
         status=VideoTaskStatus.waiting_for_images,
         current_step=VideoTaskStepName.generate_source_images,
         progress_current=0,

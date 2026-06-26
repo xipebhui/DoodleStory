@@ -83,6 +83,7 @@ class VideoTaskRead(TimestampFields):
     voice_provider_snapshot: str | None = None
     voice_model_snapshot: str | None = None
     voice_name_snapshot: str | None = None
+    voice_speed_snapshot: float
     narration_audio_asset: FileAssetRead | None = None
     audio_segments: list[VideoTaskAudioSegmentRead] = []
     output_video_asset: FileAssetRead | None = None

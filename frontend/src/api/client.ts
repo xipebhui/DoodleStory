@@ -286,6 +286,7 @@ export type AudioReference = {
   voice_provider: string | null;
   voice_model: string | null;
   voice_name: string | null;
+  speech_speed: number;
   deleted_at?: string | null;
   asset: FileAsset;
   created_at: string;
@@ -355,6 +356,7 @@ export type VideoTask = {
   voice_provider_snapshot: string | null;
   voice_model_snapshot: string | null;
   voice_name_snapshot: string | null;
+  voice_speed_snapshot: number;
   narration_audio_asset: FileAsset | null;
   audio_segments: VideoTaskAudioSegment[];
   output_video_asset: FileAsset | null;
@@ -377,6 +379,7 @@ export type VideoTaskSummary = Omit<
   | "voice_provider_snapshot"
   | "voice_model_snapshot"
   | "voice_name_snapshot"
+  | "voice_speed_snapshot"
   | "narration_audio_asset"
   | "audio_segments"
   | "video_provider_output_url"
@@ -603,6 +606,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const body = await response.json();
+      throw new Error(body?.error?.message ?? body?.detail ?? "请求失败");
+    }
+    throw new Error("请求失败");
+  }
+
+  return response.blob();
+}
+
 export const api = {
   me: async () => (await request<ApiData<{ user: User }>>("/auth/me")).data,
   login: (payload: { email: string; password: string }) =>
@@ -736,15 +761,24 @@ export const api = {
     name: string;
     description?: string | null;
     reference_text?: string | null;
+    speech_speed: number;
     file: File;
   }) => {
     const form = new FormData();
     form.append("name", payload.name);
     form.append("description", payload.description ?? "");
     form.append("reference_text", payload.reference_text ?? "");
+    form.append("speech_speed", String(payload.speech_speed));
     form.append("file", payload.file);
     return request<ApiData<AudioReference>>("/audio-references", { method: "POST", body: form }).then((result) => result.data);
   },
+  updateAudioReference: (id: string, payload: { name: string; description?: string | null; speech_speed: number }) =>
+    request<ApiData<AudioReference>>(`/audio-references/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  testAudioReference: (id: string, payload: { text: string }) =>
+    requestBlob(`/audio-references/${id}/test`, { method: "POST", body: JSON.stringify(payload) }),
   transcribeAudioReference: (file: File) => {
     const form = new FormData();
     form.append("file", file);
