@@ -190,7 +190,7 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
 
         self.assertEqual("gpt-image-2", payload["model"])
         self.assertEqual("3:4", payload["aspect_ratio"])
-        self.assertEqual("1k", payload["quality"])
+        self.assertEqual("high", payload["quality"])
         self.assertEqual("url", payload["response_format"])
 
     def test_xgapi_generation_payload_rejects_empty_style_model(self) -> None:
@@ -274,6 +274,7 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         endpoint, kwargs = FakeSession.calls[0]
         self.assertEqual("https://api.xgapi.top/v1/images/generations", endpoint)
         self.assertEqual("gpt-image-2", kwargs["json"]["model"])
+        self.assertEqual("high", kwargs["json"]["quality"])
         self.assertNotIn("files", kwargs)
 
 

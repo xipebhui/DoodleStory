@@ -465,19 +465,7 @@ def xgapi_model_name(image_model_name: str) -> str:
     return model_name
 
 
-def build_xgapi_generation_payload(
-    *, prompt: str, image_model_name: str, aspect_ratio: str
-) -> dict[str, Any]:
-    return {
-        "prompt": prompt,
-        "model": xgapi_model_name(image_model_name),
-        "aspect_ratio": aspect_ratio,
-        "quality": get_settings().xg_image_quality.strip() or "1k",
-        "response_format": "url",
-    }
-
-
-def xgapi_edit_quality() -> str:
+def xgapi_image_quality() -> str:
     configured = (get_settings().xg_image_quality or "").strip().lower()
     if not configured:
         return "high"
@@ -485,7 +473,19 @@ def xgapi_edit_quality() -> str:
         return configured
     if configured in {"1k", "2k", "4k"}:
         return "high"
-    raise ImageProviderConfigError("XG_IMAGE_QUALITY 在 xgapi 图像编辑接口中只支持 auto、low、medium、high 或 1k/2k/4k")
+    raise ImageProviderConfigError("XG_IMAGE_QUALITY 在 xgapi 图片接口中只支持 auto、low、medium、high 或 1k/2k/4k")
+
+
+def build_xgapi_generation_payload(
+    *, prompt: str, image_model_name: str, aspect_ratio: str
+) -> dict[str, Any]:
+    return {
+        "prompt": prompt,
+        "model": xgapi_model_name(image_model_name),
+        "aspect_ratio": aspect_ratio,
+        "quality": xgapi_image_quality(),
+        "response_format": "url",
+    }
 
 
 def xgapi_reference_urls(references: list[ImageReference]) -> list[str]:
@@ -504,7 +504,7 @@ def build_xgapi_edit_payload(
         "model": xgapi_model_name(image_model_name),
         "prompt": prompt,
         "aspect_ratio": aspect_ratio,
-        "quality": xgapi_edit_quality(),
+        "quality": xgapi_image_quality(),
         "response_format": "url",
     }
 
