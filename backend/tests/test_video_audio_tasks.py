@@ -4,12 +4,12 @@ from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.audio_references import create_audio_reference
+from app.api.audio_references import create_audio_reference, transcribe_audio_reference
 from app.api.video_tasks import create_video_task, get_video_task
 from app.core.database import Base
 from app.models.entities import AudioReference, FileAsset, Style, User, VideoTask
@@ -80,6 +80,35 @@ class VideoAudioTaskTest(unittest.TestCase):
         self.assertEqual("温柔女声", response.data.name)
         self.assertEqual(FileAssetPurpose.audio_reference, db.get(FileAsset, response.data.asset.id).purpose)
         self.assertEqual("audio/mpeg", response.data.asset.content_type)
+        self.assertEqual("你好，欢迎来到故事里。", response.data.reference_text)
+
+    def test_create_audio_reference_requires_transcribed_text(self) -> None:
+        db, user, _ = self.create_user_and_style()
+        upload = UploadFile(filename="voice.mp3", file=BytesIO(b"audio-bytes"), headers={"content-type": "audio/mpeg"})
+
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(
+                create_audio_reference(
+                    name="温柔女声",
+                    description="测试音色",
+                    reference_text="",
+                    file=upload,
+                    user=user,
+                    db=db,
+                )
+            )
+
+        self.assertEqual("参考音频必须先完成本地转写", context.exception.detail)
+
+    @patch("app.api.audio_references.transcribe_audio_content", return_value="自动识别出的参考文本")
+    def test_transcribe_audio_reference_returns_local_whisper_text(self, transcribe_audio_content) -> None:
+        db, user, _ = self.create_user_and_style()
+        upload = UploadFile(filename="voice.wav", file=BytesIO(b"audio-bytes"), headers={"content-type": "audio/wav"})
+
+        response = asyncio.run(transcribe_audio_reference(file=upload, _user=user))
+
+        self.assertEqual("自动识别出的参考文本", response.data.text)
+        transcribe_audio_content.assert_called_once_with(b"audio-bytes", ".wav")
 
     @patch("app.api.video_tasks.enqueue_task", new_callable=AsyncMock)
     def test_create_video_task_creates_real_source_generation_task(self, enqueue_task) -> None:

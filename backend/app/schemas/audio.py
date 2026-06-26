@@ -15,6 +15,10 @@ class AudioReferenceCreate(BaseModel):
     voice_name: str | None = Field(default=None, max_length=255)
 
 
+class AudioReferenceTranscription(BaseModel):
+    text: str
+
+
 class AudioReferenceRead(TimestampFields):
     id: str
     owner_user_id: str

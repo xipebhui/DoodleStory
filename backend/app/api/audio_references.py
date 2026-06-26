@@ -9,8 +9,9 @@ from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
 from app.models.entities import AudioReference, FileAsset, User
 from app.models.enums import FileAssetPurpose, UserRole
-from app.schemas.audio import AudioReferenceListItem, AudioReferenceRead
+from app.schemas.audio import AudioReferenceListItem, AudioReferenceRead, AudioReferenceTranscription
 from app.schemas.common import ApiData, ApiList
+from app.services.local_whisper import LocalWhisperError, transcribe_audio_content
 from app.services.storage import read_upload_audio_content, save_binary_file
 
 router = APIRouter(prefix="/audio-references", tags=["audio-references"])
@@ -100,6 +101,9 @@ async def create_audio_reference(
     db: Session = Depends(get_db),
 ) -> ApiData[AudioReferenceRead]:
     content, content_type, suffix = await read_upload_audio_content(file)
+    clean_reference_text = reference_text.strip()
+    if not clean_reference_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="参考音频必须先完成本地转写")
     stored = save_binary_file(FileAssetPurpose.audio_reference.value, content, suffix)
     asset = FileAsset(
         purpose=FileAssetPurpose.audio_reference,
@@ -117,7 +121,7 @@ async def create_audio_reference(
         owner_user_id=user.id,
         name=name.strip(),
         description=description.strip() or None,
-        reference_text=reference_text.strip() or None,
+        reference_text=clean_reference_text,
         asset_id=asset.id,
         voice_provider=voice_provider.strip() or None,
         voice_model=voice_model.strip() or None,
@@ -131,6 +135,19 @@ async def create_audio_reference(
         .options(selectinload(AudioReference.asset), selectinload(AudioReference.owner))
     )
     return ApiData(data=audio_reference_read(reference))
+
+
+@router.post("/transcribe", response_model=ApiData[AudioReferenceTranscription])
+async def transcribe_audio_reference(
+    file: UploadFile = File(...),
+    _user: User = Depends(current_user),
+) -> ApiData[AudioReferenceTranscription]:
+    content, _content_type, suffix = await read_upload_audio_content(file)
+    try:
+        text = transcribe_audio_content(content, suffix)
+    except LocalWhisperError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return ApiData(data=AudioReferenceTranscription(text=text))
 
 
 @router.get("/{reference_id}", response_model=ApiData[AudioReferenceRead])

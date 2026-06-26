@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     video_tts_speed: float = Field(default=1.0, ge=0.5, le=2.0)
     video_tts_gain: float = 0.0
     video_tts_timeout_seconds: int = Field(default=1200, ge=30)
+    local_whisper_model: str = "tiny"
+    local_whisper_device: str = "auto"
+    local_whisper_compute_type: str = "default"
     comic_video_service_base_url: str = "http://127.0.0.1:51103"
     comic_video_service_api_key: str = ""
     comic_video_poll_interval_seconds: float = Field(default=5.0, ge=0.2)

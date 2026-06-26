@@ -2758,6 +2758,10 @@ function AudioReferencesView({ user }: { user: User }) {
   const [message, setMessage] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcribedText, setTranscribedText] = useState("");
+  const [transcriptionError, setTranscriptionError] = useState("");
 
   async function refresh(nextCursor = cursor) {
     setLoading(true);
@@ -2787,9 +2791,12 @@ function AudioReferencesView({ user }: { user: User }) {
   async function createAudioReference(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const file = form.get("file");
-    if (!(file instanceof File) || file.size <= 0) {
+    if (!selectedAudioFile || selectedAudioFile.size <= 0) {
       setMessage("请选择音频文件");
+      return;
+    }
+    if (!transcribedText.trim()) {
+      setMessage("请等待本地转写完成后再保存");
       return;
     }
     try {
@@ -2797,13 +2804,10 @@ function AudioReferencesView({ user }: { user: User }) {
       await api.createAudioReference({
         name: String(form.get("name") || "").trim(),
         description: String(form.get("description") || "").trim(),
-        reference_text: String(form.get("reference_text") || "").trim(),
-        voice_provider: String(form.get("voice_provider") || "").trim(),
-        voice_model: String(form.get("voice_model") || "").trim(),
-        voice_name: String(form.get("voice_name") || "").trim(),
-        file,
+        reference_text: transcribedText.trim(),
+        file: selectedAudioFile,
       });
-      setCreateOpen(false);
+      closeCreateAudioReference();
       setCursor(null);
       setCursorStack([]);
       setMessage("音频参考已保存");
@@ -2812,6 +2816,42 @@ function AudioReferencesView({ user }: { user: User }) {
       setMessage(error instanceof Error ? error.message : "音频参考保存失败");
     } finally {
       setCreating(false);
+    }
+  }
+
+  function closeCreateAudioReference() {
+    setCreateOpen(false);
+    setSelectedAudioFile(null);
+    setTranscribedText("");
+    setTranscriptionError("");
+    setTranscribing(false);
+  }
+
+  function openCreateAudioReference() {
+    setSelectedAudioFile(null);
+    setTranscribedText("");
+    setTranscriptionError("");
+    setTranscribing(false);
+    setCreateOpen(true);
+  }
+
+  async function transcribeSelectedAudio(file: File) {
+    setSelectedAudioFile(file);
+    setTranscribedText("");
+    setTranscriptionError("");
+    if (file.size <= 0) {
+      setTranscriptionError("文件内容不能为空");
+      return;
+    }
+    try {
+      setTranscribing(true);
+      const result = await api.transcribeAudioReference(file);
+      setTranscribedText(result.text);
+      setTranscriptionError("");
+    } catch (error) {
+      setTranscriptionError(error instanceof Error ? error.message : "本地转写失败");
+    } finally {
+      setTranscribing(false);
     }
   }
 
@@ -2846,7 +2886,7 @@ function AudioReferencesView({ user }: { user: User }) {
           <h1>音频管理</h1>
           <p>管理视频任务可选择的参考音频。</p>
         </div>
-        <button type="button" onClick={() => setCreateOpen(true)}>
+        <button type="button" onClick={openCreateAudioReference}>
           <Plus size={18} />
           上传音频
         </button>
@@ -2902,28 +2942,49 @@ function AudioReferencesView({ user }: { user: User }) {
       </section>
 
       {createOpen ? (
-        <div className="task-create-backdrop" onClick={() => setCreateOpen(false)}>
+        <div className="task-create-backdrop" onClick={closeCreateAudioReference}>
           <section className="task-create-modal compact-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="drawer-head">
               <div>
                 <h2>上传音频参考</h2>
                 <p>保存后可在创建视频任务时选择。</p>
               </div>
-              <button type="button" className="icon-button" aria-label="关闭" onClick={() => setCreateOpen(false)}>
+              <button type="button" className="icon-button" aria-label="关闭" onClick={closeCreateAudioReference}>
                 <X size={18} />
               </button>
             </div>
             <form className="task-create-form" onSubmit={createAudioReference}>
               <label>名称<input name="name" required maxLength={120} placeholder="例如 温柔女声参考" /></label>
               <label>描述<textarea name="description" maxLength={500} placeholder="音色、语速或适用内容" /></label>
-              <label>参考文本<textarea name="reference_text" maxLength={2000} placeholder="这段参考音频对应的原文，可留空" /></label>
-              <label>Provider<input name="voice_provider" placeholder="可选，例如 siliconflow" /></label>
-              <label>模型<input name="voice_model" placeholder="可选，例如 FunAudioLLM/CosyVoice2-0.5B" /></label>
-              <label>音色名<input name="voice_name" placeholder="可选，后续 TTS 调用使用" /></label>
-              <label>音频文件<input name="file" type="file" accept="audio/*,video/mp4" required /></label>
+              <label>
+                音频文件
+                <input
+                  name="file"
+                  type="file"
+                  accept="audio/*,video/mp4"
+                  required
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) void transcribeSelectedAudio(file);
+                  }}
+                />
+              </label>
+              {transcribing ? (
+                <div className="form-message inline-status"><Loader2 size={16} className="spin" />正在本地转写参考文本</div>
+              ) : null}
+              {transcriptionError ? <div className="error">{transcriptionError}</div> : null}
+              {transcribedText ? (
+                <label>
+                  自动识别文本
+                  <textarea value={transcribedText} readOnly rows={4} />
+                </label>
+              ) : null}
               <div className="drawer-actions">
-                <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>取消</button>
-                <button type="submit" disabled={creating}>{creating ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}保存音频</button>
+                <button type="button" className="ghost-button" onClick={closeCreateAudioReference}>取消</button>
+                <button type="submit" disabled={creating || transcribing || !transcribedText.trim()}>
+                  {creating ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
+                  保存音频
+                </button>
               </div>
             </form>
           </section>

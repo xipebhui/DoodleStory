@@ -292,6 +292,10 @@ export type AudioReference = {
   updated_at: string;
 };
 
+export type AudioReferenceTranscription = {
+  text: string;
+};
+
 export type VideoTaskStatus =
   | "waiting_for_images"
   | "ready_for_audio"
@@ -732,20 +736,22 @@ export const api = {
     name: string;
     description?: string | null;
     reference_text?: string | null;
-    voice_provider?: string | null;
-    voice_model?: string | null;
-    voice_name?: string | null;
     file: File;
   }) => {
     const form = new FormData();
     form.append("name", payload.name);
     form.append("description", payload.description ?? "");
     form.append("reference_text", payload.reference_text ?? "");
-    form.append("voice_provider", payload.voice_provider ?? "");
-    form.append("voice_model", payload.voice_model ?? "");
-    form.append("voice_name", payload.voice_name ?? "");
     form.append("file", payload.file);
     return request<ApiData<AudioReference>>("/audio-references", { method: "POST", body: form }).then((result) => result.data);
+  },
+  transcribeAudioReference: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ApiData<AudioReferenceTranscription>>("/audio-references/transcribe", {
+      method: "POST",
+      body: form,
+    }).then((result) => result.data);
   },
   deleteAudioReference: (id: string) =>
     request<ApiData<{ deleted: boolean }>>(`/audio-references/${id}`, { method: "DELETE" }),

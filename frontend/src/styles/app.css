@@ -704,6 +704,12 @@ textarea {
   padding: 12px 14px;
 }
 
+.inline-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .reference-panel {
   display: grid;
   gap: 14px;
