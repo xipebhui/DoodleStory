@@ -28,6 +28,8 @@ from app.models.enums import (
     StyleStatus,
     TaskStatus,
     UserRole,
+    VideoTaskStatus,
+    VideoTaskStepName,
     WorkflowStatus,
 )
 
@@ -52,8 +54,10 @@ class User(Base, TimestampMixin):
     auth_provider_subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     tasks: Mapped[list["GenerationTask"]] = relationship(back_populates="owner")
+    video_tasks: Mapped[list["VideoTask"]] = relationship(back_populates="owner")
     content_extractions: Mapped[list["ContentExtraction"]] = relationship(back_populates="owner")
     user_characters: Mapped[list["UserCharacter"]] = relationship(back_populates="owner")
+    audio_references: Mapped[list["AudioReference"]] = relationship(back_populates="owner")
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     credit_account: Mapped[Optional["UserCreditAccount"]] = relationship(back_populates="user")
     credit_transactions: Mapped[list["CreditTransaction"]] = relationship(
@@ -174,6 +178,25 @@ class UserCharacter(Base, TimestampMixin):
     reference_asset: Mapped[FileAsset] = relationship()
 
 
+class AudioReference(Base, TimestampMixin):
+    __tablename__ = "audio_references"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reference_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("file_assets.id", ondelete="RESTRICT"))
+    voice_provider: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    voice_model: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    voice_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, index=True)
+
+    owner: Mapped[User] = relationship(back_populates="audio_references")
+    asset: Mapped[FileAsset] = relationship()
+    video_tasks: Mapped[list["VideoTask"]] = relationship(back_populates="audio_reference")
+
+
 class GenerationTask(Base, TimestampMixin):
     __tablename__ = "generation_tasks"
     __table_args__ = (
@@ -220,6 +243,7 @@ class GenerationTask(Base, TimestampMixin):
 
     owner: Mapped[User] = relationship(back_populates="tasks")
     style: Mapped[Style] = relationship(back_populates="tasks")
+    video_tasks: Mapped[list["VideoTask"]] = relationship(back_populates="source_task")
     steps: Mapped[list["GenerationStep"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     panels: Mapped[list["TaskPanel"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     characters: Mapped[list["TaskCharacter"]] = relationship(back_populates="task", cascade="all, delete-orphan")
@@ -444,6 +468,42 @@ class TaskDownload(Base, TimestampMixin):
 
     task: Mapped[GenerationTask] = relationship(back_populates="downloads")
     asset: Mapped[Optional[FileAsset]] = relationship()
+
+
+class VideoTask(Base, TimestampMixin):
+    __tablename__ = "video_tasks"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    source_task_id: Mapped[str] = mapped_column(ForeignKey("generation_tasks.id", ondelete="RESTRICT"), unique=True, index=True)
+    audio_reference_id: Mapped[str] = mapped_column(ForeignKey("audio_references.id", ondelete="RESTRICT"), index=True)
+    display_title: Mapped[str] = mapped_column(String(120))
+    original_text: Mapped[str] = mapped_column(Text)
+    audio_reference_name_snapshot: Mapped[str] = mapped_column(String(120))
+    audio_reference_text_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    audio_reference_asset_id_snapshot: Mapped[str] = mapped_column(ForeignKey("file_assets.id", ondelete="RESTRICT"))
+    status: Mapped[VideoTaskStatus] = mapped_column(
+        Enum(VideoTaskStatus), default=VideoTaskStatus.waiting_for_images, index=True
+    )
+    current_step: Mapped[VideoTaskStepName] = mapped_column(
+        Enum(VideoTaskStepName), default=VideoTaskStepName.generate_source_images, index=True
+    )
+    progress_current: Mapped[int] = mapped_column(Integer, default=0)
+    progress_total: Mapped[int] = mapped_column(Integer, default=4)
+    narration_audio_asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
+    output_video_asset_id: Mapped[Optional[str]] = mapped_column(ForeignKey("file_assets.id", ondelete="SET NULL"), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+
+    owner: Mapped[User] = relationship(back_populates="video_tasks")
+    source_task: Mapped[GenerationTask] = relationship(back_populates="video_tasks")
+    audio_reference: Mapped[AudioReference] = relationship(back_populates="video_tasks")
+    audio_reference_asset_snapshot: Mapped[FileAsset] = relationship(foreign_keys=[audio_reference_asset_id_snapshot])
+    narration_audio_asset: Mapped[Optional[FileAsset]] = relationship(foreign_keys=[narration_audio_asset_id])
+    output_video_asset: Mapped[Optional[FileAsset]] = relationship(foreign_keys=[output_video_asset_id])
 
 
 class ContentExtraction(Base, TimestampMixin):

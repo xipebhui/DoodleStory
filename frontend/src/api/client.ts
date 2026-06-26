@@ -275,6 +275,82 @@ export type TaskSummary = {
   updated_at: string;
 };
 
+export type AudioReference = {
+  id: string;
+  owner_user_id: string;
+  owner_display_name: string | null;
+  owner_email: string | null;
+  name: string;
+  description: string | null;
+  reference_text?: string | null;
+  voice_provider: string | null;
+  voice_model: string | null;
+  voice_name: string | null;
+  deleted_at?: string | null;
+  asset: FileAsset;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VideoTaskStatus =
+  | "waiting_for_images"
+  | "ready_for_audio"
+  | "audio_generating"
+  | "audio_ready"
+  | "video_generating"
+  | "succeeded"
+  | "failed"
+  | "cancel_requested"
+  | "cancelled";
+
+export type VideoTaskSourceTask = {
+  id: string;
+  display_title: string;
+  status: Task["status"];
+  progress_current: number;
+  progress_total: number;
+  error_code: string | null;
+  error_message: string | null;
+  style_name_snapshot: string;
+  style_aspect_ratio_snapshot: string;
+  image_count: number;
+  preview_images: TaskPreviewImage[];
+};
+
+export type VideoTask = {
+  id: string;
+  owner_user_id: string;
+  owner_display_name: string | null;
+  owner_email: string | null;
+  display_title: string;
+  original_text: string;
+  original_text_preview?: string;
+  status: VideoTaskStatus;
+  current_step: "generate_source_images" | "generate_narration_audio" | "submit_video" | "download_video";
+  progress_current: number;
+  progress_total: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  audio_reference_id: string;
+  audio_reference_name_snapshot: string;
+  audio_reference_text_snapshot: string | null;
+  audio_reference_asset: FileAsset;
+  narration_audio_asset: FileAsset | null;
+  output_video_asset: FileAsset | null;
+  source_task: VideoTaskSourceTask;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VideoTaskSummary = Omit<
+  VideoTask,
+  "original_text" | "started_at" | "finished_at" | "audio_reference_id" | "audio_reference_text_snapshot" | "audio_reference_asset" | "narration_audio_asset"
+> & {
+  original_text_preview: string;
+};
+
 export type TaskCharacterReference = {
   id: string;
   name: string;
@@ -613,6 +689,59 @@ export const api = {
     }).then((result) => result.data),
   assetContentUrl: (assetId: string, variant: "original" | "thumbnail" = "original") =>
     `${API_BASE_URL}/api/v1/assets/${assetId}/content${variant === "thumbnail" ? "?variant=thumbnail" : ""}`,
+  audioReferences: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AudioReference>>(`/audio-references${suffix}`);
+  },
+  audioReference: (id: string) =>
+    request<ApiData<AudioReference>>(`/audio-references/${id}`).then((result) => result.data),
+  createAudioReference: (payload: {
+    name: string;
+    description?: string | null;
+    reference_text?: string | null;
+    voice_provider?: string | null;
+    voice_model?: string | null;
+    voice_name?: string | null;
+    file: File;
+  }) => {
+    const form = new FormData();
+    form.append("name", payload.name);
+    form.append("description", payload.description ?? "");
+    form.append("reference_text", payload.reference_text ?? "");
+    form.append("voice_provider", payload.voice_provider ?? "");
+    form.append("voice_model", payload.voice_model ?? "");
+    form.append("voice_name", payload.voice_name ?? "");
+    form.append("file", payload.file);
+    return request<ApiData<AudioReference>>("/audio-references", { method: "POST", body: form }).then((result) => result.data);
+  },
+  deleteAudioReference: (id: string) =>
+    request<ApiData<{ deleted: boolean }>>(`/audio-references/${id}`, { method: "DELETE" }),
+  videoTasks: (params?: { query?: string; status?: VideoTaskStatus | "all"; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.status && params.status !== "all") search.set("status", params.status);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<VideoTaskSummary>>(`/video-tasks${suffix}`);
+  },
+  videoTask: (id: string) => request<ApiData<VideoTask>>(`/video-tasks/${id}`).then((result) => result.data),
+  createVideoTask: (payload: {
+    original_text: string;
+    image_count_mode: "auto" | "fixed";
+    requested_image_count?: number | null;
+    style_id: string;
+    audio_reference_id: string;
+    use_character_references?: boolean;
+    last_panel_real_photo?: boolean;
+  }) =>
+    request<ApiData<VideoTask>>("/video-tasks", { method: "POST", body: JSON.stringify(payload) }).then(
+      (result) => result.data,
+    ),
   tasks: (params?: {
     query?: string;
     status?: Task["status"] | "all";

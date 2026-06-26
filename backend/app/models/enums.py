@@ -22,6 +22,9 @@ class FileAssetPurpose(StrEnum):
     user_character_reference = "user_character_reference"
     character_reference = "character_reference"
     generated_image = "generated_image"
+    audio_reference = "audio_reference"
+    generated_audio = "generated_audio"
+    generated_video = "generated_video"
     download_archive = "download_archive"
     douyin_media = "douyin_media"
     douyin_audio = "douyin_audio"
@@ -131,6 +134,25 @@ class DownloadStatus(StrEnum):
     running = "running"
     ready = "ready"
     failed = "failed"
+
+
+class VideoTaskStatus(StrEnum):
+    waiting_for_images = "waiting_for_images"
+    ready_for_audio = "ready_for_audio"
+    audio_generating = "audio_generating"
+    audio_ready = "audio_ready"
+    video_generating = "video_generating"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancel_requested = "cancel_requested"
+    cancelled = "cancelled"
+
+
+class VideoTaskStepName(StrEnum):
+    generate_source_images = "generate_source_images"
+    generate_narration_audio = "generate_narration_audio"
+    submit_video = "submit_video"
+    download_video = "download_video"
 
 
 class CreditTransactionType(StrEnum):

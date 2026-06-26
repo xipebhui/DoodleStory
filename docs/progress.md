@@ -9,10 +9,11 @@
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-77-xgapi-generation-quality.md`
+- `docs/contracts/sprint-79-video-audio-task-foundation.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 79 视频任务与音频管理基础能力：新增音频管理 tab 和视频任务 tab。音频管理支持上传、搜索、查看、试听和软删除参考音频；视频任务创建时只让用户输入故事、选择现有画风和参考音频，后端会创建并关联真实的上游 `GenerationTask`，复用当前故事切分、旁白结构和图片生成链路。视频任务列表与详情会同步上游图片任务状态，图片任务成功后停在待生成音频状态；第一版不接入真实外部图文视频 provider，不伪造音频或视频结果，不改变现有图片任务生成与积分扣费逻辑。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、空 SQLite Alembic `upgrade head`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - 修复 xgapi 无参考图质量参数：本地任务 `50c796217bdf4e299359c51e74e9f662` 的人物参考图仍失败，根因是该任务风格没有风格参考图，人物参考图请求 `reference_count=0`，因此走 xgapi `/v1/images/generations` JSON 分支；上一轮只把 `/v1/images/edits` multipart 分支的 `quality=1k` 转成 `high`，generation 分支仍发送 `1k`，第三方返回 HTTP 400：`quality must be one of: auto, low, medium, high`。现已把 xgapi 质量参数转换抽成通用逻辑，generation 和 edit 分支都统一把 `1k/2k/4k` 转为 `high`，无效配置继续明确报错，不引入 provider 或模型兜底。
 - 加固风格参考图上传流程：创建风格时仍保持先创建风格、再逐张上传参考图的既有流程，但保存和上传期间统一进入 busy 状态，禁止关闭抽屉、重复提交、重复上传、删除参考图或删除风格；编辑风格时选择参考图后新增独立上传中状态和逐张上传进度，避免上传慢时用户误以为没响应并重复操作。后端上传入口不再只相信客户端声明的 `content-type`，改为读取上传内容后用 PIL 校验真实 PNG/JPEG/WebP 图片，拒绝伪图片、声明类型与真实内容不一致的文件，并限制单张上传图片最大 10MB。本次不改变风格写接口的角色权限模型，也不把风格基础信息和参考图上传合并为事务接口。
 - 修复 xgapi 参考图提交格式：本地任务 `c670fff321c644e3abc215f4abcb411d` 重试后仍失败的直接原因不是 prompt 或人物参考逻辑，而是当前本地 `IMAGE_PROVIDER=xgapi` 时，带人物参考图或风格参考图的请求会调用 `/v1/images/edits`，旧代码把参考图按 JSON URL 数组提交，xgapi 返回 `failed to parse multipart form` / `convert_request_failed`。真实 curl 验证确认该接口需要 `multipart/form-data`，且 `image` 必须是真实图片文件字段；edit 接口的 `quality` 只接受 `auto`、`low`、`medium`、`high`。现已改为 xgapi 有参考图时先下载参考图 URL，再以 multipart 文件提交，并把 `1k/2k/4k` 质量配置转换为 edit 接口可用的 `high`；无参考图仍走 `/v1/images/generations` JSON，不引入 provider 或模型兜底。重启本地服务后，对任务 `c670fff321c644e3abc215f4abcb411d` 触发重试，4 张人物参考图和 12 张 panel 图全部成功，任务最终状态为 `succeeded`。

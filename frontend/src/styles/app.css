@@ -633,7 +633,12 @@ textarea {
 
 .status-pill.running,
 .status-pill.queued,
-.status-pill.retrying {
+.status-pill.retrying,
+.status-pill.waiting_for_images,
+.status-pill.ready_for_audio,
+.status-pill.audio_generating,
+.status-pill.audio_ready,
+.status-pill.video_generating {
   background: rgba(125, 182, 255, 0.14);
   color: #9cc7ff;
 }
@@ -2175,7 +2180,12 @@ textarea {
 
 .task-dot.running,
 .task-dot.queued,
-.task-dot.retrying {
+.task-dot.retrying,
+.task-dot.waiting_for_images,
+.task-dot.ready_for_audio,
+.task-dot.audio_generating,
+.task-dot.audio_ready,
+.task-dot.video_generating {
   background: #61a9ff;
 }
 
@@ -2183,6 +2193,34 @@ textarea {
 .task-dot.cancelled,
 .task-dot.cancel_requested {
   background: #ff7474;
+}
+
+.single-column-list .task-project-row,
+.audio-reference-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(120px, 180px) minmax(120px, 180px) minmax(120px, 160px);
+}
+
+.audio-reference-row audio {
+  width: min(100%, 420px);
+  margin-top: 8px;
+}
+
+.audio-reference-row .task-story-cell {
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+}
+
+.video-list-head {
+  grid-template-columns: minmax(220px, 3fr) minmax(110px, 3fr) minmax(150px, 2fr) minmax(150px, 2fr) minmax(120px, 1fr);
+}
+
+.video-task-row {
+  grid-template-columns: minmax(220px, 3fr) minmax(110px, 3fr) minmax(150px, 2fr) minmax(150px, 2fr) minmax(120px, 1fr);
+}
+
+.task-create-modal.compact-modal {
+  max-width: 760px;
 }
 
 .thumb-strip {

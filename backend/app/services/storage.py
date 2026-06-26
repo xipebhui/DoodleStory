@@ -15,6 +15,29 @@ from app.models.enums import StorageBackend
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
 IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+AUDIO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
+ALLOWED_AUDIO_TYPES = {
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/wave",
+    "audio/webm",
+    "audio/ogg",
+    "audio/mp4",
+    "video/mp4",
+}
+AUDIO_TYPE_SUFFIXES = {
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/wave": ".wav",
+    "audio/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mp4": ".m4a",
+    "video/mp4": ".mp4",
+}
 IMAGE_FORMAT_CONTENT_TYPES = {
     "PNG": "image/png",
     "JPEG": "image/jpeg",
@@ -80,6 +103,23 @@ async def read_upload_image_content(file: UploadFile) -> bytes:
     if len(content) > IMAGE_UPLOAD_MAX_BYTES:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="图片不能超过 10MB")
     return content
+
+
+async def read_upload_audio_content(file: UploadFile) -> tuple[bytes, str, str]:
+    content = await file.read(AUDIO_UPLOAD_MAX_BYTES + 1)
+    if len(content) > AUDIO_UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="音频不能超过 50MB")
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件内容不能为空")
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type not in ALLOWED_AUDIO_TYPES:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="仅支持 MP3、WAV、M4A、WebM、OGG 或 MP4 音频")
+    filename_suffix = Path(file.filename or "").suffix.lower()
+    suffix = AUDIO_TYPE_SUFFIXES[content_type]
+    allowed_suffixes = {".mp3", ".wav", ".m4a", ".mp4", ".webm", ".ogg"}
+    if filename_suffix in allowed_suffixes:
+        suffix = filename_suffix
+    return content, content_type, suffix
 
 
 def detect_verified_image_content_type(content: bytes, declared_content_type: str | None = None) -> str:
