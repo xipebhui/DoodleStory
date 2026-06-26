@@ -33,7 +33,9 @@ class StorySegmentationTest(unittest.TestCase):
         self.assertIn("空格", user_payload["character_count_rule"])
         self.assertIn("自动判断", user_payload["count_instruction"])
         self.assertIn("专业的分镜设计师", call_json.call_args.kwargs["system_prompt"])
-        self.assertIn("保留用户原文不变", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("严格按原文顺序从前到后推进", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("不要重复使用已经分配给前面 panel 的内容", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("不要为了凑够 panel 数量把故事讲两遍", call_json.call_args.kwargs["system_prompt"])
         self.assertIn("长度控制在 30 个字左右", call_json.call_args.kwargs["system_prompt"])
         self.assertEqual(
             ["我三叔特别的喜欢我是有原因的\n", "他有时候工地夜班干完活回来"],
