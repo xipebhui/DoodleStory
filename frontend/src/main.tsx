@@ -839,7 +839,7 @@ function TasksView({
     async function loadTaskUsers() {
       try {
         setLoadingTaskUsers(true);
-        const result = await api.adminUsers({ limit: 200 });
+        const result = await api.adminUsers({ limit: 100 });
         if (!cancelled) setTaskUserOptions(result.items);
       } catch (error) {
         if (!cancelled) setMessage(error instanceof Error ? error.message : "用户列表加载失败");

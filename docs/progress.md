@@ -279,6 +279,7 @@
 - 强化任务级临时角色形象提取：`extract_task_characters_v1.md` 明确要求根据全文、称呼、人物关系和恋爱/亲情/校园/职场语境推断年龄阶段与性别呈现，第一人称“我”也不能输出模糊人物；任务角色提取调用改为使用 `CHARACTER_EXTRACTION_MODEL` 和 `CHARACTER_EXTRACTION_TEMPERATURE` 低温配置，避免继续走默认高温 LLM 设置。新增单测覆盖火车上“帅哥/后来在一起”语境下第一人称应推断为青年女性学生，并确认调用低温配置。
 - 收紧正式生图 prompt 的比例约束：最终发送给图片 Provider 的 panel prompt 现在统一以 `画面比例：...` 开头，并要求严格按该宽高比构图和出图；该前缀位于风格模板、参考图说明和最终画面指令之前，单 panel 修改和 policy blocked 后的提示词改写重试也会重新补齐比例前缀，减少图片模型忽略 3:4、9:16 等比例的概率。
 - 开始并完成 Sprint 78 任务用户筛选与联系入口：新增合同 `docs/contracts/sprint-78-task-user-filter-contact.md`；任务页管理员可见用户下拉，前端会把选中的 `user_id` 传给已有任务列表接口，普通用户不展示该筛选；联系我们不占用侧边栏 tab，改为左侧底部用户信息区的轻量入口，鼠标悬浮或键盘聚焦后展示微信二维码并提示使用微信扫一扫。`npm run build --prefix frontend`、`./scripts/check.sh` 和 `git diff --check` 通过；微信号文本在本次需求消息中未提供，当前页面展示为扫码添加微信。
+- 修复 Sprint 78 任务页用户下拉为空：根因是任务页加载管理员用户下拉时传了 `limit=200`，超过后端统一分页上限 `100`，导致 `/admin/users` 返回校验错误而没有 options；已改为 `limit=100`，与现有管理员用户筛选保持一致。
 
 ## 已知缺口
 
