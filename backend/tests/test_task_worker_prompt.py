@@ -34,6 +34,8 @@ from app.services.task_worker import (
     build_generation_reference_pack,
     build_original_story_final_prompt,
     build_panel_final_prompt,
+    final_prompt_panel_payload,
+    final_prompt_task_payload,
     final_prompt_with_aspect_ratio_prefix,
     final_prompt_with_explicit_style,
     normalized_person_reference_lines,
@@ -96,6 +98,42 @@ class TaskWorkerPromptTest(unittest.TestCase):
             call_json.call_args.kwargs["prompt_name"],
         )
         self.assertEqual(0.2, call_json.call_args.kwargs["temperature"])
+
+    def test_compose_final_image_prompts_system_prompt_has_no_text_mode_rule(self) -> None:
+        with patch(
+            "app.services.llm.call_siliconflow_json",
+            return_value={
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "final_prompt": "女孩站在窗边看向街道，没有任何画面文字。",
+                        "consistency_notes": [],
+                    }
+                ]
+            },
+        ) as call_json:
+            compose_final_image_prompts(
+                task_payload={
+                    "story_input_mode": "adapted",
+                    "remove_image_text": True,
+                    "aspect_ratio": "3:4",
+                    "style_reference_mode": "prompt",
+                    "style_prompt": "粗糙手绘漫画风",
+                },
+                characters=[],
+                panels=[
+                    {
+                        "panel_order": 1,
+                        "visual_prompt": "女孩站在窗边看向街道",
+                        "image_text": {"narration": None},
+                        "remove_image_text": True,
+                    }
+                ],
+            )
+
+        self.assertIn("task.remove_image_text", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn("不得输出 `【文字】` 段", call_json.call_args.kwargs["system_prompt"])
+        self.assertIn('"remove_image_text": true', call_json.call_args.kwargs["user_prompt"])
 
     def test_compose_final_image_prompts_rejects_panel_order_mismatch(self) -> None:
         with patch(
@@ -438,8 +476,99 @@ class TaskWorkerPromptTest(unittest.TestCase):
         final_prompt = final_prompt_with_explicit_style(task, "画面里有街道和人物。")
 
         self.assertTrue(final_prompt.startswith("最高指令，图片中不能包含任何文字。"))
+        self.assertIn("不得包含任何旁白、字幕、标题、对白气泡", final_prompt)
         self.assertLess(final_prompt.index("最高指令"), final_prompt.index("画面比例：3:4"))
         self.assertIn("最终画面指令：", final_prompt)
+        self.assertNotIn("文字呈现", final_prompt)
+
+    def test_remove_image_text_option_strips_text_drawing_instructions(self) -> None:
+        task = GenerationTask(
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.adapted,
+            image_count_mode=ImageCountMode.auto,
+            remove_image_text=True,
+            style_id="style",
+            style_name_snapshot="漫画风",
+            style_prompt_snapshot="手绘漫画风，文字清晰。",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="16:9",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+
+        final_prompt = final_prompt_with_explicit_style(
+            task,
+            (
+                "画面里有街道和人物。\n"
+                "【文字】\n"
+                "在画面底部的留白文字区写入「22岁那年，我终于离开了他。」\n"
+                "整体色调/风格：温暖手绘。"
+            ),
+        )
+
+        self.assertTrue(final_prompt.startswith("最高指令，图片中不能包含任何文字。"))
+        self.assertIn("画面比例：16:9", final_prompt)
+        self.assertIn("画面里有街道和人物。", final_prompt)
+        self.assertNotIn("【文字】", final_prompt)
+        self.assertNotIn("写入「22岁那年", final_prompt)
+        self.assertNotIn("留白文字区", final_prompt)
+
+    def test_remove_image_text_panel_payload_removes_image_text_from_compiler_input(self) -> None:
+        panel = TaskPanel(
+            id="panel-1",
+            task_id="task-1",
+            panel_order=1,
+            panel_type=PanelType.scene,
+            original_text_segment="22岁那年，我终于离开了他。",
+            generated_prompt="女孩拖着行李站在夜晚街口。",
+            text_layout="底部留白文字区",
+        )
+        payload = final_prompt_panel_payload(
+            panel=panel,
+            visual_prompt="女孩拖着行李站在夜晚街口。",
+            image_text={
+                "title": None,
+                "narration": "22岁那年，我终于离开了他。",
+                "dialogue": None,
+                "inner_os": None,
+                "emphasis": None,
+            },
+            reference_pack=GenerationReferencePack(
+                references=[],
+                notes=[],
+                character_reference_count=0,
+                style_reference_count=0,
+            ),
+            remove_image_text=True,
+        )
+
+        self.assertTrue(payload["remove_image_text"])
+        self.assertEqual(
+            {"title": None, "narration": None, "dialogue": None, "inner_os": None, "emphasis": None},
+            payload["image_text"],
+        )
+        self.assertIn("不能画进图片", payload["text_rules"])
+        self.assertNotIn("22岁那年", payload["structured_storyboard"])
+
+    def test_final_prompt_task_payload_includes_remove_image_text(self) -> None:
+        task = GenerationTask(
+            id="task-1",
+            owner_user_id="user",
+            display_title="任务",
+            original_text="原文",
+            story_input_mode=StoryInputMode.adapted,
+            image_count_mode=ImageCountMode.auto,
+            remove_image_text=True,
+            style_id="style",
+            style_name_snapshot="漫画风",
+            style_prompt_snapshot="手绘漫画风",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="16:9",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+
+        self.assertTrue(final_prompt_task_payload(task)["remove_image_text"])
 
     def test_last_panel_real_photo_final_prompt_overrides_task_style(self) -> None:
         task = GenerationTask(

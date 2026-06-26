@@ -5,14 +5,15 @@
 - 分支：`codex/video-audio-tasks`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 84 视频任务默认无文字画面实现后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 85 无文字生图提示词结构化约束实现后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-84-video-task-default-remove-image-text.md`
+- `docs/contracts/sprint-85-remove-image-text-structural-prompt.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 85 无文字生图提示词结构化约束：针对 `去掉画面文字` 只加最高指令但最终 prompt 仍包含旁白写入的问题，已把 `remove_image_text` 传入最终 prompt 编译链路；开启时不再把 `image_text` 中的标题、旁白、对白、内心 OS 或强调文字作为画面文字传给编译器，编译系统 prompt 明确禁止输出 `【文字】` 段或任何文字绘制指令，并在最终拼接前清理旁白框、字幕框、对白气泡、留白文字区和写入文字等残留指令；普通未开启该选项的图片任务保持原文字流程。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 120 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 84 视频任务默认无文字画面：视频任务创建上游 `GenerationTask` 时固定传入 `remove_image_text=True`，让视频素材图默认在最终生图 prompt 最前面带上 `最高指令，图片中不能包含任何文字。`；普通图片任务的默认值仍保持关闭，视频任务前端不新增额外开关，已有视频任务不回写。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 116 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 83 图片任务无文字选项：图片任务创建弹窗新增默认关闭的 `去掉画面文字` 开关，后端 `generation_tasks` 新增 `remove_image_text` 并随任务列表、详情返回；普通任务创建和 DY 爆款复刻创建都会保存该选项。实现保持最小处理，不改 storyboard、panel prompt、旁白/对白/内心 OS 或图片文字结构化字段，只在最终发送给图片模型的 prompt 最前面拼接 `最高指令，图片中不能包含任何文字。`；单 panel 修改重生成也沿用同一任务配置。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_content_extraction_media_flow`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 116 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 82 音频参考速度、编辑与测试试听：音频参考新增 `speech_speed`，上传时可设置产出语速，编辑时只允许修改名称、描述和语速，不允许替换参考音频文件、参考文本、Provider、模型或音色名；新增音频参考测试接口，用户输入测试文本后后端使用当前参考音频注册或复用 SiliconFlow voice，并按语速返回一次性试听音频流，不保存测试音频资产。视频任务新增 `voice_speed_snapshot`，创建任务时从音频参考快照语速，生成每段旁白音频时使用该快照，后续编辑音频参考不会影响已创建视频任务。前端音频管理列表移除常驻长条播放器，改为紧凑速度标识、原音入口、测试和编辑弹窗。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks backend.tests.test_video_task_worker`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 115 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
