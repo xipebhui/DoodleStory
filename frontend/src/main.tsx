@@ -51,6 +51,7 @@ import {
   type FileAsset,
   type Style,
   type StyleOption,
+  type StyleSelectOption,
   type StyleTest,
   type StoryCharacterBinding,
   type Task,
@@ -726,7 +727,8 @@ function TasksView({
   onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
 }) {
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
-  const [styles, setStyles] = useState<StyleOption[]>([]);
+  const [styleFilterOptions, setStyleFilterOptions] = useState<StyleSelectOption[]>([]);
+  const [createStyles, setCreateStyles] = useState<StyleOption[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [queryInput, setQueryInput] = useState("");
@@ -740,7 +742,8 @@ function TasksView({
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(true);
-  const [loadingStyles, setLoadingStyles] = useState(false);
+  const [loadingStyleFilterOptions, setLoadingStyleFilterOptions] = useState(false);
+  const [loadingCreateStyles, setLoadingCreateStyles] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -807,14 +810,14 @@ function TasksView({
       .join("|") ?? "";
   const createStylePreviewLimit = 3;
   const visibleCreateStyles = useMemo(() => {
-    const previewStyles = styles.slice(0, createStylePreviewLimit);
+    const previewStyles = createStyles.slice(0, createStylePreviewLimit);
     if (!createStyleId || previewStyles.some((style) => style.id === createStyleId)) {
       return previewStyles;
     }
-    const selectedStyle = styles.find((style) => style.id === createStyleId);
+    const selectedStyle = createStyles.find((style) => style.id === createStyleId);
     return selectedStyle ? [...previewStyles.slice(0, createStylePreviewLimit - 1), selectedStyle] : previewStyles;
-  }, [styles, createStyleId]);
-  const canExpandCreateStyles = styles.length > 0;
+  }, [createStyles, createStyleId]);
+  const canExpandCreateStyles = createStyles.length > 0;
   const createRoleNames = useMemo(() => {
     const names: string[] = [];
     for (const name of [...extractedCharacterNames, ...manualCharacterNames]) {
@@ -836,8 +839,13 @@ function TasksView({
   }, [query, statusFilter, styleFilter, taskUserFilter, cursor]);
 
   useEffect(() => {
-    void refreshStyles();
+    void refreshStyleFilterOptions();
   }, []);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    void refreshCreateStyles();
+  }, [createOpen]);
 
   useEffect(() => {
     if (user.role !== "admin") {
@@ -1005,10 +1013,10 @@ function TasksView({
   }, [detailOpen, previewImageId, previewReferenceId, promptPreview]);
 
   useEffect(() => {
-    if (createOpen && !createStyleId && styles[0]) {
-      setCreateStyleId(styles[0].id);
+    if (createOpen && !createStyleId && createStyles[0]) {
+      setCreateStyleId(createStyles[0].id);
     }
-  }, [createOpen, createStyleId, styles]);
+  }, [createOpen, createStyleId, createStyles]);
 
   useEffect(() => {
     const rawDraft = window.sessionStorage.getItem(CONTENT_EXTRACTION_TASK_DRAFT_KEY);
@@ -1078,15 +1086,27 @@ function TasksView({
     }
   }
 
-  async function refreshStyles() {
+  async function refreshStyleFilterOptions() {
     try {
-      setLoadingStyles(true);
-      const styleResult = await api.styleOptions({ status: "active", limit: 100 });
-      setStyles(styleResult.items);
+      setLoadingStyleFilterOptions(true);
+      const styleResult = await api.styleSelectOptions({ status: "active", limit: 100 });
+      setStyleFilterOptions(styleResult.items);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "风格列表加载失败");
     } finally {
-      setLoadingStyles(false);
+      setLoadingStyleFilterOptions(false);
+    }
+  }
+
+  async function refreshCreateStyles() {
+    try {
+      setLoadingCreateStyles(true);
+      const styleResult = await api.styleOptions({ status: "active", limit: 100 });
+      setCreateStyles(styleResult.items);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "风格列表加载失败");
+    } finally {
+      setLoadingCreateStyles(false);
     }
   }
 
@@ -1183,7 +1203,7 @@ function TasksView({
     setCountMode("auto");
     setLastPanelRealPhoto(false);
     setStoryInputMode("original");
-    setCreateStyleId(styles[0]?.id ?? "");
+    setCreateStyleId(createStyles[0]?.id ?? "");
     setFixedRoleFlowEnabled(false);
     setCharacterExtractionCompletedForText("");
     setExtractedCharacterNames([]);
@@ -1598,15 +1618,15 @@ function TasksView({
           <Sparkles size={16} />
           <select
             value={styleFilter}
-            disabled={loadingStyles}
+            disabled={loadingStyleFilterOptions}
             onChange={(event) => {
               setStyleFilter(event.target.value);
               setCursor(null);
               setCursorStack([]);
             }}
           >
-            <option value="">{loadingStyles ? "风格加载中" : "全部风格"}</option>
-            {styles.map((style) => (
+            <option value="">{loadingStyleFilterOptions ? "风格加载中" : "全部风格"}</option>
+            {styleFilterOptions.map((style) => (
               <option key={style.id} value={style.id}>
                 {style.name}
               </option>
@@ -2175,7 +2195,8 @@ function TasksView({
                     </button>
                   ) : null}
                 </div>
-                {styles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
+                {loadingCreateStyles ? <div className="empty mini">风格加载中</div> : null}
+                {!loadingCreateStyles && createStyles.length === 0 ? <div className="empty mini">暂无启用风格</div> : null}
                 <div className="style-picker-grid compact">
                   {visibleCreateStyles.map((style) => {
                     const assets = stylePreviewAssets(style);
@@ -2540,7 +2561,7 @@ function TasksView({
                   </button>
                 </div>
                 <div className="style-picker-grid expanded">
-                  {styles.map((style) => {
+                  {createStyles.map((style) => {
                     const assets = stylePreviewAssets(style);
                     return (
                       <button

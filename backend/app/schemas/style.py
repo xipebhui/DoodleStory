@@ -91,6 +91,11 @@ class StyleOptionRead(TimestampFields):
     last_tested_at: datetime | None
 
 
+class StyleSelectOptionRead(BaseModel):
+    id: str
+    name: str
+
+
 class StyleTestCreate(BaseModel):
     test_text: str = Field(min_length=1, max_length=2000)
 

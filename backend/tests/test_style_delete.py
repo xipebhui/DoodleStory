@@ -5,11 +5,18 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.pagination import Pagination
-from app.api.styles import create_style, delete_reference_image, delete_style, list_style_options, update_style
+from app.api.styles import (
+    create_style,
+    delete_reference_image,
+    delete_style,
+    list_style_options,
+    list_style_select_options,
+    update_style,
+)
 from app.core.database import Base
 from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, TaskStyleReferenceImage, User
 from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleStatus, StyleReferenceMode
-from app.schemas.style import StyleCreate, StyleOptionRead, StyleUpdate
+from app.schemas.style import StyleCreate, StyleOptionRead, StyleSelectOptionRead, StyleUpdate
 
 
 class StyleDeleteTest(unittest.TestCase):
@@ -53,6 +60,32 @@ class StyleDeleteTest(unittest.TestCase):
         self.assertEqual(1, len(result.items))
         self.assertEqual(style.id, result.items[0].id)
         self.assertEqual(asset.id, result.items[0].preview_asset.id)
+
+    def test_style_select_options_returns_only_id_and_name(self) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        style = Style(
+            name="下拉风格",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_prompt="不应进入下拉接口",
+        )
+        db.add_all([user, style])
+        db.commit()
+
+        result = list_style_select_options(
+            user=user,
+            db=db,
+            pagination=Pagination(limit=20, offset=0),
+            query=None,
+            status_filter=StyleStatus.active,
+        )
+
+        self.assertEqual({"id", "name"}, set(StyleSelectOptionRead.model_fields))
+        self.assertEqual(1, len(result.items))
+        self.assertEqual(style.id, result.items[0].id)
+        self.assertEqual(style.name, result.items[0].name)
 
     def test_delete_referenced_style_soft_deletes(self) -> None:
         db = self.Session()

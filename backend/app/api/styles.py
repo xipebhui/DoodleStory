@@ -18,6 +18,7 @@ from app.schemas.style import (
     StyleOptionRead,
     StyleRead,
     StyleReferenceImageRead,
+    StyleSelectOptionRead,
     StyleTestCreate,
     StyleTestRead,
     StyleUpdate,
@@ -173,6 +174,34 @@ def list_style_options(
             )
             for row in visible_rows
         ],
+        page=build_page(pagination.limit, pagination.offset, len(rows)),
+    )
+
+
+@router.get("/select-options", response_model=ApiList[StyleSelectOptionRead])
+def list_style_select_options(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    pagination: Pagination = Depends(get_pagination),
+    query: str | None = Query(default=None, max_length=120),
+    status_filter: StyleStatus | None = Query(default=None, alias="status"),
+) -> ApiList[StyleSelectOptionRead]:
+    statement = (
+        select(Style.id, Style.name)
+        .where(Style.deleted_at.is_(None))
+        .order_by(Style.updated_at.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit + 1)
+    )
+    if query:
+        statement = statement.where(or_(Style.name.contains(query), Style.description.contains(query)))
+    if status_filter:
+        statement = statement.where(Style.status == status_filter)
+
+    rows = db.execute(statement).all()
+    visible_rows = rows[: pagination.limit]
+    return ApiList(
+        items=[StyleSelectOptionRead(id=row.id, name=row.name) for row in visible_rows],
         page=build_page(pagination.limit, pagination.offset, len(rows)),
     )
 

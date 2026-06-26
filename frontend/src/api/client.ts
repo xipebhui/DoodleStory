@@ -140,6 +140,11 @@ export type StyleOption = {
   updated_at: string;
 };
 
+export type StyleSelectOption = {
+  id: string;
+  name: string;
+};
+
 export type FileAsset = {
   id: string;
   purpose: string;
@@ -572,6 +577,14 @@ export const api = {
     if (params?.limit) search.set("limit", String(params.limit));
     const suffix = search.toString() ? `?${search.toString()}` : "";
     return request<ApiList<StyleOption>>(`/styles/options${suffix}`);
+  },
+  styleSelectOptions: (params?: { query?: string; status?: Style["status"] | "all"; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.status && params.status !== "all") search.set("status", params.status);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<StyleSelectOption>>(`/styles/select-options${suffix}`);
   },
   style: (id: string) => request<ApiData<Style>>(`/styles/${id}`).then((result) => result.data),
   createStyle: (payload: Partial<Style>) =>

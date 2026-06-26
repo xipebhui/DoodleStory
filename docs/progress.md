@@ -282,6 +282,7 @@
 - 修复 Sprint 78 任务页用户下拉为空：根因是任务页加载管理员用户下拉时传了 `limit=200`，超过后端统一分页上限 `100`，导致 `/admin/users` 返回校验错误而没有 options；已改为 `limit=100`，与现有管理员用户筛选保持一致。
 - 优化任务页点击卡顿：生产 Network 显示 `styles?status=active` 耗时约 23.8 秒，而 `tasks?limit=10` 约 1.2 秒；根因是任务页 `refresh()` 把任务列表和启用风格列表放进同一个 `Promise.all`，导致风格列表慢时阻塞任务列表刷新和点击反馈。前端已把风格列表改为独立加载，任务刷新只等待任务接口；风格加载慢时只影响风格筛选和创建任务风格选项，不再拖住任务列表。
 - 继续优化风格列表慢接口：新增 `/styles/options` 轻量接口，只返回任务页需要的风格选项字段和一张预览图，不返回完整 `style_prompt`、全部参考图列表或完整风格管理详情；任务页改为调用 `api.styleOptions({ status: "active", limit: 100 })`，风格管理页继续使用原 `/styles` 完整接口。新增单测确认 options payload 不包含 `style_prompt` 且能返回预览资产。
+- 进一步拆分任务页风格下拉：新增 `/styles/select-options`，只查询并返回 `id/name`，任务页首屏筛选下拉改用该接口；带预览图的 `/styles/options` 只在创建任务弹窗打开后加载，用于风格卡片展示。新增单测确认 select options schema 只有 `id` 和 `name`。
 
 ## 已知缺口
 
