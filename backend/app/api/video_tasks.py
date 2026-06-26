@@ -260,6 +260,7 @@ async def create_video_task(
         style_id=payload.style_id,
         use_character_references=payload.use_character_references,
         last_panel_real_photo=payload.last_panel_real_photo,
+        remove_image_text=True,
         story_characters=[],
     )
     try:

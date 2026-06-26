@@ -5,14 +5,15 @@
 - 分支：`codex/video-audio-tasks`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 83 图片任务无文字选项实现后，`./scripts/check.sh` 通过。
+- 最近验证状态：Sprint 84 视频任务默认无文字画面实现后，`./scripts/check.sh` 通过。
 
 ## 当前 Sprint 合同
 
-- `docs/contracts/sprint-83-remove-image-text-option.md`
+- `docs/contracts/sprint-84-video-task-default-remove-image-text.md`
 
 ## 最近完成的工作
 
+- 完成 Sprint 84 视频任务默认无文字画面：视频任务创建上游 `GenerationTask` 时固定传入 `remove_image_text=True`，让视频素材图默认在最终生图 prompt 最前面带上 `最高指令，图片中不能包含任何文字。`；普通图片任务的默认值仍保持关闭，视频任务前端不新增额外开关，已有视频任务不回写。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 116 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 83 图片任务无文字选项：图片任务创建弹窗新增默认关闭的 `去掉画面文字` 开关，后端 `generation_tasks` 新增 `remove_image_text` 并随任务列表、详情返回；普通任务创建和 DY 爆款复刻创建都会保存该选项。实现保持最小处理，不改 storyboard、panel prompt、旁白/对白/内心 OS 或图片文字结构化字段，只在最终发送给图片模型的 prompt 最前面拼接 `最高指令，图片中不能包含任何文字。`；单 panel 修改重生成也沿用同一任务配置。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt backend.tests.test_content_extraction_media_flow`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 116 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 82 音频参考速度、编辑与测试试听：音频参考新增 `speech_speed`，上传时可设置产出语速，编辑时只允许修改名称、描述和语速，不允许替换参考音频文件、参考文本、Provider、模型或音色名；新增音频参考测试接口，用户输入测试文本后后端使用当前参考音频注册或复用 SiliconFlow voice，并按语速返回一次性试听音频流，不保存测试音频资产。视频任务新增 `voice_speed_snapshot`，创建任务时从音频参考快照语速，生成每段旁白音频时使用该快照，后续编辑音频参考不会影响已创建视频任务。前端音频管理列表移除常驻长条播放器，改为紧凑速度标识、原音入口、测试和编辑弹窗。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks backend.tests.test_video_task_worker`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 115 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 81 音频参考本地转写创建流程：音频管理上传弹窗不再暴露参考文本、Provider、模型或音色名字段；用户选择音频文件后，前端自动调用后端 `/audio-references/transcribe`，后端使用本地最小 Whisper 配置转写参考文本，并通过 OpenCC `t2s` 统一转换为简体中文。转写过程中保存按钮禁用，转写失败时不能保存；转写成功后展示只读识别文本并随音频参考保存。后端创建音频参考接口新增空 `reference_text` 拒绝校验，避免后续 SiliconFlow 注册自定义音色时因为缺少参考文本失败。本次不做云端转写兜底、不做手动编辑转写文本、不做转写任务持久化。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 113 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建；本地 `.venv` 已安装并 import 验证 `faster-whisper==1.1.1`，手动 smoke 验证繁体转写片段会输出简体中文。

@@ -242,6 +242,7 @@ class VideoAudioTaskTest(unittest.TestCase):
         self.assertEqual(1.2, video_task.voice_speed_snapshot)
         self.assertEqual("小女孩在雨里捡到一把发光的伞。", video_task.source_task.original_text)
         self.assertEqual(style.id, video_task.source_task.style_id)
+        self.assertTrue(video_task.source_task.remove_image_text)
         enqueue_task.assert_awaited_once_with(video_task.source_task_id)
 
     def test_video_task_syncs_ready_when_source_task_succeeds(self) -> None:
