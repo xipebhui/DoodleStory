@@ -126,6 +126,20 @@ export type Style = {
   updated_at: string;
 };
 
+export type StyleOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: "draft" | "active" | "disabled";
+  image_model_name: string;
+  aspect_ratio: string;
+  style_reference_mode: "prompt" | "image";
+  preview_asset: FileAsset | null;
+  last_tested_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type FileAsset = {
   id: string;
   purpose: string;
@@ -550,6 +564,14 @@ export const api = {
     if (params?.status && params.status !== "all") search.set("status", params.status);
     const suffix = search.toString() ? `?${search.toString()}` : "";
     return request<ApiList<Style>>(`/styles${suffix}`);
+  },
+  styleOptions: (params?: { query?: string; status?: Style["status"] | "all"; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.status && params.status !== "all") search.set("status", params.status);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<StyleOption>>(`/styles/options${suffix}`);
   },
   style: (id: string) => request<ApiData<Style>>(`/styles/${id}`).then((result) => result.data),
   createStyle: (payload: Partial<Style>) =>

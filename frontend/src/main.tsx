@@ -50,6 +50,7 @@ import {
   type CreditUsagePoint,
   type FileAsset,
   type Style,
+  type StyleOption,
   type StyleTest,
   type StoryCharacterBinding,
   type Task,
@@ -699,7 +700,10 @@ function shortId(value: string) {
   return value.slice(0, 8);
 }
 
-function stylePreviewAssets(style: Style) {
+function stylePreviewAssets(style: Style | StyleOption) {
+  if ("preview_asset" in style) {
+    return style.preview_asset ? [style.preview_asset] : [];
+  }
   const assets = style.reference_images.map((reference) => reference.asset);
   if (style.cover_asset && !assets.some((asset) => asset.id === style.cover_asset?.id)) {
     return [style.cover_asset, ...assets];
@@ -707,7 +711,8 @@ function stylePreviewAssets(style: Style) {
   return assets;
 }
 
-function styleCover(style: Style) {
+function styleCover(style: Style | StyleOption) {
+  if ("preview_asset" in style) return style.preview_asset;
   return style.cover_asset ?? style.reference_images[0]?.asset ?? null;
 }
 
@@ -721,7 +726,7 @@ function TasksView({
   onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
 }) {
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
-  const [styles, setStyles] = useState<Style[]>([]);
+  const [styles, setStyles] = useState<StyleOption[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [queryInput, setQueryInput] = useState("");
@@ -1076,7 +1081,7 @@ function TasksView({
   async function refreshStyles() {
     try {
       setLoadingStyles(true);
-      const styleResult = await api.styles({ status: "active" });
+      const styleResult = await api.styleOptions({ status: "active", limit: 100 });
       setStyles(styleResult.items);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "风格列表加载失败");

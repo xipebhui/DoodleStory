@@ -4,11 +4,12 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from app.api.styles import create_style, delete_reference_image, delete_style, update_style
+from app.api.pagination import Pagination
+from app.api.styles import create_style, delete_reference_image, delete_style, list_style_options, update_style
 from app.core.database import Base
 from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, TaskStyleReferenceImage, User
 from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleStatus, StyleReferenceMode
-from app.schemas.style import StyleCreate, StyleUpdate
+from app.schemas.style import StyleCreate, StyleOptionRead, StyleUpdate
 
 
 class StyleDeleteTest(unittest.TestCase):
@@ -16,6 +17,42 @@ class StyleDeleteTest(unittest.TestCase):
         engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
         Base.metadata.create_all(engine)
         self.Session = sessionmaker(bind=engine)
+
+    def test_style_options_returns_lightweight_preview_payload(self) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        asset = FileAsset(
+            purpose=FileAssetPurpose.style_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="style_reference/preview.png",
+            public_url="https://cdn.example.com/style_reference/preview.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        style = Style(
+            name="轻量选项风格",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_reference_mode=StyleReferenceMode.image,
+            style_prompt="很长的风格提示词" * 200,
+        )
+        reference = StyleReferenceImage(style=style, asset=asset, display_order=1)
+        db.add_all([user, asset, style, reference])
+        db.commit()
+
+        result = list_style_options(
+            user=user,
+            db=db,
+            pagination=Pagination(limit=20, offset=0),
+            query=None,
+            status_filter=StyleStatus.active,
+        )
+
+        self.assertNotIn("style_prompt", StyleOptionRead.model_fields)
+        self.assertEqual(1, len(result.items))
+        self.assertEqual(style.id, result.items[0].id)
+        self.assertEqual(asset.id, result.items[0].preview_asset.id)
 
     def test_delete_referenced_style_soft_deletes(self) -> None:
         db = self.Session()

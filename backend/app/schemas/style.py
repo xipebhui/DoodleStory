@@ -79,6 +79,18 @@ class StyleRead(TimestampFields):
     reference_images: list[StyleReferenceImageRead] = []
 
 
+class StyleOptionRead(TimestampFields):
+    id: str
+    name: str
+    description: str | None
+    status: StyleStatus
+    image_model_name: str
+    aspect_ratio: str
+    style_reference_mode: StyleReferenceMode
+    preview_asset: FileAssetRead | None = None
+    last_tested_at: datetime | None
+
+
 class StyleTestCreate(BaseModel):
     test_text: str = Field(min_length=1, max_length=2000)
 

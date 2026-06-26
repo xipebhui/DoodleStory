@@ -3,7 +3,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
@@ -15,6 +15,7 @@ from app.schemas.common import ApiData, ApiList
 from app.schemas.style import (
     STYLE_ASPECT_RATIOS,
     StyleCreate,
+    StyleOptionRead,
     StyleRead,
     StyleReferenceImageRead,
     StyleTestCreate,
@@ -105,6 +106,74 @@ def list_styles(
     return ApiList(
         items=[style_to_read(style) for style in visible_styles],
         page=build_page(pagination.limit, pagination.offset, len(styles)),
+    )
+
+
+@router.get("/options", response_model=ApiList[StyleOptionRead])
+def list_style_options(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    pagination: Pagination = Depends(get_pagination),
+    query: str | None = Query(default=None, max_length=120),
+    status_filter: StyleStatus | None = Query(default=None, alias="status"),
+) -> ApiList[StyleOptionRead]:
+    first_reference_asset_id = (
+        select(StyleReferenceImage.asset_id)
+        .where(StyleReferenceImage.style_id == Style.id)
+        .order_by(StyleReferenceImage.display_order.asc(), StyleReferenceImage.created_at.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    preview_asset_id = func.coalesce(Style.cover_asset_id, first_reference_asset_id).label("preview_asset_id")
+    statement = (
+        select(
+            Style.id,
+            Style.name,
+            Style.description,
+            Style.status,
+            Style.image_model_name,
+            Style.aspect_ratio,
+            Style.style_reference_mode,
+            Style.last_tested_at,
+            Style.created_at,
+            Style.updated_at,
+            preview_asset_id,
+        )
+        .where(Style.deleted_at.is_(None))
+        .order_by(Style.updated_at.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit + 1)
+    )
+    if query:
+        statement = statement.where(or_(Style.name.contains(query), Style.description.contains(query)))
+    if status_filter:
+        statement = statement.where(Style.status == status_filter)
+
+    rows = db.execute(statement).all()
+    visible_rows = rows[: pagination.limit]
+    preview_asset_ids = [row.preview_asset_id for row in visible_rows if row.preview_asset_id]
+    assets = {}
+    if preview_asset_ids:
+        assets = {asset.id: asset for asset in db.scalars(select(FileAsset).where(FileAsset.id.in_(preview_asset_ids))).all()}
+
+    return ApiList(
+        items=[
+            StyleOptionRead(
+                id=row.id,
+                name=row.name,
+                description=row.description,
+                status=row.status,
+                image_model_name=row.image_model_name,
+                aspect_ratio=row.aspect_ratio,
+                style_reference_mode=row.style_reference_mode,
+                last_tested_at=row.last_tested_at,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                preview_asset=assets.get(row.preview_asset_id),
+            )
+            for row in visible_rows
+        ],
+        page=build_page(pagination.limit, pagination.offset, len(rows)),
     )
 
 

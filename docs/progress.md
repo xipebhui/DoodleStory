@@ -281,6 +281,7 @@
 - 开始并完成 Sprint 78 任务用户筛选与联系入口：新增合同 `docs/contracts/sprint-78-task-user-filter-contact.md`；任务页管理员可见用户下拉，前端会把选中的 `user_id` 传给已有任务列表接口，普通用户不展示该筛选；联系我们不占用侧边栏 tab，改为左侧底部用户信息区的轻量入口，鼠标悬浮或键盘聚焦后展示微信二维码并提示使用微信扫一扫。`npm run build --prefix frontend`、`./scripts/check.sh` 和 `git diff --check` 通过；微信号文本在本次需求消息中未提供，当前页面展示为扫码添加微信。
 - 修复 Sprint 78 任务页用户下拉为空：根因是任务页加载管理员用户下拉时传了 `limit=200`，超过后端统一分页上限 `100`，导致 `/admin/users` 返回校验错误而没有 options；已改为 `limit=100`，与现有管理员用户筛选保持一致。
 - 优化任务页点击卡顿：生产 Network 显示 `styles?status=active` 耗时约 23.8 秒，而 `tasks?limit=10` 约 1.2 秒；根因是任务页 `refresh()` 把任务列表和启用风格列表放进同一个 `Promise.all`，导致风格列表慢时阻塞任务列表刷新和点击反馈。前端已把风格列表改为独立加载，任务刷新只等待任务接口；风格加载慢时只影响风格筛选和创建任务风格选项，不再拖住任务列表。
+- 继续优化风格列表慢接口：新增 `/styles/options` 轻量接口，只返回任务页需要的风格选项字段和一张预览图，不返回完整 `style_prompt`、全部参考图列表或完整风格管理详情；任务页改为调用 `api.styleOptions({ status: "active", limit: 100 })`，风格管理页继续使用原 `/styles` 完整接口。新增单测确认 options payload 不包含 `style_prompt` 且能返回预览资产。
 
 ## 已知缺口
 
