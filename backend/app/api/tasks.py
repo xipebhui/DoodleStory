@@ -1,6 +1,5 @@
 from datetime import datetime
 from io import BytesIO
-import json
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -179,12 +178,16 @@ def task_original_text_preview(task: GenerationTask) -> str:
     return text[:160]
 
 
-def download_meta_for_content_extraction(content: ContentExtraction) -> dict[str, object]:
-    return {
-        "title": content.source_title or "",
-        "description": content.source_description or "",
-        "tags": content.source_tags,
-    }
+def download_meta_text_for_content_extraction(content: ContentExtraction) -> str:
+    tags = "、".join(content.source_tags)
+    return "\n".join(
+        [
+            f"标题：{content.source_title or ''}",
+            f"描述：{content.source_description or ''}",
+            f"标签：{tags}",
+            "",
+        ]
+    )
 
 
 def douyin_source_content_for_task(db: Session, task_id: str) -> ContentExtraction | None:
@@ -577,7 +580,7 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
 
     try:
         source_content = douyin_source_content_for_task(db, task.id)
-        source_meta = download_meta_for_content_extraction(source_content) if source_content else None
+        source_meta = download_meta_text_for_content_extraction(source_content) if source_content else None
         buffer = BytesIO()
         with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
             for index, image in enumerate(images, start=1):
@@ -587,8 +590,8 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
                 archive.write(source_path, arcname=f"panel-{index:02d}{suffix}")
             if source_meta is not None:
                 archive.writestr(
-                    "meta.json",
-                    json.dumps(source_meta, ensure_ascii=False, indent=2).encode("utf-8"),
+                    "meta.txt",
+                    source_meta.encode("utf-8"),
                 )
 
         stored = save_local_binary_file(

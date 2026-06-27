@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- Hotfix DY 来源下载元信息改为文本文件：用户反馈任务下载包中的来源元信息文件当前保存为 `meta.json`，希望改为 txt。现已将通过 `DY 爆款复刻` 自动创建出的生成任务下载 zip 内附加文件改为 `meta.txt`，内容使用“标题 / 描述 / 标签”的可读纯文本格式；普通非 DY 来源任务下载行为不变。
 - Hotfix 完整故事固定数量切分提示词：生产任务 `b4028ba7178d458eaf5b61f4e1b0719f` 的重复叙事根因是 `segment_story` LLM 在固定 9 张时为凑数量把同一段短故事从头讲了两遍，后端当前只校验数量、页序和长度。按本次边界先不新增后置复杂校验，只收紧 `segment_story_v1.md`：固定数量仍是最高优先级，但明确固定数量只是把同一段原文从前到后切成指定数量的连续片段；禁止回到前文重新讲、重复使用已分配内容、为了凑数量讲两遍、倒序或补写。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_story_segmentation` 通过。
 - 修复 xgapi 无参考图质量参数：本地任务 `50c796217bdf4e299359c51e74e9f662` 的人物参考图仍失败，根因是该任务风格没有风格参考图，人物参考图请求 `reference_count=0`，因此走 xgapi `/v1/images/generations` JSON 分支；上一轮只把 `/v1/images/edits` multipart 分支的 `quality=1k` 转成 `high`，generation 分支仍发送 `1k`，第三方返回 HTTP 400：`quality must be one of: auto, low, medium, high`。现已把 xgapi 质量参数转换抽成通用逻辑，generation 和 edit 分支都统一把 `1k/2k/4k` 转为 `high`，无效配置继续明确报错，不引入 provider 或模型兜底。
 - 加固风格参考图上传流程：创建风格时仍保持先创建风格、再逐张上传参考图的既有流程，但保存和上传期间统一进入 busy 状态，禁止关闭抽屉、重复提交、重复上传、删除参考图或删除风格；编辑风格时选择参考图后新增独立上传中状态和逐张上传进度，避免上传慢时用户误以为没响应并重复操作。后端上传入口不再只相信客户端声明的 `content-type`，改为读取上传内容后用 PIL 校验真实 PNG/JPEG/WebP 图片，拒绝伪图片、声明类型与真实内容不一致的文件，并限制单张上传图片最大 10MB。本次不改变风格写接口的角色权限模型，也不把风格基础信息和参考图上传合并为事务接口。

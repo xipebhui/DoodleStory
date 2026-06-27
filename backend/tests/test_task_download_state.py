@@ -4,7 +4,7 @@ from app.api.tasks import (
     SUPERSEDED_IMAGE_ERROR_CODE,
     SUPERSEDED_IMAGE_ERROR_MESSAGE,
     current_succeeded_images_for_panels,
-    download_meta_for_content_extraction,
+    download_meta_text_for_content_extraction,
     retire_superseded_running_images,
     task_has_all_panel_images,
 )
@@ -36,7 +36,7 @@ def make_current_success(panel_id: str, generation_number: int = 1) -> Generated
 
 
 class TaskDownloadStateTest(unittest.TestCase):
-    def test_douyin_download_meta_contains_source_title_description_and_tags(self) -> None:
+    def test_douyin_download_meta_text_contains_source_title_description_and_tags(self) -> None:
         content = ContentExtraction(
             id="content",
             owner_user_id="user",
@@ -50,12 +50,10 @@ class TaskDownloadStateTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            {
-                "title": "尴尬开场，温柔收场，我们刚好同校。",
-                "description": "尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画",
-                "tags": ["纯爱", "恋爱", "漫画"],
-            },
-            download_meta_for_content_extraction(content),
+            "标题：尴尬开场，温柔收场，我们刚好同校。\n"
+            "描述：尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画\n"
+            "标签：纯爱、恋爱、漫画\n",
+            download_meta_text_for_content_extraction(content),
         )
 
     def test_partial_current_images_are_not_complete(self) -> None:
