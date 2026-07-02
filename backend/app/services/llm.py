@@ -342,6 +342,21 @@ def create_lio_client():
     return OpenAI(api_key=settings.lio_api_key, base_url=settings.lio_openai_base_url)
 
 
+def create_text_fallback_client():
+    settings = get_settings()
+    if not settings.text_fallback_api_key.strip():
+        raise LLMConfigError("TEXT_FALLBACK_API_KEY 未配置")
+    if not settings.text_fallback_openai_base_url:
+        raise LLMConfigError("TEXT_FALLBACK_BASE_URL 未配置")
+
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise LLMConfigError("缺少 openai 依赖，请安装 backend/requirements.txt") from exc
+
+    return OpenAI(api_key=settings.text_fallback_api_key, base_url=settings.text_fallback_openai_base_url)
+
+
 def call_siliconflow_json(
     *,
     system_prompt: str,
@@ -457,21 +472,17 @@ def call_siliconflow_json(
     return parsed
 
 
-def call_lio_json(
+def call_openai_compatible_json_once(
     *,
+    client: Any,
+    provider: str,
+    model: str,
     system_prompt: str,
     user_prompt: str,
     prompt_name: str,
     trace_context: dict[str, Any] | None = None,
-    model: str | None = None,
     temperature: float | None = None,
 ) -> dict[str, Any]:
-    settings = get_settings()
-    selected_model = (model if model is not None else settings.lio_model).strip()
-    if not selected_model:
-        raise LLMConfigError("LIO_MODEL 未配置")
-    selected_temperature = settings.lio_temperature if temperature is None else temperature
-    client = create_lio_client()
     trace_id = uuid4().hex
     context = trace_context or {}
     log_prompt_trace(
@@ -480,9 +491,9 @@ def call_lio_json(
         trace_id=trace_id,
         prompt_name=prompt_name,
         context=context,
-        provider="lio",
-        model=selected_model,
-        temperature=selected_temperature,
+        provider=provider,
+        model=model,
+        temperature=temperature,
         response_format="json_object",
         system_prompt_chars=len(system_prompt),
         user_prompt_chars=len(user_prompt),
@@ -492,8 +503,8 @@ def call_lio_json(
     started = time.monotonic()
     try:
         response = client.chat.completions.create(
-            model=selected_model,
-            temperature=selected_temperature,
+            model=model,
+            temperature=temperature,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -570,6 +581,112 @@ def call_lio_json(
         top_level_keys=sorted(parsed.keys()),
     )
     return parsed
+
+
+def call_text_fallback_json(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    prompt_name: str,
+    trace_context: dict[str, Any] | None = None,
+    temperature: float | None = None,
+    primary_error: Exception | None = None,
+) -> dict[str, Any]:
+    settings = get_settings()
+    selected_model = settings.text_fallback_model.strip()
+    if not selected_model:
+        raise LLMConfigError("TEXT_FALLBACK_MODEL 未配置") from primary_error
+    selected_temperature = settings.lio_temperature if temperature is None else temperature
+    max_attempts = settings.text_fallback_max_attempts
+    retry_backoff_seconds = settings.text_fallback_retry_backoff_seconds
+    client = create_text_fallback_client()
+    context = trace_context or {}
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return call_openai_compatible_json_once(
+                client=client,
+                provider="text_fallback",
+                model=selected_model,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                prompt_name=prompt_name,
+                trace_context={
+                    **context,
+                    "text_fallback_attempt": attempt,
+                    "text_fallback_max_attempts": max_attempts,
+                    "primary_error_type": primary_error.__class__.__name__ if primary_error else None,
+                    "primary_error": str(primary_error) if primary_error else None,
+                },
+                temperature=selected_temperature,
+            )
+        except Exception as exc:
+            last_error = exc
+            if attempt >= max_attempts:
+                raise
+            delay = retry_backoff_seconds * attempt
+            log_prompt_trace(
+                logger,
+                "llm_text_fallback_retrying",
+                prompt_name=prompt_name,
+                context=context,
+                provider="text_fallback",
+                model=selected_model,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                retry_delay_seconds=delay,
+                error_type=exc.__class__.__name__,
+                error=str(exc),
+            )
+            if delay > 0:
+                time.sleep(delay)
+    raise LLMResponseError("文本模型兜底请求未执行") from last_error
+
+
+def call_lio_json(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    prompt_name: str,
+    trace_context: dict[str, Any] | None = None,
+    model: str | None = None,
+    temperature: float | None = None,
+) -> dict[str, Any]:
+    settings = get_settings()
+    selected_model = (model if model is not None else settings.lio_model).strip()
+    if not selected_model:
+        raise LLMConfigError("LIO_MODEL 未配置")
+    selected_temperature = settings.lio_temperature if temperature is None else temperature
+    try:
+        return call_openai_compatible_json_once(
+            client=create_lio_client(),
+            provider="lio",
+            model=selected_model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            prompt_name=prompt_name,
+            trace_context=trace_context,
+            temperature=selected_temperature,
+        )
+    except Exception as exc:
+        log_prompt_trace(
+            logger,
+            "llm_lio_fallback_start",
+            prompt_name=prompt_name,
+            context=trace_context or {},
+            provider="lio",
+            model=selected_model,
+            error_type=exc.__class__.__name__,
+            error=str(exc),
+        )
+        return call_text_fallback_json(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            prompt_name=prompt_name,
+            trace_context=trace_context,
+            temperature=selected_temperature,
+            primary_error=exc,
+        )
 
 
 def normalize_extracted_character_names(names: list[str]) -> list[str]:

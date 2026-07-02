@@ -13,6 +13,7 @@
 
 ## 最近完成的工作
 
+- Hotfix 文本模型增加火苗 OpenAI 兼容兜底：在用户明确授权后，任务生成文本 JSON LLM 仍先请求 LIO/Gemini；如果该次请求抛出异常、返回空内容或返回非 JSON，后端会切到 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容文本模型。兜底模型当前用于接入 `https://api.huomiao.art` 的 `gpt-5.4`；进入兜底后，同一次调用的后续重试只继续请求兜底模型，不再切回 Gemini。该逻辑只作用于任务生成文本链路，不改变内容提取多模态 SiliconFlow 链路，也不改变图片 Provider 或生图模型选择。
 - Hotfix 任务生成文本模型统一切到 Gemini：线上任务 `66f14820661645659452290659a90a87` 在 `extract_characters` 阶段调用 SiliconFlow `deepseek-ai/DeepSeek-V3.2` 返回 429 `System is too busy now`，该链路没有系统自动重试。现已将任务生成链路中的文本 JSON LLM 统一改为 LIO/OpenAI 兼容入口，线上按 `LIO_MODEL=gemini-3.1-flash-lite-preview-thinking-minimal` 执行；覆盖角色名提取、故事增强、故事方案规划、提取分镜结构化、任务级人物提取、panel prompt、最终生图 prompt 编译、单图 prompt 修改和 policy prompt 改写。`CHARACTER_EXTRACTION_MODEL` 不再参与任务文本模型选择，只保留 `CHARACTER_EXTRACTION_TEMPERATURE` 控制低温人物识别。内容提取图文视觉理解、视频音频转写和用户角色参考图外观理解仍继续使用 SiliconFlow 多模态模型，不属于本次文本模型切换范围。
 - Hotfix DY 来源下载元信息改为文本文件：用户反馈任务下载包中的来源元信息文件当前保存为 `meta.json`，希望改为 txt。现已将通过 `DY 爆款复刻` 自动创建出的生成任务下载 zip 内附加文件改为 `meta.txt`，内容使用“标题 / 描述 / 标签”的可读纯文本格式；普通非 DY 来源任务下载行为不变。
 - Hotfix 完整故事固定数量切分提示词：生产任务 `b4028ba7178d458eaf5b61f4e1b0719f` 的重复叙事根因是 `segment_story` LLM 在固定 9 张时为凑数量把同一段短故事从头讲了两遍，后端当前只校验数量、页序和长度。按本次边界先不新增后置复杂校验，只收紧 `segment_story_v1.md`：固定数量仍是最高优先级，但明确固定数量只是把同一段原文从前到后切成指定数量的连续片段；禁止回到前文重新讲、重复使用已分配内容、为了凑数量讲两遍、倒序或补写。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_story_segmentation` 通过。

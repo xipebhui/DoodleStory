@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     lio_base_url: str = ""
     lio_model: str = DEFAULT_LIO_MODEL
     lio_temperature: float = 0.8
+    text_fallback_api_key: str = ""
+    text_fallback_base_url: str = ""
+    text_fallback_model: str = ""
+    text_fallback_max_attempts: int = Field(default=3, ge=1)
+    text_fallback_retry_backoff_seconds: float = Field(default=2.0, ge=0)
     character_extraction_temperature: float = 0.1
     prompt_trace_log_max_chars: int = 60000
     image_provider: str = "qy"
@@ -108,6 +113,13 @@ class Settings(BaseSettings):
     @property
     def lio_openai_base_url(self) -> str:
         base_url = self.lio_base_url.strip().rstrip("/")
+        if base_url and not base_url.endswith("/v1"):
+            return f"{base_url}/v1"
+        return base_url
+
+    @property
+    def text_fallback_openai_base_url(self) -> str:
+        base_url = self.text_fallback_base_url.strip().rstrip("/")
         if base_url and not base_url.endswith("/v1"):
             return f"{base_url}/v1"
         return base_url
