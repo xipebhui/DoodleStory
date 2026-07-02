@@ -2196,7 +2196,7 @@ def process_task(task_id: str) -> None:
                                 text_layout=panel.text_layout,
                                 prompt_status=PromptStatus.generated,
                                 generated_prompt=panel.visual_prompt,
-                                prompt_model_snapshot=get_settings().siliconflow_model,
+                                prompt_model_snapshot=get_settings().lio_model,
                             )
                         )
                     task.progress_current = 1
@@ -2505,7 +2505,7 @@ def process_task(task_id: str) -> None:
                         panel.image_text_json = image_text_to_json(prompt_item.image_text)
                         panel.text_layout = prompt_item.text_layout
                     panel.prompt_status = PromptStatus.generated
-                    panel.prompt_model_snapshot = get_settings().siliconflow_model
+                    panel.prompt_model_snapshot = get_settings().lio_model
                     panel.error_code = None
                     panel.error_message = None
                     if task.use_character_references:
@@ -2794,7 +2794,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                 image.image_text_json = image_text_to_json(revision.image_text)
                 image.text_layout = revision.text_layout
             image.prompt_change_summary = revision.change_summary
-            image.llm_model_snapshot = get_settings().siliconflow_model
+            image.llm_model_snapshot = get_settings().lio_model
             image.final_prompt = None
             log_prompt_trace(
                 logger,

@@ -39,7 +39,6 @@ class Settings(BaseSettings):
     lio_base_url: str = ""
     lio_model: str = DEFAULT_LIO_MODEL
     lio_temperature: float = 0.8
-    character_extraction_model: str = "deepseek-ai/DeepSeek-V3.2"
     character_extraction_temperature: float = 0.1
     prompt_trace_log_max_chars: int = 60000
     image_provider: str = "qy"

@@ -9,7 +9,7 @@ from app.services.llm import plan_adapted_story_panels, plan_storyboard_from_bri
 class StoryboardPlanningTest(unittest.TestCase):
     def test_storyboard_from_brief_uses_requested_count_without_cover(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={
                 "story_title": "办公室对话",
                 "story_hook": "男孩第一次反抗老板",
@@ -57,7 +57,7 @@ class StoryboardPlanningTest(unittest.TestCase):
 
     def test_adapted_story_panels_are_normalized_to_scene(self) -> None:
         with patch(
-            "app.services.llm.call_siliconflow_json",
+            "app.services.llm.call_lio_json",
             return_value={
                 "panels": [
                     {

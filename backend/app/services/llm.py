@@ -593,16 +593,11 @@ def extract_character_names_from_story(
     trace_context: dict[str, Any] | None = None,
 ) -> ExtractedCharacterNames:
     settings = get_settings()
-    model = settings.character_extraction_model.strip()
-    if not model:
-        raise LLMConfigError("CHARACTER_EXTRACTION_MODEL 未配置")
-
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=read_prompt("extract_character_names_v1.md"),
         user_prompt=json.dumps({"story_text": text}, ensure_ascii=False),
         prompt_name="extract_character_names_v1.md",
         trace_context={**(trace_context or {}), "operation": "extract_character_names"},
-        model=model,
         temperature=settings.character_extraction_temperature,
     )
     try:
@@ -971,7 +966,7 @@ def merge_character_into_story(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=read_prompt("merge_character_into_story_v1.md"),
         user_prompt=user_prompt,
         prompt_name="merge_character_into_story_v1.md",
@@ -1110,7 +1105,7 @@ def find_overlong_story_panels(panels: list[StorySegment]) -> list[StorySegment]
 def adapt_story_for_douyin(*, original_text: str, trace_context: dict[str, Any] | None = None) -> AdaptedStoryResult:
     system_prompt = read_prompt("adapt_story_for_douyin_v1.md")
     user_prompt = json.dumps({"original_text": original_text}, ensure_ascii=False)
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="adapt_story_for_douyin_v1.md",
@@ -1170,7 +1165,7 @@ def plan_adapted_story_panels(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="plan_adapted_story_panels_v1.md",
@@ -1236,7 +1231,7 @@ def plan_storyboard_from_brief(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="plan_storyboard_from_brief_v1.md",
@@ -1314,7 +1309,7 @@ def parse_extracted_storyboard(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="parse_extracted_storyboard_v1.md",
@@ -1396,7 +1391,7 @@ def generate_panel_prompts(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="generate_panel_prompt_v1.md",
@@ -1447,10 +1442,6 @@ def extract_task_characters(
     trace_context: dict[str, Any] | None = None,
 ) -> TaskCharacterExtractionResult:
     settings = get_settings()
-    model = settings.character_extraction_model.strip()
-    if not model:
-        raise LLMConfigError("CHARACTER_EXTRACTION_MODEL 未配置")
-
     system_prompt = system_prompt_with_style(read_prompt("extract_task_characters_v1.md"), style_prompt)
     input_panels = [
         {
@@ -1472,12 +1463,11 @@ def extract_task_characters(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="extract_task_characters_v1.md",
         trace_context={**(trace_context or {}), "operation": "extract_task_characters"},
-        model=model,
         temperature=settings.character_extraction_temperature,
     )
     try:
@@ -1601,7 +1591,7 @@ def generate_panel_prompts_with_characters(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="generate_panel_prompt_with_characters_v1.md",
@@ -1696,7 +1686,7 @@ def revise_panel_prompt(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         prompt_name="revise_panel_prompt_v1.md",
@@ -1755,7 +1745,7 @@ def compose_final_image_prompts(
                     f"panel_order 必须依次为 {expected_orders}，不能缺失、重复、重排或新增 panel。"
                 ),
             }
-        raw = call_siliconflow_json(
+        raw = call_lio_json(
             system_prompt=read_prompt("compose_final_image_prompts_v1.md"),
             user_prompt=json.dumps(attempt_payload, ensure_ascii=False),
             prompt_name="compose_final_image_prompts_v1.md",
@@ -1837,7 +1827,7 @@ def rewrite_policy_blocked_image_prompt(
         },
         ensure_ascii=False,
     )
-    raw = call_siliconflow_json(
+    raw = call_lio_json(
         system_prompt=read_prompt("rewrite_policy_blocked_image_prompt_v1.md"),
         user_prompt=user_prompt,
         prompt_name="rewrite_policy_blocked_image_prompt_v1.md",
