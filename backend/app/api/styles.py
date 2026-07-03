@@ -445,6 +445,8 @@ def create_style_test(
             content_type=generated.content_type,
             byte_size=generated.byte_size,
             checksum_sha256=generated.checksum_sha256,
+            width=generated.width,
+            height=generated.height,
         )
         db.add(asset)
         db.flush()

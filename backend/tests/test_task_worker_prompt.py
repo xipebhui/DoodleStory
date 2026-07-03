@@ -22,6 +22,7 @@ from app.models.enums import (
 )
 from app.services.image_generation import (
     GeneratedImageFile,
+    ImageAspectRatioMismatchError,
     ImageProviderConfigError,
     ImageProviderResponseError,
     ImageReference,
@@ -808,16 +809,62 @@ class TaskWorkerPromptTest(unittest.TestCase):
                     references=[ImageReference(url="https://cdn.example.com/person.jpg")],
                     image_model_name="gpt-image-2",
                     aspect_ratio="3:4",
+                    validate_result_aspect_ratio=True,
                 ),
                 call(
                     prompt=rewritten_prompt,
                     references=[ImageReference(url="https://cdn.example.com/person.jpg")],
                     image_model_name="gpt-image-2",
                     aspect_ratio="3:4",
+                    validate_result_aspect_ratio=True,
                 ),
             ],
             generate.call_args_list,
         )
+
+    def test_panel_image_request_retries_when_result_aspect_ratio_mismatches(self) -> None:
+        generated = GeneratedImageFile(
+            storage_backend=StorageBackend.local,
+            storage_key="generated_image/test.jpg",
+            byte_size=123,
+            checksum_sha256="hash",
+            content_type="image/jpeg",
+            original_filename="generated-image.jpg",
+            provider_request_id="request-2",
+            public_url=None,
+            width=768,
+            height=1024,
+        )
+        request = PreparedPanelImageRequest(
+            panel_id="panel-1",
+            panel_order=2,
+            image_id="image-1",
+            final_prompt="画一张 3:4 漫画页",
+            references=[],
+            reference_count=0,
+            character_reference_count=0,
+            style_reference_count=0,
+            max_result_validation_attempts=2,
+        )
+
+        with patch(
+            "app.services.task_worker.generate_image_with_policy_prompt_rewrite",
+            side_effect=[
+                ImageAspectRatioMismatchError("图片比例不符合目标比例：目标 3:4，实际 1024:1792"),
+                (generated, "画一张 3:4 漫画页", None),
+            ],
+        ) as generate:
+            result = generate_panel_image_request(
+                task_id="task-1",
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+                request=request,
+            )
+
+        self.assertIsNone(result.error)
+        self.assertEqual(generated, result.generated)
+        self.assertEqual(2, generate.call_count)
+        self.assertTrue(all(call_item.kwargs["validate_result_aspect_ratio"] for call_item in generate.call_args_list))
 
     def test_non_policy_provider_error_does_not_switch_model(self) -> None:
         request = PreparedPanelImageRequest(

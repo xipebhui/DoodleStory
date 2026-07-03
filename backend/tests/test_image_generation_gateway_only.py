@@ -1,14 +1,19 @@
 import unittest
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from PIL import Image
+
 from app.services.image_generation import (
     ImageReference,
+    ImageAspectRatioMismatchError,
     ImageProviderConfigError,
     ImageProviderResponseError,
     build_image_gateway_generation_payload,
     build_xgapi_edit_payload,
     build_xgapi_generation_payload,
+    generate_xg_image,
     request_xg_image,
 )
 
@@ -49,6 +54,12 @@ class FakeSession:
 
 
 FakeSession.calls = []
+
+
+def png_bytes(width: int, height: int) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (width, height), color="white").save(output, format="PNG")
+    return output.getvalue()
 
 
 class ImageGenerationGatewayOnlyTest(unittest.TestCase):
@@ -276,6 +287,22 @@ class ImageGenerationGatewayOnlyTest(unittest.TestCase):
         self.assertEqual("gpt-image-2", kwargs["json"]["model"])
         self.assertEqual("high", kwargs["json"]["quality"])
         self.assertNotIn("files", kwargs)
+
+    def test_generate_xg_image_rejects_mismatched_result_aspect_ratio_before_save(self) -> None:
+        with patch(
+            "app.services.image_generation.request_xg_image",
+            return_value=(png_bytes(1024, 1792), "image/png", "request-1"),
+        ), patch("app.services.image_generation.save_bytes") as save:
+            with self.assertRaisesRegex(ImageAspectRatioMismatchError, "目标 3:4，实际 1024:1792"):
+                generate_xg_image(
+                    prompt="画一张 3:4 漫画页",
+                    references=[],
+                    image_model_name="gpt-image-2",
+                    aspect_ratio="3:4",
+                    validate_result_aspect_ratio=True,
+                )
+
+        save.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -63,6 +63,7 @@ from app.services.credits import (
 )
 from app.services.image_generation import (
     GeneratedImageFile,
+    ImageAspectRatioMismatchError,
     ImageReference,
     ImageProviderConfigError,
     ImageProviderResponseError,
@@ -114,6 +115,7 @@ class PreparedPanelImageRequest:
     reference_count: int
     character_reference_count: int
     style_reference_count: int
+    max_result_validation_attempts: int = 3
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,7 @@ def generate_image_with_policy_prompt_rewrite(
     panel_id: str,
     image_id: str,
     panel_order: int | None = None,
+    validate_result_aspect_ratio: bool = False,
 ) -> tuple[GeneratedImageFile, str, str | None]:
     try:
         return (
@@ -160,6 +163,7 @@ def generate_image_with_policy_prompt_rewrite(
                 references=references,
                 image_model_name=image_model_name,
                 aspect_ratio=aspect_ratio,
+                validate_result_aspect_ratio=validate_result_aspect_ratio,
             ),
             prompt,
             None,
@@ -209,6 +213,7 @@ def generate_image_with_policy_prompt_rewrite(
                     references=references,
                     image_model_name=image_model_name,
                     aspect_ratio=aspect_ratio,
+                    validate_result_aspect_ratio=validate_result_aspect_ratio,
                 ),
                 rewritten_final_prompt,
                 revision.change_summary,
@@ -225,6 +230,50 @@ def generate_image_with_policy_prompt_rewrite(
                 rewritten_exc,
             )
             raise rewritten_exc from exc
+
+
+def generate_panel_image_with_aspect_retry(
+    *,
+    prompt: str,
+    references: list[ImageReference],
+    image_model_name: str,
+    aspect_ratio: str,
+    task_id: str,
+    panel_id: str,
+    image_id: str,
+    panel_order: int | None,
+    max_attempts: int,
+) -> tuple[GeneratedImageFile, str, str | None]:
+    attempts = max(1, max_attempts)
+    for attempt in range(1, attempts + 1):
+        try:
+            return generate_image_with_policy_prompt_rewrite(
+                prompt=prompt,
+                references=references,
+                image_model_name=image_model_name,
+                aspect_ratio=aspect_ratio,
+                task_id=task_id,
+                panel_id=panel_id,
+                image_id=image_id,
+                panel_order=panel_order,
+                validate_result_aspect_ratio=True,
+            )
+        except ImageAspectRatioMismatchError as exc:
+            if attempt >= attempts:
+                raise
+            logger.warning(
+                "story_drawing_debug result_aspect_ratio_mismatch_retry task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s aspect_ratio=%s attempt=%s/%s error=%s",
+                task_id,
+                panel_id,
+                panel_order,
+                image_id,
+                image_model_name,
+                aspect_ratio,
+                attempt,
+                attempts,
+                exc,
+            )
+    raise ImageProviderResponseError("图片比例校验重试未执行")
 
 
 def generate_panel_image_request(
@@ -249,7 +298,7 @@ def generate_panel_image_request(
             request.character_reference_count,
             request.style_reference_count,
         )
-        generated, actual_final_prompt, prompt_change_summary = generate_image_with_policy_prompt_rewrite(
+        generated, actual_final_prompt, prompt_change_summary = generate_panel_image_with_aspect_retry(
             prompt=request.final_prompt,
             references=request.references,
             image_model_name=image_model_name,
@@ -258,6 +307,7 @@ def generate_panel_image_request(
             panel_id=request.panel_id,
             panel_order=request.panel_order,
             image_id=request.image_id,
+            max_attempts=request.max_result_validation_attempts,
         )
         logger.info(
             "story_drawing_debug provider_request_done task_id=%s panel_id=%s panel_order=%s image_id=%s image_model=%s prompt_rewritten=%s provider_request_id=%s storage_backend=%s storage_key=%s byte_size=%s elapsed_ms=%s",
@@ -747,6 +797,8 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
             content_type=generated.content_type,
             byte_size=generated.byte_size,
             checksum_sha256=generated.checksum_sha256,
+            width=generated.width,
+            height=generated.height,
         )
         db.add(asset)
         db.flush()
@@ -826,6 +878,7 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
             reference_count=len(reference_pack.references),
             character_reference_count=reference_pack.character_reference_count,
             style_reference_count=reference_pack.style_reference_count,
+            max_result_validation_attempts=image.max_attempts,
         )
         try:
             reserve_image_credit(
@@ -925,6 +978,8 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
             content_type=generated.content_type,
             byte_size=generated.byte_size,
             checksum_sha256=generated.checksum_sha256,
+            width=generated.width,
+            height=generated.height,
         )
         db.add(asset)
         db.flush()
@@ -2922,7 +2977,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                 note="单分镜修改生图占用",
             )
             db.commit()
-            generated, actual_final_prompt, prompt_change_summary = generate_image_with_policy_prompt_rewrite(
+            generated, actual_final_prompt, prompt_change_summary = generate_panel_image_with_aspect_retry(
                 prompt=image.final_prompt or "",
                 references=references,
                 image_model_name=image.image_model_name_snapshot,
@@ -2931,6 +2986,7 @@ def process_panel_edit(generated_image_id: str) -> None:
                 panel_id=panel.id,
                 panel_order=panel.panel_order,
                 image_id=image.id,
+                max_attempts=image.max_attempts,
             )
             asset = FileAsset(
                 purpose=FileAssetPurpose.generated_image,
@@ -2941,6 +2997,8 @@ def process_panel_edit(generated_image_id: str) -> None:
                 content_type=generated.content_type,
                 byte_size=generated.byte_size,
                 checksum_sha256=generated.checksum_sha256,
+                width=generated.width,
+                height=generated.height,
             )
             db.add(asset)
             db.flush()

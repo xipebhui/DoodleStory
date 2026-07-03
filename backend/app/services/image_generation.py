@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import mimetypes
+from io import BytesIO
 from time import monotonic, sleep
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,7 @@ from urllib.parse import urlparse
 
 import requests
 from fastapi import HTTPException
+from PIL import Image, UnidentifiedImageError
 
 from app.core.config import get_settings
 from app.models.enums import FileAssetPurpose, StorageBackend
@@ -66,6 +68,16 @@ class ImageProviderResponseError(ImageProviderError):
     pass
 
 
+class ImageAspectRatioMismatchError(ImageProviderResponseError):
+    pass
+
+
+@dataclass(frozen=True)
+class ImageDimensions:
+    width: int
+    height: int
+
+
 @dataclass(frozen=True)
 class GeneratedImageFile:
     storage_backend: StorageBackend
@@ -76,6 +88,8 @@ class GeneratedImageFile:
     original_filename: str
     provider_request_id: str | None
     public_url: str | None = None
+    width: int | None = None
+    height: int | None = None
 
 
 @dataclass(frozen=True)
@@ -255,6 +269,52 @@ def detect_image_content_type(content: bytes) -> str:
     if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
         return "image/webp"
     raise ImageProviderResponseError("图片 Provider 返回的图片格式不是 PNG、JPEG 或 WebP")
+
+
+def read_image_dimensions(content: bytes) -> ImageDimensions:
+    try:
+        with Image.open(BytesIO(content)) as image:
+            width, height = image.size
+    except (UnidentifiedImageError, OSError) as exc:
+        raise ImageProviderResponseError("图片 Provider 返回的图片无法读取尺寸") from exc
+    if width <= 0 or height <= 0:
+        raise ImageProviderResponseError("图片 Provider 返回的图片尺寸无效")
+    return ImageDimensions(width=width, height=height)
+
+
+def parse_aspect_ratio(aspect_ratio: str) -> tuple[int, int]:
+    parts = aspect_ratio.strip().split(":", 1)
+    if len(parts) != 2:
+        raise ImageProviderConfigError(f"画面比例配置不合法：{aspect_ratio}")
+    try:
+        width_ratio = int(parts[0])
+        height_ratio = int(parts[1])
+    except ValueError as exc:
+        raise ImageProviderConfigError(f"画面比例配置不合法：{aspect_ratio}") from exc
+    if width_ratio <= 0 or height_ratio <= 0:
+        raise ImageProviderConfigError(f"画面比例配置不合法：{aspect_ratio}")
+    return width_ratio, height_ratio
+
+
+def image_matches_aspect_ratio(
+    *, width: int, height: int, aspect_ratio: str, tolerance: float = 0.02
+) -> bool:
+    target_width, target_height = parse_aspect_ratio(aspect_ratio)
+    actual_ratio = width / height
+    target_ratio = target_width / target_height
+    return abs(actual_ratio - target_ratio) / target_ratio <= tolerance
+
+
+def validate_image_aspect_ratio(dimensions: ImageDimensions, aspect_ratio: str) -> None:
+    if image_matches_aspect_ratio(
+        width=dimensions.width,
+        height=dimensions.height,
+        aspect_ratio=aspect_ratio,
+    ):
+        return
+    raise ImageAspectRatioMismatchError(
+        f"图片比例不符合目标比例：目标 {aspect_ratio}，实际 {dimensions.width}:{dimensions.height}"
+    )
 
 
 def parse_image_data_url(data_url: str) -> tuple[bytes, str]:
@@ -971,7 +1031,12 @@ def request_xg_image(
 
 
 def generate_xg_image(
-    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str
+    *,
+    prompt: str,
+    references: list[ImageReference],
+    image_model_name: str,
+    aspect_ratio: str,
+    validate_result_aspect_ratio: bool = False,
 ) -> GeneratedImageFile:
     content, content_type, provider_request_id = request_xg_image(
         prompt=prompt,
@@ -979,6 +1044,9 @@ def generate_xg_image(
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
     )
+    dimensions = read_image_dimensions(content)
+    if validate_result_aspect_ratio:
+        validate_image_aspect_ratio(dimensions, aspect_ratio)
     filename = f"generated-image{mimetypes.guess_extension(content_type) or '.png'}"
     try:
         stored = save_bytes(
@@ -998,6 +1066,8 @@ def generate_xg_image(
         original_filename=filename,
         provider_request_id=provider_request_id,
         public_url=stored.public_url,
+        width=dimensions.width,
+        height=dimensions.height,
     )
 
 
