@@ -14,6 +14,7 @@
 
 ## 最近完成的工作
 
+- 任务导航文案调整：左侧导航中的 `任务` 已改为 `图文任务`，404 空状态里的入口提示同步改为 `图文任务`，避免与新增的视频任务能力混淆。验证：`npm run build --prefix frontend` 通过。
 - 完成 Sprint 80 生图结果比例校验重试：针对线上任务 `b0d41aea74ce4c3188f076a334491290` 出现 panel 目标比例不稳定、实际产出 `9:16` 的问题，正式 panel 生图和单 panel 修改现在会在保存资产前读取返回图片尺寸并校验目标比例；比例不符时使用同一模型、同一 prompt 和同一参考图重新生成，重试次数沿用图片 job 的 `max_attempts`，耗尽后明确失败。成功保存的生成资产会记录 `width` / `height`，方便后续排查。该改动不切换图片 provider、不新增模型兜底、不修改角色参考图或风格测试重试策略。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_image_generation_gateway_only`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - Hotfix 文本模型增加火苗 OpenAI 兼容兜底：在用户明确授权后，任务生成文本 JSON LLM 仍先请求 LIO/Gemini；如果该次请求抛出异常、返回空内容或返回非 JSON，后端会切到 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容文本模型。兜底模型当前用于接入 `https://api.huomiao.art` 的 `gpt-5.4`；进入兜底后，同一次调用的后续重试只继续请求兜底模型，不再切回 Gemini。该逻辑只作用于任务生成文本链路，不改变内容提取多模态 SiliconFlow 链路，也不改变图片 Provider 或生图模型选择。
 - Hotfix 任务生成文本模型统一切到 Gemini：线上任务 `66f14820661645659452290659a90a87` 在 `extract_characters` 阶段调用 SiliconFlow `deepseek-ai/DeepSeek-V3.2` 返回 429 `System is too busy now`，该链路没有系统自动重试。现已将任务生成链路中的文本 JSON LLM 统一改为 LIO/OpenAI 兼容入口，线上按 `LIO_MODEL=gemini-3.1-flash-lite-preview-thinking-minimal` 执行；覆盖角色名提取、故事增强、故事方案规划、提取分镜结构化、任务级人物提取、panel prompt、最终生图 prompt 编译、单图 prompt 修改和 policy prompt 改写。`CHARACTER_EXTRACTION_MODEL` 不再参与任务文本模型选择，只保留 `CHARACTER_EXTRACTION_TEMPERATURE` 控制低温人物识别。内容提取图文视觉理解、视频音频转写和用户角色参考图外观理解仍继续使用 SiliconFlow 多模态模型，不属于本次文本模型切换范围。

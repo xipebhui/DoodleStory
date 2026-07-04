@@ -475,7 +475,7 @@ function Shell({
   children: React.ReactNode;
 }) {
   const items = [
-    { key: "tasks" as const, label: "任务", icon: Images, path: viewRoutes.tasks },
+    { key: "tasks" as const, label: "图文任务", icon: Images, path: viewRoutes.tasks },
     { key: "videoTasks" as const, label: "视频任务", icon: Film, path: viewRoutes.videoTasks },
     { key: "audioReferences" as const, label: "音频管理", icon: Volume2, path: viewRoutes.audioReferences },
     { key: "content" as const, label: "内容提取", icon: FileText, path: viewRoutes.content },
@@ -565,7 +565,7 @@ function NotFoundView() {
           <p>这个地址没有对应的 DoodleStory 工作台页面。</p>
         </div>
       </header>
-      <div className="empty">请从左侧导航进入任务、内容提取、风格或设置页面。</div>
+      <div className="empty">请从左侧导航进入图文任务、内容提取、风格或设置页面。</div>
     </section>
   );
 }
