@@ -66,6 +66,12 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
         return task_reference is not None
     if user.role == UserRole.admin:
         return True
+    if asset.purpose in {
+        FileAssetPurpose.audio_reference,
+        FileAssetPurpose.generated_audio,
+        FileAssetPurpose.generated_video,
+    }:
+        return False
     if asset.purpose == FileAssetPurpose.character_reference:
         task_reference = db.scalar(
             select(TaskCharacterAppearance)

@@ -9,8 +9,16 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.audio_references import create_audio_reference, test_audio_reference, transcribe_audio_reference, update_audio_reference
-from app.api.video_tasks import create_video_task, get_video_task, retry_video_task
+from app.api.assets import can_read_asset
+from app.api.audio_references import (
+    create_audio_reference,
+    list_audio_references,
+    test_audio_reference,
+    transcribe_audio_reference,
+    update_audio_reference,
+)
+from app.api.pagination import Pagination
+from app.api.video_tasks import create_video_task, get_video_task, list_video_tasks, retry_video_task
 from app.core.database import Base
 from app.models.entities import AudioReference, FileAsset, Style, TaskPanel, User, VideoTask, VideoTaskAudioSegment
 from app.models.enums import (
@@ -41,7 +49,7 @@ class VideoAudioTaskTest(unittest.TestCase):
 
     def create_user_and_style(self):
         db = self.Session()
-        user = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        user = User(email="owner@example.com", password_hash="hash", role=UserRole.admin)
         style = Style(
             name="漫画风",
             status=StyleStatus.active,
@@ -86,6 +94,21 @@ class VideoAudioTaskTest(unittest.TestCase):
         self.assertEqual("audio/mpeg", response.data.asset.content_type)
         self.assertEqual("你好，欢迎来到故事里。", response.data.reference_text)
         self.assertEqual(1.25, response.data.speech_speed)
+
+    def test_audio_reference_endpoints_require_admin(self) -> None:
+        db, _admin, _ = self.create_user_and_style()
+        user = User(email="regular@example.com", password_hash="hash", role=UserRole.user)
+        db.add(user)
+        db.commit()
+        upload = UploadFile(filename="voice.mp3", file=BytesIO(b"audio-bytes"), headers={"content-type": "audio/mpeg"})
+
+        with self.assertRaises(HTTPException) as list_context:
+            list_audio_references(user=user, db=db, pagination=Pagination(limit=10, offset=0))
+        self.assertEqual(403, list_context.exception.status_code)
+
+        with self.assertRaises(HTTPException) as create_context:
+            asyncio.run(create_audio_reference(name="温柔女声", file=upload, user=user, db=db))
+        self.assertEqual(403, create_context.exception.status_code)
 
     def test_update_audio_reference_only_updates_editable_metadata(self) -> None:
         db, user, _ = self.create_user_and_style()
@@ -192,10 +215,68 @@ class VideoAudioTaskTest(unittest.TestCase):
         db, user, _ = self.create_user_and_style()
         upload = UploadFile(filename="voice.wav", file=BytesIO(b"audio-bytes"), headers={"content-type": "audio/wav"})
 
-        response = asyncio.run(transcribe_audio_reference(file=upload, _user=user))
+        response = asyncio.run(transcribe_audio_reference(file=upload, user=user))
 
         self.assertEqual("自动识别出的参考文本", response.data.text)
         transcribe_audio_content.assert_called_once_with(b"audio-bytes", ".wav")
+
+    def test_video_task_endpoints_require_admin(self) -> None:
+        db, _admin, style = self.create_user_and_style()
+        user = User(email="regular@example.com", password_hash="hash", role=UserRole.user)
+        db.add(user)
+        db.commit()
+
+        with self.assertRaises(HTTPException) as list_context:
+            list_video_tasks(user=user, db=db, pagination=Pagination(limit=10, offset=0))
+        self.assertEqual(403, list_context.exception.status_code)
+
+        with self.assertRaises(HTTPException) as create_context:
+            asyncio.run(
+                create_video_task(
+                    VideoTaskCreate(
+                        original_text="一只小狗找到回家的路。",
+                        style_id=style.id,
+                        audio_reference_id="missing-reference",
+                    ),
+                    user=user,
+                    db=db,
+                )
+            )
+        self.assertEqual(403, create_context.exception.status_code)
+
+    def test_video_and_audio_assets_are_admin_only(self) -> None:
+        db, admin, _ = self.create_user_and_style()
+        user = User(email="regular@example.com", password_hash="hash", role=UserRole.user)
+        audio_asset = FileAsset(
+            purpose=FileAssetPurpose.audio_reference,
+            storage_backend=StorageBackend.local,
+            storage_key="audio-reference/ref.mp3",
+            content_type="audio/mpeg",
+            byte_size=12,
+        )
+        generated_audio = FileAsset(
+            purpose=FileAssetPurpose.generated_audio,
+            storage_backend=StorageBackend.local,
+            storage_key="generated-audio/panel.mp3",
+            content_type="audio/mpeg",
+            byte_size=12,
+        )
+        generated_video = FileAsset(
+            purpose=FileAssetPurpose.generated_video,
+            storage_backend=StorageBackend.local,
+            storage_key="generated-video/final.mp4",
+            content_type="video/mp4",
+            byte_size=12,
+        )
+        db.add_all([user, audio_asset, generated_audio, generated_video])
+        db.commit()
+
+        self.assertFalse(can_read_asset(audio_asset, user, db))
+        self.assertFalse(can_read_asset(generated_audio, user, db))
+        self.assertFalse(can_read_asset(generated_video, user, db))
+        self.assertTrue(can_read_asset(audio_asset, admin, db))
+        self.assertTrue(can_read_asset(generated_audio, admin, db))
+        self.assertTrue(can_read_asset(generated_video, admin, db))
 
     def test_local_whisper_transcription_is_normalized_to_simplified_chinese(self) -> None:
         self.assertEqual("电台测试，欢迎来到故事里。", normalize_transcription_text("電臺測試，歡迎來到故事裡。"))

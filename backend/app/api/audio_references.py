@@ -25,11 +25,15 @@ from app.services.storage import materialize_asset_to_local, read_upload_audio_c
 router = APIRouter(prefix="/audio-references", tags=["audio-references"])
 
 
+def require_audio_reference_admin(user: User) -> None:
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="音频管理仅管理员可用")
+
+
 def ensure_audio_reference_access(reference: AudioReference | None, user: User) -> AudioReference:
+    require_audio_reference_admin(user)
     if not reference or reference.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="音频参考不存在")
-    if user.role != UserRole.admin and reference.owner_user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="没有权限访问该音频参考")
     return reference
 
 
@@ -60,6 +64,7 @@ def list_audio_references(
     pagination: Pagination = Depends(get_pagination),
     query: str | None = Query(default=None, max_length=120),
 ) -> ApiList[AudioReferenceListItem]:
+    require_audio_reference_admin(user)
     statement = (
         select(AudioReference)
         .where(AudioReference.deleted_at.is_(None))
@@ -68,8 +73,6 @@ def list_audio_references(
         .offset(pagination.offset)
         .limit(pagination.limit + 1)
     )
-    if user.role != UserRole.admin:
-        statement = statement.where(AudioReference.owner_user_id == user.id)
     if query:
         statement = statement.where(or_(AudioReference.name.contains(query), AudioReference.description.contains(query)))
 
@@ -111,6 +114,7 @@ async def create_audio_reference(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[AudioReferenceRead]:
+    require_audio_reference_admin(user)
     content, content_type, suffix = await read_upload_audio_content(file)
     clean_reference_text = reference_text.strip()
     if not clean_reference_text:
@@ -152,8 +156,9 @@ async def create_audio_reference(
 @router.post("/transcribe", response_model=ApiData[AudioReferenceTranscription])
 async def transcribe_audio_reference(
     file: UploadFile = File(...),
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
 ) -> ApiData[AudioReferenceTranscription]:
+    require_audio_reference_admin(user)
     content, _content_type, suffix = await read_upload_audio_content(file)
     try:
         text = transcribe_audio_content(content, suffix)

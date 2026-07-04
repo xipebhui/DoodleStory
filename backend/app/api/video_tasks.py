@@ -29,19 +29,22 @@ from app.services.video_task_worker import enqueue_video_task
 router = APIRouter(prefix="/video-tasks", tags=["video-tasks"])
 
 
+def require_video_task_admin(user: User) -> None:
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="视频任务仅管理员可用")
+
+
 def ensure_video_task_access(video_task: VideoTask | None, user: User) -> VideoTask:
+    require_video_task_admin(user)
     if not video_task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="视频任务不存在")
-    if user.role != UserRole.admin and video_task.owner_user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="没有权限访问该视频任务")
     return video_task
 
 
 def ensure_audio_reference_for_video(reference: AudioReference | None, user: User) -> AudioReference:
+    require_video_task_admin(user)
     if not reference or reference.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="音频参考不存在")
-    if user.role != UserRole.admin and reference.owner_user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="只能使用自己的音频参考")
     return reference
 
 
@@ -251,6 +254,7 @@ def list_video_tasks(
     query: str | None = Query(default=None, max_length=120),
     status_filter: VideoTaskStatus | None = Query(default=None, alias="status"),
 ) -> ApiList[VideoTaskListItem]:
+    require_video_task_admin(user)
     statement = (
         select(VideoTask)
         .options(*video_task_options())
@@ -258,8 +262,6 @@ def list_video_tasks(
         .offset(pagination.offset)
         .limit(pagination.limit + 1)
     )
-    if user.role != UserRole.admin:
-        statement = statement.where(VideoTask.owner_user_id == user.id)
     if query:
         statement = statement.where(or_(VideoTask.display_title.contains(query), VideoTask.original_text.contains(query)))
     if status_filter:

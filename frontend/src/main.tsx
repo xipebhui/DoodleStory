@@ -89,6 +89,7 @@ const viewRoutes: Record<View, string> = {
   creditUsage: "/credit-usage",
   settings: "/settings",
 };
+const adminOnlyViews = new Set<View>(["videoTasks", "audioReferences", "users", "creditUsage"]);
 
 function normalizedPathname(pathname: string) {
   return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
@@ -357,6 +358,21 @@ function App() {
     );
   }
 
+  if (adminOnlyViews.has(view) && user.role !== "admin") {
+    return (
+      <Shell
+        user={user}
+        view={null}
+        creditOverview={creditOverview}
+        creditError={creditError}
+        onNavigate={navigateToView}
+        onLogout={() => setUser(null)}
+      >
+        <NotFoundView />
+      </Shell>
+    );
+  }
+
   return (
     <Shell
       user={user}
@@ -476,8 +492,10 @@ function Shell({
 }) {
   const items = [
     { key: "tasks" as const, label: "图文任务", icon: Images, path: viewRoutes.tasks },
-    { key: "videoTasks" as const, label: "视频任务", icon: Film, path: viewRoutes.videoTasks },
-    { key: "audioReferences" as const, label: "音频管理", icon: Volume2, path: viewRoutes.audioReferences },
+    ...(user.role === "admin" ? [{ key: "videoTasks" as const, label: "视频任务", icon: Film, path: viewRoutes.videoTasks }] : []),
+    ...(user.role === "admin"
+      ? [{ key: "audioReferences" as const, label: "音频管理", icon: Volume2, path: viewRoutes.audioReferences }]
+      : []),
     { key: "content" as const, label: "内容提取", icon: FileText, path: viewRoutes.content },
     { key: "styles" as const, label: "风格", icon: Sparkles, path: viewRoutes.styles },
     { key: "characters" as const, label: "角色管理", icon: UserRound, path: viewRoutes.characters },
