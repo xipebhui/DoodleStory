@@ -3,11 +3,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import assets, auth, characters, content_extractions, credits, style_tests, styles, tasks
+from app.api import audio_references, assets, auth, characters, content_extractions, credits, style_tests, styles, tasks, video_tasks
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.services.task_worker import init_task_queue, recover_queued_tasks, shutdown_task_queue
+from app.services.video_task_worker import init_video_task_queue, recover_video_tasks, shutdown_video_task_queue
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -29,17 +30,22 @@ def create_app() -> FastAPI:
     async def startup() -> None:
         content_extractions.recover_interrupted_content_extractions()
         init_task_queue()
+        init_video_task_queue()
         await recover_queued_tasks()
+        await recover_video_tasks()
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
         await shutdown_task_queue()
+        await shutdown_video_task_queue()
 
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(styles.router, prefix="/api/v1")
     app.include_router(style_tests.router, prefix="/api/v1")
     app.include_router(characters.router, prefix="/api/v1")
     app.include_router(tasks.router, prefix="/api/v1")
+    app.include_router(video_tasks.router, prefix="/api/v1")
+    app.include_router(audio_references.router, prefix="/api/v1")
     app.include_router(content_extractions.router, prefix="/api/v1")
     app.include_router(assets.router, prefix="/api/v1")
     app.include_router(credits.router, prefix="/api/v1")

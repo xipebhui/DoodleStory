@@ -212,6 +212,7 @@ export type Task = {
   requested_image_count: number | null;
   use_character_references: boolean;
   last_panel_real_photo: boolean;
+  remove_image_text: boolean;
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
@@ -258,6 +259,7 @@ export type TaskSummary = {
   requested_image_count: number | null;
   use_character_references: boolean;
   last_panel_real_photo: boolean;
+  remove_image_text: boolean;
   style_id: string;
   style_name_snapshot: string;
   image_model_name_snapshot: string;
@@ -273,6 +275,118 @@ export type TaskSummary = {
   preview_images: TaskPreviewImage[];
   created_at: string;
   updated_at: string;
+};
+
+export type AudioReference = {
+  id: string;
+  owner_user_id: string;
+  owner_display_name: string | null;
+  owner_email: string | null;
+  name: string;
+  description: string | null;
+  reference_text?: string | null;
+  voice_provider: string | null;
+  voice_model: string | null;
+  voice_name: string | null;
+  speech_speed: number;
+  deleted_at?: string | null;
+  asset: FileAsset;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AudioReferenceTranscription = {
+  text: string;
+};
+
+export type VideoTaskStatus =
+  | "waiting_for_images"
+  | "ready_for_audio"
+  | "audio_generating"
+  | "audio_ready"
+  | "video_generating"
+  | "succeeded"
+  | "failed"
+  | "cancel_requested"
+  | "cancelled";
+
+export type VideoTaskSourceTask = {
+  id: string;
+  display_title: string;
+  status: Task["status"];
+  progress_current: number;
+  progress_total: number;
+  error_code: string | null;
+  error_message: string | null;
+  style_name_snapshot: string;
+  style_aspect_ratio_snapshot: string;
+  image_count: number;
+  preview_images: TaskPreviewImage[];
+};
+
+export type VideoTaskAudioSegment = {
+  id: string;
+  panel_id: string;
+  panel_order: number;
+  narration_text: string;
+  duration_ms: number | null;
+  asset: FileAsset;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VideoTask = {
+  id: string;
+  owner_user_id: string;
+  owner_display_name: string | null;
+  owner_email: string | null;
+  display_title: string;
+  original_text: string;
+  original_text_preview?: string;
+  status: VideoTaskStatus;
+  current_step: "generate_source_images" | "generate_narration_audio" | "submit_video" | "download_video";
+  progress_current: number;
+  progress_total: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  audio_reference_id: string;
+  audio_reference_name_snapshot: string;
+  audio_reference_text_snapshot: string | null;
+  audio_reference_asset: FileAsset;
+  voice_provider_snapshot: string | null;
+  voice_model_snapshot: string | null;
+  voice_name_snapshot: string | null;
+  voice_speed_snapshot: number;
+  narration_audio_asset: FileAsset | null;
+  audio_segments: VideoTaskAudioSegment[];
+  output_video_asset: FileAsset | null;
+  video_provider_job_id: string | null;
+  video_provider_status: string | null;
+  video_provider_output_url: string | null;
+  source_task: VideoTaskSourceTask;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VideoTaskSummary = Omit<
+  VideoTask,
+  | "original_text"
+  | "started_at"
+  | "finished_at"
+  | "audio_reference_id"
+  | "audio_reference_text_snapshot"
+  | "audio_reference_asset"
+  | "voice_provider_snapshot"
+  | "voice_model_snapshot"
+  | "voice_name_snapshot"
+  | "voice_speed_snapshot"
+  | "narration_audio_asset"
+  | "audio_segments"
+  | "video_provider_output_url"
+> & {
+  original_text_preview: string;
 };
 
 export type TaskCharacterReference = {
@@ -494,6 +608,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
+    credentials: "include",
+    headers: {
+      "content-type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+    ...init,
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const body = await response.json();
+      throw new Error(body?.error?.message ?? body?.detail ?? "请求失败");
+    }
+    throw new Error("请求失败");
+  }
+
+  return response.blob();
+}
+
 export const api = {
   me: async () => (await request<ApiData<{ user: User }>>("/auth/me")).data,
   login: (payload: { email: string; password: string }) =>
@@ -613,6 +749,72 @@ export const api = {
     }).then((result) => result.data),
   assetContentUrl: (assetId: string, variant: "original" | "thumbnail" = "original") =>
     `${API_BASE_URL}/api/v1/assets/${assetId}/content${variant === "thumbnail" ? "?variant=thumbnail" : ""}`,
+  audioReferences: (params?: { query?: string; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AudioReference>>(`/audio-references${suffix}`);
+  },
+  audioReference: (id: string) =>
+    request<ApiData<AudioReference>>(`/audio-references/${id}`).then((result) => result.data),
+  createAudioReference: (payload: {
+    name: string;
+    description?: string | null;
+    reference_text?: string | null;
+    speech_speed: number;
+    file: File;
+  }) => {
+    const form = new FormData();
+    form.append("name", payload.name);
+    form.append("description", payload.description ?? "");
+    form.append("reference_text", payload.reference_text ?? "");
+    form.append("speech_speed", String(payload.speech_speed));
+    form.append("file", payload.file);
+    return request<ApiData<AudioReference>>("/audio-references", { method: "POST", body: form }).then((result) => result.data);
+  },
+  updateAudioReference: (id: string, payload: { name: string; description?: string | null; speech_speed: number }) =>
+    request<ApiData<AudioReference>>(`/audio-references/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  testAudioReference: (id: string, payload: { text: string }) =>
+    requestBlob(`/audio-references/${id}/test`, { method: "POST", body: JSON.stringify(payload) }),
+  transcribeAudioReference: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<ApiData<AudioReferenceTranscription>>("/audio-references/transcribe", {
+      method: "POST",
+      body: form,
+    }).then((result) => result.data);
+  },
+  deleteAudioReference: (id: string) =>
+    request<ApiData<{ deleted: boolean }>>(`/audio-references/${id}`, { method: "DELETE" }),
+  videoTasks: (params?: { query?: string; status?: VideoTaskStatus | "all"; cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.status && params.status !== "all") search.set("status", params.status);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<VideoTaskSummary>>(`/video-tasks${suffix}`);
+  },
+  videoTask: (id: string) => request<ApiData<VideoTask>>(`/video-tasks/${id}`).then((result) => result.data),
+  retryVideoTask: (id: string) =>
+    request<ApiData<VideoTask>>(`/video-tasks/${id}/retry`, { method: "POST" }).then((result) => result.data),
+  createVideoTask: (payload: {
+    original_text: string;
+    image_count_mode: "auto" | "fixed";
+    requested_image_count?: number | null;
+    style_id: string;
+    audio_reference_id: string;
+    use_character_references?: boolean;
+    last_panel_real_photo?: boolean;
+  }) =>
+    request<ApiData<VideoTask>>("/video-tasks", { method: "POST", body: JSON.stringify(payload) }).then(
+      (result) => result.data,
+    ),
   tasks: (params?: {
     query?: string;
     status?: Task["status"] | "all";
@@ -642,6 +844,7 @@ export const api = {
     style_id: string;
     use_character_references?: boolean;
     last_panel_real_photo?: boolean;
+    remove_image_text?: boolean;
     story_characters?: StoryCharacterBinding[];
   }) => request<ApiData<Task>>("/tasks", { method: "POST", body: JSON.stringify(payload) }).then((result) => result.data),
   extractCharacterNames: (payload: { text: string }) =>
@@ -738,6 +941,7 @@ export const api = {
     style_id: string;
     use_character_references?: boolean;
     last_panel_real_photo?: boolean;
+    remove_image_text?: boolean;
   }) =>
     request<ApiData<ContentExtraction>>("/content-extractions/replicate-task", {
       method: "POST",

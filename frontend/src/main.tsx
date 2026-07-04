@@ -11,6 +11,7 @@ import {
   Coins,
   Download,
   Eye,
+  Film,
   FileText,
   Filter,
   Images,
@@ -18,6 +19,7 @@ import {
   Loader2,
   MessageCircle,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Save,
@@ -29,6 +31,7 @@ import {
   Upload,
   UserRound,
   Users,
+  Volume2,
   X,
 } from "lucide-react";
 import {
@@ -40,6 +43,7 @@ import {
   type AdminCreditUsage,
   type AdminUserCreditDetail,
   type AdminUserCreditSummary,
+  type AudioReference,
   type ContentExtraction,
   type ContentExtractionHealth,
   type ContentExtractionMedia,
@@ -59,10 +63,13 @@ import {
   type TaskSummary,
   type User,
   type UserCharacter,
+  type VideoTask,
+  type VideoTaskStatus,
+  type VideoTaskSummary,
 } from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
+type View = "tasks" | "videoTasks" | "audioReferences" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const CONTACT_WECHAT_QR_SRC = "/wechat-contact-qr.png";
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -73,6 +80,8 @@ const styleReferenceModeLabels: Record<Style["style_reference_mode"], string> = 
 };
 const viewRoutes: Record<View, string> = {
   tasks: "/tasks",
+  videoTasks: "/video-tasks",
+  audioReferences: "/audio-references",
   content: "/content-extractions",
   styles: "/styles",
   characters: "/characters",
@@ -88,6 +97,8 @@ function normalizedPathname(pathname: string) {
 function viewFromPathname(pathname: string): View | null {
   const path = normalizedPathname(pathname);
   if (path === "/" || path === viewRoutes.tasks || path.startsWith(`${viewRoutes.tasks}/`)) return "tasks";
+  if (path === viewRoutes.videoTasks || path.startsWith(`${viewRoutes.videoTasks}/`)) return "videoTasks";
+  if (path === viewRoutes.audioReferences) return "audioReferences";
   if (path === viewRoutes.content) return "content";
   if (path === viewRoutes.styles) return "styles";
   if (path === viewRoutes.characters) return "characters";
@@ -100,6 +111,14 @@ function viewFromPathname(pathname: string): View | null {
 function taskIdFromPathname(pathname: string): string | null {
   const path = normalizedPathname(pathname);
   const prefix = `${viewRoutes.tasks}/`;
+  if (!path.startsWith(prefix)) return null;
+  const rawTaskId = path.slice(prefix.length).split("/")[0];
+  return rawTaskId ? decodeURIComponent(rawTaskId) : null;
+}
+
+function videoTaskIdFromPathname(pathname: string): string | null {
+  const path = normalizedPathname(pathname);
+  const prefix = `${viewRoutes.videoTasks}/`;
   if (!path.startsWith(prefix)) return null;
   const rawTaskId = path.slice(prefix.length).split("/")[0];
   return rawTaskId ? decodeURIComponent(rawTaskId) : null;
@@ -240,6 +259,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const view = viewFromPathname(pathname);
   const routeTaskId = taskIdFromPathname(pathname);
+  const routeVideoTaskId = videoTaskIdFromPathname(pathname);
 
   useEffect(() => {
     api
@@ -347,6 +367,8 @@ function App() {
       onLogout={() => setUser(null)}
     >
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
+      {view === "videoTasks" ? <VideoTasksView user={user} routeVideoTaskId={routeVideoTaskId} onNavigatePath={navigateToPath} /> : null}
+      {view === "audioReferences" ? <AudioReferencesView user={user} /> : null}
       {view === "content" ? <ContentExtractionView user={user} onNavigatePath={navigateToPath} /> : null}
       {view === "styles" ? <StylesView user={user} onCreditsChanged={refreshCredits} /> : null}
       {view === "characters" ? <CharactersView /> : null}
@@ -454,6 +476,8 @@ function Shell({
 }) {
   const items = [
     { key: "tasks" as const, label: "任务", icon: Images, path: viewRoutes.tasks },
+    { key: "videoTasks" as const, label: "视频任务", icon: Film, path: viewRoutes.videoTasks },
+    { key: "audioReferences" as const, label: "音频管理", icon: Volume2, path: viewRoutes.audioReferences },
     { key: "content" as const, label: "内容提取", icon: FileText, path: viewRoutes.content },
     { key: "styles" as const, label: "风格", icon: Sparkles, path: viewRoutes.styles },
     { key: "characters" as const, label: "角色管理", icon: UserRound, path: viewRoutes.characters },
@@ -570,6 +594,33 @@ const stepLabels: Record<string, string> = {
 
 function taskStatusLabel(status: Task["status"]) {
   return taskStatusOptions.find((item) => item.value === status)?.label ?? status;
+}
+
+const videoTaskStatusOptions: Array<{ value: VideoTaskStatus | "all"; label: string }> = [
+  { value: "all", label: "全部状态" },
+  { value: "waiting_for_images", label: "等待图片" },
+  { value: "ready_for_audio", label: "待生成音频" },
+  { value: "audio_generating", label: "音频生成中" },
+  { value: "audio_ready", label: "音频已就绪" },
+  { value: "video_generating", label: "视频生成中" },
+  { value: "succeeded", label: "已完成" },
+  { value: "failed", label: "失败" },
+  { value: "cancel_requested", label: "取消中" },
+  { value: "cancelled", label: "已取消" },
+];
+
+function videoTaskStatusLabel(status: VideoTaskStatus) {
+  return videoTaskStatusOptions.find((item) => item.value === status)?.label ?? status;
+}
+
+function videoTaskStepLabel(step: VideoTask["current_step"]) {
+  const labels: Record<VideoTask["current_step"], string> = {
+    generate_source_images: "生成上游图片",
+    generate_narration_audio: "生成旁白音频",
+    submit_video: "提交图文视频",
+    download_video: "保存视频资产",
+  };
+  return labels[step] ?? step;
 }
 
 function storyInputModeLabel(mode: Task["story_input_mode"]) {
@@ -1364,6 +1415,7 @@ function TasksView({
       return;
     }
     const shouldUseDouyinReplicate = storyInputMode === "dy_replicate" || containsDouyinShareUrl(originalText);
+    const removeImageText = formData.get("remove_image_text") === "on";
     if (!shouldUseDouyinReplicate && fixedRoleFlowEnabled && !fixedRoleExtractionReady) {
       await extractRolesForCreate();
       return;
@@ -1386,6 +1438,7 @@ function TasksView({
           style_id: createStyleId,
           use_character_references: true,
           last_panel_real_photo: lastPanelRealPhoto,
+          remove_image_text: removeImageText,
         });
         resetCreateForm();
         setCreateOpen(false);
@@ -1406,6 +1459,7 @@ function TasksView({
         style_id: createStyleId,
         use_character_references: true,
         last_panel_real_photo: lastPanelRealPhoto,
+        remove_image_text: removeImageText,
         story_characters: storyCharacters,
       });
       resetCreateForm();
@@ -1725,6 +1779,7 @@ function TasksView({
                       {task.image_count_mode === "auto" ? "自动数量" : `${task.requested_image_count ?? 0} 张`}
                       {" · "}
                       {task.last_panel_real_photo ? "最后一张真人 · " : ""}
+                      {task.remove_image_text ? "无文字 · " : ""}
                       {task.style_aspect_ratio_snapshot}
                     </small>
                   </div>
@@ -1891,6 +1946,13 @@ function TasksView({
                 <section className="story-panel compact-info-panel">
                   <h2>真人结尾</h2>
                   <p>最后一张启用真人照片风格，不携带漫画风格参考图或人物参考图。</p>
+                </section>
+              ) : null}
+
+              {taskForDetail.remove_image_text ? (
+                <section className="story-panel compact-info-panel">
+                  <h2>无文字画面</h2>
+                  <p>最终生图提示词最前面会加入最高指令，要求图片中不能包含任何文字。</p>
                 </section>
               ) : null}
 
@@ -2179,6 +2241,13 @@ function TasksView({
                   <span>
                     <strong>最后一张真人图片</strong>
                     <small>默认关闭；勾选后最后一个分镜按真实摄影/自拍照片生成，不跟随当前漫画风格。</small>
+                  </span>
+                </label>
+                <label className="character-reference-toggle remove-text-toggle">
+                  <input name="remove_image_text" type="checkbox" />
+                  <span>
+                    <strong>去掉画面文字</strong>
+                    <small>默认关闭；勾选后最终生图提示词最前面加入最高指令，要求图片中不能包含任何文字。</small>
                   </span>
                 </label>
               </section>
@@ -2691,6 +2760,769 @@ function TasksView({
               </button>
             </div>
             <pre>{promptPreview.text}</pre>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AudioReferencesView({ user }: { user: User }) {
+  const [items, setItems] = useState<AudioReference[]>([]);
+  const [query, setQuery] = useState("");
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<File | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcribedText, setTranscribedText] = useState("");
+  const [transcriptionError, setTranscriptionError] = useState("");
+  const [editTarget, setEditTarget] = useState<AudioReference | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [testTarget, setTestTarget] = useState<AudioReference | null>(null);
+  const [testText, setTestText] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testAudioUrl, setTestAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+  }, [testAudioUrl]);
+
+  async function refresh(nextCursor = cursor) {
+    setLoading(true);
+    try {
+      const result = await api.audioReferences({ query, cursor: nextCursor, limit: 10 });
+      setItems(result.items);
+      setPageInfo(result.page);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "音频参考加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refresh(null);
+  }, []);
+
+  async function submitSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCursor(null);
+    setCursorStack([]);
+    await refresh(null);
+  }
+
+  async function createAudioReference(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const speechSpeed = Number(form.get("speech_speed") || "1");
+    if (!selectedAudioFile || selectedAudioFile.size <= 0) {
+      setMessage("请选择音频文件");
+      return;
+    }
+    if (!transcribedText.trim()) {
+      setMessage("请等待本地转写完成后再保存");
+      return;
+    }
+    try {
+      setCreating(true);
+      await api.createAudioReference({
+        name: String(form.get("name") || "").trim(),
+        description: String(form.get("description") || "").trim(),
+        reference_text: transcribedText.trim(),
+        speech_speed: speechSpeed,
+        file: selectedAudioFile,
+      });
+      closeCreateAudioReference();
+      setCursor(null);
+      setCursorStack([]);
+      setMessage("音频参考已保存");
+      await refresh(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "音频参考保存失败");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function closeCreateAudioReference() {
+    setCreateOpen(false);
+    setSelectedAudioFile(null);
+    setTranscribedText("");
+    setTranscriptionError("");
+    setTranscribing(false);
+  }
+
+  function openCreateAudioReference() {
+    setSelectedAudioFile(null);
+    setTranscribedText("");
+    setTranscriptionError("");
+    setTranscribing(false);
+    setCreateOpen(true);
+  }
+
+  function openEditAudioReference(item: AudioReference) {
+    setEditTarget(item);
+    setMessage("");
+  }
+
+  function closeEditAudioReference() {
+    setEditTarget(null);
+    setUpdating(false);
+  }
+
+  async function updateAudioReference(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editTarget) return;
+    const form = new FormData(event.currentTarget);
+    try {
+      setUpdating(true);
+      await api.updateAudioReference(editTarget.id, {
+        name: String(form.get("name") || "").trim(),
+        description: String(form.get("description") || "").trim(),
+        speech_speed: Number(form.get("speech_speed") || "1"),
+      });
+      closeEditAudioReference();
+      setMessage("音频参考已更新");
+      await refresh(cursor);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "音频参考更新失败");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  function openTestAudioReference(item: AudioReference) {
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+    setTestAudioUrl(null);
+    setTestTarget(item);
+    setTestText("");
+    setMessage("");
+  }
+
+  function closeTestAudioReference() {
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+    setTestAudioUrl(null);
+    setTestTarget(null);
+    setTestText("");
+    setTesting(false);
+  }
+
+  async function testAudioReference(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!testTarget) return;
+    if (testAudioUrl) URL.revokeObjectURL(testAudioUrl);
+    setTestAudioUrl(null);
+    try {
+      setTesting(true);
+      const blob = await api.testAudioReference(testTarget.id, { text: testText.trim() });
+      setTestAudioUrl(URL.createObjectURL(blob));
+      setMessage("测试音频已生成");
+      await refresh(cursor);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "测试音频生成失败");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function transcribeSelectedAudio(file: File) {
+    setSelectedAudioFile(file);
+    setTranscribedText("");
+    setTranscriptionError("");
+    if (file.size <= 0) {
+      setTranscriptionError("文件内容不能为空");
+      return;
+    }
+    try {
+      setTranscribing(true);
+      const result = await api.transcribeAudioReference(file);
+      setTranscribedText(result.text);
+      setTranscriptionError("");
+    } catch (error) {
+      setTranscriptionError(error instanceof Error ? error.message : "本地转写失败");
+    } finally {
+      setTranscribing(false);
+    }
+  }
+
+  async function deleteAudioReference(id: string) {
+    try {
+      await api.deleteAudioReference(id);
+      setMessage("音频参考已删除");
+      await refresh(cursor);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "音频参考删除失败");
+    }
+  }
+
+  function nextPage() {
+    if (!pageInfo?.next_cursor) return;
+    setCursorStack((current) => [...current, cursor ?? ""]);
+    setCursor(pageInfo.next_cursor);
+    void refresh(pageInfo.next_cursor);
+  }
+
+  function previousPage() {
+    const previous = cursorStack[cursorStack.length - 1];
+    setCursorStack((current) => current.slice(0, -1));
+    setCursor(previous || null);
+    void refresh(previous || null);
+  }
+
+  return (
+    <section className="page tasks-workspace">
+      <header className="page-header">
+        <div>
+          <h1>音频管理</h1>
+          <p>管理视频任务可选择的参考音频。</p>
+        </div>
+        <button type="button" onClick={openCreateAudioReference}>
+          <Plus size={18} />
+          上传音频
+        </button>
+      </header>
+
+      <form className="task-toolbar" onSubmit={submitSearch}>
+        <label>
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索名称或描述" />
+        </label>
+        <button type="submit" className="secondary-button">搜索</button>
+      </form>
+      {message ? <div className={message.includes("失败") ? "error" : "form-message"}>{message}</div> : null}
+
+      <section className="task-project-list single-column-list">
+        <div className="task-list-head audio-list-head">
+          <span>音频</span>
+          <span>归属</span>
+          <span>创建</span>
+          <span>操作</span>
+        </div>
+        {loading ? <div className="empty">正在加载音频参考</div> : null}
+        {!loading && items.length === 0 ? <div className="empty">还没有音频参考。</div> : null}
+        {items.map((item) => (
+          <article key={item.id} className="task-project-row audio-reference-row">
+            <div className="task-story-cell">
+              <Volume2 size={18} />
+              <div>
+                <div className="audio-reference-title-line">
+                  <strong>{item.name}</strong>
+                  <span>{item.speech_speed.toFixed(2)}x</span>
+                  <a href={assetUrl(item.asset)} target="_blank" rel="noreferrer">原音</a>
+                </div>
+                <p>{item.description || item.asset.original_filename || "未填写描述"}</p>
+              </div>
+            </div>
+            <span>{user.role === "admin" ? item.owner_display_name || item.owner_email || shortId(item.owner_user_id) : "我的音频"}</span>
+            <span>{formatDateTime(item.created_at)}</span>
+            <span className="row-actions">
+              <button type="button" className="ghost-button" onClick={() => openTestAudioReference(item)}>
+                <Play size={15} />
+                测试
+              </button>
+              <button type="button" className="ghost-button" onClick={() => openEditAudioReference(item)}>
+                <Pencil size={15} />
+                编辑
+              </button>
+              <button type="button" className="ghost-button" onClick={() => deleteAudioReference(item.id)}>
+                <Trash2 size={15} />
+                删除
+              </button>
+            </span>
+          </article>
+        ))}
+        <div className="pagination-bar">
+          <button className="icon-button" aria-label="上一页" disabled={cursorStack.length === 0} onClick={previousPage}>
+            <ChevronLeft size={16} />
+          </button>
+          <span>{cursor ? `第 ${Math.floor(Number(cursor) / 10) + 1} 页` : "第 1 页"}</span>
+          <button className="icon-button" aria-label="下一页" disabled={!pageInfo?.has_more} onClick={nextPage}>
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </section>
+
+      {createOpen ? (
+        <div className="task-create-backdrop" onClick={closeCreateAudioReference}>
+          <section className="task-create-modal compact-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>上传音频参考</h2>
+                <p>保存后可在创建视频任务时选择。</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭" onClick={closeCreateAudioReference}>
+                <X size={18} />
+              </button>
+            </div>
+            <form className="task-create-form" onSubmit={createAudioReference}>
+              <label>名称<input name="name" required maxLength={120} placeholder="例如 温柔女声参考" /></label>
+              <label>描述<textarea name="description" maxLength={500} placeholder="音色、语速或适用内容" /></label>
+              <label>
+                产出语速
+                <input name="speech_speed" type="number" min="0.5" max="2" step="0.05" defaultValue="1" required />
+              </label>
+              <label>
+                音频文件
+                <input
+                  name="file"
+                  type="file"
+                  accept="audio/*,video/mp4"
+                  required
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) void transcribeSelectedAudio(file);
+                  }}
+                />
+              </label>
+              {transcribing ? (
+                <div className="form-message inline-status"><Loader2 size={16} className="spin" />正在本地转写参考文本</div>
+              ) : null}
+              {transcriptionError ? <div className="error">{transcriptionError}</div> : null}
+              {transcribedText ? (
+                <label>
+                  自动识别文本
+                  <textarea value={transcribedText} readOnly rows={4} />
+                </label>
+              ) : null}
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={closeCreateAudioReference}>取消</button>
+                <button type="submit" disabled={creating || transcribing || !transcribedText.trim()}>
+                  {creating ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
+                  保存音频
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {editTarget ? (
+        <div className="task-create-backdrop" onClick={closeEditAudioReference}>
+          <section className="task-create-modal compact-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>编辑音频参考</h2>
+                <p>参考音频文件不可替换。</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭" onClick={closeEditAudioReference}>
+                <X size={18} />
+              </button>
+            </div>
+            <form className="task-create-form" onSubmit={updateAudioReference}>
+              <label>名称<input name="name" required maxLength={120} defaultValue={editTarget.name} /></label>
+              <label>描述<textarea name="description" maxLength={500} defaultValue={editTarget.description || ""} /></label>
+              <label>
+                产出语速
+                <input name="speech_speed" type="number" min="0.5" max="2" step="0.05" defaultValue={editTarget.speech_speed} required />
+              </label>
+              <div className="readonly-asset-line">
+                <Volume2 size={16} />
+                <span>{editTarget.asset.original_filename || "已上传参考音频"}</span>
+              </div>
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={closeEditAudioReference}>取消</button>
+                <button type="submit" disabled={updating}>
+                  {updating ? <Loader2 size={17} className="spin" /> : <Save size={17} />}
+                  保存修改
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
+      {testTarget ? (
+        <div className="task-create-backdrop" onClick={closeTestAudioReference}>
+          <section className="task-create-modal compact-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>测试参考音频</h2>
+                <p>{testTarget.name} · {testTarget.speech_speed.toFixed(2)}x</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭" onClick={closeTestAudioReference}>
+                <X size={18} />
+              </button>
+            </div>
+            <form className="task-create-form" onSubmit={testAudioReference}>
+              <label>
+                测试文本
+                <textarea value={testText} onChange={(event) => setTestText(event.target.value)} maxLength={2000} required rows={5} />
+              </label>
+              {testAudioUrl ? (
+                <div className="test-audio-preview">
+                  <span>参考音频输出</span>
+                  <audio src={testAudioUrl} controls autoPlay />
+                </div>
+              ) : null}
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={closeTestAudioReference}>关闭</button>
+                <button type="submit" disabled={testing || !testText.trim()}>
+                  {testing ? <Loader2 size={17} className="spin" /> : <Play size={17} />}
+                  生成试听
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function VideoTasksView({
+  user,
+  routeVideoTaskId,
+  onNavigatePath,
+}: {
+  user: User;
+  routeVideoTaskId: string | null;
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
+}) {
+  const [items, setItems] = useState<VideoTaskSummary[]>([]);
+  const [selected, setSelected] = useState<VideoTask | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<VideoTaskStatus | "all">("all");
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [pageInfo, setPageInfo] = useState<{ next_cursor: string | null; has_more: boolean } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [retryingVideoTaskId, setRetryingVideoTaskId] = useState<string | null>(null);
+  const [styles, setStyles] = useState<Style[]>([]);
+  const [audioReferences, setAudioReferences] = useState<AudioReference[]>([]);
+  const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
+
+  async function refresh(nextCursor = cursor) {
+    setLoading(true);
+    try {
+      const result = await api.videoTasks({ query, status, cursor: nextCursor, limit: 10 });
+      setItems(result.items);
+      setPageInfo(result.page);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "视频任务加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadCreateOptions() {
+    const [styleResult, audioResult] = await Promise.all([
+      api.styles({ status: "active" }),
+      api.audioReferences({ limit: 100 }),
+    ]);
+    setStyles(styleResult.items);
+    setAudioReferences(audioResult.items);
+  }
+
+  useEffect(() => {
+    void refresh(null);
+    void loadCreateOptions().catch((error) => setMessage(error instanceof Error ? error.message : "创建选项加载失败"));
+  }, []);
+
+  useEffect(() => {
+    if (!routeVideoTaskId) {
+      setSelected(null);
+      return;
+    }
+    api
+      .videoTask(routeVideoTaskId)
+      .then(setSelected)
+      .catch((error) => setMessage(error instanceof Error ? error.message : "视频任务详情加载失败"));
+  }, [routeVideoTaskId]);
+
+  async function submitSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCursor(null);
+    setCursorStack([]);
+    await refresh(null);
+  }
+
+  async function createVideoTask(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const originalText = String(form.get("original_text") || "").trim();
+    const styleId = String(form.get("style_id") || "").trim();
+    const audioReferenceId = String(form.get("audio_reference_id") || "").trim();
+    const requested = Number(form.get("requested_image_count"));
+    if (!originalText || !styleId || !audioReferenceId) {
+      setMessage("请填写故事，并选择风格和参考音频");
+      return;
+    }
+    try {
+      setCreating(true);
+      const task = await api.createVideoTask({
+        original_text: originalText,
+        image_count_mode: countMode,
+        requested_image_count: countMode === "fixed" ? requested : null,
+        style_id: styleId,
+        audio_reference_id: audioReferenceId,
+        use_character_references: true,
+        last_panel_real_photo: false,
+      });
+      setCreateOpen(false);
+      setMessage("视频任务已创建，正在生成上游图片");
+      onNavigatePath(`${viewRoutes.videoTasks}/${encodeURIComponent(task.id)}`);
+      await refresh(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "视频任务创建失败");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function selectVideoTask(id: string) {
+    onNavigatePath(`${viewRoutes.videoTasks}/${encodeURIComponent(id)}`);
+  }
+
+  function closeDetail() {
+    setSelected(null);
+    onNavigatePath(viewRoutes.videoTasks);
+  }
+
+  async function retrySelectedVideoTask() {
+    if (!selected) return;
+    try {
+      setRetryingVideoTaskId(selected.id);
+      const task = await api.retryVideoTask(selected.id);
+      setSelected(task);
+      setMessage("视频任务已重新进入生成队列");
+      await refresh(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "视频任务重试失败");
+    } finally {
+      setRetryingVideoTaskId(null);
+    }
+  }
+
+  function nextPage() {
+    if (!pageInfo?.next_cursor) return;
+    setCursorStack((current) => [...current, cursor ?? ""]);
+    setCursor(pageInfo.next_cursor);
+    void refresh(pageInfo.next_cursor);
+  }
+
+  function previousPage() {
+    const previous = cursorStack[cursorStack.length - 1];
+    setCursorStack((current) => current.slice(0, -1));
+    setCursor(previous || null);
+    void refresh(previous || null);
+  }
+
+  return (
+    <section className="page tasks-workspace">
+      <header className="page-header">
+        <div>
+          <h1>视频任务</h1>
+          <p>输入故事，复用现有图片任务生成分镜图片，再承接旁白音频和图文视频生成。</p>
+        </div>
+        <button type="button" onClick={() => setCreateOpen(true)}>
+          <Plus size={18} />
+          创建视频任务
+        </button>
+      </header>
+
+      <form className="task-toolbar" onSubmit={submitSearch}>
+        <label>
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索故事" />
+        </label>
+        <label>
+          <Filter size={16} />
+          <select value={status} onChange={(event) => setStatus(event.target.value as VideoTaskStatus | "all")}>
+            {videoTaskStatusOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+        </label>
+        <button type="submit" className="secondary-button">筛选</button>
+      </form>
+      {message ? <div className={message.includes("失败") ? "error" : "form-message"}>{message}</div> : null}
+
+      <section className="task-project-list">
+        <div className="task-list-head video-list-head">
+          <span>故事</span>
+          <span>上游图片</span>
+          <span>音频</span>
+          <span>状态</span>
+          <span>创建</span>
+        </div>
+        {loading ? <div className="empty">正在加载视频任务</div> : null}
+        {!loading && items.length === 0 ? <div className="empty">还没有视频任务。</div> : null}
+        {items.map((item) => (
+          <button type="button" key={item.id} className={`task-project-row video-task-row ${selected?.id === item.id ? "selected" : ""}`} onClick={() => selectVideoTask(item.id)}>
+            <div className="task-story-cell">
+              <span className={`task-dot ${item.status}`} />
+              <div>
+                <strong>{item.display_title}</strong>
+                <p>{item.original_text_preview}</p>
+                {user.role === "admin" ? <small>{item.owner_display_name || item.owner_email || shortId(item.owner_user_id)}</small> : null}
+              </div>
+            </div>
+            <div className="thumb-strip">
+              {item.source_task.preview_images.map((image) => (
+                <LazyAssetImage key={image.id} asset={image.asset} assetId={image.asset.id} alt={item.display_title} />
+              ))}
+              {item.source_task.preview_images.length === 0 ? <span className="thumb-empty">等待图片</span> : null}
+            </div>
+            <div className="task-style-cell">
+              <strong>{item.audio_reference_name_snapshot}</strong>
+              <small>{item.source_task.style_name_snapshot} · {item.source_task.style_aspect_ratio_snapshot}</small>
+            </div>
+            <div className="task-status-cell">
+              <span className={`status-pill ${item.status}`}>{videoTaskStatusLabel(item.status)}</span>
+              <small>{videoTaskStepLabel(item.current_step)} · 图片任务 {taskStatusLabel(item.source_task.status)}{item.video_provider_status ? ` · 渲染 ${item.video_provider_status}` : ""}</small>
+            </div>
+            <span>{formatDateTime(item.created_at)}</span>
+          </button>
+        ))}
+        <div className="pagination-bar">
+          <button className="icon-button" aria-label="上一页" disabled={cursorStack.length === 0} onClick={previousPage}><ChevronLeft size={16} /></button>
+          <span>{cursor ? `第 ${Math.floor(Number(cursor) / 10) + 1} 页` : "第 1 页"}</span>
+          <button className="icon-button" aria-label="下一页" disabled={!pageInfo?.has_more} onClick={nextPage}><ChevronRight size={16} /></button>
+        </div>
+      </section>
+
+      {selected ? (
+        <div className="task-detail-backdrop" onClick={closeDetail}>
+          <aside className="task-detail-drawer" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="detail-drawer-head">
+              <div>
+                <span>视频任务详情</span>
+                <strong>{selected.display_title}</strong>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭详情" onClick={closeDetail}><X size={18} /></button>
+            </div>
+            <div className="task-inspector">
+              <section className="detail-head">
+                <div>
+                  <span className={`status-pill ${selected.status}`}>{videoTaskStatusLabel(selected.status)}</span>
+                  <h2>{selected.display_title}</h2>
+                  <p>{videoTaskStepLabel(selected.current_step)} · 创建于 {formatDateTime(selected.created_at)}</p>
+                </div>
+                <div className="detail-actions">
+                  <button type="button" className="secondary-button" disabled={selected.status !== "failed" || retryingVideoTaskId === selected.id} onClick={retrySelectedVideoTask}>
+                    {retryingVideoTaskId === selected.id ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
+                    {retryingVideoTaskId === selected.id ? "重试中" : "重试视频"}
+                  </button>
+                </div>
+                {selected.error_message ? <p className="error">{selected.error_message}</p> : null}
+              </section>
+              <section className="story-panel">
+                <h2>原始故事</h2>
+                <p>{selected.original_text}</p>
+              </section>
+              <section className="story-panel">
+                <h2>参考音频</h2>
+                <p>{selected.audio_reference_name_snapshot}</p>
+                <audio src={assetUrl(selected.audio_reference_asset)} controls />
+                {selected.voice_provider_snapshot || selected.voice_model_snapshot ? (
+                  <small>{selected.voice_provider_snapshot || "voice"} · {selected.voice_model_snapshot || "默认模型"}</small>
+                ) : null}
+              </section>
+              <section className="story-panel">
+                <h2>旁白音频</h2>
+                {selected.audio_segments.length === 0 ? <p>等待生成旁白音频。</p> : null}
+                <div className="audio-segment-list">
+                  {selected.audio_segments.map((segment) => (
+                    <article key={segment.id} className="audio-segment-row">
+                      <div>
+                        <strong>第 {segment.panel_order} 段</strong>
+                        <p>{segment.narration_text}</p>
+                      </div>
+                      <audio src={assetUrl(segment.asset)} controls />
+                    </article>
+                  ))}
+                </div>
+              </section>
+              <section className="story-panel">
+                <h2>最终视频</h2>
+                {selected.output_video_asset ? (
+                  <video src={assetUrl(selected.output_video_asset)} controls className="video-output-player" />
+                ) : (
+                  <p>{selected.video_provider_job_id ? `渲染任务 ${selected.video_provider_job_id}：${selected.video_provider_status || "处理中"}` : "等待提交图文视频生成服务。"}</p>
+                )}
+              </section>
+              <section className="progress-panel">
+                <div>
+                  <strong>上游图片任务：{taskStatusLabel(selected.source_task.status)}</strong>
+                  <span>{selected.source_task.progress_current}/{selected.source_task.progress_total}</span>
+                </div>
+                <div className="progress-line large">
+                  <span style={{ width: `${selected.source_task.progress_total ? Math.round((selected.source_task.progress_current / selected.source_task.progress_total) * 100) : 0}%` }} />
+                </div>
+                {selected.source_task.error_message ? <p className="error">{selected.source_task.error_message}</p> : null}
+              </section>
+              <section className="panel-wall">
+                <div className="editor-title">
+                  <div>
+                    <h2>已生成图片</h2>
+                    <p>视频任务使用这些上游图片和对应旁白继续生成音频与视频。</p>
+                  </div>
+                  <button type="button" className="secondary-button" onClick={() => onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(selected.source_task.id)}`)}>
+                    <ArrowUpRight size={16} />
+                    打开图片任务
+                  </button>
+                </div>
+                <div className="task-image-grid">
+                  {selected.source_task.preview_images.length === 0 ? <div className="empty mini">等待上游图片生成</div> : null}
+                  {selected.source_task.preview_images.map((image) => (
+                    <article key={image.id} className="panel-card">
+                      <div className="poster">
+                        <LazyAssetImage asset={image.asset} assetId={image.asset.id} alt={selected.display_title} />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {createOpen ? (
+        <div className="task-create-backdrop" onClick={() => setCreateOpen(false)}>
+          <section className="task-create-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="drawer-head">
+              <div>
+                <h2>创建视频任务</h2>
+                <p>视频任务会先创建一个真实图片任务，等待图片成功后再进入音频和视频阶段。</p>
+              </div>
+              <button type="button" className="icon-button" aria-label="关闭" onClick={() => setCreateOpen(false)}><X size={18} /></button>
+            </div>
+            <form className="task-create-form" onSubmit={createVideoTask}>
+              <label>故事正文<textarea name="original_text" required autoFocus placeholder="只输入故事正文" /></label>
+              <section className="create-section">
+                <div className="section-label">图片数量</div>
+                <div className="segmented-control">
+                  <button type="button" className={countMode === "auto" ? "active" : ""} onClick={() => setCountMode("auto")}>自动判断</button>
+                  <button type="button" className={countMode === "fixed" ? "active" : ""} onClick={() => setCountMode("fixed")}>固定数量</button>
+                </div>
+                {countMode === "fixed" ? <label>图片数量<input name="requested_image_count" type="number" min="1" max="80" required /></label> : null}
+              </section>
+              <label>画风<select name="style_id" required defaultValue="">
+                <option value="">选择画风</option>
+                {styles.map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
+              </select></label>
+              <label>参考音频<select name="audio_reference_id" required defaultValue="">
+                <option value="">选择参考音频</option>
+                {audioReferences.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select></label>
+              {audioReferences.length === 0 ? <p className="field-hint">还没有音频参考，请先到音频管理上传。</p> : null}
+              <div className="drawer-actions">
+                <button type="button" className="ghost-button" onClick={() => setCreateOpen(false)}>取消</button>
+                <button type="submit" disabled={creating || styles.length === 0 || audioReferences.length === 0}>
+                  {creating ? <Loader2 size={17} className="spin" /> : <Plus size={17} />}
+                  创建视频任务
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       ) : null}

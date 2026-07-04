@@ -103,6 +103,12 @@ POLICY_BLOCKED_ERROR_MARKERS = (
     "filtered out",
     "violated Google's",
 )
+NO_IMAGE_TEXT_INSTRUCTION = "最高指令，图片中不能包含任何文字。"
+NO_IMAGE_TEXT_RULE = (
+    "本任务开启去掉画面文字：最终图片不得包含任何旁白、字幕、标题、对白气泡、内心 OS、"
+    "强调字、Logo、水印、标牌文字或其他可读文字；故事原文和图片文字字段只用于理解画面，不能画进图片。"
+)
+IMAGE_TEXT_KEYS = ("title", "narration", "dialogue", "inner_os", "emphasis")
 
 
 @dataclass(frozen=True)
@@ -1085,6 +1091,14 @@ def update_task_image_generation_state(db: Session, task_id: str) -> None:
         task.error_code = "ImageGenerationFailed"
         task.error_message = "所有分镜图片生成失败"
     db.commit()
+    try:
+        from app.services.video_task_worker import trigger_video_tasks_for_source_task
+
+        trigger_video_tasks_for_source_task(task.id)
+    except RuntimeError:
+        logger.info("video task queue not ready for source task trigger task_id=%s", task.id)
+    except Exception:
+        logger.exception("failed to trigger video tasks for source task_id=%s", task.id)
 
 
 def active_initial_image_job_count(db: Session, task_id: str) -> int:
@@ -1501,6 +1515,10 @@ def text_rules_block(
     return "".join(rules)
 
 
+def empty_image_text_payload() -> dict[str, str | None]:
+    return {key: None for key in IMAGE_TEXT_KEYS}
+
+
 def normalize_prompt_text_for_label_match(value: str) -> str:
     return re.sub(r"\s+", "", value.strip().strip("「」『』“”\"'"))
 
@@ -1565,6 +1583,66 @@ def sanitize_compiled_final_prompt(
         elif rewritten_line:
             sanitized_lines.append(rewritten_line)
     return "\n".join(sanitized_lines).strip()
+
+
+def is_image_text_drawing_instruction(line: str) -> bool:
+    if not line:
+        return False
+    text_area_tokens = (
+        "【文字】",
+        "旁白框",
+        "字幕框",
+        "对白气泡",
+        "心理独白框",
+        "思想气泡",
+        "留白文字区",
+        "文字区",
+        "标题字",
+        "强调字",
+        "气泡里呈现",
+    )
+    if any(token in line for token in text_area_tokens):
+        return True
+    if re.search(r"(写入|标注|显示|呈现|绘制).{0,16}[「“『\"]", line):
+        return True
+    return False
+
+
+def remove_image_text_draw_instructions(final_prompt: str) -> str:
+    text_label_prefixes = (
+        "旁白：",
+        "旁白:",
+        "对话：",
+        "对话:",
+        "对白：",
+        "对白:",
+        "标题：",
+        "标题:",
+        "内心OS：",
+        "内心OS:",
+        "强调：",
+        "强调:",
+    )
+    kept_lines: list[str] = []
+    skipping_text_section = False
+    for raw_line in final_prompt.splitlines():
+        stripped = raw_line.strip()
+        if stripped.startswith("【文字】"):
+            skipping_text_section = True
+            continue
+        if skipping_text_section:
+            if stripped.startswith("【") and not stripped.startswith("【文字】"):
+                skipping_text_section = False
+            elif re.match(r"^(整体风格|整体色调/风格|整体色调|风格)[：:]", stripped):
+                skipping_text_section = False
+            else:
+                continue
+        if any(stripped.startswith(prefix) for prefix in text_label_prefixes):
+            continue
+        if is_image_text_drawing_instruction(stripped):
+            continue
+        kept_lines.append(raw_line)
+    return "\n".join(kept_lines).strip()
 
 
 def is_page_number_heading_or_instruction(line: str) -> bool:
@@ -1715,21 +1793,41 @@ def final_prompt_with_aspect_ratio_prefix(aspect_ratio: str, final_prompt: str) 
     return "\n".join([prefix, "", cleaned_prompt]).strip()
 
 
-def final_prompt_with_real_photo_style(aspect_ratio: str, final_prompt: str) -> str:
+def final_prompt_with_real_photo_style(
+    aspect_ratio: str,
+    final_prompt: str,
+    remove_image_text: bool = False,
+) -> str:
     cleaned_prompt = final_prompt.strip()
+    text_requirement_line = (
+        "不要生成任何画面内文字、旁白、字幕、标题、对白气泡、内心 OS、Logo、水印或标牌文字。"
+        if remove_image_text
+        else "保留当前分镜中的人物身份、动作、场景、道具和所有图片内文字要求；如有文字，仍需放在画面安全区内并保持清晰可读。"
+    )
     real_photo_block = "\n".join(
         [
             "本张图片启用“最后一张真人图片”模式，必须按真实摄影照片生成。",
             "画面风格覆盖：真实人物、真实环境、真实光线、真实相机拍摄质感，优先呈现真人自拍、纪实照片或生活照效果。",
             "不要生成漫画、手绘、绘本、水彩、线稿、二次元、卡通人物、插画纸张质感或漫画分镜质感。",
             "如果画面描述中出现“照片式构图”“自拍”“合影”“照片”，必须理解为真实照片拍摄，而不是漫画里的照片构图。",
-            "保留当前分镜中的人物身份、动作、场景、道具和所有图片内文字要求；如有文字，仍需放在画面安全区内并保持清晰可读。",
+            text_requirement_line,
             "",
             "最终画面指令：",
             cleaned_prompt,
         ]
     ).strip()
     return final_prompt_with_aspect_ratio_prefix(aspect_ratio, real_photo_block)
+
+
+def final_prompt_with_remove_text_instruction(task: GenerationTask, final_prompt: str) -> str:
+    cleaned_prompt = final_prompt.strip()
+    if not task.remove_image_text:
+        return cleaned_prompt
+    cleaned_prompt = remove_image_text_draw_instructions(cleaned_prompt)
+    instruction = "\n".join([NO_IMAGE_TEXT_INSTRUCTION, NO_IMAGE_TEXT_RULE])
+    if cleaned_prompt.startswith(NO_IMAGE_TEXT_INSTRUCTION):
+        return cleaned_prompt
+    return "\n".join([instruction, "", cleaned_prompt]).strip()
 
 
 def final_prompt_with_explicit_style(
@@ -1740,7 +1838,14 @@ def final_prompt_with_explicit_style(
 ) -> str:
     cleaned_prompt = final_prompt.strip()
     if force_real_photo:
-        return final_prompt_with_real_photo_style(task.style_aspect_ratio_snapshot, cleaned_prompt)
+        return final_prompt_with_remove_text_instruction(
+            task,
+            final_prompt_with_real_photo_style(
+                task.style_aspect_ratio_snapshot,
+                cleaned_prompt,
+                remove_image_text=task.remove_image_text,
+            ),
+        )
 
     style_prompt = task.style_prompt_snapshot
     cleaned_style = (style_prompt or "").strip()
@@ -1757,25 +1862,36 @@ def final_prompt_with_explicit_style(
     ]
     if not cleaned_style:
         prompt_sections.append(cleaned_prompt)
-        return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections))
+        return final_prompt_with_remove_text_instruction(
+            task,
+            final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections)),
+        )
 
+    style_scope = (
+        "画风、人物比例、线条、色彩、构图和整体质感"
+        if task.remove_image_text
+        else "画风、人物比例、线条、色彩、构图、文字呈现和整体质感"
+    )
     prompt_sections.append(
         "\n".join(
             [
-                "风格提示词（必须直接用于本张图的画风、人物比例、线条、色彩、构图、文字呈现和整体质感）：",
+                f"风格提示词（必须直接用于本张图的{style_scope}）：",
                 cleaned_style,
                 "",
                 (
                     "风格执行优先级：人物参考外观锁定 > 当前剧情动作/情绪 > 风格表现方式 > "
                     "风格模板默认人物外观。风格模板只控制画风、人物比例、线条、色彩、构图、"
-                    "文字呈现和整体质感；不得覆盖最终画面指令中已经锁定的角色年龄阶段、发型、"
+                    f"{'整体质感' if task.remove_image_text else '文字呈现和整体质感'}；不得覆盖最终画面指令中已经锁定的角色年龄阶段、发型、"
                     "体态、服装轮廓和标志性配饰。"
                 ),
             ]
         )
     )
     prompt_sections.extend(["最终画面指令：", cleaned_prompt])
-    return final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections))
+    return final_prompt_with_remove_text_instruction(
+        task,
+        final_prompt_with_aspect_ratio_prefix(task.style_aspect_ratio_snapshot, "\n\n".join(prompt_sections)),
+    )
 
 
 def is_last_panel_real_photo_panel(task: GenerationTask, panel: TaskPanel) -> bool:
@@ -2010,6 +2126,7 @@ def final_prompt_task_payload(task: GenerationTask) -> dict[str, Any]:
     return {
         "task_id": task.id,
         "story_input_mode": task.story_input_mode.value,
+        "remove_image_text": task.remove_image_text,
         "original_text": task.original_text,
         "story_context": story_text_for_generation(task),
         "aspect_ratio": task.style_aspect_ratio_snapshot,
@@ -2027,7 +2144,9 @@ def final_prompt_panel_payload(
     visual_prompt: str,
     image_text: dict[str, str | None],
     reference_pack: GenerationReferencePack,
+    remove_image_text: bool = False,
 ) -> dict[str, Any]:
+    effective_image_text = empty_image_text_payload() if remove_image_text else image_text
     return {
         "panel_id": panel.id,
         "panel_order": panel.panel_order,
@@ -2035,15 +2154,18 @@ def final_prompt_panel_payload(
         "story_beat": panel.original_text_segment,
         "visual_prompt": visual_prompt,
         "text_layout": panel.text_layout,
-        "image_text": image_text,
+        "image_text": effective_image_text,
+        "remove_image_text": remove_image_text,
         "structured_storyboard": structured_storyboard_block(
             panel_order=panel.panel_order,
             visual_prompt=visual_prompt,
-            image_text=image_text,
+            image_text=effective_image_text,
             text_layout=panel.text_layout,
         ),
         "layout_instruction": layout_instruction(panel.text_layout),
-        "text_rules": text_rules_block(visual_prompt, image_text, panel.text_layout),
+        "text_rules": NO_IMAGE_TEXT_RULE
+        if remove_image_text
+        else text_rules_block(visual_prompt, effective_image_text, panel.text_layout),
         "reference_notes": reference_pack.notes,
         "reference_count": len(reference_pack.references),
         "character_reference_count": reference_pack.character_reference_count,
@@ -2081,6 +2203,7 @@ def compose_final_prompts_for_panels(
                 visual_prompt=visual_prompt,
                 image_text=image_text,
                 reference_pack=reference_packs[panel.id],
+                remove_image_text=task.remove_image_text,
             )
         )
 

@@ -10,3 +10,5 @@ openai==1.59.7
 requests==2.32.3
 qiniu==7.17.0
 pillow==11.0.0
+faster-whisper==1.1.1
+opencc-python-reimplemented==0.1.7

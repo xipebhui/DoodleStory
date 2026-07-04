@@ -29,6 +29,7 @@ class TaskCreate(BaseModel):
     style_id: str = Field(min_length=1)
     use_character_references: bool = True
     last_panel_real_photo: bool = False
+    remove_image_text: bool = False
     story_characters: list[StoryCharacterBindingCreate] = Field(default_factory=list, max_length=12)
 
 
@@ -131,6 +132,7 @@ class TaskListItemRead(TimestampFields):
     requested_image_count: int | None
     use_character_references: bool
     last_panel_real_photo: bool
+    remove_image_text: bool
     style_id: str
     style_name_snapshot: str
     image_model_name_snapshot: str
@@ -159,6 +161,7 @@ class TaskRead(TimestampFields):
     requested_image_count: int | None
     use_character_references: bool
     last_panel_real_photo: bool
+    remove_image_text: bool
     style_id: str
     style_name_snapshot: str
     image_model_name_snapshot: str

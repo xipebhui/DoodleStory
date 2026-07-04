@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import current_user
 from app.core.database import get_db
 from app.models.entities import (
+    AudioReference,
     ContentExtractionMedia,
     FileAsset,
     GeneratedImage,
@@ -15,6 +16,8 @@ from app.models.entities import (
     TaskDownload,
     User,
     UserCharacter,
+    VideoTask,
+    VideoTaskAudioSegment,
 )
 from app.models.enums import FileAssetPurpose, UserRole
 from app.schemas.common import ApiData
@@ -88,6 +91,49 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
             .where(TaskDownload.asset_id == asset.id, TaskDownload.task.has(owner_user_id=user.id))
         )
         return download is not None
+    if asset.purpose == FileAssetPurpose.audio_reference:
+        reference = db.scalar(
+            select(AudioReference).where(
+                AudioReference.asset_id == asset.id,
+                AudioReference.owner_user_id == user.id,
+                AudioReference.deleted_at.is_(None),
+            )
+        )
+        if reference is not None:
+            return True
+        video_task = db.scalar(
+            select(VideoTask).where(
+                VideoTask.audio_reference_asset_id_snapshot == asset.id,
+                VideoTask.owner_user_id == user.id,
+            )
+        )
+        return video_task is not None
+    if asset.purpose == FileAssetPurpose.generated_audio:
+        video_task = db.scalar(
+            select(VideoTask).where(
+                VideoTask.narration_audio_asset_id == asset.id,
+                VideoTask.owner_user_id == user.id,
+            )
+        )
+        if video_task is not None:
+            return True
+        audio_segment = db.scalar(
+            select(VideoTaskAudioSegment)
+            .join(VideoTaskAudioSegment.video_task)
+            .where(
+                VideoTaskAudioSegment.asset_id == asset.id,
+                VideoTask.owner_user_id == user.id,
+            )
+        )
+        return audio_segment is not None
+    if asset.purpose == FileAssetPurpose.generated_video:
+        video_task = db.scalar(
+            select(VideoTask).where(
+                VideoTask.output_video_asset_id == asset.id,
+                VideoTask.owner_user_id == user.id,
+            )
+        )
+        return video_task is not None
     if asset.purpose in {FileAssetPurpose.douyin_media, FileAssetPurpose.douyin_audio, FileAssetPurpose.douyin_metadata}:
         media = db.scalar(
             select(ContentExtractionMedia)

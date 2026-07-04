@@ -63,11 +63,31 @@ class Settings(BaseSettings):
     image_job_concurrency: int = Field(default=6, ge=1)
     image_job_user_concurrency: int = Field(default=2, ge=1)
     image_job_lease_seconds: int = Field(default=1800, ge=60)
+    video_task_worker_concurrency: int = Field(default=1, ge=1)
     image_provider_debug_log_raw_io: bool = False
     image_provider_debug_log_raw_max_chars: int = 20000
     douyin_import_service_base_url: str = "http://127.0.0.1:8010"
     siliconflow_vision_model: str = "Qwen/Qwen3-VL-32B-Instruct"
     siliconflow_audio_model: str = ""
+    video_tts_provider: str = "siliconflow"
+    video_tts_model: str = "FunAudioLLM/CosyVoice2-0.5B"
+    video_tts_response_format: str = "mp3"
+    video_tts_sample_rate: int = Field(default=32000, ge=8000)
+    video_tts_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    video_tts_gain: float = 0.0
+    video_tts_timeout_seconds: int = Field(default=1200, ge=30)
+    local_whisper_model: str = "tiny"
+    local_whisper_device: str = "auto"
+    local_whisper_compute_type: str = "default"
+    comic_video_service_base_url: str = "http://127.0.0.1:51103"
+    comic_video_service_api_key: str = ""
+    comic_video_poll_interval_seconds: float = Field(default=5.0, ge=0.2)
+    comic_video_poll_timeout_seconds: int = Field(default=3600, ge=60)
+    comic_video_episode_theme: str = "daily"
+    comic_video_episode_width: int = Field(default=1080, ge=64)
+    comic_video_episode_height: int = Field(default=1920, ge=64)
+    comic_video_episode_fps: int = Field(default=10, ge=1, le=120)
+    comic_video_speed: float = Field(default=1.0, ge=0.5, le=2.0)
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),
