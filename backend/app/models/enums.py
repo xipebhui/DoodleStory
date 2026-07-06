@@ -41,6 +41,7 @@ class ContentExtractionMediaKind(StrEnum):
 class StorageBackend(StrEnum):
     local = "local"
     qiniu = "qiniu"
+    aliyun_oss = "aliyun_oss"
 
 
 class ImageCountMode(StrEnum):

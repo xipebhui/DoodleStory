@@ -179,7 +179,7 @@ def get_asset_content(
     if variant not in {ASSET_URL_VARIANT_ORIGINAL, ASSET_URL_VARIANT_THUMBNAIL}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="资产访问变体不支持")
 
-    if asset.storage_backend == StorageBackend.qiniu:
+    if asset.storage_backend in {StorageBackend.qiniu, StorageBackend.aliyun_oss}:
         return RedirectResponse(
             asset_content_url(asset, variant),
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,

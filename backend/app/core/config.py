@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     qny_public_base_url: str = ""
     qny_use_https: bool = True
     qny_domain: str = ""
+    aliyun_oss_access_key_id: str = ""
+    aliyun_oss_access_key_secret: str = ""
+    aliyun_oss_bucket: str = ""
+    aliyun_oss_endpoint: str = ""
+    aliyun_oss_public_base_url: str = ""
     local_thumbnail_width: int = 320
     local_thumbnail_height: int = 568
     frontend_origin: str = "http://127.0.0.1:3000"

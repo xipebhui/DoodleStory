@@ -3,7 +3,7 @@ import mimetypes
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from uuid import uuid4
 
 import requests
@@ -70,6 +70,15 @@ class QiniuConfig:
     use_https: bool
 
 
+@dataclass(frozen=True)
+class AliyunOssConfig:
+    access_key_id: str
+    access_key_secret: str
+    bucket: str
+    endpoint: str
+    public_base_url: str
+
+
 def qiniu_config() -> QiniuConfig:
     settings = get_settings()
     qiniu_public_base_url = settings.qiniu_bucket_domain.strip()
@@ -80,6 +89,17 @@ def qiniu_config() -> QiniuConfig:
         bucket=settings.qiniu_bucket.strip() or settings.qny_bucket.strip(),
         public_base_url=qiniu_public_base_url or qny_public_base_url,
         use_https=True if qiniu_public_base_url else settings.qny_use_https,
+    )
+
+
+def aliyun_oss_config() -> AliyunOssConfig:
+    settings = get_settings()
+    return AliyunOssConfig(
+        access_key_id=settings.aliyun_oss_access_key_id.strip(),
+        access_key_secret=settings.aliyun_oss_access_key_secret.strip(),
+        bucket=settings.aliyun_oss_bucket.strip(),
+        endpoint=settings.aliyun_oss_endpoint.strip().rstrip("/"),
+        public_base_url=settings.aliyun_oss_public_base_url.strip().rstrip("/"),
     )
 
 
@@ -202,6 +222,29 @@ def qiniu_asset_url(storage_key: str, variant: str) -> str:
     return base_url
 
 
+def aliyun_oss_public_base_url() -> str:
+    config = aliyun_oss_config()
+    if config.public_base_url:
+        return config.public_base_url
+    if not config.bucket or not config.endpoint:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="阿里云 OSS 公开访问域名未配置")
+
+    endpoint = config.endpoint
+    if not endpoint.startswith(("http://", "https://")):
+        endpoint = f"https://{endpoint}"
+    parsed = urlparse(endpoint)
+    if not parsed.netloc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="阿里云 OSS Endpoint 配置不合法")
+    return f"{parsed.scheme}://{config.bucket}.{parsed.netloc}"
+
+
+def aliyun_oss_asset_url(storage_key: str, variant: str) -> str:
+    base_url = aliyun_oss_public_base_url().rstrip("/")
+    if variant == ASSET_URL_VARIANT_THUMBNAIL:
+        return f"{base_url}/{quote(storage_key, safe='/')}"
+    return f"{base_url}/{quote(storage_key, safe='/')}"
+
+
 def upload_qiniu_file(storage_key: str, local_path: Path) -> str:
     try:
         from qiniu import put_file_v2
@@ -217,6 +260,41 @@ def upload_qiniu_file(storage_key: str, local_path: Path) -> str:
     return qiniu_base_url(storage_key)
 
 
+def upload_aliyun_oss_file(storage_key: str, local_path: Path) -> str:
+    config = aliyun_oss_config()
+    missing = [
+        name
+        for name, value in {
+            "ALIYUN_OSS_ACCESS_KEY_ID": config.access_key_id,
+            "ALIYUN_OSS_ACCESS_KEY_SECRET": config.access_key_secret,
+            "ALIYUN_OSS_BUCKET": config.bucket,
+            "ALIYUN_OSS_ENDPOINT": config.endpoint,
+        }.items()
+        if not value
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"阿里云 OSS 配置缺失：{', '.join(missing)}",
+        )
+    try:
+        import oss2
+    except ImportError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="缺少 oss2 Python SDK") from exc
+
+    endpoint = config.endpoint
+    if not endpoint.startswith(("http://", "https://")):
+        endpoint = f"https://{endpoint}"
+    auth = oss2.Auth(config.access_key_id, config.access_key_secret)
+    bucket = oss2.Bucket(auth, endpoint, config.bucket)
+    result = bucket.put_object_from_file(storage_key, str(local_path))
+    status_code = getattr(result, "status", None)
+    if status_code not in {200, 201}:
+        request_id = getattr(result, "request_id", "") or "未知 request id"
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"阿里云 OSS 上传失败：{request_id}")
+    return aliyun_oss_asset_url(storage_key, ASSET_URL_VARIANT_ORIGINAL)
+
+
 def store_content(purpose: str, content: bytes, suffix: str) -> StoredFile:
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件内容不能为空")
@@ -230,6 +308,10 @@ def store_content(purpose: str, content: bytes, suffix: str) -> StoredFile:
         write_local_file(storage_key, content)
         public_url = upload_qiniu_file(storage_key, resolve_storage_key(storage_key))
         return StoredFile(StorageBackend.qiniu, storage_key, len(content), checksum, public_url)
+    if backend == StorageBackend.aliyun_oss:
+        write_local_file(storage_key, content)
+        public_url = upload_aliyun_oss_file(storage_key, resolve_storage_key(storage_key))
+        return StoredFile(StorageBackend.aliyun_oss, storage_key, len(content), checksum, public_url)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="存储后端配置不支持")
 
 
@@ -307,6 +389,8 @@ def asset_content_url(asset, variant: str = ASSET_URL_VARIANT_ORIGINAL) -> str:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="资产访问变体不支持")
     if asset.storage_backend == StorageBackend.qiniu:
         return qiniu_asset_url(asset.storage_key, variant)
+    if asset.storage_backend == StorageBackend.aliyun_oss:
+        return aliyun_oss_asset_url(asset.storage_key, variant)
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="本地资产没有外部访问 URL")
 
 
@@ -316,18 +400,18 @@ def materialize_asset_to_local(asset) -> Path:
         if not path.exists():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="本地文件不存在")
         return path
-    if asset.storage_backend == StorageBackend.qiniu:
+    if asset.storage_backend in {StorageBackend.qiniu, StorageBackend.aliyun_oss}:
         mirrored_path = resolve_storage_key(asset.storage_key)
         if mirrored_path.exists() and mirrored_path.stat().st_size > 0:
             return mirrored_path
         suffix = Path(asset.storage_key).suffix or mimetypes.guess_extension(asset.content_type) or ".bin"
-        cache_path = get_settings().storage_root / "_cache" / "qiniu" / f"{asset.id}{suffix}"
+        cache_path = get_settings().storage_root / "_cache" / asset.storage_backend.value / f"{asset.id}{suffix}"
         if cache_path.exists() and cache_path.stat().st_size > 0:
             return cache_path
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        response = requests.get(qiniu_asset_url(asset.storage_key, ASSET_URL_VARIANT_ORIGINAL), timeout=120)
+        response = requests.get(asset_content_url(asset, ASSET_URL_VARIANT_ORIGINAL), timeout=120)
         if response.status_code != 200 or not response.content:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="七牛资产下载失败")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="对象存储资产下载失败")
         cache_path.write_bytes(response.content)
         return cache_path
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="资产存储后端不支持")
@@ -339,12 +423,12 @@ def existing_local_asset_path(asset) -> Path:
         if not path.exists():
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="本地文件不存在")
         return path
-    if asset.storage_backend == StorageBackend.qiniu:
+    if asset.storage_backend in {StorageBackend.qiniu, StorageBackend.aliyun_oss}:
         mirrored_path = resolve_storage_key(asset.storage_key)
         if mirrored_path.exists():
             return mirrored_path
         suffix = Path(asset.storage_key).suffix or mimetypes.guess_extension(asset.content_type) or ".bin"
-        cache_path = get_settings().storage_root / "_cache" / "qiniu" / f"{asset.id}{suffix}"
+        cache_path = get_settings().storage_root / "_cache" / asset.storage_backend.value / f"{asset.id}{suffix}"
         if cache_path.exists() and cache_path.stat().st_size > 0:
             return cache_path
         raise HTTPException(

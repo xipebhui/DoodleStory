@@ -10,11 +10,13 @@
 ## 当前 Sprint 合同
 
 - `docs/contracts/sprint-88-admin-video-audio-visibility.md`
+- `docs/contracts/sprint-89-aliyun-oss-storage.md`
 - `docs/contracts/sprint-80-image-result-aspect-ratio-retry.md`
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
 
+- 开始 Sprint 89 阿里云 OSS 存储接入：七牛公开域名到期后，内容提取下载和上传本身成功，但传给 SiliconFlow 图文 VL 的 `file_assets.public_url` 指向不可下载的七牛域名，导致模型返回 `The image URL must be a valid and downloadable URL`。本轮新增 `STORAGE_BACKEND=aliyun_oss`，读取 `ALIYUN_OSS_*` 配置上传到阿里云 OSS；未配置自定义公网域名时使用 OSS 默认公开 Bucket 域名生成 `public_url`，并继续保留服务器本地镜像。资产读取和前端序列化已把 `aliyun_oss` 作为公开对象存储处理，不新增 base64 兜底、不迁移历史七牛资产。
 - 完成 Sprint 88 视频任务与音频管理管理员可见：左侧导航仅管理员展示 `视频任务` 和 `音频管理`，普通用户直接访问 `/video-tasks` 或 `/audio-references` 时不渲染对应页面；后端视频任务和音频参考 API 统一要求 Admin，音频参考、生成旁白音频和最终视频资产也只允许管理员读取。规格已同步为管理员能力，历史数据不删除、不迁移。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_audio_tasks`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend` 和 `git diff --check` 通过。
 - 任务导航文案调整：左侧导航中的 `任务` 已改为 `图文任务`，404 空状态里的入口提示同步改为 `图文任务`，避免与新增的视频任务能力混淆。验证：`npm run build --prefix frontend` 通过。
 - 完成 Sprint 80 生图结果比例校验重试：针对线上任务 `b0d41aea74ce4c3188f076a334491290` 出现 panel 目标比例不稳定、实际产出 `9:16` 的问题，正式 panel 生图和单 panel 修改现在会在保存资产前读取返回图片尺寸并校验目标比例；比例不符时使用同一模型、同一 prompt 和同一参考图重新生成，重试次数沿用图片 job 的 `max_attempts`，耗尽后明确失败。成功保存的生成资产会记录 `width` / `height`，方便后续排查。该改动不切换图片 provider、不新增模型兜底、不修改角色参考图或风格测试重试策略。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_image_generation_gateway_only`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。

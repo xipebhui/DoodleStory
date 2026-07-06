@@ -38,20 +38,20 @@ class FileAssetRead(TimestampFields):
     width: int | None = None
     height: int | None = None
 
-    def is_qiniu_asset(self) -> bool:
-        return self.storage_backend == "qiniu" and bool(self.public_url)
+    def is_public_object_asset(self) -> bool:
+        return self.storage_backend in {"qiniu", "aliyun_oss"} and bool(self.public_url)
 
     @computed_field
     @property
     def content_url(self) -> str:
-        if self.is_qiniu_asset():
+        if self.is_public_object_asset():
             return self.public_url or ""
         return f"/api/v1/assets/{self.id}/content"
 
     @computed_field
     @property
     def thumbnail_url(self) -> str:
-        if self.is_qiniu_asset():
+        if self.is_public_object_asset():
             return self.public_url or ""
         return f"/api/v1/assets/{self.id}/content?variant=thumbnail"
 
