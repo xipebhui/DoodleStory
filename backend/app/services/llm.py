@@ -21,6 +21,7 @@ ORIGINAL_STORY_PANEL_TEXT_TARGET_MAX_CHARS = 40
 ORIGINAL_STORY_OVERLONG_REPAIR_MAX_ATTEMPTS = 2
 ORIGINAL_STORY_PUNCTUATION_FALLBACK_MIN_CHARS = 20
 ORIGINAL_STORY_PUNCTUATION_BREAK_CHARS = set("。！？!?；;…\n，,、：:")
+EXTRACTED_STORYBOARD_STRUCTURE_ERROR_MESSAGE = "内容提取分镜结构化失败，系统没有生成可用的分镜结构，请重试。"
 
 
 class LLMProviderError(Exception):
@@ -1448,10 +1449,7 @@ def parse_extracted_storyboard(
             errors=exc.errors(),
             raw=raw,
         )
-        first_error = exc.errors()[0] if exc.errors() else {}
-        location = ".".join(str(item) for item in first_error.get("loc", []))
-        message = first_error.get("msg", "未知结构错误")
-        raise LLMResponseError(f"LLM 内容提取分镜 JSON 结构不符合要求：{location} {message}") from exc
+        raise LLMResponseError(EXTRACTED_STORYBOARD_STRUCTURE_ERROR_MESSAGE) from exc
 
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
     if any(panel.panel_type == PanelType.cover for panel in result.panels):

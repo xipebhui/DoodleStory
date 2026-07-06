@@ -3,7 +3,12 @@ import unittest
 from unittest.mock import patch
 
 from app.models.enums import ImageCountMode, PanelType
-from app.services.llm import plan_adapted_story_panels, plan_storyboard_from_brief
+from app.services.llm import (
+    LLMResponseError,
+    parse_extracted_storyboard,
+    plan_adapted_story_panels,
+    plan_storyboard_from_brief,
+)
 
 
 class StoryboardPlanningTest(unittest.TestCase):
@@ -81,6 +86,36 @@ class StoryboardPlanningTest(unittest.TestCase):
         user_payload = json.loads(call_json.call_args.kwargs["user_prompt"])
         self.assertIn("不要额外生成封面", user_payload["count_instruction"])
         self.assertEqual(PanelType.scene, result.panels[0].panel_type)
+
+    def test_extracted_storyboard_validation_error_hides_internal_schema_fields(self) -> None:
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={
+                "story_hook": "女孩在操场自拍",
+                "story_outline": "从教室到操场的三页分镜。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "教室回头",
+                        "visual_prompt": "教室里男生回头看向女生。",
+                        "image_text": {"narration": "我和我对象是大学同班同学"},
+                    }
+                ],
+            },
+        ):
+            with self.assertRaises(LLMResponseError) as raised:
+                parse_extracted_storyboard(
+                    extracted_text="第1页：教室里男生回头看向女生。",
+                    style_prompt="黑白漫画风",
+                    image_count_mode=ImageCountMode.auto,
+                    requested_image_count=None,
+                )
+
+        message = str(raised.exception)
+        self.assertIn("内容提取分镜结构化失败", message)
+        self.assertNotIn("story_title", message)
+        self.assertNotIn("Field required", message)
 
 
 if __name__ == "__main__":
