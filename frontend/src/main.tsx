@@ -4507,24 +4507,41 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
     setStylePage("test");
   }
 
+  async function requestStylePromptExtraction(selectedReferenceFiles: File[]) {
+    const isEditMode = styleFormMode === "edit" && Boolean(editingStyle);
+    const referenceCount = isEditMode ? editingStyle?.reference_images.length ?? 0 : selectedReferenceFiles.length;
+    if (referenceCount < 3) {
+      throw new Error("请先提供至少 3 张风格参考图，再生成风格提示词");
+    }
+    return isEditMode && editingStyle
+      ? api.extractStylePromptFromStyle(editingStyle.id)
+      : api.extractStylePromptFromFiles(selectedReferenceFiles);
+  }
+
   async function createStyle(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const payload: Partial<Style> = {
-      name: String(formData.get("name") ?? ""),
-      status: String(formData.get("status") ?? "draft") as Style["status"],
-      image_model_name: String(formData.get("image_model_name") ?? ""),
-      aspect_ratio: String(formData.get("aspect_ratio") ?? "9:16"),
-      style_reference_mode: String(formData.get("style_reference_mode") ?? "prompt") as Style["style_reference_mode"],
-      style_prompt: stylePromptDraft,
-      description: String(formData.get("description") ?? ""),
-    };
-
     const selectedReferenceFiles = [...pendingReferenceFiles];
     const isEditMode = styleFormMode === "edit" && Boolean(editingStyle);
 
     try {
       setSavingStyle(true);
+      let resolvedStylePrompt = stylePromptDraft.trim();
+      if (!resolvedStylePrompt) {
+        setStyleSavePhase("正在根据参考图生成风格提示词...");
+        const extracted = await requestStylePromptExtraction(selectedReferenceFiles);
+        resolvedStylePrompt = extracted.style_prompt.trim();
+        setStylePromptDraft(resolvedStylePrompt);
+      }
+      const payload: Partial<Style> = {
+        name: String(formData.get("name") ?? ""),
+        status: String(formData.get("status") ?? "draft") as Style["status"],
+        image_model_name: String(formData.get("image_model_name") ?? ""),
+        aspect_ratio: String(formData.get("aspect_ratio") ?? "9:16"),
+        style_reference_mode: String(formData.get("style_reference_mode") ?? "prompt") as Style["style_reference_mode"],
+        style_prompt: resolvedStylePrompt,
+        description: String(formData.get("description") ?? ""),
+      };
       setStyleSavePhase(isEditMode ? "正在保存风格..." : "正在创建风格...");
       const saved =
         isEditMode && editingStyle
@@ -4637,19 +4654,10 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
 
   async function extractStylePrompt() {
     if (styleBusy) return;
-    const isEditMode = styleFormMode === "edit" && Boolean(editingStyle);
-    const referenceCount = isEditMode ? editingStyle?.reference_images.length ?? 0 : pendingReferenceFiles.length;
-    if (referenceCount < 3) {
-      setMessage("请先提供至少 3 张风格参考图，再提取风格提示词");
-      return;
-    }
     try {
       setExtractingStylePrompt(true);
       setMessage("正在使用 Gemini VL 提取风格提示词...");
-      const result =
-        isEditMode && editingStyle
-          ? await api.extractStylePromptFromStyle(editingStyle.id)
-          : await api.extractStylePromptFromFiles(pendingReferenceFiles);
+      const result = await requestStylePromptExtraction(pendingReferenceFiles);
       setStylePromptDraft(result.style_prompt);
       setMessage(`已从 ${result.reference_image_count} 张参考图提取风格提示词`);
     } catch (error) {
@@ -4907,9 +4915,8 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
                 placeholder="风格提示词"
                 value={stylePromptDraft}
                 onChange={(event) => setStylePromptDraft(event.target.value)}
-                required
               />
-              <small>至少 3 张参考图可提取共同画风，提取后仍可手动编辑。</small>
+              <small>可留空保存，系统会先从至少 3 张参考图生成；生成后仍可手动编辑。</small>
             </div>
             {message ? <p className="form-message">{message}</p> : null}
             <button type="submit" disabled={styleBusy}>

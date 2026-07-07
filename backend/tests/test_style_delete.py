@@ -223,6 +223,47 @@ class StyleDeleteTest(unittest.TestCase):
         self.assertEqual(400, context.exception.status_code)
         self.assertEqual("风格名称已存在，请换一个名称", context.exception.detail)
 
+    def test_create_draft_style_allows_empty_prompt_for_auto_generation(self) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        result = create_style(
+            StyleCreate(
+                name="待自动生成提示词",
+                status=StyleStatus.draft,
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+            ),
+            user,
+            db,
+        )
+
+        self.assertEqual("", result.data.style_prompt)
+        self.assertEqual(StyleStatus.draft, result.data.status)
+
+    def test_create_active_style_rejects_empty_prompt(self) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        db.add(user)
+        db.commit()
+
+        with self.assertRaises(HTTPException) as context:
+            create_style(
+                StyleCreate(
+                    name="空提示词启用风格",
+                    status=StyleStatus.active,
+                    image_model_name="gpt-image-2",
+                    aspect_ratio="3:4",
+                ),
+                user,
+                db,
+            )
+
+        self.assertEqual(400, context.exception.status_code)
+        self.assertIn("启用风格前", context.exception.detail)
+
     def test_extract_style_prompt_requires_three_reference_images(self) -> None:
         db = self.Session()
         user = User(email="owner@example.com", password_hash="hash")

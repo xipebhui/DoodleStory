@@ -14,7 +14,7 @@ class StyleCreate(BaseModel):
     image_model_name: str = Field(min_length=1, max_length=120)
     aspect_ratio: str = Field(default="9:16")
     style_reference_mode: StyleReferenceMode = StyleReferenceMode.prompt
-    style_prompt: str = Field(min_length=1, max_length=8000)
+    style_prompt: str = Field(default="", max_length=8000)
 
 
 class StyleUpdate(BaseModel):
@@ -24,7 +24,7 @@ class StyleUpdate(BaseModel):
     image_model_name: str | None = Field(default=None, min_length=1, max_length=120)
     aspect_ratio: str | None = None
     style_reference_mode: StyleReferenceMode | None = None
-    style_prompt: str | None = Field(default=None, min_length=1, max_length=8000)
+    style_prompt: str | None = Field(default=None, max_length=8000)
 
 
 class FileAssetRead(TimestampFields):

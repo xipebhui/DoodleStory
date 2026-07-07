@@ -78,6 +78,14 @@ def normalize_aspect_ratio(value: str) -> str:
     return cleaned
 
 
+def ensure_active_style_has_prompt(*, status_value: StyleStatus, style_prompt: str) -> None:
+    if status_value == StyleStatus.active and not style_prompt.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="启用风格前需要先从至少 3 张参考图提取风格提示词，或手动编辑风格提示词",
+        )
+
+
 def style_test_reference_instruction(style: Style) -> str:
     if is_image_reference_mode(style.style_reference_mode):
         return "整体视觉风格以随请求提供的风格参考图为准。"
@@ -262,6 +270,8 @@ def create_style(payload: StyleCreate, user: User = Depends(current_user), db: S
     data["name"] = normalize_style_name(data["name"])
     data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
     data["aspect_ratio"] = normalize_aspect_ratio(data["aspect_ratio"])
+    data["style_prompt"] = data.get("style_prompt", "").strip()
+    ensure_active_style_has_prompt(status_value=data["status"], style_prompt=data["style_prompt"])
     existing_style = db.scalar(select(Style).where(Style.name == data["name"]))
     if existing_style:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="风格名称已存在，请换一个名称")
@@ -325,6 +335,11 @@ def update_style(style_id: str, payload: StyleUpdate, user: User = Depends(curre
         data["image_model_name"] = normalize_image_model_name(data["image_model_name"])
     if "aspect_ratio" in data:
         data["aspect_ratio"] = normalize_aspect_ratio(data["aspect_ratio"])
+    if "style_prompt" in data and data["style_prompt"] is not None:
+        data["style_prompt"] = data["style_prompt"].strip()
+    effective_status = data.get("status", style.status)
+    effective_style_prompt = data.get("style_prompt", style.style_prompt)
+    ensure_active_style_has_prompt(status_value=effective_status, style_prompt=effective_style_prompt)
 
     for key, value in data.items():
         setattr(style, key, value)
