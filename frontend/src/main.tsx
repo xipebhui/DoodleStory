@@ -706,6 +706,23 @@ function formatDateTime(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+function styleTestStatusLabel(status: StyleTest["status"]) {
+  const labels: Record<StyleTest["status"], string> = {
+    queued: "排队中",
+    running: "生成中",
+    succeeded: "已完成",
+    failed: "失败",
+    cancel_requested: "取消中",
+    cancelled: "已取消",
+    retrying: "重试中",
+  };
+  return labels[status] ?? status;
+}
+
+function isActiveStyleTestStatus(status: StyleTest["status"]) {
+  return status === "queued" || status === "running" || status === "retrying";
+}
+
 function isActiveTask(task: Task | TaskSummary | null | undefined) {
   return Boolean(task && ["queued", "running", "retrying", "cancel_requested"].includes(task.status));
 }
@@ -4418,7 +4435,8 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   const [stylePromptDraft, setStylePromptDraft] = useState("");
   const [stylePage, setStylePage] = useState<"library" | "test">("library");
   const [testingStyleId, setTestingStyleId] = useState("");
-  const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
+  const [styleTests, setStyleTests] = useState<StyleTest[]>([]);
+  const [loadingStyleTests, setLoadingStyleTests] = useState(false);
   const [styleTestRunning, setStyleTestRunning] = useState(false);
   const activeCount = useMemo(() => styles.filter((style) => style.status === "active").length, [styles]);
   const editingStyle = useMemo(() => styles.find((style) => style.id === editingStyleId) ?? null, [editingStyleId, styles]);
@@ -4431,6 +4449,21 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (stylePage !== "test" || !testingStyleId) return;
+    void refreshStyleTests(testingStyleId);
+  }, [stylePage, testingStyleId]);
+
+  useEffect(() => {
+    if (stylePage !== "test" || !testingStyleId) return;
+    const hasActiveStyleTest = styleTests.some((test) => isActiveStyleTestStatus(test.status));
+    if (!hasActiveStyleTest) return;
+    const timer = window.setInterval(() => {
+      void refreshStyleTests(testingStyleId, { silent: true });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [stylePage, testingStyleId, styleTests]);
 
   async function refresh(preferredStyleId?: string) {
     const result = await api.styles({ query, status });
@@ -4477,11 +4510,36 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   }
 
   function openStyleTest(style: Style) {
+    if (style.id !== testingStyleId) {
+      setStyleTests([]);
+    }
     setTestingStyleId(style.id);
-    setStyleTest(null);
     setStyleTestRunning(false);
     setMessage("");
     setStylePage("test");
+  }
+
+  async function refreshStyleTests(styleId = testingStyleId, options?: { silent?: boolean }) {
+    if (!styleId) return;
+    try {
+      if (!options?.silent) setLoadingStyleTests(true);
+      const result = await api.styleTests(styleId, { limit: 30 });
+      setStyleTests((previous) => {
+        const previousStatusById = new Map(previous.map((test) => [test.id, test.status]));
+        const hasFinishedActiveTest = result.items.some((test) => {
+          const previousStatus = previousStatusById.get(test.id);
+          return Boolean(previousStatus && isActiveStyleTestStatus(previousStatus) && !isActiveStyleTestStatus(test.status));
+        });
+        if (hasFinishedActiveTest) {
+          void onCreditsChanged();
+        }
+        return result.items;
+      });
+    } catch (error) {
+      if (!options?.silent) setMessage(error instanceof Error ? error.message : "风格测试历史加载失败");
+    } finally {
+      if (!options?.silent) setLoadingStyleTests(false);
+    }
   }
 
   async function requestStylePromptExtraction(selectedReferenceFiles: File[]) {
@@ -4647,17 +4705,18 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   async function runStyleTest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!testingStyle || styleTestRunning) return;
+    const form = event.currentTarget;
     const formData = new FormData(event.currentTarget);
     setStyleTestRunning(true);
-    setStyleTest(null);
-    setMessage("测试图正在生成，请稍候...");
+    setMessage("风格测试已提交，正在后台生成...");
     try {
-      const result = await api.createStyleTest(testingStyle.id, {
+      await api.createStyleTest(testingStyle.id, {
         test_text: String(formData.get("test_text") ?? ""),
       });
-      setStyleTest(result);
+      form.reset();
+      await refreshStyleTests(testingStyle.id, { silent: true });
       await onCreditsChanged();
-      setMessage(result.status === "succeeded" ? "风格测试已完成" : result.error_message ?? "风格测试未成功");
+      setMessage("风格测试已进入后台生成，可在历史列表查看进度");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "风格测试失败");
     } finally {
@@ -4706,7 +4765,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
                 <textarea name="test_text" placeholder="输入要测试的画面文本" required disabled={styleTestRunning} />
                 <button type="submit" disabled={styleTestRunning}>
                   {styleTestRunning ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                  {styleTestRunning ? "生成中..." : "生成测试图"}
+                  {styleTestRunning ? "提交中..." : "提交测试"}
                 </button>
               </form>
             </section>
@@ -4714,21 +4773,60 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
             <section className="panel style-test-output">
               <div className="editor-title">
                 <div>
-                  <h2>测试结果</h2>
-                  <p>测试图使用当前风格参考方式，结果应与正式任务的风格输入保持一致。</p>
+                  <h2>测试历史</h2>
+                  <p>当前风格下的测试会持续保留，可随时回来查看进度、结果图和失败原因。</p>
                 </div>
-                {styleTest ? <span className={`status-pill ${styleTest.status}`}>{styleTest.status}</span> : null}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => refreshStyleTests(testingStyle.id)}
+                  disabled={loadingStyleTests}
+                >
+                  {loadingStyleTests ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
+                  刷新
+                </button>
               </div>
-              {styleTestRunning ? (
+              {loadingStyleTests && styleTests.length === 0 ? (
                 <div className="empty mini">
                   <Loader2 size={20} className="spin" />
-                  正在生成测试图
+                  正在读取测试历史
                 </div>
-              ) : styleTest?.output_asset ? (
-                <LazyAssetImage asset={styleTest.output_asset} assetId={styleTest.output_asset.id} alt="风格测试结果" eager variant="original" />
-              ) : (
-                <div className="empty mini">{styleTest?.error_message || "还没有测试结果"}</div>
-              )}
+              ) : null}
+              {!loadingStyleTests && styleTests.length === 0 ? <div className="empty mini">还没有测试记录</div> : null}
+              {styleTests.length > 0 ? (
+                <div className="style-test-history">
+                  {styleTests.map((test) => (
+                    <article key={test.id} className="style-test-history-item">
+                      <div className="style-test-history-head">
+                        <div>
+                          <strong>{test.test_text}</strong>
+                          <small>
+                            {formatDateTime(test.created_at)}
+                            {test.finished_at ? ` 完成于 ${formatDateTime(test.finished_at)}` : ""}
+                          </small>
+                        </div>
+                        <span className={`status-pill ${test.status}`}>{styleTestStatusLabel(test.status)}</span>
+                      </div>
+                      {isActiveStyleTestStatus(test.status) ? (
+                        <div className="empty mini">
+                          <Loader2 size={20} className="spin" />
+                          {test.status === "queued" ? "等待生成" : "正在生成测试图"}
+                        </div>
+                      ) : test.output_asset ? (
+                        <LazyAssetImage
+                          asset={test.output_asset}
+                          assetId={test.output_asset.id}
+                          alt="风格测试结果"
+                          eager
+                          variant="original"
+                        />
+                      ) : (
+                        <div className="empty mini">{test.error_message || "没有生成结果"}</div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : null}
             </section>
           </div>
         ) : (

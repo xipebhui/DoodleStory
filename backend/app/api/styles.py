@@ -1,16 +1,16 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
-from app.core.database import get_db
-from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, TaskStyleReferenceImage, User
-from app.models.enums import FileAssetPurpose, StyleStatus, WorkflowStatus
+from app.core.database import SessionLocal, get_db
+from app.models.entities import CreditTransaction, FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, TaskStyleReferenceImage, User
+from app.models.enums import CreditTransactionType, FileAssetPurpose, StyleStatus, WorkflowStatus
 from app.schemas.common import ApiData, ApiList
 from app.schemas.style import (
     STYLE_ASPECT_RATIOS,
@@ -90,6 +90,10 @@ def style_test_reference_instruction(style: Style) -> str:
     if is_image_reference_mode(style.style_reference_mode):
         return "整体视觉风格以随请求提供的风格参考图为准。"
     return f"整体保持这种视觉风格：{style.style_prompt.strip()}"
+
+
+def style_test_load_options():
+    return (selectinload(StyleTest.output_asset),)
 
 
 async def style_prompt_reference_from_upload(index: int, file: UploadFile) -> StylePromptImageReference:
@@ -460,6 +464,7 @@ def delete_reference_image(
 def create_style_test(
     style_id: str,
     payload: StyleTestCreate,
+    background_tasks: BackgroundTasks,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> ApiData[StyleTestRead]:
@@ -480,7 +485,6 @@ def create_style_test(
             "test_text": payload.test_text.strip(),
         },
     )
-    now = datetime.utcnow()
     style_test = StyleTest(
         style_id=style.id,
         test_text=payload.test_text,
@@ -489,15 +493,14 @@ def create_style_test(
         aspect_ratio_snapshot=style.aspect_ratio,
         style_reference_mode_snapshot=style.style_reference_mode,
         composed_prompt=composed_prompt,
-        status=WorkflowStatus.running,
-        attempts=1,
-        started_at=now,
+        status=WorkflowStatus.queued,
+        attempts=0,
     )
     db.add(style_test)
     db.commit()
     db.refresh(style_test)
     logger.info(
-        "style test started style_test_id=%s style_id=%s image_model=%s test_text_chars=%s provider_reference_count=%s preview_reference_count=%s",
+        "style test queued style_test_id=%s style_id=%s image_model=%s test_text_chars=%s provider_reference_count=%s preview_reference_count=%s",
         style_test.id,
         style.id,
         style.image_model_name,
@@ -505,18 +508,89 @@ def create_style_test(
         len(style.reference_images) if is_image_reference_mode(style.style_reference_mode) else 0,
         len(style.reference_images),
     )
+    background_tasks.add_task(process_style_test, style_test.id, user.id)
+    return ApiData(data=StyleTestRead.model_validate(style_test))
 
+
+@router.get("/{style_id}/tests", response_model=ApiList[StyleTestRead])
+def list_style_tests(
+    style_id: str,
+    _user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    pagination: Pagination = Depends(get_pagination),
+) -> ApiList[StyleTestRead]:
+    style_exists = db.scalar(select(Style.id).where(Style.id == style_id, Style.deleted_at.is_(None)))
+    if not style_exists:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
+    statement = (
+        select(StyleTest)
+        .where(StyleTest.style_id == style_id)
+        .options(*style_test_load_options())
+        .order_by(StyleTest.created_at.desc(), StyleTest.id.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit + 1)
+    )
+    tests = db.scalars(statement).all()
+    visible_tests = tests[: pagination.limit]
+    return ApiList(
+        items=[StyleTestRead.model_validate(style_test) for style_test in visible_tests],
+        page=build_page(pagination.limit, pagination.offset, len(tests)),
+    )
+
+
+def process_style_test(style_test_id: str, user_id: str) -> None:
+    with SessionLocal() as db:
+        style_test = db.scalar(select(StyleTest).where(StyleTest.id == style_test_id))
+        if not style_test:
+            logger.warning("style test background skipped missing style_test_id=%s", style_test_id)
+            return
+        if style_test.status not in {WorkflowStatus.queued, WorkflowStatus.running, WorkflowStatus.retrying}:
+            logger.info(
+                "style test background skipped terminal style_test_id=%s status=%s",
+                style_test.id,
+                style_test.status,
+            )
+            return
+        style = db.scalar(
+            select(Style)
+            .where(Style.id == style_test.style_id)
+            .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+        )
+        if not style:
+            style_test.status = WorkflowStatus.failed
+            style_test.error_code = "StyleMissing"
+            style_test.error_message = "风格不存在，无法继续测试"
+            style_test.finished_at = datetime.utcnow()
+            db.commit()
+            return
+        run_style_test_generation(db=db, style_test=style_test, style=style, user_id=user_id)
+
+
+def run_style_test_generation(*, db: Session, style_test: StyleTest, style: Style, user_id: str) -> None:
+    style_test.status = WorkflowStatus.running
+    style_test.attempts = (style_test.attempts or 0) + 1
+    style_test.started_at = style_test.started_at or datetime.utcnow()
+    db.commit()
+    logger.info(
+        "style test started style_test_id=%s style_id=%s image_model=%s test_text_chars=%s provider_reference_count=%s preview_reference_count=%s",
+        style_test.id,
+        style.id,
+        style.image_model_name,
+        len(style_test.test_text),
+        len(style.reference_images) if is_image_reference_mode(style.style_reference_mode) else 0,
+        len(style.reference_images),
+    )
     try:
         reserve_image_credit(
             db,
-            user_id=user.id,
+            user_id=user_id,
             style_test_id=style_test.id,
             note=f"风格测试 {style.name} 生图占用",
         )
         db.commit()
         style_reference_pack = build_style_reference_pack_from_style(style)
         generated = generate_xg_image(
-            prompt=composed_prompt,
+            prompt=style_test.composed_prompt,
             references=style_reference_pack.references,
             image_model_name=style.image_model_name,
             aspect_ratio=style.aspect_ratio,
@@ -539,7 +613,7 @@ def create_style_test(
         style_test.provider_request_id = generated.provider_request_id
         charge_reserved_image_credit(
             db,
-            user_id=user.id,
+            user_id=user_id,
             style_test_id=style_test.id,
             note=f"风格测试 {style.name} 成功产出扣费",
         )
@@ -579,7 +653,7 @@ def create_style_test(
         try:
             release_reserved_image_credit(
                 db,
-                user_id=user.id,
+                user_id=user_id,
                 style_test_id=style_test.id,
                 note=f"风格测试 {style.name} 失败释放积分占用",
             )
@@ -587,9 +661,36 @@ def create_style_test(
             logger.info("style test release skipped no reserved credit style_test_id=%s", style_test.id)
 
     db.commit()
-    style_test = db.scalar(
-        select(StyleTest)
-        .where(StyleTest.id == style_test.id)
-        .options(selectinload(StyleTest.output_asset))
-    )
-    return ApiData(data=StyleTestRead.model_validate(style_test))
+
+
+def recover_interrupted_style_tests() -> None:
+    with SessionLocal() as db:
+        interrupted_tests = db.scalars(
+            select(StyleTest).where(StyleTest.status.in_([WorkflowStatus.queued, WorkflowStatus.running, WorkflowStatus.retrying]))
+        ).all()
+        recovered_count = 0
+        for style_test in interrupted_tests:
+            latest_transaction = db.scalar(
+                select(CreditTransaction)
+                .where(CreditTransaction.style_test_id == style_test.id)
+                .order_by(CreditTransaction.created_at.desc(), CreditTransaction.id.desc())
+                .limit(1)
+            )
+            if latest_transaction and latest_transaction.transaction_type == CreditTransactionType.image_generation_reserve:
+                try:
+                    release_reserved_image_credit(
+                        db,
+                        user_id=latest_transaction.user_id,
+                        style_test_id=style_test.id,
+                        note="风格测试服务重启中断释放积分占用",
+                    )
+                except CreditError:
+                    logger.info("interrupted style test release skipped style_test_id=%s", style_test.id)
+            style_test.status = WorkflowStatus.failed
+            style_test.error_code = "StyleTestInterrupted"
+            style_test.error_message = "服务重启导致风格测试中断，请重新测试。"
+            style_test.finished_at = datetime.utcnow()
+            recovered_count += 1
+        if recovered_count:
+            db.commit()
+            logger.warning("interrupted style tests marked failed count=%s", recovered_count)

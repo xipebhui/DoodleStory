@@ -201,6 +201,9 @@ export type StyleTest = {
   output_asset: FileAsset | null;
   error_code: string | null;
   error_message: string | null;
+  provider_request_id: string | null;
+  started_at: string | null;
+  finished_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -765,6 +768,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }).then((result) => result.data),
+  styleTests: (styleId: string, params?: { limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<StyleTest>>(`/styles/${styleId}/tests${suffix}`);
+  },
   assetContentUrl: (assetId: string, variant: "original" | "thumbnail" = "original") =>
     `${API_BASE_URL}/api/v1/assets/${assetId}/content${variant === "thumbnail" ? "?variant=thumbnail" : ""}`,
   audioReferences: (params?: { query?: string; cursor?: string | null; limit?: number }) => {

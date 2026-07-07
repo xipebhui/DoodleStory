@@ -9,6 +9,7 @@
 
 ## 当前 Sprint 合同
 
+- `docs/contracts/sprint-94-async-style-test-history.md`
 - `docs/contracts/sprint-93-style-prompt-vl-extraction.md`
 - `docs/contracts/sprint-92-knowledge-plan-direct-prompt-mode.md`
 - `docs/contracts/sprint-91-friendly-panel-count-mismatch-error.md`
@@ -20,6 +21,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 94 风格测试异步历史列表：风格测试提交后后端只创建 `style_test` 记录并通过后台任务生成，接口立即返回 `queued` 状态；新增当前风格测试历史列表 API，前端风格测试页改为展示历史用例、运行状态、结果图和失败原因，并在存在 `queued` / `running` / `retrying` 测试时自动轮询刷新。提交测试不再清空历史列表，切换回当前风格可重新读取结果；后台任务继续复用既有风格参考方式、Provider、积分占用/扣费/释放逻辑，服务启动时会把遗留运行中的风格测试标记为失败并释放可识别的积分占用。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_style_delete backend.tests.test_credits`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 155 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 隐藏图文任务创建弹窗中的 `最后一张真人图片` 和 `去掉画面文字` 两个选项：前端不再展示这两个 checkbox，创建普通任务和 DY 爆款复刻任务时都固定提交 `last_panel_real_photo=false`、`remove_image_text=false`；历史任务详情仍保留状态展示，后端字段和视频任务默认无文字能力不变。
 - 完成 Sprint 93 风格提示词多图 VL 提取：风格创建/编辑抽屉新增 `从参考图提取` 辅助动作，新建时可直接用待上传的至少 3 张图片调用提取接口，编辑时可用已保存的至少 3 张参考图重新提取；后端新增 `gpt-5.4` VL 风格提示词提取服务，读取 `TEXT_FALLBACK_BASE_URL`、`TEXT_FALLBACK_API_KEY` 和 `TEXT_FALLBACK_MODEL` 配置，不使用 LIO/Gemini、SiliconFlow 或其它 VL 兜底。用户不再需要手写风格提示词，保存时如果提示词为空，前端会先用至少 3 张参考图自动提取，再继续创建或保存；用户仍可编辑自动生成的提示词。后端允许草稿风格暂时没有提示词，但启用风格时必须有非空提示词。提取提示词按用户指定的艺术评论家结构输出 `【核心调性】`、`【色彩与光影特征】`、`【线条与肌理特征】`、`【构图与透视特征】` 和 `【风格迁移测试】`，并校验返回结构。少于 3 张图、图片校验失败、`gpt-5.4` 配置缺失或模型输出结构不合格都会明确报错。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_style_delete`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 153 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 92 知识方案直通生图模式：为知识卡片、图鉴、清单和方法论等非故事内容新增 `knowledge_plan` 输入模式。该模式要求用户显式写出 `第1页` / `图1` 等页标，后端只按页拆分并保留每页原始提示词；默认关闭人物参考，不走人物提取、人物参考图或最终 prompt LLM 编译，只拼接风格、比例、参考图说明和去文字最高指令。固定图片数量必须与显式页数一致；没有页标时会明确提示用户按页填写。前端创建任务弹窗已新增 `知识方案` 入口，并在该模式下隐藏固定角色流程。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_llm_storyboard_planning backend.tests.test_task_worker_prompt backend.tests.test_user_characters`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 148 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。

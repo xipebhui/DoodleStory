@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup() -> None:
         content_extractions.recover_interrupted_content_extractions()
+        styles.recover_interrupted_style_tests()
         init_task_queue()
         init_video_task_queue()
         await recover_queued_tasks()

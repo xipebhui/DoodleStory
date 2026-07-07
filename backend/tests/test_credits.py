@@ -5,14 +5,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import BackgroundTasks
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.credits import admin_credit_transaction_rows, admin_usage_for_period, my_credits, transaction_rows_for_user, usage_points_for_user
 from app.api.pagination import Pagination
-from app.api.styles import create_style_test
+from app.api.styles import create_style_test, run_style_test_generation
 from app.core.database import Base
-from app.models.entities import CreditTransaction, Style, User
+from app.models.entities import CreditTransaction, Style, StyleTest, User
 from app.models.enums import CreditTransactionType, StorageBackend, StyleReferenceMode, StyleStatus, UserRole, WorkflowStatus
 from app.schemas.style import StyleTestCreate
 from app.services.credits import (
@@ -333,19 +334,27 @@ class CreditsTest(unittest.TestCase):
             provider_request_id="req_1",
         )
         with patch("app.api.styles.generate_xg_image", return_value=generated) as provider:
-            result = create_style_test(style.id, StyleTestCreate(test_text="一只猫"), user, db)
+            result = create_style_test(style.id, StyleTestCreate(test_text="一只猫"), BackgroundTasks(), user, db)
+            self.assertEqual(WorkflowStatus.queued, result.data.status)
+            provider.assert_not_called()
+            style_test = db.get(StyleTest, result.data.id)
+            run_style_test_generation(db=db, style_test=style_test, style=style, user_id=user.id)
 
         db.refresh(user.credit_account)
-        self.assertEqual(WorkflowStatus.succeeded, result.data.status)
+        db.refresh(style_test)
+        self.assertEqual(WorkflowStatus.succeeded, style_test.status)
         self.assertEqual(1, user.credit_account.balance)
         self.assertEqual(0, user.credit_account.reserved_balance)
         self.assertEqual(1, provider.call_count)
 
         with patch("app.api.styles.generate_xg_image", side_effect=ImageProviderResponseError("provider failed")):
-            result = create_style_test(style.id, StyleTestCreate(test_text="一只狗"), user, db)
+            result = create_style_test(style.id, StyleTestCreate(test_text="一只狗"), BackgroundTasks(), user, db)
+            style_test = db.get(StyleTest, result.data.id)
+            run_style_test_generation(db=db, style_test=style_test, style=style, user_id=user.id)
 
         db.refresh(user.credit_account)
-        self.assertEqual(WorkflowStatus.failed, result.data.status)
+        db.refresh(style_test)
+        self.assertEqual(WorkflowStatus.failed, style_test.status)
         self.assertEqual(1, user.credit_account.balance)
         self.assertEqual(0, user.credit_account.reserved_balance)
 
@@ -366,10 +375,13 @@ class CreditsTest(unittest.TestCase):
         db.commit()
 
         with patch("app.api.styles.generate_xg_image") as provider:
-            result = create_style_test(style.id, StyleTestCreate(test_text="一只猫"), user, db)
+            result = create_style_test(style.id, StyleTestCreate(test_text="一只猫"), BackgroundTasks(), user, db)
+            style_test = db.get(StyleTest, result.data.id)
+            run_style_test_generation(db=db, style_test=style_test, style=style, user_id=user.id)
 
-        self.assertEqual(WorkflowStatus.failed, result.data.status)
-        self.assertEqual("InsufficientCreditsError", result.data.error_code)
+        db.refresh(style_test)
+        self.assertEqual(WorkflowStatus.failed, style_test.status)
+        self.assertEqual("InsufficientCreditsError", style_test.error_code)
         self.assertEqual(0, provider.call_count)
 
 

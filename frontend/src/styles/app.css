@@ -1874,7 +1874,43 @@ textarea {
   min-height: 220px;
 }
 
-.style-test-output > img {
+.style-test-history {
+  display: grid;
+  gap: 14px;
+}
+
+.style-test-history-item {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.style-test-history-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.style-test-history-head > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.style-test-history-head strong {
+  color: #ecf1f8;
+  word-break: break-word;
+}
+
+.style-test-history-head small {
+  color: #7f8998;
+}
+
+.style-test-history-item img {
   width: min(100%, 460px);
   aspect-ratio: 9 / 16;
   object-fit: cover;

@@ -2,24 +2,26 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.pagination import Pagination
 from app.api.styles import (
     create_style,
+    create_style_test,
     delete_reference_image,
     delete_style,
     extract_style_prompt_from_style_references,
+    list_style_tests,
     list_style_options,
     list_style_select_options,
     update_style,
 )
 from app.core.database import Base
-from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, TaskStyleReferenceImage, User
-from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleStatus, StyleReferenceMode
-from app.schemas.style import StyleCreate, StyleOptionRead, StyleSelectOptionRead, StyleUpdate
+from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, TaskStyleReferenceImage, User
+from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleStatus, StyleReferenceMode, WorkflowStatus
+from app.schemas.style import StyleCreate, StyleOptionRead, StyleSelectOptionRead, StyleTestCreate, StyleUpdate
 from app.services.media_text_extraction import StylePromptImageReference, extract_style_prompt_from_images
 
 
@@ -387,6 +389,89 @@ class StyleDeleteTest(unittest.TestCase):
         self.assertEqual("gpt-5.4", result.model)
         self.assertEqual(extracted_prompt, result.text)
         self.assertEqual("gpt-5.4", chat_multimodal.call_args.kwargs["model"])
+
+    @patch("app.api.styles.generate_xg_image")
+    def test_create_style_test_queues_background_work_without_provider_call(self, generate_image) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        style = Style(
+            name="异步测试风格",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_prompt="水彩绘本风",
+        )
+        db.add_all([user, style])
+        db.commit()
+        background_tasks = BackgroundTasks()
+
+        response = create_style_test(style.id, StyleTestCreate(test_text="一只猫"), background_tasks, user, db)
+
+        self.assertEqual(WorkflowStatus.queued, response.data.status)
+        self.assertEqual(1, len(background_tasks.tasks))
+        generate_image.assert_not_called()
+
+    def test_list_style_tests_returns_current_style_history(self) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        style = Style(
+            name="历史测试风格",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_prompt="水彩绘本风",
+        )
+        other_style = Style(
+            name="其它风格",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_prompt="黑白线稿",
+        )
+        db.add_all([user, style, other_style])
+        db.flush()
+        first = StyleTest(
+            style_id=style.id,
+            test_text="第一条",
+            style_prompt_snapshot=style.style_prompt,
+            image_model_name_snapshot=style.image_model_name,
+            aspect_ratio_snapshot=style.aspect_ratio,
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+            composed_prompt="prompt 1",
+            status=WorkflowStatus.running,
+        )
+        second = StyleTest(
+            style_id=style.id,
+            test_text="第二条",
+            style_prompt_snapshot=style.style_prompt,
+            image_model_name_snapshot=style.image_model_name,
+            aspect_ratio_snapshot=style.aspect_ratio,
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+            composed_prompt="prompt 2",
+            status=WorkflowStatus.succeeded,
+        )
+        other = StyleTest(
+            style_id=other_style.id,
+            test_text="其它风格测试",
+            style_prompt_snapshot=other_style.style_prompt,
+            image_model_name_snapshot=other_style.image_model_name,
+            aspect_ratio_snapshot=other_style.aspect_ratio,
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+            composed_prompt="other prompt",
+            status=WorkflowStatus.succeeded,
+        )
+        db.add_all([first, second, other])
+        db.commit()
+
+        response = list_style_tests(
+            style.id,
+            user,
+            db,
+            Pagination(limit=20, offset=0),
+        )
+
+        self.assertEqual(2, len(response.items))
+        self.assertEqual({"第一条", "第二条"}, {item.test_text for item in response.items})
 
     def test_update_style_duplicate_name_returns_business_error(self) -> None:
         db = self.Session()
