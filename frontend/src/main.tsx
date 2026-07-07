@@ -4437,6 +4437,8 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
   const [styleSavePhase, setStyleSavePhase] = useState("");
   const [uploadingStyleReferences, setUploadingStyleReferences] = useState(false);
   const [styleUploadPhase, setStyleUploadPhase] = useState("");
+  const [extractingStylePrompt, setExtractingStylePrompt] = useState(false);
+  const [stylePromptDraft, setStylePromptDraft] = useState("");
   const [stylePage, setStylePage] = useState<"library" | "test">("library");
   const [testingStyleId, setTestingStyleId] = useState("");
   const [styleTest, setStyleTest] = useState<StyleTest | null>(null);
@@ -4447,7 +4449,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
     () => styles.find((style) => style.id === testingStyleId) ?? styles[0] ?? null,
     [testingStyleId, styles],
   );
-  const styleBusy = savingStyle || uploadingStyleReferences;
+  const styleBusy = savingStyle || uploadingStyleReferences || extractingStylePrompt;
 
   useEffect(() => {
     refresh();
@@ -4474,6 +4476,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
     setStyleFormMode("create");
     setEditingStyleId("");
     setPendingReferenceFiles([]);
+    setStylePromptDraft("");
     setMessage("");
     setStyleDrawerOpen(true);
   }
@@ -4483,13 +4486,14 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
     setEditingStyleId(style.id);
     setStyleFormMode("edit");
     setPendingReferenceFiles([]);
+    setStylePromptDraft(style.style_prompt);
     setMessage("");
     setStyleDrawerOpen(true);
   }
 
   function closeStyleDrawer() {
     if (styleBusy) {
-      setMessage(styleSavePhase || styleUploadPhase || "正在保存或上传参考图，请等待完成");
+      setMessage(styleSavePhase || styleUploadPhase || "正在保存、上传或提取风格提示词，请等待完成");
       return;
     }
     setStyleDrawerOpen(false);
@@ -4512,7 +4516,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
       image_model_name: String(formData.get("image_model_name") ?? ""),
       aspect_ratio: String(formData.get("aspect_ratio") ?? "9:16"),
       style_reference_mode: String(formData.get("style_reference_mode") ?? "prompt") as Style["style_reference_mode"],
-      style_prompt: String(formData.get("style_prompt") ?? ""),
+      style_prompt: stylePromptDraft,
       description: String(formData.get("description") ?? ""),
     };
 
@@ -4628,6 +4632,30 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
       await refresh(editingStyle.id);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "删除参考图失败");
+    }
+  }
+
+  async function extractStylePrompt() {
+    if (styleBusy) return;
+    const isEditMode = styleFormMode === "edit" && Boolean(editingStyle);
+    const referenceCount = isEditMode ? editingStyle?.reference_images.length ?? 0 : pendingReferenceFiles.length;
+    if (referenceCount < 3) {
+      setMessage("请先提供至少 3 张风格参考图，再提取风格提示词");
+      return;
+    }
+    try {
+      setExtractingStylePrompt(true);
+      setMessage("正在使用 Gemini VL 提取风格提示词...");
+      const result =
+        isEditMode && editingStyle
+          ? await api.extractStylePromptFromStyle(editingStyle.id)
+          : await api.extractStylePromptFromFiles(pendingReferenceFiles);
+      setStylePromptDraft(result.style_prompt);
+      setMessage(`已从 ${result.reference_image_count} 张参考图提取风格提示词`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "风格提示词提取失败");
+    } finally {
+      setExtractingStylePrompt(false);
     }
   }
 
@@ -4866,7 +4894,23 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
               <option value="disabled">停用</option>
             </select>
             <textarea name="description" placeholder="描述" defaultValue={formStyle?.description ?? ""} />
-            <textarea name="style_prompt" placeholder="风格提示词" defaultValue={formStyle?.style_prompt ?? ""} required />
+            <div className="form-field style-prompt-field">
+              <div className="style-prompt-field-head">
+                <span>风格提示词</span>
+                <button type="button" className="secondary-button" onClick={extractStylePrompt} disabled={styleBusy}>
+                  {extractingStylePrompt ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                  {extractingStylePrompt ? "提取中" : "从参考图提取"}
+                </button>
+              </div>
+              <textarea
+                name="style_prompt"
+                placeholder="风格提示词"
+                value={stylePromptDraft}
+                onChange={(event) => setStylePromptDraft(event.target.value)}
+                required
+              />
+              <small>至少 3 张参考图可提取共同画风，提取后仍可手动编辑。</small>
+            </div>
             {message ? <p className="form-message">{message}</p> : null}
             <button type="submit" disabled={styleBusy}>
               {savingStyle ? <Loader2 size={16} className="spin" /> : <Save size={16} />}

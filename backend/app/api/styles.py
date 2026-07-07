@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -16,6 +16,7 @@ from app.schemas.style import (
     STYLE_ASPECT_RATIOS,
     StyleCreate,
     StyleOptionRead,
+    StylePromptExtractionRead,
     StyleRead,
     StyleReferenceImageRead,
     StyleSelectOptionRead,
@@ -23,6 +24,8 @@ from app.schemas.style import (
     StyleTestRead,
     StyleUpdate,
 )
+from app.services.llm import LLMProviderError
+from app.services.media_text_extraction import StylePromptImageReference, data_url_from_bytes, extract_style_prompt_from_images
 from app.services.image_generation import (
     ImageProviderConfigError,
     ImageProviderResponseError,
@@ -37,7 +40,7 @@ from app.services.credits import (
 )
 from app.services.prompt_templates import render_prompt_template
 from app.services.style_references import build_style_reference_pack_from_style, is_image_reference_mode
-from app.services.storage import save_upload_file
+from app.services.storage import detect_verified_image_content_type, materialize_asset_to_local, read_upload_image_content, save_upload_file
 
 router = APIRouter(prefix="/styles", tags=["styles"])
 logger = logging.getLogger(__name__)
@@ -79,6 +82,41 @@ def style_test_reference_instruction(style: Style) -> str:
     if is_image_reference_mode(style.style_reference_mode):
         return "整体视觉风格以随请求提供的风格参考图为准。"
     return f"整体保持这种视觉风格：{style.style_prompt.strip()}"
+
+
+async def style_prompt_reference_from_upload(index: int, file: UploadFile) -> StylePromptImageReference:
+    content = await read_upload_image_content(file)
+    content_type = detect_verified_image_content_type(content, file.content_type)
+    source_name = file.filename or f"uploaded_style_reference_{index}"
+    return StylePromptImageReference(
+        url=data_url_from_bytes(content, content_type),
+        source_name=source_name,
+    )
+
+
+def style_prompt_reference_from_saved_image(reference: StyleReferenceImage) -> StylePromptImageReference:
+    asset = reference.asset
+    if asset.public_url and asset.public_url.startswith(("http://", "https://")):
+        return StylePromptImageReference(url=asset.public_url, source_name=asset.original_filename or asset.storage_key)
+    path = materialize_asset_to_local(asset)
+    return StylePromptImageReference(
+        url=data_url_from_bytes(path.read_bytes(), asset.content_type),
+        source_name=asset.original_filename or asset.storage_key,
+    )
+
+
+def extract_style_prompt_or_http_error(references: list[StylePromptImageReference]) -> StylePromptExtractionRead:
+    if len(references) < 3:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="至少上传 3 张风格参考图后才能提取风格提示词")
+    try:
+        result = extract_style_prompt_from_images(references)
+    except LLMProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return StylePromptExtractionRead(
+        style_prompt=result.text,
+        model=result.model,
+        reference_image_count=len(references),
+    )
 
 
 @router.get("", response_model=ApiList[StyleRead])
@@ -206,6 +244,18 @@ def list_style_select_options(
     )
 
 
+@router.post("/style-prompt/extract", response_model=ApiData[StylePromptExtractionRead])
+async def extract_style_prompt_from_uploaded_references(
+    files: list[UploadFile] = File(...),
+    _user: User = Depends(current_user),
+) -> ApiData[StylePromptExtractionRead]:
+    references = [
+        await style_prompt_reference_from_upload(index, file)
+        for index, file in enumerate(files, start=1)
+    ]
+    return ApiData(data=extract_style_prompt_or_http_error(references))
+
+
 @router.post("", response_model=ApiData[StyleRead], status_code=status.HTTP_201_CREATED)
 def create_style(payload: StyleCreate, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[StyleRead]:
     data = payload.model_dump()
@@ -237,6 +287,26 @@ def get_style(style_id: str, user: User = Depends(current_user), db: Session = D
     if not style:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
     return ApiData(data=style_to_read(style))
+
+
+@router.post("/{style_id}/style-prompt/extract", response_model=ApiData[StylePromptExtractionRead])
+def extract_style_prompt_from_style_references(
+    style_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[StylePromptExtractionRead]:
+    style = db.scalar(
+        select(Style)
+        .where(Style.id == style_id, Style.deleted_at.is_(None))
+        .options(selectinload(Style.reference_images).selectinload(StyleReferenceImage.asset))
+    )
+    if not style:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="风格不存在")
+    references = [
+        style_prompt_reference_from_saved_image(reference)
+        for reference in sorted(style.reference_images, key=lambda item: (item.display_order, item.created_at))
+    ]
+    return ApiData(data=extract_style_prompt_or_http_error(references))
 
 
 @router.patch("/{style_id}", response_model=ApiData[StyleRead])

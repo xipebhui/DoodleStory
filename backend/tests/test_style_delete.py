@@ -1,4 +1,6 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
@@ -9,6 +11,7 @@ from app.api.styles import (
     create_style,
     delete_reference_image,
     delete_style,
+    extract_style_prompt_from_style_references,
     list_style_options,
     list_style_select_options,
     update_style,
@@ -219,6 +222,102 @@ class StyleDeleteTest(unittest.TestCase):
 
         self.assertEqual(400, context.exception.status_code)
         self.assertEqual("风格名称已存在，请换一个名称", context.exception.detail)
+
+    def test_extract_style_prompt_requires_three_reference_images(self) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        style = Style(
+            name="参考图不足风格",
+            status=StyleStatus.draft,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_prompt="待提取",
+        )
+        asset_1 = FileAsset(
+            purpose=FileAssetPurpose.style_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="style_reference/one.png",
+            public_url="https://cdn.example.com/one.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        asset_2 = FileAsset(
+            purpose=FileAssetPurpose.style_reference,
+            storage_backend=StorageBackend.qiniu,
+            storage_key="style_reference/two.png",
+            public_url="https://cdn.example.com/two.png",
+            content_type="image/png",
+            byte_size=10,
+        )
+        db.add_all(
+            [
+                user,
+                style,
+                StyleReferenceImage(style=style, asset=asset_1, display_order=1),
+                StyleReferenceImage(style=style, asset=asset_2, display_order=2),
+            ]
+        )
+        db.commit()
+
+        with self.assertRaises(HTTPException) as context:
+            extract_style_prompt_from_style_references(style.id, user, db)
+
+        self.assertEqual(400, context.exception.status_code)
+        self.assertIn("至少上传 3 张", context.exception.detail)
+
+    @patch("app.api.styles.extract_style_prompt_from_images")
+    def test_extract_style_prompt_uses_saved_reference_images_in_order(self, extract_prompt) -> None:
+        db = self.Session()
+        user = User(email="owner@example.com", password_hash="hash")
+        style = Style(
+            name="自动提取风格",
+            status=StyleStatus.draft,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_prompt="待提取",
+        )
+        assets = [
+            FileAsset(
+                purpose=FileAssetPurpose.style_reference,
+                storage_backend=StorageBackend.qiniu,
+                storage_key=f"style_reference/{index}.png",
+                public_url=f"https://cdn.example.com/{index}.png",
+                content_type="image/png",
+                byte_size=10,
+            )
+            for index in range(1, 4)
+        ]
+        db.add_all([user, style])
+        db.flush()
+        db.add_all(
+            [
+                StyleReferenceImage(style=style, asset=assets[1], display_order=2),
+                StyleReferenceImage(style=style, asset=assets[0], display_order=1),
+                StyleReferenceImage(style=style, asset=assets[2], display_order=3),
+            ]
+        )
+        db.commit()
+        extracted_prompt = "\n".join(
+            [
+                "【核心调性】冷静客观的绘本风。",
+                "【色彩与光影特征】低饱和柔光。",
+                "【线条与肌理特征】细线与纸张颗粒。",
+                "【构图与透视特征】平稳正面构图。",
+                "【风格迁移测试】白色陶瓷马克杯会呈现柔和边缘。",
+            ]
+        )
+        extract_prompt.return_value = SimpleNamespace(text=extracted_prompt, model="gemini-vl")
+
+        response = extract_style_prompt_from_style_references(style.id, user, db)
+
+        self.assertEqual(extracted_prompt, response.data.style_prompt)
+        self.assertEqual("gemini-vl", response.data.model)
+        self.assertEqual(3, response.data.reference_image_count)
+        called_references = extract_prompt.call_args.args[0]
+        self.assertEqual(
+            ["https://cdn.example.com/1.png", "https://cdn.example.com/2.png", "https://cdn.example.com/3.png"],
+            [reference.url for reference in called_references],
+        )
 
     def test_update_style_duplicate_name_returns_business_error(self) -> None:
         db = self.Session()

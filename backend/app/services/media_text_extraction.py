@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from time import monotonic
 
 from app.core.config import get_settings
-from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError
+from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError, create_lio_client
 from app.services.prompt_logging import log_prompt_trace
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,36 @@ CHARACTER_REFERENCE_DESCRIPTION_PROMPT = """请理解这张角色参考图，输
 输出格式示例：
 中年女性，短发，脸型偏瘦，体态虚弱，穿宽松针织上衣和朴素长裤，气质温柔疲惫。后续生成时保持年龄、发型、体态、服装轮廓和标志性配饰不变；表情、姿势和光照可随剧情变化，颜色可按当前画风转译。"""
 
+STYLE_ART_PROMPT_EXTRACTION_PROMPT = """角色设定： 你现在是一位极其苛刻、客观的顶级艺术评论家。
+
+任务： 我上传了多张图片，请帮我提取它们之间共同的**“视觉视觉风格（Art Style）”**。
+
+🚫 绝对禁令（控制内容干扰）：
+
+禁止提及图片里的任何情节、故事、具体人物、动物、建筑物或具体情节。
+
+无论图里画的是什么，你只需要关注“它是怎么被画出来的”。
+
+请严格按照以下结构输出这几张图的风格交集：
+
+【核心调性】（一句话概括这种风格带给人的整体视觉感受，如：阴郁低饱和度赛博朋克、复古美式绘本风等）
+
+【色彩与光影特征】（共同的色调、饱和度倾向、光效处理）
+
+【线条与肌理特征】（共同的笔触、边缘线处理、画面质感）
+
+【构图与透视特征】（画面景深、镜头感、构图习惯的共性）
+
+【风格迁移测试】（请描述：如果要用这几张图的共同风格去画一个最普通的“白色陶瓷马克杯”，这个马克杯在画面中会呈现出怎样的视觉效果？）"""
+
+STYLE_ART_PROMPT_REQUIRED_HEADINGS = (
+    "【核心调性】",
+    "【色彩与光影特征】",
+    "【线条与肌理特征】",
+    "【构图与透视特征】",
+    "【风格迁移测试】",
+)
+
 @dataclass(frozen=True)
 class MediaTextResult:
     text: str
@@ -67,6 +97,12 @@ class AudioExtractionResult:
     text: str
     model: str
     audio_bytes: bytes
+
+
+@dataclass(frozen=True)
+class StylePromptImageReference:
+    url: str
+    source_name: str
 
 
 def create_multimodal_client():
@@ -212,6 +248,86 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
         raw_content=text,
     )
     return text
+
+
+def _chat_lio_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
+    if not model.strip():
+        raise LLMConfigError("LIO_MODEL 未配置")
+    client = create_lio_client()
+    trace_context = {"model": model, "prompt_name": prompt_name}
+    started = monotonic()
+    logger.info(
+        "style_prompt_vl_debug multimodal_request prompt_name=%s model=%s content=%s",
+        prompt_name,
+        model,
+        json.dumps(_safe_multimodal_content_for_log(content), ensure_ascii=False, default=str),
+    )
+    log_prompt_trace(
+        logger,
+        "style_prompt_vl_request",
+        context=trace_context,
+        provider="lio",
+        model=model,
+        content_part_count=len(content),
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.2,
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception as exc:
+        log_prompt_trace(
+            logger,
+            "style_prompt_vl_exception",
+            context=trace_context,
+            elapsed_ms=round((monotonic() - started) * 1000),
+            exception_type=exc.__class__.__name__,
+            error=str(exc),
+        )
+        raise LLMProviderError(str(exc)) from exc
+
+    if not response.choices:
+        raise LLMResponseError("Gemini VL 没有返回 choices")
+    message_content = response.choices[0].message.content
+    if message_content is None:
+        raise LLMResponseError("Gemini VL 返回内容为空")
+    text = str(message_content).strip()
+    log_prompt_trace(
+        logger,
+        "style_prompt_vl_response",
+        context=trace_context,
+        elapsed_ms=round((monotonic() - started) * 1000),
+        response_id=getattr(response, "id", None),
+        finish_reason=getattr(response.choices[0], "finish_reason", None),
+        usage=getattr(response, "usage", None),
+        content_chars=len(text),
+        raw_content=text,
+    )
+    return text
+
+
+def extract_style_prompt_from_images(images: list[StylePromptImageReference]) -> MediaTextResult:
+    if len(images) < 3:
+        raise LLMResponseError("至少需要 3 张风格参考图才能提取风格提示词")
+    settings = get_settings()
+    model = settings.lio_model.strip()
+    content: list[dict[str, object]] = [{"type": "text", "text": STYLE_ART_PROMPT_EXTRACTION_PROMPT}]
+    for index, image in enumerate(images, start=1):
+        content.append({"type": "text", "text": f"第 {index} 张风格参考图："})
+        content.append({"type": "image_url", "image_url": {"url": image.url, "detail": "high"}})
+    text = _chat_lio_multimodal(
+        model=model,
+        prompt_name="style_art_prompt_extraction",
+        content=content,
+    )
+    cleaned = text.strip()
+    if not cleaned:
+        raise LLMResponseError("Gemini VL 风格提示词提取结果为空")
+    missing_headings = [heading for heading in STYLE_ART_PROMPT_REQUIRED_HEADINGS if heading not in cleaned]
+    if missing_headings:
+        raise LLMResponseError(f"Gemini VL 风格提示词提取结果缺少结构：{', '.join(missing_headings)}")
+    return MediaTextResult(text=cleaned[:8000], model=model)
 
 
 def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]) -> MediaTextResult:

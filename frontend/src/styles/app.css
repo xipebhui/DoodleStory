@@ -383,6 +383,23 @@ textarea {
   min-height: 180px;
 }
 
+.style-prompt-field {
+  grid-column: 1 / -1;
+}
+
+.style-prompt-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.style-prompt-field-head .secondary-button {
+  width: fit-content;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
 .form-field {
   display: grid;
   gap: 7px;

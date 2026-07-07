@@ -184,6 +184,12 @@ export type StyleReferenceImage = {
   asset: FileAsset;
 };
 
+export type StylePromptExtraction = {
+  style_prompt: string;
+  model: string;
+  reference_image_count: number;
+};
+
 export type StyleTest = {
   id: string;
   style_id: string;
@@ -730,6 +736,18 @@ export const api = {
       (result) => result.data,
     ),
   deleteStyle: (id: string) => request<ApiData<{ deleted: boolean }>>(`/styles/${id}`, { method: "DELETE" }),
+  extractStylePromptFromFiles: (files: File[]) => {
+    const form = new FormData();
+    files.forEach((file) => form.append("files", file));
+    return request<ApiData<StylePromptExtraction>>("/styles/style-prompt/extract", {
+      method: "POST",
+      body: form,
+    }).then((result) => result.data);
+  },
+  extractStylePromptFromStyle: (styleId: string) =>
+    request<ApiData<StylePromptExtraction>>(`/styles/${styleId}/style-prompt/extract`, {
+      method: "POST",
+    }).then((result) => result.data),
   uploadStyleReferenceImage: (styleId: string, file: File) => {
     const form = new FormData();
     form.append("file", file);

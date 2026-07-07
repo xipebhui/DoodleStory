@@ -65,6 +65,12 @@ class StyleReferenceImageRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StylePromptExtractionRead(BaseModel):
+    style_prompt: str
+    model: str
+    reference_image_count: int
+
+
 class StyleRead(TimestampFields):
     id: str
     name: str
