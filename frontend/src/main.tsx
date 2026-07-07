@@ -829,7 +829,6 @@ function TasksView({
   const [creating, setCreating] = useState(false);
   const [createStyleId, setCreateStyleId] = useState("");
   const [countMode, setCountMode] = useState<"auto" | "fixed">("auto");
-  const [lastPanelRealPhoto, setLastPanelRealPhoto] = useState(false);
   const [storyInputMode, setStoryInputMode] = useState<CreateInputMode>("original");
   const [createOriginalText, setCreateOriginalText] = useState("");
   const [userCharacters, setUserCharacters] = useState<UserCharacter[]>([]);
@@ -1283,7 +1282,6 @@ function TasksView({
   function resetCreateForm() {
     setCreateOriginalText("");
     setCountMode("auto");
-    setLastPanelRealPhoto(false);
     setStoryInputMode("original");
     setCreateStyleId(createStyles[0]?.id ?? "");
     setFixedRoleFlowEnabled(false);
@@ -1446,7 +1444,6 @@ function TasksView({
       return;
     }
     const shouldUseDouyinReplicate = storyInputMode === "dy_replicate" || containsDouyinShareUrl(originalText);
-    const removeImageText = formData.get("remove_image_text") === "on";
     const shouldUseFixedRoleFlow = fixedRoleFlowEnabled && storyInputMode !== "knowledge_plan";
     if (!shouldUseDouyinReplicate && shouldUseFixedRoleFlow && !fixedRoleExtractionReady) {
       await extractRolesForCreate();
@@ -1469,8 +1466,8 @@ function TasksView({
           requested_image_count: countMode === "fixed" ? requested : null,
           style_id: createStyleId,
           use_character_references: true,
-          last_panel_real_photo: lastPanelRealPhoto,
-          remove_image_text: removeImageText,
+          last_panel_real_photo: false,
+          remove_image_text: false,
         });
         resetCreateForm();
         setCreateOpen(false);
@@ -1490,8 +1487,8 @@ function TasksView({
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
         use_character_references: storyInputMode === "knowledge_plan" ? false : true,
-        last_panel_real_photo: lastPanelRealPhoto,
-        remove_image_text: removeImageText,
+        last_panel_real_photo: false,
+        remove_image_text: false,
         story_characters: storyCharacters,
       });
       resetCreateForm();
@@ -2292,26 +2289,6 @@ function TasksView({
                     {storyInputMode === "knowledge_plan" ? "系统会按你写出的页数生成图片。" : "系统会根据故事长度和内容密度决定图片张数。"}
                   </p>
                 )}
-              </section>
-              <section className="create-section">
-                <label className="character-reference-toggle real-photo-toggle">
-                  <input
-                    type="checkbox"
-                    checked={lastPanelRealPhoto}
-                    onChange={(event) => setLastPanelRealPhoto(event.target.checked)}
-                  />
-                  <span>
-                    <strong>最后一张真人图片</strong>
-                    <small>默认关闭；勾选后最后一个分镜按真实摄影/自拍照片生成，不跟随当前漫画风格。</small>
-                  </span>
-                </label>
-                <label className="character-reference-toggle remove-text-toggle">
-                  <input name="remove_image_text" type="checkbox" />
-                  <span>
-                    <strong>去掉画面文字</strong>
-                    <small>默认关闭；勾选后最终生图提示词最前面加入最高指令，要求图片中不能包含任何文字。</small>
-                  </span>
-                </label>
               </section>
               <fieldset className="style-picker">
                 <legend>选择风格</legend>
