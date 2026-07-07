@@ -50,7 +50,7 @@ from app.schemas.task import (
     TaskRead,
 )
 from app.services.task_creation import TaskCreationError, create_generation_task_record
-from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_generation_number, task_progress_total
+from app.services.task_worker import enqueue_panel_edit, enqueue_task, mark_task_cancelled, next_generation_number, task_progress_total
 from app.services.image_generation import ImageProviderConfigError
 from app.services.llm import LLMProviderError, extract_character_names_from_story, merge_character_into_story
 from app.services.style_references import snapshot_task_style_reference_images
@@ -489,7 +489,12 @@ def cancel_task(task_id: str, user: User = Depends(current_user), db: Session = 
     if task.status in {TaskStatus.succeeded, TaskStatus.failed, TaskStatus.partial_succeeded, TaskStatus.cancelled}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务状态不能取消")
 
-    task.status = TaskStatus.cancelled if task.status == TaskStatus.queued else TaskStatus.cancel_requested
+    task.cancel_requested_at = datetime.utcnow()
+    if task.status == TaskStatus.queued:
+        mark_task_cancelled(db, task)
+    else:
+        task.status = TaskStatus.cancel_requested
+        mark_task_cancelled(db, task)
     db.commit()
     db.expire_all()
     task = db.scalar(task_detail_statement(task.id))

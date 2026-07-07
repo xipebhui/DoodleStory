@@ -30,6 +30,7 @@ from app.models.enums import (
     TaskStatus,
     WorkflowStatus,
 )
+from app.services.credits import grant_initial_credits
 from app.services.image_generation import GeneratedImageFile
 from app.services import task_worker
 
@@ -239,6 +240,138 @@ class TaskWorkerRecoveryTest(unittest.TestCase):
         self.assertIsNotNone(task)
         self.assertEqual(TaskStatus.running, task.status)
         self.assertTrue(queue.empty())
+
+    def test_claim_image_job_cancels_job_for_cancelled_task(self) -> None:
+        task_id, panel_id, user_id = self.create_running_generate_images_task()
+        db = self.Session()
+        task = db.scalar(select(GenerationTask).where(GenerationTask.id == task_id))
+        self.assertIsNotNone(task)
+        task.status = TaskStatus.cancelled
+        image = GeneratedImage(
+            task_id=task_id,
+            panel_id=panel_id,
+            owner_user_id=user_id,
+            status=GeneratedImageStatus.queued,
+            generation_number=1,
+            source_type=GeneratedImageSourceType.initial,
+            image_model_name_snapshot="gpt-image-2",
+        )
+        db.add(image)
+        db.commit()
+        image_id = image.id
+        db.close()
+
+        with patch("app.services.task_worker.SessionLocal", self.Session):
+            claimed_id = task_worker.claim_next_image_job()
+
+        self.assertIsNone(claimed_id)
+        db = self.Session()
+        refreshed = db.scalar(select(GeneratedImage).where(GeneratedImage.id == image_id))
+        self.assertIsNotNone(refreshed)
+        self.assertEqual(GeneratedImageStatus.cancelled, refreshed.status)
+        self.assertEqual(task_worker.TASK_CANCELLED_IMAGE_ERROR_CODE, refreshed.error_code)
+        db.close()
+
+    def test_cancel_requested_image_job_does_not_call_provider(self) -> None:
+        task_id, panel_id, user_id = self.create_running_generate_images_task()
+        db = self.Session()
+        task = db.scalar(select(GenerationTask).where(GenerationTask.id == task_id))
+        self.assertIsNotNone(task)
+        task.status = TaskStatus.cancel_requested
+        image = GeneratedImage(
+            task_id=task_id,
+            panel_id=panel_id,
+            owner_user_id=user_id,
+            status=GeneratedImageStatus.running,
+            attempts=1,
+            locked_by="worker-1",
+            generation_number=1,
+            source_type=GeneratedImageSourceType.initial,
+            image_model_name_snapshot="gpt-image-2",
+            final_prompt="最终生图提示词",
+        )
+        db.add(image)
+        db.commit()
+        image_id = image.id
+        db.close()
+
+        with patch("app.services.task_worker.SessionLocal", self.Session), patch(
+            "app.services.task_worker.generate_panel_image_request"
+        ) as provider:
+            task_worker.process_initial_panel_image_job(image_id)
+
+        provider.assert_not_called()
+        db = self.Session()
+        refreshed_task = db.scalar(select(GenerationTask).where(GenerationTask.id == task_id))
+        refreshed_image = db.scalar(select(GeneratedImage).where(GeneratedImage.id == image_id))
+        self.assertIsNotNone(refreshed_task)
+        self.assertIsNotNone(refreshed_image)
+        self.assertEqual(TaskStatus.cancelled, refreshed_task.status)
+        self.assertEqual(GeneratedImageStatus.cancelled, refreshed_image.status)
+        db.close()
+
+    def test_provider_result_after_cancel_releases_credit_without_charge(self) -> None:
+        task_id, panel_id, user_id = self.create_running_generate_images_task()
+        db = self.Session()
+        user = db.scalar(select(User).where(User.id == user_id))
+        self.assertIsNotNone(user)
+        grant_initial_credits(db, user, amount=1)
+        image = GeneratedImage(
+            task_id=task_id,
+            panel_id=panel_id,
+            owner_user_id=user_id,
+            status=GeneratedImageStatus.running,
+            attempts=1,
+            locked_by="worker-1",
+            generation_number=1,
+            source_type=GeneratedImageSourceType.initial,
+            image_model_name_snapshot="gpt-image-2",
+            final_prompt="最终生图提示词",
+        )
+        db.add(image)
+        db.commit()
+        image_id = image.id
+        db.close()
+
+        generated = GeneratedImageFile(
+            storage_backend=StorageBackend.local,
+            storage_key="generated/cancelled.png",
+            byte_size=123,
+            checksum_sha256="hash",
+            content_type="image/png",
+            original_filename="cancelled.png",
+            provider_request_id="provider-request",
+            public_url=None,
+        )
+
+        def cancel_before_provider_returns(**kwargs):
+            side_db = self.Session()
+            task = side_db.scalar(select(GenerationTask).where(GenerationTask.id == task_id))
+            self.assertIsNotNone(task)
+            task.status = TaskStatus.cancel_requested
+            side_db.commit()
+            side_db.close()
+            return task_worker.PanelImageGenerationResult(request=kwargs["request"], generated=generated)
+
+        with patch("app.services.task_worker.SessionLocal", self.Session), patch(
+            "app.services.task_worker.generate_panel_image_request", side_effect=cancel_before_provider_returns
+        ), patch("app.services.task_worker.charge_reserved_image_credit") as charge:
+            task_worker.process_initial_panel_image_job(image_id)
+
+        charge.assert_not_called()
+        db = self.Session()
+        refreshed_user = db.scalar(select(User).where(User.id == user_id))
+        refreshed_task = db.scalar(select(GenerationTask).where(GenerationTask.id == task_id))
+        refreshed_image = db.scalar(select(GeneratedImage).where(GeneratedImage.id == image_id))
+        self.assertIsNotNone(refreshed_user)
+        self.assertIsNotNone(refreshed_task)
+        self.assertIsNotNone(refreshed_image)
+        self.assertEqual(1, refreshed_user.credit_account.balance)
+        self.assertEqual(0, refreshed_user.credit_account.reserved_balance)
+        self.assertEqual(TaskStatus.cancelled, refreshed_task.status)
+        self.assertEqual(GeneratedImageStatus.cancelled, refreshed_image.status)
+        self.assertIsNone(refreshed_image.asset_id)
+        db.close()
 
     def test_character_reference_image_job_passes_style_reference_snapshot_to_provider(self) -> None:
         db = self.Session()

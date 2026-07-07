@@ -109,6 +109,8 @@ NO_IMAGE_TEXT_RULE = (
     "强调字、Logo、水印、标牌文字或其他可读文字；故事原文和图片文字字段只用于理解画面，不能画进图片。"
 )
 IMAGE_TEXT_KEYS = ("title", "narration", "dialogue", "inner_os", "emphasis")
+TASK_CANCELLED_IMAGE_ERROR_CODE = "TaskCancelled"
+TASK_CANCELLED_IMAGE_ERROR_MESSAGE = "任务已取消，图片生成已停止"
 
 
 @dataclass(frozen=True)
@@ -483,6 +485,77 @@ def release_interrupted_image_job_credit(db: Session, image: GeneratedImage) -> 
         logger.info("image job interrupted credit release skipped image_id=%s", image.id)
 
 
+def cancel_image_job(db: Session, image: GeneratedImage, *, now: datetime | None = None) -> bool:
+    if image.status not in {GeneratedImageStatus.queued, GeneratedImageStatus.running}:
+        return False
+    now = now or datetime.utcnow()
+    release_interrupted_image_job_credit(db, image)
+    image.status = GeneratedImageStatus.cancelled
+    image.error_code = TASK_CANCELLED_IMAGE_ERROR_CODE
+    image.error_message = TASK_CANCELLED_IMAGE_ERROR_MESSAGE
+    image.finished_at = now
+    image.lease_until = None
+    image.locked_by = None
+    if image.job_kind == GeneratedImageJobKind.character_reference and image.character_appearance is not None:
+        appearance = image.character_appearance
+        if appearance.status != WorkflowStatus.succeeded and appearance.reference_image_id is None:
+            appearance.status = WorkflowStatus.cancelled
+            appearance.error_code = TASK_CANCELLED_IMAGE_ERROR_CODE
+            appearance.error_message = TASK_CANCELLED_IMAGE_ERROR_MESSAGE
+    return True
+
+
+def cancel_active_image_jobs_for_task(db: Session, task_id: str, *, now: datetime | None = None) -> int:
+    now = now or datetime.utcnow()
+    images = db.scalars(
+        select(GeneratedImage)
+        .where(
+            GeneratedImage.task_id == task_id,
+            GeneratedImage.status.in_([GeneratedImageStatus.queued, GeneratedImageStatus.running]),
+        )
+        .options(
+            selectinload(GeneratedImage.task),
+            selectinload(GeneratedImage.character_appearance),
+        )
+    ).all()
+    cancelled_count = 0
+    for image in images:
+        if cancel_image_job(db, image, now=now):
+            cancelled_count += 1
+    if cancelled_count:
+        logger.info("cancelled active image jobs task_id=%s count=%s", task_id, cancelled_count)
+    return cancelled_count
+
+
+def mark_task_cancelled(db: Session, task: GenerationTask, *, now: datetime | None = None) -> None:
+    now = now or datetime.utcnow()
+    cancel_active_image_jobs_for_task(db, task.id, now=now)
+    for step in task.steps:
+        if step.status in {StepStatus.queued, StepStatus.running, StepStatus.retrying}:
+            step.status = StepStatus.cancelled
+            step.finished_at = now
+    task.status = TaskStatus.cancelled
+    task.finished_at = now
+    task.next_run_at = None
+    task.error_code = TASK_CANCELLED_IMAGE_ERROR_CODE
+    task.error_message = "任务已取消"
+
+
+def should_stop_image_job_for_cancel(db: Session, image: GeneratedImage) -> bool:
+    db.refresh(image)
+    db.refresh(image.task)
+    if image.status == GeneratedImageStatus.cancelled:
+        return True
+    if image.task.status not in {TaskStatus.cancel_requested, TaskStatus.cancelled}:
+        return False
+    cancel_image_job(db, image)
+    if image.task.status == TaskStatus.cancel_requested:
+        mark_task_cancelled(db, image.task)
+    db.commit()
+    logger.info("image job cancelled image_id=%s task_id=%s", image.id, image.task_id)
+    return True
+
+
 def recover_interrupted_image_jobs() -> int:
     now = datetime.utcnow()
     recovered_count = 0
@@ -495,6 +568,10 @@ def recover_interrupted_image_jobs() -> int:
         ).all()
         for image in images:
             if image.asset_id is not None:
+                continue
+            if image.task.status in {TaskStatus.cancel_requested, TaskStatus.cancelled}:
+                if cancel_image_job(db, image):
+                    recovered_count += 1
                 continue
             release_interrupted_image_job_credit(db, image)
             image.status = GeneratedImageStatus.queued
@@ -523,6 +600,16 @@ def claim_next_image_job() -> str | None:
             .limit(100)
         ).all()
         for image in candidates:
+            if image.task.status in {TaskStatus.cancel_requested, TaskStatus.cancelled}:
+                cancel_image_job(db, image, now=now)
+                db.commit()
+                logger.info(
+                    "image job skipped for cancelled task image_id=%s task_id=%s task_status=%s",
+                    image.id,
+                    image.task_id,
+                    image.task.status.value,
+                )
+                continue
             owner_id = image_job_owner_id(image)
             running_for_user = db.scalar(
                 select(func.count(GeneratedImage.id)).where(
@@ -630,6 +717,8 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
         if image is None:
             logger.warning("character reference image job skipped missing image_id=%s", generated_image_id)
             return
+        if should_stop_image_job_for_cancel(db, image):
+            return
         if image.character_appearance is None:
             image.status = GeneratedImageStatus.failed
             image.error_code = "CharacterAppearanceMissing"
@@ -696,6 +785,8 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
             db.commit()
             return
 
+        if should_stop_image_job_for_cancel(db, image):
+            return
         logger.info(
             "character reference image request task_id=%s character_key=%s appearance_key=%s image_id=%s prompt_chars=%s "
             "reference_count=%s style_reference_count=%s reference_notes=%s",
@@ -733,6 +824,8 @@ def process_character_reference_image_job(generated_image_id: str) -> None:
         task = image.task
         appearance = image.character_appearance
         if appearance is None:
+            return
+        if should_stop_image_job_for_cancel(db, image):
             return
         if not image_claim_is_current(image, attempts=claim_attempts, locked_by=claim_locked_by):
             logger.warning(
@@ -844,6 +937,8 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
         if image is None:
             logger.warning("initial image job skipped missing image_id=%s", generated_image_id)
             return
+        if should_stop_image_job_for_cancel(db, image):
+            return
         task = image.task
         panel = image.panel
         if panel is None:
@@ -907,6 +1002,8 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
             update_task_image_generation_state(db, task.id)
             return
 
+        if should_stop_image_job_for_cancel(db, image):
+            return
     result = generate_panel_image_request(
         task_id=task_id,
         image_model_name=image_model_name,
@@ -919,6 +1016,8 @@ def process_initial_panel_image_job(generated_image_id: str) -> None:
         if image is None:
             return
         task = image.task
+        if should_stop_image_job_for_cancel(db, image):
+            return
         if not image_claim_is_current(image, attempts=claim_attempts, locked_by=claim_locked_by):
             logger.warning(
                 "stale panel image result ignored image_id=%s task_id=%s panel_id=%s claim_attempts=%s current_attempts=%s claim_locked_by=%s current_locked_by=%s status=%s",
@@ -1015,6 +1114,10 @@ def update_task_character_reference_state(db: Session, task_id: str) -> None:
     task = load_task(db, task_id)
     if task is None or not task.use_character_references:
         return
+    if task.status in {TaskStatus.cancel_requested, TaskStatus.cancelled}:
+        mark_task_cancelled(db, task)
+        db.commit()
+        return
     appearances = [appearance for character in task.characters for appearance in character.appearances]
     if not appearances:
         return
@@ -1050,6 +1153,10 @@ def update_task_character_reference_state(db: Session, task_id: str) -> None:
 def update_task_image_generation_state(db: Session, task_id: str) -> None:
     task = load_task(db, task_id)
     if task is None:
+        return
+    if task.status in {TaskStatus.cancel_requested, TaskStatus.cancelled}:
+        mark_task_cancelled(db, task)
+        db.commit()
         return
     panel_count = len(task.panels)
     if panel_count == 0:
@@ -2285,10 +2392,11 @@ def mark_image_current(db: Session, image: GeneratedImage) -> None:
 
 def should_stop_for_cancel(db: Session, task: GenerationTask) -> bool:
     db.refresh(task)
+    if task.status == TaskStatus.cancelled:
+        return True
     if task.status != TaskStatus.cancel_requested:
         return False
-    task.status = TaskStatus.cancelled
-    task.finished_at = datetime.utcnow()
+    mark_task_cancelled(db, task)
     db.commit()
     logger.info("task cancelled task_id=%s", task.id)
     return True
