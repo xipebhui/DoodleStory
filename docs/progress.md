@@ -9,6 +9,7 @@
 
 ## 当前 Sprint 合同
 
+- `docs/contracts/sprint-91-friendly-panel-count-mismatch-error.md`
 - `docs/contracts/sprint-90-task-cancel-image-job-interrupt.md`
 - `docs/contracts/sprint-88-admin-video-audio-visibility.md`
 - `docs/contracts/sprint-89-aliyun-oss-storage.md`
@@ -17,6 +18,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 91 提取分镜数量不一致友好提示：线上任务 `1f98c58e6457403aaae069db99c1b192` 的根因是 `story_input_mode=extracted_storyboard`、固定图片数量 12，但原始分镜包含 `第1页` 至 `第13页` 共 13 页；结构化模型按规则明确失败后，后端此前把 Pydantic 校验失败统一映射为“内容提取分镜结构化失败”。现已识别模型返回的页数/分镜数不匹配错误，并在合法 `panels` 数量不一致时使用同一类友好提示：`图片解析出的分镜数量（X）和你设置的图片数量（Y）不一致，请把图片数量改为 X，或调整分镜内容后重试。` 本次不自动合并、删减或补页。
 - 完成 Sprint 90 任务取消停止图片 job 与积分扣费：排查确认旧逻辑只把主任务置为 `cancel_requested` / `cancelled`，已排队或已领取的 `generated_images` 图片 job 仍可能继续执行，Provider 成功返回后还可能保存资产、扣积分并把任务状态改回运行或成功。现已在取消接口同步取消任务下活跃图片 job 并释放已占用积分；图片 worker 领取、执行前、Provider 返回后和服务重启恢复时都会检查任务取消状态，取消后的成功返回不保存资产、不扣费、不复活任务。已明确当前不新增第三方 Provider 请求撤销能力，已经发出的同步 HTTP 请求返回后在本地丢弃。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_recovery` 通过。
 - 补充 Sprint 90 取消幂等与线上清理脚本：针对旧线上任务取消后被状态汇总覆盖、再次点击取消受限的问题，取消接口现在允许 `cancelled` 任务再次调用，并重新执行残留图片 job 清理；任务详情页的取消按钮也允许已取消任务再次点击，文案改为 `再次取消`。新增 `scripts/cancel-task-image-jobs.py`，默认 dry-run，显式 `--apply` 才会对指定任务调用同一套后端取消逻辑清理 queued/running 图片 job 和未结算积分占用。
 - 开始 Sprint 89 阿里云 OSS 存储接入：七牛公开域名到期后，内容提取下载和上传本身成功，但传给 SiliconFlow 图文 VL 的 `file_assets.public_url` 指向不可下载的七牛域名，导致模型返回 `The image URL must be a valid and downloadable URL`。本轮新增 `STORAGE_BACKEND=aliyun_oss`，读取 `ALIYUN_OSS_*` 配置上传到阿里云 OSS；未配置自定义公网域名时使用 OSS 默认公开 Bucket 域名生成 `public_url`，并继续保留服务器本地镜像。资产读取和前端序列化已把 `aliyun_oss` 作为公开对象存储处理，不新增 base64 兜底、不迁移历史七牛资产。

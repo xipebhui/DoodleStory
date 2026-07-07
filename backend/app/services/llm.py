@@ -22,6 +22,10 @@ ORIGINAL_STORY_OVERLONG_REPAIR_MAX_ATTEMPTS = 2
 ORIGINAL_STORY_PUNCTUATION_FALLBACK_MIN_CHARS = 20
 ORIGINAL_STORY_PUNCTUATION_BREAK_CHARS = set("。！？!?；;…\n，,、：:")
 EXTRACTED_STORYBOARD_STRUCTURE_ERROR_MESSAGE = "内容提取分镜结构化失败，系统没有生成可用的分镜结构，请重试。"
+EXTRACTED_STORYBOARD_PANEL_COUNT_MISMATCH_MESSAGE = (
+    "图片解析出的分镜数量（{detected_count}）和你设置的图片数量（{requested_count}）不一致，"
+    "请把图片数量改为 {detected_count}，或调整分镜内容后重试。"
+)
 
 
 class LLMProviderError(Exception):
@@ -34,6 +38,63 @@ class LLMConfigError(LLMProviderError):
 
 class LLMResponseError(LLMProviderError):
     pass
+
+
+def extracted_storyboard_panel_count_mismatch_message(
+    *,
+    detected_count: int | None,
+    requested_count: int | None,
+) -> str:
+    if detected_count is None or requested_count is None:
+        return "图片解析出的分镜数量和你设置的图片数量不一致，请调整图片数量或分镜内容后重试。"
+    return EXTRACTED_STORYBOARD_PANEL_COUNT_MISMATCH_MESSAGE.format(
+        detected_count=detected_count,
+        requested_count=requested_count,
+    )
+
+
+def _coerce_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            parsed = int(stripped)
+            if parsed > 0:
+                return parsed
+    return None
+
+
+def _extract_count_mismatch_from_raw(raw: dict[str, Any]) -> tuple[int | None, int | None] | None:
+    requested_count = None
+    detected_count = None
+    for key in ("expected_panel_count", "required_panel_count", "requested_panel_count"):
+        requested_count = _coerce_positive_int(raw.get(key))
+        if requested_count is not None:
+            break
+    for key in ("detected_page_count", "input_page_count", "detected_panel_count", "panel_count"):
+        detected_count = _coerce_positive_int(raw.get(key))
+        if detected_count is not None:
+            break
+
+    error_text = raw.get("error")
+    if isinstance(error_text, str) and ("不匹配" in error_text or "不一致" in error_text):
+        if requested_count is None:
+            match = re.search(r"(?:要求|固定图片数量要求为|必须刚好输出)\s*(\d+)", error_text)
+            if match is not None:
+                requested_count = int(match.group(1))
+        if detected_count is None:
+            match = re.search(r"(?:检测到|输入共检测到|输入共)\s*(\d+)\s*(?:页|个\s*panels?)", error_text, re.IGNORECASE)
+            if match is not None:
+                detected_count = int(match.group(1))
+        if requested_count is not None or detected_count is not None:
+            return detected_count, requested_count
+
+    if requested_count is not None or detected_count is not None:
+        return detected_count, requested_count
+    return None
 
 
 class StorySegment(BaseModel):
@@ -1449,13 +1510,27 @@ def parse_extracted_storyboard(
             errors=exc.errors(),
             raw=raw,
         )
+        count_mismatch = _extract_count_mismatch_from_raw(raw)
+        if count_mismatch is not None:
+            detected_count, raw_requested_count = count_mismatch
+            raise LLMResponseError(
+                extracted_storyboard_panel_count_mismatch_message(
+                    detected_count=detected_count,
+                    requested_count=requested_image_count or raw_requested_count,
+                )
+            ) from exc
         raise LLMResponseError(EXTRACTED_STORYBOARD_STRUCTURE_ERROR_MESSAGE) from exc
 
     ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
     if any(panel.panel_type == PanelType.cover for panel in result.panels):
         raise LLMResponseError("内容提取分镜模式不应自动生成封面 panel")
     if image_count_mode == ImageCountMode.fixed and len(result.panels) != requested_image_count:
-        raise LLMResponseError("LLM 返回的分镜数量与用户指定图片数量不一致")
+        raise LLMResponseError(
+            extracted_storyboard_panel_count_mismatch_message(
+                detected_count=len(result.panels),
+                requested_count=requested_image_count,
+            )
+        )
     logger.info(
         "extracted storyboard parsing succeeded image_count_mode=%s requested_image_count=%s panel_count=%s title=%s",
         image_count_mode.value,

@@ -117,6 +117,73 @@ class StoryboardPlanningTest(unittest.TestCase):
         self.assertNotIn("story_title", message)
         self.assertNotIn("Field required", message)
 
+    def test_extracted_storyboard_count_mismatch_uses_friendly_error(self) -> None:
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={
+                "error": "固定图片数量要求为 12，但输入共检测到 13 页（第1页至第13页），页数不匹配，无法按规则输出。",
+            },
+        ):
+            with self.assertRaises(LLMResponseError) as raised:
+                parse_extracted_storyboard(
+                    extracted_text="第1页：开场。\n第13页：结尾。",
+                    style_prompt="黑白漫画风",
+                    image_count_mode=ImageCountMode.fixed,
+                    requested_image_count=12,
+                )
+
+        message = str(raised.exception)
+        self.assertIn("图片解析出的分镜数量（13）和你设置的图片数量（12）不一致", message)
+        self.assertIn("请把图片数量改为 13", message)
+        self.assertNotIn("内容提取分镜结构化失败", message)
+        self.assertNotIn("Field required", message)
+
+    def test_extracted_storyboard_panel_result_count_mismatch_uses_friendly_error(self) -> None:
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={
+                "story_title": "三页故事",
+                "story_hook": "开场到结尾",
+                "story_outline": "三页连续分镜。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "开场",
+                        "visual_prompt": "角色站在门口。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {},
+                    },
+                    {
+                        "panel_order": 2,
+                        "panel_type": "scene",
+                        "story_beat": "推进",
+                        "visual_prompt": "角色走进房间。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {},
+                    },
+                    {
+                        "panel_order": 3,
+                        "panel_type": "scene",
+                        "story_beat": "结尾",
+                        "visual_prompt": "角色坐在桌前。",
+                        "text_layout": "单页漫画构图",
+                        "image_text": {},
+                    },
+                ],
+            },
+        ):
+            with self.assertRaises(LLMResponseError) as raised:
+                parse_extracted_storyboard(
+                    extracted_text="第1页：开场。\n第2页：推进。\n第3页：结尾。",
+                    style_prompt="黑白漫画风",
+                    image_count_mode=ImageCountMode.fixed,
+                    requested_image_count=2,
+                )
+
+        message = str(raised.exception)
+        self.assertIn("图片解析出的分镜数量（3）和你设置的图片数量（2）不一致", message)
+
 
 if __name__ == "__main__":
     unittest.main()
