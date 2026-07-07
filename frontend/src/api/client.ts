@@ -204,7 +204,7 @@ export type Task = {
   owner_user_id: string;
   display_title: string;
   original_text: string;
-  story_input_mode: "original" | "adapted" | "extracted_storyboard";
+  story_input_mode: "original" | "adapted" | "extracted_storyboard" | "knowledge_plan";
   adapted_story_title: string | null;
   adapted_story_hook: string | null;
   adapted_story_text: string | null;

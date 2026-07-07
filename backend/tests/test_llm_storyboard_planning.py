@@ -6,6 +6,7 @@ from app.models.enums import ImageCountMode, PanelType
 from app.services.llm import (
     LLMResponseError,
     parse_extracted_storyboard,
+    parse_knowledge_plan,
     plan_adapted_story_panels,
     plan_storyboard_from_brief,
 )
@@ -183,6 +184,47 @@ class StoryboardPlanningTest(unittest.TestCase):
 
         message = str(raised.exception)
         self.assertIn("图片解析出的分镜数量（3）和你设置的图片数量（2）不一致", message)
+
+    def test_knowledge_plan_splits_explicit_pages_without_rewriting(self) -> None:
+        plan = """第1页|内容
+生成一张知识图鉴。主题「自律自控」。
+顶部标题区、中部三栏、底部金句全部保留。
+
+第2页：内容
+生成一张知识图鉴。主题「及时止损」。
+保留左右信息框和路径条。"""
+
+        result = parse_knowledge_plan(
+            plan_text=plan,
+            image_count_mode=ImageCountMode.fixed,
+            requested_image_count=2,
+        )
+
+        self.assertEqual("知识图文方案", result.story_title)
+        self.assertEqual([1, 2], [panel.panel_order for panel in result.panels])
+        self.assertIn("主题「自律自控」", result.panels[0].visual_prompt)
+        self.assertIn("顶部标题区、中部三栏、底部金句全部保留", result.panels[0].visual_prompt)
+        self.assertIsNone(result.panels[0].text_layout)
+        self.assertIsNone(result.panels[0].image_text.title)
+        self.assertIsNone(result.panels[0].image_text.narration)
+
+    def test_knowledge_plan_requires_explicit_page_markers(self) -> None:
+        with self.assertRaisesRegex(LLMResponseError, "需要按页填写"):
+            parse_knowledge_plan(
+                plan_text="男人 25 岁之前必须要做的 5 件事",
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+    def test_knowledge_plan_fixed_count_mismatch_uses_friendly_error(self) -> None:
+        with self.assertRaises(LLMResponseError) as raised:
+            parse_knowledge_plan(
+                plan_text="图1：自律自控\n图2：及时止损",
+                image_count_mode=ImageCountMode.fixed,
+                requested_image_count=3,
+            )
+
+        self.assertIn("图片解析出的分镜数量（2）和你设置的图片数量（3）不一致", str(raised.exception))
 
 
 if __name__ == "__main__":

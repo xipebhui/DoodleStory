@@ -53,6 +53,7 @@ class StoryInputMode(StrEnum):
     original = "original"
     adapted = "adapted"
     extracted_storyboard = "extracted_storyboard"
+    knowledge_plan = "knowledge_plan"
 
 
 class PanelType(StrEnum):

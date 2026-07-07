@@ -644,17 +644,22 @@ function videoTaskStepLabel(step: VideoTask["current_step"]) {
 function storyInputModeLabel(mode: Task["story_input_mode"]) {
   if (mode === "adapted") return "故事方案";
   if (mode === "extracted_storyboard") return "提取分镜";
+  if (mode === "knowledge_plan") return "知识方案";
   return "完整故事";
 }
 
+function isPlanningOnlyInputMode(mode: Task["story_input_mode"]) {
+  return mode === "extracted_storyboard" || mode === "knowledge_plan";
+}
+
 function visibleTaskSteps(task: Task) {
-  if (task.story_input_mode !== "extracted_storyboard") return task.steps;
+  if (!isPlanningOnlyInputMode(task.story_input_mode)) return task.steps;
   return task.steps.filter((step) => !["segment_story", "generate_panel_prompts"].includes(step.step_name));
 }
 
 function currentStepLabel(task: Task) {
   if (
-    task.story_input_mode === "extracted_storyboard" &&
+    isPlanningOnlyInputMode(task.story_input_mode) &&
     task.current_step &&
     ["segment_story", "generate_panel_prompts"].includes(task.current_step)
   ) {
@@ -968,6 +973,10 @@ function TasksView({
     setExtractedCharacterNames([]);
     setManualCharacterNames([]);
     setCreateCharacterBindings({});
+    if (storyInputMode === "knowledge_plan") {
+      setFixedRoleFlowEnabled(false);
+      setCharacterExtractionCompletedForText("");
+    }
   }, [storyInputMode]);
 
   useEffect(() => {
@@ -1438,13 +1447,14 @@ function TasksView({
     }
     const shouldUseDouyinReplicate = storyInputMode === "dy_replicate" || containsDouyinShareUrl(originalText);
     const removeImageText = formData.get("remove_image_text") === "on";
-    if (!shouldUseDouyinReplicate && fixedRoleFlowEnabled && !fixedRoleExtractionReady) {
+    const shouldUseFixedRoleFlow = fixedRoleFlowEnabled && storyInputMode !== "knowledge_plan";
+    if (!shouldUseDouyinReplicate && shouldUseFixedRoleFlow && !fixedRoleExtractionReady) {
       await extractRolesForCreate();
       return;
     }
     try {
       setCreating(true);
-      const storyCharacters: StoryCharacterBinding[] = fixedRoleFlowEnabled
+      const storyCharacters: StoryCharacterBinding[] = shouldUseFixedRoleFlow
         ? createRoleNames
             .map((sourceName) => ({
               source_name: sourceName,
@@ -1479,7 +1489,7 @@ function TasksView({
         image_count_mode: countMode,
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
-        use_character_references: true,
+        use_character_references: storyInputMode === "knowledge_plan" ? false : true,
         last_panel_real_photo: lastPanelRealPhoto,
         remove_image_text: removeImageText,
         story_characters: storyCharacters,
@@ -1984,10 +1994,23 @@ function TasksView({
 
               {taskForDetail.story_input_mode !== "original" ? (
                 <section className="story-panel adapted-story-panel">
-                  <h2>{taskForDetail.story_input_mode === "extracted_storyboard" ? "提取分镜概要" : "增强故事"}</h2>
+                  <h2>
+                    {taskForDetail.story_input_mode === "extracted_storyboard"
+                      ? "提取分镜概要"
+                      : taskForDetail.story_input_mode === "knowledge_plan"
+                        ? "知识方案概要"
+                        : "增强故事"}
+                  </h2>
                   {taskForDetail.adapted_story_title ? <strong>{taskForDetail.adapted_story_title}</strong> : null}
                   {taskForDetail.adapted_story_hook ? <small>{taskForDetail.adapted_story_hook}</small> : null}
-                  <p>{taskForDetail.adapted_story_text ?? (taskForDetail.story_input_mode === "extracted_storyboard" ? "等待内容提取分镜结构化" : "等待 LLM 故事增强")}</p>
+                  <p>
+                    {taskForDetail.adapted_story_text ??
+                      (taskForDetail.story_input_mode === "extracted_storyboard"
+                        ? "等待内容提取分镜结构化"
+                        : taskForDetail.story_input_mode === "knowledge_plan"
+                          ? "等待知识方案拆页"
+                          : "等待 LLM 故事增强")}
+                  </p>
                 </section>
               ) : null}
 
@@ -2188,6 +2211,15 @@ function TasksView({
                 </button>
                 <button
                   type="button"
+                  className={storyInputMode === "knowledge_plan" ? "mode-choice active" : "mode-choice"}
+                  aria-pressed={storyInputMode === "knowledge_plan"}
+                  onClick={() => setStoryInputMode("knowledge_plan")}
+                >
+                  <strong>知识方案</strong>
+                  <span>适合知识卡片、图鉴、清单和方法论，按你写好的页序直通生图。</span>
+                </button>
+                <button
+                  type="button"
                   className={storyInputMode === "dy_replicate" ? "mode-choice active" : "mode-choice"}
                   aria-pressed={storyInputMode === "dy_replicate"}
                   onClick={() => setStoryInputMode("dy_replicate")}
@@ -2201,9 +2233,11 @@ function TasksView({
                   ? "故事方案或要求"
                   : storyInputMode === "extracted_storyboard"
                     ? "提取分镜内容"
-                    : storyInputMode === "dy_replicate"
-                      ? "抖音分享文本或链接"
-                      : "完整故事正文"}
+                    : storyInputMode === "knowledge_plan"
+                      ? "知识图文方案"
+                      : storyInputMode === "dy_replicate"
+                        ? "抖音分享文本或链接"
+                        : "完整故事正文"}
                 <textarea
                   name="original_text"
                   value={createOriginalText}
@@ -2213,9 +2247,11 @@ function TasksView({
                       ? "输入故事设定、简短梗概、人物关系、画面要求或其他创作方向"
                       : storyInputMode === "extracted_storyboard"
                         ? "粘贴或编辑内容提取结果，例如第1页、第2页、画面、旁白、对话、内心OS和分格信息"
-                        : storyInputMode === "dy_replicate"
-                          ? "粘贴完整抖音分享文本或链接，例如 https://v.douyin.com/..."
-                          : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
+                        : storyInputMode === "knowledge_plan"
+                          ? "按第1页、第2页或图1、图2写清每张图的完整生图提示词、版式、文字和禁止事项"
+                          : storyInputMode === "dy_replicate"
+                            ? "粘贴完整抖音分享文本或链接，例如 https://v.douyin.com/..."
+                            : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
                   }
                   required
                   autoFocus
@@ -2224,6 +2260,8 @@ function TasksView({
                   <small>原始输入会保留，系统会直接根据方案规划图文分镜；所有图片都按同一套分镜逻辑生成。</small>
                 ) : storyInputMode === "extracted_storyboard" ? (
                   <small>系统只做分镜结构化，不扩写、不总结、不合并页；会把旁白、对白和内心 OS 区分成不同画面呈现形式。</small>
+                ) : storyInputMode === "knowledge_plan" ? (
+                  <small>系统只按页拆分你的原始提示词，再拼接所选风格和画面比例；不会做人设提取、故事改写或提示词总结。</small>
                 ) : storyInputMode === "dy_replicate" ? (
                   <small>提交后会先创建内容提取记录；提取成功后自动创建提取分镜任务并跳转到任务详情。</small>
                 ) : (
@@ -2246,10 +2284,13 @@ function TasksView({
                     <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
                     {storyInputMode === "adapted" ? <small>固定数量就是最终图片张数，系统不会额外插入图片。</small> : null}
                     {storyInputMode === "extracted_storyboard" ? <small>固定数量必须和提取分镜页数一致，不会自动合并或补页。</small> : null}
+                    {storyInputMode === "knowledge_plan" ? <small>固定数量必须和你写出的页数一致；系统不会自动合并、补页或删页。</small> : null}
                     {storyInputMode === "dy_replicate" ? <small>固定数量必须和提取出的页数一致；内容提取完成后不会自动合并或补页。</small> : null}
                   </label>
                 ) : (
-                  <p className="field-hint">系统会根据故事长度和内容密度决定图片张数。</p>
+                  <p className="field-hint">
+                    {storyInputMode === "knowledge_plan" ? "系统会按你写出的页数生成图片。" : "系统会根据故事长度和内容密度决定图片张数。"}
+                  </p>
                 )}
               </section>
               <section className="create-section">
@@ -2313,7 +2354,7 @@ function TasksView({
                 </div>
               </fieldset>
               {message ? <p className="form-message">{message}</p> : null}
-              {storyInputMode !== "dy_replicate" && fixedRoleFlowEnabled ? (
+              {storyInputMode !== "dy_replicate" && storyInputMode !== "knowledge_plan" && fixedRoleFlowEnabled ? (
                 <section className="create-section character-quick-section">
                   <p className="field-hint">勾选后需先提取角色名，再选择要绑定的固定角色。已绑定 {boundRoleCount} 个。</p>
                   {fixedRoleExtractionReady ? (
@@ -2385,7 +2426,7 @@ function TasksView({
                 </section>
               ) : null}
               <div className="task-create-footer">
-                {storyInputMode !== "dy_replicate" ? (
+                {storyInputMode !== "dy_replicate" && storyInputMode !== "knowledge_plan" ? (
                   <label className="character-reference-toggle fixed-role-toggle footer-role-toggle">
                     <input
                       type="checkbox"
@@ -2405,14 +2446,17 @@ function TasksView({
                   <button type="submit" disabled={creating || extractingCharacters}>
                     {creating || extractingCharacters ? (
                       <Loader2 size={17} className="spin" />
-                    ) : fixedRoleFlowEnabled && !fixedRoleExtractionReady && storyInputMode !== "dy_replicate" ? (
+                    ) : fixedRoleFlowEnabled &&
+                      !fixedRoleExtractionReady &&
+                      storyInputMode !== "dy_replicate" &&
+                      storyInputMode !== "knowledge_plan" ? (
                       <Search size={17} />
                     ) : (
                       <Plus size={17} />
                     )}
                     {storyInputMode === "dy_replicate"
                       ? "开始复刻"
-                      : fixedRoleFlowEnabled && !fixedRoleExtractionReady
+                      : fixedRoleFlowEnabled && !fixedRoleExtractionReady && storyInputMode !== "knowledge_plan"
                         ? "提取角色"
                         : "创建任务"}
                   </button>

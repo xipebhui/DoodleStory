@@ -21,6 +21,11 @@ from app.services.style_references import snapshot_task_style_reference_images
 DOUYIN_SHARE_URL_PATTERN = re.compile(
     r"https?://(?:v\.douyin\.com/[A-Za-z0-9_.~%-]+/?|www\.douyin\.com/(?:video|note)/[A-Za-z0-9_.~%-]+(?:\?[^\s，,。！!？?；;]*)?)"
 )
+PLANNING_INPUT_MODES = {
+    StoryInputMode.adapted,
+    StoryInputMode.extracted_storyboard,
+    StoryInputMode.knowledge_plan,
+}
 
 
 @dataclass(frozen=True)
@@ -34,7 +39,7 @@ class TaskCreationError(Exception):
 
 def task_progress_total_for_creation(task: GenerationTask) -> int:
     total = 1
-    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+    if task.story_input_mode in PLANNING_INPUT_MODES:
         total += 1
     else:
         total += 2
@@ -48,13 +53,13 @@ def generation_step_names_for_task(
     story_input_mode: StoryInputMode,
     use_character_references: bool,
 ) -> list[GenerationStepName]:
-    if story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+    if story_input_mode in PLANNING_INPUT_MODES:
         step_names = [GenerationStepName.adapt_story]
     else:
         step_names = [GenerationStepName.segment_story]
     if use_character_references:
         step_names.extend([GenerationStepName.extract_characters, GenerationStepName.generate_character_references])
-    if story_input_mode not in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+    if story_input_mode not in PLANNING_INPUT_MODES:
         step_names.append(GenerationStepName.generate_panel_prompts)
     step_names.append(GenerationStepName.generate_images)
     return step_names
@@ -82,6 +87,8 @@ def validate_task_create_payload(payload: TaskCreate) -> None:
         raise TaskCreationError(status_code=400, detail="固定图片数量时必须传 requested_image_count")
     if DOUYIN_SHARE_URL_PATTERN.search(payload.original_text):
         raise TaskCreationError(status_code=400, detail="检测到抖音分享链接，请使用 DY爆款复刻创建任务")
+    if payload.story_input_mode == StoryInputMode.knowledge_plan and payload.story_characters:
+        raise TaskCreationError(status_code=400, detail="知识方案模式不支持绑定固定角色")
     seen_sources: set[str] = set()
     seen_character_ids: set[str] = set()
     for item in payload.story_characters:
@@ -155,7 +162,11 @@ def create_generation_task_record(
     validate_task_create_payload(payload)
     style = load_active_style_for_task(db, payload.style_id)
     fixed_user_characters = load_user_characters_for_task(db, payload, user)
-    use_character_references = payload.use_character_references or bool(payload.story_characters)
+    use_character_references = (
+        False
+        if payload.story_input_mode == StoryInputMode.knowledge_plan
+        else payload.use_character_references or bool(payload.story_characters)
+    )
 
     display_title = payload.original_text.strip().replace("\n", " ")[:36] or "未命名任务"
     task = GenerationTask(

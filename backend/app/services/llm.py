@@ -26,6 +26,10 @@ EXTRACTED_STORYBOARD_PANEL_COUNT_MISMATCH_MESSAGE = (
     "图片解析出的分镜数量（{detected_count}）和你设置的图片数量（{requested_count}）不一致，"
     "请把图片数量改为 {detected_count}，或调整分镜内容后重试。"
 )
+KNOWLEDGE_PLAN_PAGE_MARKER_PATTERN = re.compile(
+    r"(?m)^\s*(?:第\s*(?P<page>\d+)\s*[页頁]|图\s*(?P<image>\d+)|P\s*(?P<p>\d+))"
+    r"\s*(?:[|｜:：、.\-—]\s*(?:内容)?\s*)?"
+)
 
 
 class LLMProviderError(Exception):
@@ -95,6 +99,72 @@ def _extract_count_mismatch_from_raw(raw: dict[str, Any]) -> tuple[int | None, i
     if requested_count is not None or detected_count is not None:
         return detected_count, requested_count
     return None
+
+
+def parse_knowledge_plan(
+    *,
+    plan_text: str,
+    image_count_mode: ImageCountMode,
+    requested_image_count: int | None,
+) -> "StoryboardPlanningResult":
+    matches = list(KNOWLEDGE_PLAN_PAGE_MARKER_PATTERN.finditer(plan_text))
+    if not matches:
+        raise LLMResponseError("知识方案需要按页填写，请使用“第1页”“第2页”或“图1”“图2”标出每张图片的内容。")
+
+    panels: list[StoryboardPanelPlan] = []
+    expected_order = 1
+    for index, match in enumerate(matches):
+        raw_order = match.group("page") or match.group("image") or match.group("p")
+        panel_order = int(raw_order)
+        if panel_order != expected_order:
+            raise LLMResponseError("知识方案页码必须从 1 开始连续递增，请检查是否漏页、重复页或页码跳号。")
+        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(plan_text)
+        content = plan_text[match.end():next_start].strip()
+        if not content:
+            raise LLMResponseError(f"知识方案第 {panel_order} 页内容为空，请补充该页的生图提示词。")
+        story_beat = first_nonempty_line(content) or f"知识方案第 {panel_order} 页"
+        panels.append(
+            StoryboardPanelPlan(
+                panel_order=panel_order,
+                panel_type=PanelType.scene,
+                story_beat=story_beat[:120],
+                visual_prompt=content,
+                image_text=ImageTextPlan(),
+                text_layout=None,
+            )
+        )
+        expected_order += 1
+
+    detected_count = len(panels)
+    if image_count_mode == ImageCountMode.fixed and detected_count != requested_image_count:
+        raise LLMResponseError(
+            extracted_storyboard_panel_count_mismatch_message(
+                detected_count=detected_count,
+                requested_count=requested_image_count,
+            )
+        )
+
+    title = first_nonempty_line(plan_text) or "知识图文方案"
+    return StoryboardPlanningResult(
+        story_title=clean_title_for_knowledge_plan(title),
+        story_hook=f"按用户提供的 {detected_count} 页知识图文方案生成图片。",
+        story_outline=f"用户提供了 {detected_count} 页知识图文方案；系统按页保留原始提示词，不做故事改写。",
+        panels=panels,
+    )
+
+
+def first_nonempty_line(value: str) -> str | None:
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        if line:
+            return line
+    return None
+
+
+def clean_title_for_knowledge_plan(value: str) -> str:
+    cleaned = KNOWLEDGE_PLAN_PAGE_MARKER_PATTERN.sub("", value, count=1).strip(" |｜:：、.-—\t")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return (cleaned or "知识图文方案")[:120]
 
 
 class StorySegment(BaseModel):

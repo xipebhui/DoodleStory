@@ -80,6 +80,7 @@ from app.services.llm import (
     generate_panel_prompts_with_characters,
     ImageTextPlan,
     parse_extracted_storyboard,
+    parse_knowledge_plan,
     plan_storyboard_from_brief,
     revise_panel_prompt,
     rewrite_policy_blocked_image_prompt,
@@ -111,6 +112,11 @@ NO_IMAGE_TEXT_RULE = (
 IMAGE_TEXT_KEYS = ("title", "narration", "dialogue", "inner_os", "emphasis")
 TASK_CANCELLED_IMAGE_ERROR_CODE = "TaskCancelled"
 TASK_CANCELLED_IMAGE_ERROR_MESSAGE = "任务已取消，图片生成已停止"
+PLANNING_INPUT_MODES = {
+    StoryInputMode.adapted,
+    StoryInputMode.extracted_storyboard,
+    StoryInputMode.knowledge_plan,
+}
 
 
 @dataclass(frozen=True)
@@ -1418,7 +1424,7 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
 
 def task_progress_total(task: GenerationTask) -> int:
     total = 1
-    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+    if task.story_input_mode in PLANNING_INPUT_MODES:
         total += 1
     else:
         total += 2
@@ -1448,6 +1454,8 @@ def story_text_for_generation(task: GenerationTask) -> str:
         return f"用户原始方案：\n{task.original_text}\n\n图文分镜概要：\n{task.adapted_story_text}"
     if task.story_input_mode == StoryInputMode.extracted_storyboard and task.adapted_story_text:
         return f"内容提取原文：\n{task.original_text}\n\n提取分镜概要：\n{task.adapted_story_text}"
+    if task.story_input_mode == StoryInputMode.knowledge_plan and task.adapted_story_text:
+        return f"知识方案原文：\n{task.original_text}\n\n知识方案概要：\n{task.adapted_story_text}"
     return task.original_text
 
 
@@ -2130,6 +2138,26 @@ def build_panel_final_prompt(
     )
 
 
+def build_knowledge_plan_final_prompt(
+    task: GenerationTask,
+    panel: TaskPanel,
+    reference_notes: list[str] | None = None,
+) -> str:
+    user_prompt = (panel.generated_prompt or panel.original_text_segment or "").strip()
+    prompt = "\n".join(
+        [
+            "用户原始单页提示词（最高优先级，必须完整执行；不要总结、改写、压缩或重新组织）：",
+            user_prompt,
+        ]
+    )
+    return final_prompt_with_explicit_style(
+        task,
+        prompt,
+        reference_notes=reference_notes,
+        force_real_photo=is_last_panel_real_photo_panel(task, panel),
+    )
+
+
 def build_generation_reference_pack(task: GenerationTask, panel: TaskPanel) -> GenerationReferencePack:
     if is_last_panel_real_photo_panel(task, panel):
         return GenerationReferencePack(
@@ -2292,6 +2320,26 @@ def compose_final_prompts_for_panels(
 ) -> dict[int, str]:
     if not panels:
         return {}
+    if task.story_input_mode == StoryInputMode.knowledge_plan:
+        prompt_by_order: dict[int, str] = {}
+        for panel in panels:
+            final_prompt = build_knowledge_plan_final_prompt(
+                task,
+                panel,
+                reference_notes=reference_packs[panel.id].notes,
+            )
+            prompt_by_order[panel.panel_order] = final_prompt
+            log_prompt_trace(
+                logger,
+                "final_image_prompt_composed_direct",
+                context=task_trace_context(task, trace_step, panel_order=panel.panel_order),
+                style_prompt_included=is_prompt_reference_mode(task.style_reference_mode_snapshot)
+                and bool((task.style_prompt_snapshot or "").strip()),
+                final_prompt_chars=len(final_prompt),
+                final_prompt=final_prompt,
+            )
+        return prompt_by_order
+
     panel_payloads = []
     for panel in panels:
         visual_prompt = (
@@ -2429,7 +2477,7 @@ def process_task(task_id: str) -> None:
         task.progress_total = task_progress_total(task)
         db.commit()
 
-        if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+        if task.story_input_mode in PLANNING_INPUT_MODES:
             if task.adapted_story_text and task.panels and all(panel.generated_prompt for panel in task.panels):
                 task.progress_current = max(task.progress_current, 1)
                 set_step(db, task, GenerationStepName.adapt_story, StepStatus.succeeded)
@@ -2453,6 +2501,12 @@ def process_task(task_id: str) -> None:
                             image_count_mode=task.image_count_mode,
                             requested_image_count=task.requested_image_count,
                             trace_context=task_trace_context(task, "adapt_story"),
+                        )
+                    elif task.story_input_mode == StoryInputMode.knowledge_plan:
+                        storyboard = parse_knowledge_plan(
+                            plan_text=task.original_text,
+                            image_count_mode=task.image_count_mode,
+                            requested_image_count=task.requested_image_count,
                         )
                     else:
                         storyboard = plan_storyboard_from_brief(
@@ -2505,7 +2559,7 @@ def process_task(task_id: str) -> None:
         if should_stop_for_cancel(db, task):
             return
 
-        planning_mode = task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}
+        planning_mode = task.story_input_mode in PLANNING_INPUT_MODES
         existing_panels = sorted(task.panels, key=lambda item: item.panel_order)
         if planning_mode:
             if not existing_panels:
@@ -2636,7 +2690,7 @@ def process_task(task_id: str) -> None:
                     else:
                         persist_character_plans(db, task, character_result.characters)
                         persisted_character_plans = character_result.characters
-                    if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+                    if task.story_input_mode in PLANNING_INPUT_MODES:
                         task = load_task(db, task_id)
                         if task is None:
                             return
@@ -2716,7 +2770,7 @@ def process_task(task_id: str) -> None:
         if should_stop_for_cancel(db, task):
             return
 
-        if task.use_character_references and task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+        if task.use_character_references and task.story_input_mode in PLANNING_INPUT_MODES:
             ensure_fixed_character_panel_links_by_name(db, task)
             db.commit()
 
@@ -2725,7 +2779,7 @@ def process_task(task_id: str) -> None:
             for panel in task.panels
         )
         prompts_progress = task.progress_total - 1
-        if task.story_input_mode in {StoryInputMode.adapted, StoryInputMode.extracted_storyboard}:
+        if task.story_input_mode in PLANNING_INPUT_MODES:
             if not prompts_ready:
                 fail_step_and_task(db, task, GenerationStepName.adapt_story, LLMResponseError("分镜规划缺少可用于生图的画面提示词"))
                 return

@@ -9,6 +9,7 @@
 
 ## 当前 Sprint 合同
 
+- `docs/contracts/sprint-92-knowledge-plan-direct-prompt-mode.md`
 - `docs/contracts/sprint-91-friendly-panel-count-mismatch-error.md`
 - `docs/contracts/sprint-90-task-cancel-image-job-interrupt.md`
 - `docs/contracts/sprint-88-admin-video-audio-visibility.md`
@@ -18,6 +19,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 92 知识方案直通生图模式：为知识卡片、图鉴、清单和方法论等非故事内容新增 `knowledge_plan` 输入模式。该模式要求用户显式写出 `第1页` / `图1` 等页标，后端只按页拆分并保留每页原始提示词；默认关闭人物参考，不走人物提取、人物参考图或最终 prompt LLM 编译，只拼接风格、比例、参考图说明和去文字最高指令。固定图片数量必须与显式页数一致；没有页标时会明确提示用户按页填写。前端创建任务弹窗已新增 `知识方案` 入口，并在该模式下隐藏固定角色流程。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_llm_storyboard_planning backend.tests.test_task_worker_prompt backend.tests.test_user_characters`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 148 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 完成 Sprint 91 提取分镜数量不一致友好提示：线上任务 `1f98c58e6457403aaae069db99c1b192` 的根因是 `story_input_mode=extracted_storyboard`、固定图片数量 12，但原始分镜包含 `第1页` 至 `第13页` 共 13 页；结构化模型按规则明确失败后，后端此前把 Pydantic 校验失败统一映射为“内容提取分镜结构化失败”。现已识别模型返回的页数/分镜数不匹配错误，并在合法 `panels` 数量不一致时使用同一类友好提示：`图片解析出的分镜数量（X）和你设置的图片数量（Y）不一致，请把图片数量改为 X，或调整分镜内容后重试。` 本次不自动合并、删减或补页。
 - 完成 Sprint 90 任务取消停止图片 job 与积分扣费：排查确认旧逻辑只把主任务置为 `cancel_requested` / `cancelled`，已排队或已领取的 `generated_images` 图片 job 仍可能继续执行，Provider 成功返回后还可能保存资产、扣积分并把任务状态改回运行或成功。现已在取消接口同步取消任务下活跃图片 job 并释放已占用积分；图片 worker 领取、执行前、Provider 返回后和服务重启恢复时都会检查任务取消状态，取消后的成功返回不保存资产、不扣费、不复活任务。已明确当前不新增第三方 Provider 请求撤销能力，已经发出的同步 HTTP 请求返回后在本地丢弃。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_recovery` 通过。
 - 补充 Sprint 90 取消幂等与线上清理脚本：针对旧线上任务取消后被状态汇总覆盖、再次点击取消受限的问题，取消接口现在允许 `cancelled` 任务再次调用，并重新执行残留图片 job 清理；任务详情页的取消按钮也允许已取消任务再次点击，文案改为 `再次取消`。新增 `scripts/cancel-task-image-jobs.py`，默认 dry-run，显式 `--apply` 才会对指定任务调用同一套后端取消逻辑清理 queued/running 图片 job 和未结算积分占用。

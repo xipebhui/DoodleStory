@@ -33,8 +33,10 @@ from app.services.task_worker import (
     PreparedPanelImageRequest,
     build_adapted_story_final_prompt,
     build_generation_reference_pack,
+    build_knowledge_plan_final_prompt,
     build_original_story_final_prompt,
     build_panel_final_prompt,
+    compose_final_prompts_for_panels,
     final_prompt_panel_payload,
     final_prompt_task_payload,
     final_prompt_with_aspect_ratio_prefix,
@@ -570,6 +572,74 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
 
         self.assertTrue(final_prompt_task_payload(task)["remove_image_text"])
+
+    def test_knowledge_plan_final_prompt_keeps_user_prompt_as_highest_priority(self) -> None:
+        task = GenerationTask(
+            id="task-1",
+            owner_user_id="user",
+            display_title="知识方案",
+            original_text="第1页：自律自控",
+            story_input_mode=StoryInputMode.knowledge_plan,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="复古图鉴",
+            style_prompt_snapshot="米黄色做旧纸底，暖棕细线边框。",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+        panel = TaskPanel(
+            id="panel-1",
+            panel_order=1,
+            panel_type=PanelType.scene,
+            original_text_segment="自律自控",
+            generated_prompt="生成一张知识图鉴。顶部标题区、中部三栏、底部金句全部保留。",
+        )
+
+        final_prompt = build_knowledge_plan_final_prompt(task, panel, reference_notes=["风格参考（参考图1）"])
+
+        self.assertIn("画面比例：3:4", final_prompt)
+        self.assertIn("用户原始单页提示词（最高优先级", final_prompt)
+        self.assertIn("生成一张知识图鉴。顶部标题区、中部三栏、底部金句全部保留。", final_prompt)
+        self.assertIn("米黄色做旧纸底，暖棕细线边框。", final_prompt)
+        self.assertNotIn("结构化分镜", final_prompt)
+        self.assertNotIn("剧情意图", final_prompt)
+
+    def test_knowledge_plan_compose_final_prompts_skips_llm_compiler(self) -> None:
+        task = GenerationTask(
+            id="task-1",
+            owner_user_id="user",
+            display_title="知识方案",
+            original_text="第1页：自律自控",
+            story_input_mode=StoryInputMode.knowledge_plan,
+            image_count_mode=ImageCountMode.auto,
+            style_id="style",
+            style_name_snapshot="复古图鉴",
+            style_prompt_snapshot="米黄色做旧纸底。",
+            image_model_name_snapshot="gpt-image-2",
+            style_aspect_ratio_snapshot="3:4",
+            style_reference_mode_snapshot=StyleReferenceMode.prompt,
+        )
+        panel = TaskPanel(
+            id="panel-1",
+            panel_order=1,
+            panel_type=PanelType.scene,
+            original_text_segment="自律自控",
+            generated_prompt="用户写好的完整知识页提示词。",
+        )
+        pack = GenerationReferencePack(references=[], notes=[], character_reference_count=0, style_reference_count=0)
+
+        with patch("app.services.task_worker.compose_final_image_prompts") as compose_llm:
+            result = compose_final_prompts_for_panels(
+                db=SimpleNamespace(),
+                task=task,
+                panels=[panel],
+                reference_packs={panel.id: pack},
+                trace_step="generate_images_final_prompt",
+            )
+
+        compose_llm.assert_not_called()
+        self.assertIn("用户写好的完整知识页提示词。", result[1])
 
     def test_last_panel_real_photo_final_prompt_overrides_task_style(self) -> None:
         task = GenerationTask(

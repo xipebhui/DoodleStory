@@ -281,7 +281,7 @@ credit_activation_codes 1--0..1 credit_activation_code_redemptions
 - `owner_user_id` 外键到 `users.id`，not null
 - `display_title` text not null
 - `original_text` text not null
-- `story_input_mode` text not null，取值 `original`、`adapted`
+- `story_input_mode` text not null，取值 `original`、`adapted`、`extracted_storyboard`、`knowledge_plan`
 - `adapted_story_title` text null
 - `adapted_story_hook` text null
 - `adapted_story_text` text null

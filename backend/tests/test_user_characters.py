@@ -296,6 +296,85 @@ class UserCharacterTest(unittest.TestCase):
             [step.step_name for step in task.steps],
         )
 
+    def test_knowledge_plan_creation_disables_character_reference_steps(self) -> None:
+        db = self.Session()
+        owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        style = Style(
+            name="知识图鉴",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_reference_mode=StyleReferenceMode.prompt,
+            style_prompt="复古知识图鉴风",
+        )
+        db.add_all([owner, style])
+        db.commit()
+
+        task = create_generation_task_record(
+            db=db,
+            user=owner,
+            payload=TaskCreate(
+                original_text="第1页：自律自控\n第2页：及时止损",
+                story_input_mode=StoryInputMode.knowledge_plan,
+                image_count_mode=ImageCountMode.auto,
+                style_id=style.id,
+                use_character_references=True,
+                story_characters=[],
+            ),
+        )
+
+        self.assertFalse(task.use_character_references)
+        self.assertEqual(2, task.progress_total)
+        self.assertEqual(
+            [GenerationStepName.adapt_story, GenerationStepName.generate_images],
+            [step.step_name for step in task.steps],
+        )
+
+    def test_knowledge_plan_rejects_fixed_character_bindings(self) -> None:
+        db = self.Session()
+        owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
+        style = Style(
+            name="知识图鉴",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_reference_mode=StyleReferenceMode.prompt,
+            style_prompt="复古知识图鉴风",
+        )
+        db.add_all([owner, style])
+        db.commit()
+        asset = FileAsset(
+            purpose=FileAssetPurpose.user_character_reference,
+            storage_backend=StorageBackend.local,
+            storage_key="characters/ref.png",
+            public_url=None,
+            content_type="image/png",
+            byte_size=10,
+        )
+        character = UserCharacter(
+            owner_user_id=owner.id,
+            name="男生",
+            reference_asset=asset,
+            description="20岁男生",
+        )
+        db.add_all([asset, character])
+        db.commit()
+
+        with self.assertRaisesRegex(TaskCreationError, "知识方案模式不支持绑定固定角色"):
+            create_generation_task_record(
+                db=db,
+                user=owner,
+                payload=TaskCreate(
+                    original_text="第1页：自律自控",
+                    story_input_mode=StoryInputMode.knowledge_plan,
+                    image_count_mode=ImageCountMode.auto,
+                    style_id=style.id,
+                    story_characters=[
+                        StoryCharacterBindingCreate(source_name="男生", user_character_id=character.id)
+                    ],
+                ),
+            )
+
     def test_regular_task_rejects_douyin_share_link(self) -> None:
         db = self.Session()
         owner = User(email="owner@example.com", password_hash="hash", role=UserRole.user)
