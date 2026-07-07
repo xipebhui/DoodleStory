@@ -5,11 +5,19 @@ import argparse
 import os
 import shutil
 import sqlite3
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from urllib.parse import unquote
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
+IMAGE_PURPOSES = (
+    "style_reference",
+    "user_character_reference",
+    "character_reference",
+    "generated_image",
+    "douyin_media",
+)
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -61,14 +69,28 @@ def remove_file(path: Path, *, delete: bool) -> int:
     return size
 
 
-def cleanup_cloud_mirrors(conn: sqlite3.Connection, storage_root: Path, *, backend: str, delete: bool) -> tuple[int, int]:
+def default_before_date() -> str:
+    yesterday = datetime.combine(datetime.now().date() - timedelta(days=1), time.min)
+    return yesterday.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def cleanup_cloud_mirrors(
+    conn: sqlite3.Connection,
+    storage_root: Path,
+    *,
+    backend: str,
+    before_date: str,
+    delete: bool,
+) -> tuple[int, int]:
     rows = conn.execute(
         """
         select id, storage_key
         from file_assets
         where storage_backend = ?
+          and purpose in (?, ?, ?, ?, ?)
+          and created_at < ?
         """,
-        (backend,),
+        (backend, *IMAGE_PURPOSES, before_date),
     ).fetchall()
     matched = 0
     bytes_total = 0
@@ -81,7 +103,13 @@ def cleanup_cloud_mirrors(conn: sqlite3.Connection, storage_root: Path, *, backe
     return matched, bytes_total
 
 
-def cleanup_download_archives(conn: sqlite3.Connection, storage_root: Path, *, delete: bool) -> tuple[int, int]:
+def cleanup_download_archives(
+    conn: sqlite3.Connection,
+    storage_root: Path,
+    *,
+    before_date: str,
+    delete: bool,
+) -> tuple[int, int]:
     rows = conn.execute(
         """
         select task_downloads.id, file_assets.id, file_assets.storage_key
@@ -89,7 +117,9 @@ def cleanup_download_archives(conn: sqlite3.Connection, storage_root: Path, *, d
         join file_assets on file_assets.id = task_downloads.asset_id
         where file_assets.purpose = 'download_archive'
           and file_assets.storage_backend = 'local'
-        """
+          and file_assets.created_at < ?
+        """,
+        (before_date,),
     ).fetchall()
     matched = 0
     bytes_total = 0
@@ -137,6 +167,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Clean local files that are no longer the source of truth.")
     parser.add_argument("--delete", action="store_true", help="Actually delete files and related download archive rows.")
     parser.add_argument("--backend", default="aliyun_oss", choices=("aliyun_oss", "qiniu"))
+    parser.add_argument(
+        "--before-date",
+        default=default_before_date(),
+        help="Only clean file_assets created before this local timestamp. Default: yesterday 00:00.",
+    )
     parser.add_argument("--skip-cloud-mirrors", action="store_true")
     parser.add_argument("--include-download-archives", action="store_true")
     parser.add_argument("--include-cache", action="store_true")
@@ -159,15 +194,30 @@ def main() -> None:
     print(f"mode={'delete' if args.delete else 'dry-run'}")
     print(f"database={db_path}")
     print(f"storage_root={storage_root}")
+    print(f"before_date={args.before_date}")
 
     with sqlite3.connect(db_path) as conn:
         if not args.skip_cloud_mirrors:
-            count, bytes_total = cleanup_cloud_mirrors(conn, storage_root, backend=args.backend, delete=args.delete)
-            print(f"cloud_mirrors backend={args.backend} files={count} bytes={human_size(bytes_total)}")
+            count, bytes_total = cleanup_cloud_mirrors(
+                conn,
+                storage_root,
+                backend=args.backend,
+                before_date=args.before_date,
+                delete=args.delete,
+            )
+            print(
+                "cloud_image_mirrors "
+                f"backend={args.backend} before_date={args.before_date} files={count} bytes={human_size(bytes_total)}"
+            )
 
         if args.include_download_archives:
-            count, bytes_total = cleanup_download_archives(conn, storage_root, delete=args.delete)
-            print(f"download_archives files={count} bytes={human_size(bytes_total)}")
+            count, bytes_total = cleanup_download_archives(
+                conn,
+                storage_root,
+                before_date=args.before_date,
+                delete=args.delete,
+            )
+            print(f"download_archives before_date={args.before_date} files={count} bytes={human_size(bytes_total)}")
 
         if args.include_cache:
             count, bytes_total = cleanup_directory(storage_root / "_cache", delete=args.delete)

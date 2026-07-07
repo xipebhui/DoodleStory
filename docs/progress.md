@@ -305,6 +305,7 @@
 - 进一步拆分任务页风格下拉：新增 `/styles/select-options`，只查询并返回 `id/name`，任务页首屏筛选下拉改用该接口；带预览图的 `/styles/options` 只在创建任务弹窗打开后加载，用于风格卡片展示。新增单测确认 select options schema 只有 `id` 和 `name`。
 - 修复内容提取分镜结构校验错误暴露内部字段：当 LLM 返回的内容提取分镜 JSON 缺少 `story_title` 等内部 schema 字段时，任务失败信息改为用户可理解的“内容提取分镜结构化失败”，不再把 `story_title Field required` 这类 Pydantic 校验细节展示到前端；详细字段错误仍保留在日志和 prompt trace 中用于排查。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_llm_storyboard_planning.py`、`backend/.venv/bin/python -m compileall backend/app` 和 `git diff --check` 通过。
 - 调整对象存储本地镜像策略：远程磁盘 90% 的主要来源是 `/opt/doodlestory/storage`，其中 `generated_image` 约 14G、`download_archive` 约 6.3G、`douyin_media` 约 1.5G；新写入七牛/阿里云对象存储资产上传成功后默认删除本地镜像，只有显式设置 `OBJECT_STORAGE_KEEP_LOCAL_MIRROR=true` 才保留。任务下载打包改为可从对象存储临时 materialize 图片，打包结束清理 `_cache`，并把 zip 跟随当前存储后端保存，避免继续写入本地 `download_archive`。新增 `scripts/cleanup-storage-local-files.py` dry-run 优先的历史清理脚本，可清理阿里云本地镜像、旧下载 zip 记录和缓存；线上 dry-run 显示当前可识别的阿里云镜像约 1.6G、旧下载 zip 约 6.3G，历史 qiniu 生成图约 10.4G 需先确认是否已转存或可丢弃后再清理。
+- 收紧历史本地文件清理脚本默认范围：`scripts/cleanup-storage-local-files.py` 默认只统计/清理昨天 00:00 之前创建的图片类对象存储本地镜像，避免误碰昨天和今天刚生成的图片；如需调整时间可传 `--before-date`。远程 dry-run 在 2026-07-07 运行时默认 cutoff 为 `2026-07-06 00:00:00`，命中阿里云图片镜像约 1.0G；显式包含旧下载 zip 时命中约 5.7G。
 
 ## 已知缺口
 
