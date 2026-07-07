@@ -4656,7 +4656,7 @@ function StylesView({ user, onCreditsChanged }: { user: User; onCreditsChanged: 
     if (styleBusy) return;
     try {
       setExtractingStylePrompt(true);
-      setMessage("正在使用 Gemini VL 提取风格提示词...");
+      setMessage("正在使用 gpt-5.4 提取风格提示词...");
       const result = await requestStylePromptExtraction(pendingReferenceFiles);
       setStylePromptDraft(result.style_prompt);
       setMessage(`已从 ${result.reference_image_count} 张参考图提取风格提示词`);

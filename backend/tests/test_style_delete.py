@@ -20,6 +20,7 @@ from app.core.database import Base
 from app.models.entities import FileAsset, GenerationTask, Style, StyleReferenceImage, TaskStyleReferenceImage, User
 from app.models.enums import FileAssetPurpose, ImageCountMode, StorageBackend, StyleStatus, StyleReferenceMode
 from app.schemas.style import StyleCreate, StyleOptionRead, StyleSelectOptionRead, StyleUpdate
+from app.services.media_text_extraction import StylePromptImageReference, extract_style_prompt_from_images
 
 
 class StyleDeleteTest(unittest.TestCase):
@@ -359,6 +360,33 @@ class StyleDeleteTest(unittest.TestCase):
             ["https://cdn.example.com/1.png", "https://cdn.example.com/2.png", "https://cdn.example.com/3.png"],
             [reference.url for reference in called_references],
         )
+
+    @patch("app.services.media_text_extraction._chat_text_fallback_multimodal")
+    @patch("app.services.media_text_extraction.get_settings")
+    def test_style_prompt_extraction_uses_gpt_54_text_fallback_model(self, get_settings, chat_multimodal) -> None:
+        get_settings.return_value = SimpleNamespace(text_fallback_model="gpt-5.4")
+        extracted_prompt = "\n".join(
+            [
+                "【核心调性】冷静客观的绘本风。",
+                "【色彩与光影特征】低饱和柔光。",
+                "【线条与肌理特征】细线与纸张颗粒。",
+                "【构图与透视特征】平稳正面构图。",
+                "【风格迁移测试】白色陶瓷马克杯会呈现柔和边缘。",
+            ]
+        )
+        chat_multimodal.return_value = extracted_prompt
+
+        result = extract_style_prompt_from_images(
+            [
+                StylePromptImageReference(url="https://cdn.example.com/1.png", source_name="1.png"),
+                StylePromptImageReference(url="https://cdn.example.com/2.png", source_name="2.png"),
+                StylePromptImageReference(url="https://cdn.example.com/3.png", source_name="3.png"),
+            ]
+        )
+
+        self.assertEqual("gpt-5.4", result.model)
+        self.assertEqual(extracted_prompt, result.text)
+        self.assertEqual("gpt-5.4", chat_multimodal.call_args.kwargs["model"])
 
     def test_update_style_duplicate_name_returns_business_error(self) -> None:
         db = self.Session()

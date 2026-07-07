@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from time import monotonic
 
 from app.core.config import get_settings
-from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError, create_lio_client
+from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError, create_text_fallback_client
 from app.services.prompt_logging import log_prompt_trace
 
 logger = logging.getLogger(__name__)
@@ -250,10 +250,10 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
     return text
 
 
-def _chat_lio_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
+def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
     if not model.strip():
-        raise LLMConfigError("LIO_MODEL 未配置")
-    client = create_lio_client()
+        raise LLMConfigError("TEXT_FALLBACK_MODEL 未配置")
+    client = create_text_fallback_client()
     trace_context = {"model": model, "prompt_name": prompt_name}
     started = monotonic()
     logger.info(
@@ -266,7 +266,7 @@ def _chat_lio_multimodal(*, model: str, content: list[dict[str, object]], prompt
         logger,
         "style_prompt_vl_request",
         context=trace_context,
-        provider="lio",
+        provider="text_fallback",
         model=model,
         content_part_count=len(content),
     )
@@ -288,10 +288,10 @@ def _chat_lio_multimodal(*, model: str, content: list[dict[str, object]], prompt
         raise LLMProviderError(str(exc)) from exc
 
     if not response.choices:
-        raise LLMResponseError("Gemini VL 没有返回 choices")
+        raise LLMResponseError("gpt-5.4 VL 没有返回 choices")
     message_content = response.choices[0].message.content
     if message_content is None:
-        raise LLMResponseError("Gemini VL 返回内容为空")
+        raise LLMResponseError("gpt-5.4 VL 返回内容为空")
     text = str(message_content).strip()
     log_prompt_trace(
         logger,
@@ -311,22 +311,22 @@ def extract_style_prompt_from_images(images: list[StylePromptImageReference]) ->
     if len(images) < 3:
         raise LLMResponseError("至少需要 3 张风格参考图才能提取风格提示词")
     settings = get_settings()
-    model = settings.lio_model.strip()
+    model = settings.text_fallback_model.strip()
     content: list[dict[str, object]] = [{"type": "text", "text": STYLE_ART_PROMPT_EXTRACTION_PROMPT}]
     for index, image in enumerate(images, start=1):
         content.append({"type": "text", "text": f"第 {index} 张风格参考图："})
         content.append({"type": "image_url", "image_url": {"url": image.url, "detail": "high"}})
-    text = _chat_lio_multimodal(
+    text = _chat_text_fallback_multimodal(
         model=model,
         prompt_name="style_art_prompt_extraction",
         content=content,
     )
     cleaned = text.strip()
     if not cleaned:
-        raise LLMResponseError("Gemini VL 风格提示词提取结果为空")
+        raise LLMResponseError("gpt-5.4 VL 风格提示词提取结果为空")
     missing_headings = [heading for heading in STYLE_ART_PROMPT_REQUIRED_HEADINGS if heading not in cleaned]
     if missing_headings:
-        raise LLMResponseError(f"Gemini VL 风格提示词提取结果缺少结构：{', '.join(missing_headings)}")
+        raise LLMResponseError(f"gpt-5.4 VL 风格提示词提取结果缺少结构：{', '.join(missing_headings)}")
     return MediaTextResult(text=cleaned[:8000], model=model)
 
 
