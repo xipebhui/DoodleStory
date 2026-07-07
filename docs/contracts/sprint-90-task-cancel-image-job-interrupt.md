@@ -7,11 +7,13 @@
 ## In Scope
 
 - `/tasks/{task_id}/cancel` 同步标记任务下 `queued` / `running` 图片 job 为 `cancelled`。
+- `/tasks/{task_id}/cancel` 对已经处于 `cancelled` 的任务保持幂等，再次调用也会重新清理残留图片 job，而不是直接返回 400。
 - 已有积分占用的图片 job 在取消时释放占用。
 - 图片 job worker 领取任务时跳过已取消或取消中的任务。
 - 图片 Provider 返回后再次检查任务取消状态；若已取消，只释放占用并保持图片 job 取消，不保存成功资产、不扣费、不复活任务状态。
 - 服务重启恢复 running 图片 job 时，已取消任务下的 job 继续保持取消，不重新排队。
 - 增加单元测试覆盖取消后的图片 job 领取、执行前取消和 Provider 返回前取消三种时序。
+- 提供 `scripts/cancel-task-image-jobs.py` 运维脚本，默认 dry-run，显式 `--apply` 才会清理指定任务残留图片 job。
 
 ## Out of Scope
 
@@ -29,6 +31,7 @@
 ## Done Means
 
 - 用户取消任务后，排队图片 job 不会再被 worker 领取执行。
+- 已取消任务再次点击取消时不会被接口拒绝，并会执行同一套残留图片 job 清理逻辑。
 - 已领取但尚未调用 Provider 的图片 job 会直接取消。
 - 已调用 Provider 的图片 job 即使返回成功，若任务已取消也不会保存成功图或扣积分。
 - 已取消任务不会被恢复流程重新排队。

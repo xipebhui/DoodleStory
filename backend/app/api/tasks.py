@@ -486,11 +486,11 @@ def get_task_panel_debug(
 def cancel_task(task_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[TaskRead]:
     task = db.scalar(task_detail_statement(task_id))
     task = ensure_task_access(task, user)
-    if task.status in {TaskStatus.succeeded, TaskStatus.failed, TaskStatus.partial_succeeded, TaskStatus.cancelled}:
+    if task.status in {TaskStatus.succeeded, TaskStatus.failed, TaskStatus.partial_succeeded}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务状态不能取消")
 
     task.cancel_requested_at = datetime.utcnow()
-    if task.status == TaskStatus.queued:
+    if task.status in {TaskStatus.queued, TaskStatus.cancelled}:
         mark_task_cancelled(db, task)
     else:
         task.status = TaskStatus.cancel_requested

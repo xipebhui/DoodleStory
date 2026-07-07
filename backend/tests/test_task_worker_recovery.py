@@ -30,6 +30,7 @@ from app.models.enums import (
     TaskStatus,
     WorkflowStatus,
 )
+from app.api.tasks import cancel_task
 from app.services.credits import grant_initial_credits
 from app.services.image_generation import GeneratedImageFile
 from app.services import task_worker
@@ -307,6 +308,35 @@ class TaskWorkerRecoveryTest(unittest.TestCase):
         self.assertIsNotNone(refreshed_task)
         self.assertIsNotNone(refreshed_image)
         self.assertEqual(TaskStatus.cancelled, refreshed_task.status)
+        self.assertEqual(GeneratedImageStatus.cancelled, refreshed_image.status)
+        db.close()
+
+    def test_cancel_endpoint_is_idempotent_for_cancelled_task(self) -> None:
+        task_id, panel_id, user_id = self.create_running_generate_images_task()
+        db = self.Session()
+        user = db.scalar(select(User).where(User.id == user_id))
+        task = db.scalar(select(GenerationTask).where(GenerationTask.id == task_id))
+        self.assertIsNotNone(user)
+        self.assertIsNotNone(task)
+        task.status = TaskStatus.cancelled
+        image = GeneratedImage(
+            task_id=task_id,
+            panel_id=panel_id,
+            owner_user_id=user_id,
+            status=GeneratedImageStatus.queued,
+            generation_number=1,
+            source_type=GeneratedImageSourceType.initial,
+            image_model_name_snapshot="gpt-image-2",
+        )
+        db.add(image)
+        db.commit()
+        image_id = image.id
+
+        result = cancel_task(task_id, user=user, db=db)
+
+        self.assertEqual(TaskStatus.cancelled, result.data.status)
+        refreshed_image = db.scalar(select(GeneratedImage).where(GeneratedImage.id == image_id))
+        self.assertIsNotNone(refreshed_image)
         self.assertEqual(GeneratedImageStatus.cancelled, refreshed_image.status)
         db.close()
 

@@ -705,6 +705,10 @@ function isActiveTask(task: Task | TaskSummary | null | undefined) {
   return Boolean(task && ["queued", "running", "retrying", "cancel_requested"].includes(task.status));
 }
 
+function canCancelTask(task: Task | null | undefined) {
+  return Boolean(task && ["queued", "running", "retrying", "cancel_requested", "cancelled"].includes(task.status));
+}
+
 function hasActivePanelEdit(task: Task | null | undefined) {
   return Boolean(
     task?.generated_images.some(
@@ -1526,7 +1530,7 @@ function TasksView({
     try {
       const result = await api.cancelTask(selectedTask.id);
       setSelectedTask(result);
-      setMessage("已提交取消请求");
+      setMessage(selectedTask.status === "cancelled" ? "已重新执行取消清理" : "已提交取消请求");
       await refresh(result.id);
     } catch (err) {
       await refresh(selectedTask.id);
@@ -1635,8 +1639,7 @@ function TasksView({
     }
   }
 
-  const canCancel =
-    taskForDetail?.status === "queued" || taskForDetail?.status === "running" || taskForDetail?.status === "retrying";
+  const canCancel = canCancelTask(taskForDetail);
   const canDownload = Boolean(hasAllPanelImages(taskForDetail) && taskForDetail?.id !== downloadingTaskId);
   const isDownloadingSelectedTask = Boolean(taskForDetail?.id && taskForDetail.id === downloadingTaskId);
   const canRetry = taskForDetail?.status === "failed" || taskForDetail?.status === "partial_succeeded";
@@ -1880,7 +1883,7 @@ function TasksView({
                   </button>
                   <button type="button" className="ghost-button" disabled={!canCancel} onClick={cancelSelectedTask}>
                     <X size={16} />
-                    取消生成
+                    {taskForDetail?.status === "cancelled" ? "再次取消" : "取消生成"}
                   </button>
                 </div>
                 {taskForDetail.error_message ? <p className="error">{taskForDetail.error_message}</p> : null}
