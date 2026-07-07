@@ -25,11 +25,12 @@ class AliyunOssStorageTest(unittest.TestCase):
                 aliyun_oss_asset_url("douyin_media/panel 1.jpg", "original"),
             )
 
-    def test_store_content_uploads_to_aliyun_oss_and_keeps_local_mirror(self) -> None:
+    def test_store_content_uploads_to_aliyun_oss_and_removes_local_mirror_by_default(self) -> None:
         settings = SimpleNamespace(
             storage_backend="aliyun_oss",
             doodlestory_storage_root="./storage",
             storage_root=Path("/tmp/doodlestory-test-storage"),
+            object_storage_keep_local_mirror=False,
         )
 
         with patch("app.services.storage.get_settings", return_value=settings), patch(
@@ -40,13 +41,16 @@ class AliyunOssStorageTest(unittest.TestCase):
         ), patch(
             "app.services.storage.upload_aliyun_oss_file",
             return_value="https://doodlestory.oss-cn-beijing.aliyuncs.com/douyin_media/test.jpg",
-        ) as upload_aliyun_oss_file:
+        ) as upload_aliyun_oss_file, patch(
+            "app.services.storage.remove_local_file",
+        ) as remove_local_file:
             stored = store_content("douyin_media", b"image-bytes", ".jpg")
 
         self.assertEqual(StorageBackend.aliyun_oss, stored.storage_backend)
         self.assertEqual("https://doodlestory.oss-cn-beijing.aliyuncs.com/douyin_media/test.jpg", stored.public_url)
         write_local_file.assert_called_once()
         upload_aliyun_oss_file.assert_called_once()
+        remove_local_file.assert_called_once_with(Path("/tmp/doodlestory-test-storage/douyin_media/test.jpg"))
 
     def test_file_asset_read_uses_public_url_for_aliyun_oss(self) -> None:
         now = datetime(2026, 7, 6, 12, 0, 0)

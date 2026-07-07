@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import mimetypes
 from dataclasses import dataclass
 from io import BytesIO
@@ -13,6 +14,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from app.core.config import get_settings
 from app.models.enums import StorageBackend
 
+logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
 IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 AUDIO_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
@@ -180,6 +182,35 @@ def write_local_file(storage_key: str, content: bytes) -> None:
     absolute_path.write_bytes(content)
 
 
+def keep_object_storage_local_mirror() -> bool:
+    return bool(getattr(get_settings(), "object_storage_keep_local_mirror", False))
+
+
+def remove_local_file(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("local storage cleanup failed path=%s error=%s", path, exc)
+
+
+def remove_local_mirror_if_unneeded(storage_key: str) -> None:
+    if keep_object_storage_local_mirror():
+        return
+    remove_local_file(resolve_storage_key(storage_key))
+
+
+def storage_cache_root() -> Path:
+    return get_settings().storage_root / "_cache"
+
+
+def remove_materialized_cache_file(path: Path) -> None:
+    try:
+        path.resolve().relative_to(storage_cache_root().resolve())
+    except ValueError:
+        return
+    remove_local_file(path)
+
+
 def qiniu_auth():
     config = qiniu_config()
     missing = [
@@ -307,10 +338,12 @@ def store_content(purpose: str, content: bytes, suffix: str) -> StoredFile:
     if backend == StorageBackend.qiniu:
         write_local_file(storage_key, content)
         public_url = upload_qiniu_file(storage_key, resolve_storage_key(storage_key))
+        remove_local_mirror_if_unneeded(storage_key)
         return StoredFile(StorageBackend.qiniu, storage_key, len(content), checksum, public_url)
     if backend == StorageBackend.aliyun_oss:
         write_local_file(storage_key, content)
         public_url = upload_aliyun_oss_file(storage_key, resolve_storage_key(storage_key))
+        remove_local_mirror_if_unneeded(storage_key)
         return StoredFile(StorageBackend.aliyun_oss, storage_key, len(content), checksum, public_url)
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="存储后端配置不支持")
 
@@ -405,7 +438,7 @@ def materialize_asset_to_local(asset) -> Path:
         if mirrored_path.exists() and mirrored_path.stat().st_size > 0:
             return mirrored_path
         suffix = Path(asset.storage_key).suffix or mimetypes.guess_extension(asset.content_type) or ".bin"
-        cache_path = get_settings().storage_root / "_cache" / asset.storage_backend.value / f"{asset.id}{suffix}"
+        cache_path = storage_cache_root() / asset.storage_backend.value / f"{asset.id}{suffix}"
         if cache_path.exists() and cache_path.stat().st_size > 0:
             return cache_path
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -428,7 +461,7 @@ def existing_local_asset_path(asset) -> Path:
         if mirrored_path.exists():
             return mirrored_path
         suffix = Path(asset.storage_key).suffix or mimetypes.guess_extension(asset.content_type) or ".bin"
-        cache_path = get_settings().storage_root / "_cache" / asset.storage_backend.value / f"{asset.id}{suffix}"
+        cache_path = storage_cache_root() / asset.storage_backend.value / f"{asset.id}{suffix}"
         if cache_path.exists() and cache_path.stat().st_size > 0:
             return cache_path
         raise HTTPException(

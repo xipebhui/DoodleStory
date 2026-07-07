@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     admin_emails: str = ""
     storage_backend: str = "local"
     doodlestory_storage_root: str = "./storage"
+    object_storage_keep_local_mirror: bool = False
     qiniu_access_key: str = ""
     qiniu_secret_key: str = ""
     qiniu_bucket: str = ""

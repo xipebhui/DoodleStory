@@ -54,7 +54,7 @@ from app.services.task_worker import enqueue_panel_edit, enqueue_task, next_gene
 from app.services.image_generation import ImageProviderConfigError
 from app.services.llm import LLMProviderError, extract_character_names_from_story, merge_character_into_story
 from app.services.style_references import snapshot_task_style_reference_images
-from app.services.storage import existing_local_asset_path, save_local_binary_file
+from app.services.storage import materialize_asset_to_local, remove_materialized_cache_file, save_binary_file
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 SUPERSEDED_IMAGE_ERROR_CODE = "ImageGenerationSuperseded"
@@ -583,6 +583,7 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
     db.commit()
     db.refresh(download)
 
+    materialized_cache_paths = []
     try:
         source_content = douyin_source_content_for_task(db, task.id)
         source_meta = download_meta_text_for_content_extraction(source_content) if source_content else None
@@ -590,7 +591,8 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
         with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
             for index, image in enumerate(images, start=1):
                 asset = image.asset
-                source_path = existing_local_asset_path(asset)
+                source_path = materialize_asset_to_local(asset)
+                materialized_cache_paths.append(source_path)
                 suffix = source_path.suffix or ".png"
                 archive.write(source_path, arcname=f"panel-{index:02d}{suffix}")
             if source_meta is not None:
@@ -598,8 +600,7 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
                     "meta.txt",
                     source_meta.encode("utf-8"),
                 )
-
-        stored = save_local_binary_file(
+        stored = save_binary_file(
             FileAssetPurpose.download_archive.value,
             buffer.getvalue(),
             ".zip",
@@ -622,6 +623,9 @@ def create_task_download(task_id: str, user: User = Depends(current_user), db: S
         download.status = DownloadStatus.failed
         download.error_code = exc.__class__.__name__
         download.error_message = str(exc)
+    finally:
+        for source_path in materialized_cache_paths:
+            remove_materialized_cache_file(source_path)
 
     db.commit()
     download = db.scalar(
