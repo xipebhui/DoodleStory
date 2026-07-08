@@ -283,6 +283,72 @@ class StoryboardPlanningTest(unittest.TestCase):
         self.assertIn("煤气泄漏", result.panels[0].visual_prompt)
         self.assertIn("舍财保命", result.panels[1].visual_prompt)
 
+    def test_knowledge_plan_auto_chunk_splits_structured_positive_prompt_blocks(self) -> None:
+        plan = """正向提示词：
+生成连续知识图鉴内容页，竖版3:4，复古手绘风，米黄色旧纸底，暖棕色细边框。顶部页眉居中写《煤气与舍财》，黑色粗体大字，页眉下方有暖棕细横线。正文使用2条横向内容条+1条收尾金句栏。每条左侧为完整编号主文字+解释型副文字，右侧为具体场景插画。所有内容条的文字大小、字体、颜色、边框风格保持一致。右侧插画统一为复古手绘细线稿、低饱和暖色。底部页脚居中写“作者：认知方程式”。文字清晰，不乱码，不要3D，不要过度Q版。
+家里忘记关煤气，反应过来时千万别抽烟或点蚊香
+副文字：要立刻关好煤气，再开窗通风，别制造任何明火。
+画面：厨房煤气泄漏，主角一手关煤气阀、一手推开窗户，旁边香烟和蚊香被红叉标记。
+
+遇到不好的情况，舍财保命最重要
+副文字：钱和身外之物都能再赚，命只有一次。
+画面：夜晚街边遇到抢劫或混乱，主角丢下钱包和背包，快速跑向明亮出口。
+
+收尾金句
+副文字：真正的保命常识，不是让你胆小，而是让你在危险靠近前多想一层。
+画面：一本合上的安全手册、手电筒、警示牌、急救包，背景有明亮出口。
+负向提示词：
+乱码，错别字，漏字，顶部标题缺失，底部作者缺失。"""
+
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={
+                "story_title": "煤气与舍财",
+                "story_hook": "连续知识图鉴内容页。",
+                "story_outline": "共拆成 3 页：第1页煤气泄漏；第2页舍财保命；第3页收尾金句。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "煤气泄漏应对",
+                        "visual_prompt": "页眉《煤气与舍财》，作者：认知方程式。主题：家里忘记关煤气，反应过来时千万别抽烟或点蚊香。副文字：要立刻关好煤气，再开窗通风，别制造任何明火。画面：厨房煤气泄漏，主角一手关煤气阀、一手推开窗户，旁边香烟和蚊香被红叉标记。复古手绘风，米黄色旧纸底，暖棕色细边框。负向：乱码，错别字，漏字。",
+                        "image_text": {},
+                        "text_layout": None,
+                    },
+                    {
+                        "panel_order": 2,
+                        "panel_type": "scene",
+                        "story_beat": "舍财保命原则",
+                        "visual_prompt": "页眉《煤气与舍财》，作者：认知方程式。主题：遇到不好的情况，舍财保命最重要。副文字：钱和身外之物都能再赚，命只有一次。画面：夜晚街边遇到抢劫或混乱，主角丢下钱包和背包，快速跑向明亮出口。复古手绘风，米黄色旧纸底，暖棕色细边框。负向：乱码，错别字，漏字。",
+                        "image_text": {},
+                        "text_layout": None,
+                    },
+                    {
+                        "panel_order": 3,
+                        "panel_type": "scene",
+                        "story_beat": "收尾金句",
+                        "visual_prompt": "页眉《煤气与舍财》，作者：认知方程式。收尾金句：真正的保命常识，不是让你胆小，而是让你在危险靠近前多想一层。画面：一本合上的安全手册、手电筒、警示牌、急救包，背景有明亮出口。复古手绘风，米黄色旧纸底，暖棕色细边框。负向：乱码，错别字，漏字。",
+                        "image_text": {},
+                        "text_layout": None,
+                    },
+                ],
+            },
+        ) as call_json:
+            result = parse_knowledge_plan(
+                plan_text=plan,
+                style_prompt="复古手绘风",
+                image_count_mode=ImageCountMode.auto,
+                requested_image_count=None,
+            )
+
+        system_prompt = call_json.call_args.kwargs["system_prompt"]
+        self.assertIn("正向提示词里的页眉、纸张、边框、作者栏", system_prompt)
+        self.assertIn("一个独立知识条目通常对应一页", system_prompt)
+        self.assertEqual([1, 2, 3], [panel.panel_order for panel in result.panels])
+        self.assertIn("煤气", result.panels[0].visual_prompt)
+        self.assertIn("舍财保命", result.panels[1].visual_prompt)
+        self.assertIn("收尾金句", result.panels[2].story_beat)
+
     def test_knowledge_plan_fixed_count_mismatch_uses_friendly_error(self) -> None:
         with patch(
             "app.services.llm.call_lio_json",

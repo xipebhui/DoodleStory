@@ -2262,7 +2262,7 @@ function TasksView({
                       : storyInputMode === "extracted_storyboard"
                         ? "粘贴或编辑内容提取结果，例如第1页、第2页、画面、旁白、对话、内心OS和分格信息"
                         : storyInputMode === "knowledge_plan"
-                          ? "输入完整知识图文方案，例如主题、版式、每条内容、正文/副文字、插图要求、作者栏和禁止事项；可写页标，也可以让系统自动拆页"
+                          ? "输入完整知识图文方案，例如主题、版式、每条内容、正文/副文字、插图要求、作者栏和禁止事项；系统会按知识条目自动拆页"
                           : storyInputMode === "dy_replicate"
                             ? "粘贴完整抖音分享文本或链接，例如 https://v.douyin.com/..."
                             : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
@@ -2275,7 +2275,7 @@ function TasksView({
                 ) : storyInputMode === "extracted_storyboard" ? (
                   <small>系统只做分镜结构化，不扩写、不总结、不合并页；会把旁白、对白和内心 OS 区分成不同画面呈现形式。</small>
                 ) : storyInputMode === "knowledge_plan" ? (
-                  <small>系统会用 LLM 按知识点和版式密度拆成内容页；每页生成时仍保留你的原始方案要求并直通生图，不做人设提取或故事改写。</small>
+                  <small>系统会按知识条目、空行块和收尾金句拆成内容页；如果要全部内容放在一张图里，请明确写“单页”。</small>
                 ) : storyInputMode === "dy_replicate" ? (
                   <small>提交后会先创建内容提取记录；提取成功后自动创建提取分镜任务并跳转到任务详情。</small>
                 ) : (
@@ -2303,7 +2303,7 @@ function TasksView({
                   </label>
                 ) : (
                   <p className="field-hint">
-                    {storyInputMode === "knowledge_plan" ? "系统会根据知识点、章节和内容密度自动判断图片张数。" : "系统会根据故事长度和内容密度决定图片张数。"}
+                    {storyInputMode === "knowledge_plan" ? "系统会根据知识条目、章节、空行块和收尾金句自动判断图片张数。" : "系统会根据故事长度和内容密度决定图片张数。"}
                   </p>
                 )}
               </section>
