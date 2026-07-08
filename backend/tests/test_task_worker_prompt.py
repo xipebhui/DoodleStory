@@ -37,6 +37,7 @@ from app.services.task_worker import (
     build_original_story_final_prompt,
     build_panel_final_prompt,
     compose_final_prompts_for_panels,
+    dedupe_original_story_image_text_for_final_prompt,
     final_prompt_panel_payload,
     final_prompt_task_payload,
     final_prompt_with_aspect_ratio_prefix,
@@ -553,6 +554,49 @@ class TaskWorkerPromptTest(unittest.TestCase):
         )
         self.assertIn("不能画进图片", payload["text_rules"])
         self.assertNotIn("22岁那年", payload["structured_storyboard"])
+
+    def test_original_story_image_text_removes_dialogue_repeated_in_narration(self) -> None:
+        image_text = dedupe_original_story_image_text_for_final_prompt(
+            "两人面对面站着，男生看着女主说：“感觉这样很累感觉坚持不下去”。",
+            {
+                "title": None,
+                "narration": "直到他说感觉这样很累感觉坚持不下去",
+                "dialogue": None,
+                "inner_os": None,
+                "emphasis": None,
+            },
+        )
+
+        self.assertIsNone(image_text["narration"])
+        self.assertIsNone(image_text["dialogue"])
+
+    def test_original_story_image_text_keeps_remaining_meaningful_narration(self) -> None:
+        image_text = dedupe_original_story_image_text_for_final_prompt(
+            "妈妈坐在床边，轻声对孩子说：“孩子，妈妈永远爱你。”",
+            {
+                "title": None,
+                "narration": "那个雨夜妈妈坐在床边说：“孩子，妈妈永远爱你。”",
+                "dialogue": None,
+                "inner_os": None,
+                "emphasis": None,
+            },
+        )
+
+        self.assertEqual("那个雨夜妈妈坐在床边", image_text["narration"])
+
+    def test_original_story_image_text_keeps_narration_without_speech_cue(self) -> None:
+        image_text = dedupe_original_story_image_text_for_final_prompt(
+            "梦境中陌生男生对女主说：“梦到一个从没见过的男生对我表白”。",
+            {
+                "title": None,
+                "narration": "梦到一个从没见过的男生对我表白",
+                "dialogue": None,
+                "inner_os": None,
+                "emphasis": None,
+            },
+        )
+
+        self.assertEqual("梦到一个从没见过的男生对我表白", image_text["narration"])
 
     def test_final_prompt_task_payload_includes_remove_image_text(self) -> None:
         task = GenerationTask(

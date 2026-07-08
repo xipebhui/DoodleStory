@@ -117,6 +117,10 @@ PLANNING_INPUT_MODES = {
     StoryInputMode.extracted_storyboard,
     StoryInputMode.knowledge_plan,
 }
+SPEECH_VERBS_PATTERN = r"说|问|回答|喊|叫|吼|劝|骂|质问|反问|嘀咕|喃喃|怒吼|低声|开口"
+VISUAL_PROMPT_DIALOGUE_RE = re.compile(
+    rf"(?:{SPEECH_VERBS_PATTERN})[^“\"'‘\n。！？；]{{0,18}}[“\"'‘]([^”\"'’\n]{{1,120}})[”\"'’]"
+)
 
 
 @dataclass(frozen=True)
@@ -1596,12 +1600,90 @@ def dialogue_lines_for_prompt(dialogue: str) -> list[str]:
 
 
 def visual_prompt_has_dialogue(visual_prompt: str) -> bool:
-    return bool(
-        re.search(
-            r"(说|问|回答|喊|叫|吼|劝|骂|质问|反问|嘀咕|喃喃|怒吼|低声|开口|对白|台词)[：:：]?[“\"']",
-            visual_prompt,
-        )
+    return bool(VISUAL_PROMPT_DIALOGUE_RE.search(visual_prompt)) or bool(
+        re.search(r"(对白|台词)[：:：]?[“\"'‘]", visual_prompt)
     )
+
+
+def visual_prompt_dialogue_texts(visual_prompt: str) -> list[str]:
+    texts: list[str] = []
+    seen: set[str] = set()
+    for match in VISUAL_PROMPT_DIALOGUE_RE.finditer(visual_prompt):
+        text = match.group(1).strip()
+        normalized = normalize_text_for_dialogue_dedupe(text)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        texts.append(text)
+    return texts
+
+
+def normalize_text_for_dialogue_dedupe(value: str) -> str:
+    return re.sub(r"\s+", "", value.strip().strip("「」『』“”\"'‘’"))
+
+
+def dialogue_text_variants_for_narration_match(dialogue_text: str) -> list[str]:
+    cleaned = dialogue_text.strip().strip("「」『』“”\"'‘’")
+    variants = [cleaned]
+    without_terminal_punctuation = cleaned.rstrip("。！？!?，,；;")
+    if without_terminal_punctuation and without_terminal_punctuation != cleaned:
+        variants.append(without_terminal_punctuation)
+    return [variant for variant in variants if variant]
+
+
+def narration_has_speech_cue_before(narration: str, start_index: int) -> bool:
+    prefix = narration[max(0, start_index - 12) : start_index]
+    return bool(re.search(SPEECH_VERBS_PATTERN, prefix))
+
+
+def cleanup_deduped_narration(value: str) -> str | None:
+    cleaned = re.sub(r"\s+", "", value)
+    cleaned = cleaned.strip(" \n\t，,。.!！?？；;：:“”\"'‘’")
+    cleaned = re.sub(r"[：:，,、；;]+$", "", cleaned)
+    cleaned = re.sub(
+        rf"(?:轻声|低声|大声|小声)?(?:对[^，,。.!！?？；;：:]{{1,10}})?(?:{SPEECH_VERBS_PATTERN})$",
+        "",
+        cleaned,
+    )
+    cleaned = cleaned.strip(" \n\t，,。.!！?？；;：:“”\"'‘’")
+    meaningful = re.sub(r"[\s，,。.!！?？；;：:“”\"'‘’、]", "", cleaned)
+    if not meaningful:
+        return None
+    if len(meaningful) <= 4:
+        return None
+    if len(meaningful) <= 6 and re.search(SPEECH_VERBS_PATTERN, meaningful):
+        return None
+    return cleaned
+
+
+def remove_dialogue_text_from_narration(narration: str, dialogue_text: str) -> str:
+    updated = narration
+    for variant in dialogue_text_variants_for_narration_match(dialogue_text):
+        start = updated.find(variant)
+        if start < 0 or not narration_has_speech_cue_before(updated, start):
+            continue
+        end = start + len(variant)
+        if start > 0 and updated[start - 1] in "“\"'‘":
+            start -= 1
+        if end < len(updated) and updated[end] in "”\"'’":
+            end += 1
+        updated = updated[:start] + updated[end:]
+    return updated
+
+
+def dedupe_original_story_image_text_for_final_prompt(
+    visual_prompt: str,
+    image_text: ImageTextPlan | dict[str, str | None] | None,
+) -> dict[str, str | None]:
+    values = image_text_to_dict(image_text)
+    narration = values.get("narration")
+    if not narration:
+        return values
+    updated_narration = narration
+    for dialogue_text in visual_prompt_dialogue_texts(visual_prompt):
+        updated_narration = remove_dialogue_text_from_narration(updated_narration, dialogue_text)
+    values["narration"] = cleanup_deduped_narration(updated_narration)
+    return values
 
 
 def text_rules_block(
@@ -2352,6 +2434,8 @@ def compose_final_prompts_for_panels(
             if image_text_by_panel_id is not None
             else panel_image_text_payload(panel)
         )
+        if task.story_input_mode == StoryInputMode.original:
+            image_text = dedupe_original_story_image_text_for_final_prompt(visual_prompt, image_text)
         panel_payloads.append(
             final_prompt_panel_payload(
                 panel=panel,
