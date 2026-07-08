@@ -10,7 +10,7 @@
 - FastAPI 在生产容器中可直接提供前端静态文件和 SPA fallback，`/api/v1/*` 仍由后端 API 处理。
 - 容器启动时执行 Alembic migration，再启动 Uvicorn。
 - 新增 Coolify Compose 示例，使用 `expose` 暴露容器端口，不映射宿主机 80/443。
-- Compose 示例同时编排同级目录的 `douyin-import-service` 依赖服务，并让 DoodleStory 通过内部服务名调用它。
+- Compose 示例同时编排同级目录的 `douyin-downloader` fork 依赖镜像，并让 DoodleStory 通过内部服务名调用它。
 - 抖音导入服务下载产物使用共享 volume，让 DoodleStory 能读取导入服务返回的本地媒体路径。
 - 明确 SQLite 数据库、文件存储和缓存使用持久化 volume。
 - 更新部署文档、环境变量示例、README、规格和进度记录。
@@ -29,9 +29,10 @@
 - `scripts/docker-entrypoint.sh`
 - `docker-compose.coolify.yml`
 - `docker-compose.local.yml`
-- `../.dockerignore`
-- `../douyin-import-service/Dockerfile`
-- `../douyin-import-service/Dockerfile.dockerignore`
+- `scripts/prepare-douyin-downloader.sh`
+- `../douyin-downloader/Dockerfile.doodlestory-import`
+- `../douyin-downloader/requirements.doodlestory-import.txt`
+- `../douyin-downloader/doodlestory_import/`
 - `docs/deployment/coolify-docker.md`
 - 后端静态前端挂载支持
 - 文档和进度更新

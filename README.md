@@ -32,7 +32,7 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 仓库提供生产 `Dockerfile` 和 Coolify Compose 示例：
 
 - `Dockerfile`：构建前端静态文件，并在同一个 FastAPI 容器中提供前端与 `/api/v1/*` API。
-- `docker-compose.coolify.yml`：用于 Coolify Docker Compose 服务，同时拉起 DoodleStory 和同级目录的 `douyin-import-service` 依赖；DoodleStory 使用 `expose: "8000"`，不映射宿主机 `80/443`，抖音导入服务只走 Compose 内部网络。
+- `docker-compose.coolify.yml`：用于 Coolify Docker Compose 服务，同时拉起 DoodleStory 和同级目录的 `douyin-downloader` 依赖镜像；DoodleStory 使用 `expose: "8000"`，不映射宿主机 `80/443`，抖音导入服务只走 Compose 内部网络。
 - `docker-compose.local.yml`：本地调试覆盖文件，把 DoodleStory 映射到 `127.0.0.1:18080`。
 - `docs/deployment/coolify-docker.md`：部署步骤、环境变量、持久化 volume 和健康检查说明。
 
@@ -52,10 +52,14 @@ docker-compose -f docker-compose.coolify.yml -f docker-compose.local.yml up --bu
 
 ```text
 tmp-project/
-  .dockerignore
   DoodleStory/
-  douyin-import-service/
   douyin-downloader/
+```
+
+首次部署或更新依赖仓库时，可先执行：
+
+```bash
+./scripts/prepare-douyin-downloader.sh
 ```
 
 生产容器默认监听 `8000`，SQLite 数据库和本地资产默认写入 `/app/data`，部署时必须把 `/app/data` 配成持久化 volume。
