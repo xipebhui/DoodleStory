@@ -9,6 +9,7 @@
 
 ## 当前 Sprint 合同
 
+- `docs/contracts/sprint-95-docker-coolify-deployment.md`
 - `docs/contracts/sprint-94-async-style-test-history.md`
 - `docs/contracts/sprint-93-style-prompt-vl-extraction.md`
 - `docs/contracts/sprint-92-knowledge-plan-direct-prompt-mode.md`
@@ -21,6 +22,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 95 Docker 与 Coolify 部署支持：新增生产 `Dockerfile`、`.dockerignore`、`scripts/docker-entrypoint.sh`、`docker-compose.coolify.yml` 和 `docs/deployment/coolify-docker.md`；生产镜像采用单容器形态，构建阶段生成 Vite 前端，运行阶段由 FastAPI 同时提供前端静态文件和 `/api/v1/*` API，容器只监听 `8000`，Coolify 侧使用 `expose: "8000"` 交给 Traefik/FQDN/Let’s Encrypt 管理，不映射宿主机 `80/443`。容器启动脚本会先执行 Alembic migration，再启动 Uvicorn；默认 SQLite 和本地资产写入 `/app/data`，文档要求在 Coolify 中配置持久化 volume，并提醒容器内 `127.0.0.1` 不等于宿主机或其它服务。验证：`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、生产静态挂载 smoke test、`SESSION_SECRET=... docker-compose -f docker-compose.coolify.yml config`、`git diff --check` 和 `./scripts/check.sh` 通过；本地启动 Colima 后，`docker build -t doodlestory:local .` 成功，容器以全新 `/app/data` volume 启动后完成 Alembic 迁移、`/health`、前端首页、SPA 子路径、静态资源、API 401 JSON、注册登录写库和重启后持久化验证；`docker build --platform linux/amd64` 因本机 Docker 缺少 buildx，未完成 amd64 交叉构建验证。
 - 完成 Sprint 94 风格测试异步历史列表：风格测试提交后后端只创建 `style_test` 记录并通过后台任务生成，接口立即返回 `queued` 状态；新增当前风格测试历史列表 API，前端风格测试页改为展示历史用例、运行状态、结果图和失败原因，并在存在 `queued` / `running` / `retrying` 测试时自动轮询刷新。提交测试不再清空历史列表，切换回当前风格可重新读取结果；后台任务继续复用既有风格参考方式、Provider、积分占用/扣费/释放逻辑，服务启动时会把遗留运行中的风格测试标记为失败并释放可识别的积分占用。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_style_delete backend.tests.test_credits`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 155 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
 - 隐藏图文任务创建弹窗中的 `最后一张真人图片` 和 `去掉画面文字` 两个选项：前端不再展示这两个 checkbox，创建普通任务和 DY 爆款复刻任务时都固定提交 `last_panel_real_photo=false`、`remove_image_text=false`；历史任务详情仍保留状态展示，后端字段和视频任务默认无文字能力不变。
 - 完成 Sprint 93 风格提示词多图 VL 提取：风格创建/编辑抽屉新增 `从参考图提取` 辅助动作，新建时可直接用待上传的至少 3 张图片调用提取接口，编辑时可用已保存的至少 3 张参考图重新提取；后端新增 `gpt-5.4` VL 风格提示词提取服务，读取 `TEXT_FALLBACK_BASE_URL`、`TEXT_FALLBACK_API_KEY` 和 `TEXT_FALLBACK_MODEL` 配置，不使用 LIO/Gemini、SiliconFlow 或其它 VL 兜底。用户不再需要手写风格提示词，保存时如果提示词为空，前端会先用至少 3 张参考图自动提取，再继续创建或保存；用户仍可编辑自动生成的提示词。后端允许草稿风格暂时没有提示词，但启用风格时必须有非空提示词。提取提示词按用户指定的艺术评论家结构输出 `【核心调性】`、`【色彩与光影特征】`、`【线条与肌理特征】`、`【构图与透视特征】` 和 `【风格迁移测试】`，并校验返回结构。少于 3 张图、图片校验失败、`gpt-5.4` 配置缺失或模型输出结构不合格都会明确报错。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_style_delete`、`backend/.venv/bin/python -m compileall backend/app`、`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 153 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。

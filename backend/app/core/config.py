@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./doodlestory.db"
     session_secret: str = Field(min_length=16)
     admin_emails: str = ""
+    doodlestory_frontend_dist: str = ""
     storage_backend: str = "local"
     doodlestory_storage_root: str = "./storage"
     object_storage_keep_local_mirror: bool = False
@@ -106,6 +107,15 @@ class Settings(BaseSettings):
         configured = Path(self.doodlestory_storage_root)
         if configured.is_absolute():
             return configured
+        return (PROJECT_ROOT / configured).resolve()
+
+    @property
+    def frontend_dist_path(self) -> Path | None:
+        if not self.doodlestory_frontend_dist.strip():
+            return None
+        configured = Path(self.doodlestory_frontend_dist)
+        if configured.is_absolute():
+            return configured.resolve()
         return (PROJECT_ROOT / configured).resolve()
 
     @property

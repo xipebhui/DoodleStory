@@ -27,6 +27,22 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 
 默认后端启动在 `http://127.0.0.1:8000`，前端启动在 `http://127.0.0.1:3000`。日志默认写入 `/tmp/doodlestory-backend.log` 和 `/tmp/doodlestory-frontend.log`。
 
+## Docker / Coolify 部署
+
+仓库提供生产 `Dockerfile` 和 Coolify Compose 示例：
+
+- `Dockerfile`：构建前端静态文件，并在同一个 FastAPI 容器中提供前端与 `/api/v1/*` API。
+- `docker-compose.coolify.yml`：用于 Coolify Docker Compose 服务，使用 `expose: "8000"`，不映射宿主机 `80/443`。
+- `docs/deployment/coolify-docker.md`：部署步骤、环境变量、持久化 volume 和健康检查说明。
+
+本地构建：
+
+```bash
+docker build -t doodlestory:local .
+```
+
+生产容器默认监听 `8000`，SQLite 数据库和本地资产默认写入 `/app/data`，部署时必须把 `/app/data` 配成持久化 volume。
+
 ## 抖音热门样本采集环境
 
 项目内的 `douyin-hot-sample-research` Skill 使用当前仓库里的封装脚本调用外部 MediaCrawler，不需要在新对话里记住外部脚本路径。

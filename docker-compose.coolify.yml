@@ -1,0 +1,64 @@
+services:
+  doodlestory:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /
+    expose:
+      - "8000"
+    volumes:
+      - doodlestory-data:/app/data
+    environment:
+      APP_ENV: production
+      DATABASE_URL: sqlite:////app/data/doodlestory.db
+      DOODLESTORY_STORAGE_ROOT: /app/data/storage
+      DOODLESTORY_FRONTEND_DIST: /app/frontend/dist
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
+      SESSION_SECRET: ${SESSION_SECRET}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      OBJECT_STORAGE_KEEP_LOCAL_MIRROR: ${OBJECT_STORAGE_KEEP_LOCAL_MIRROR:-false}
+      ALIYUN_OSS_ACCESS_KEY_ID: ${ALIYUN_OSS_ACCESS_KEY_ID:-}
+      ALIYUN_OSS_ACCESS_KEY_SECRET: ${ALIYUN_OSS_ACCESS_KEY_SECRET:-}
+      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
+      ALIYUN_OSS_ENDPOINT: ${ALIYUN_OSS_ENDPOINT:-}
+      ALIYUN_OSS_PUBLIC_BASE_URL: ${ALIYUN_OSS_PUBLIC_BASE_URL:-}
+      QINIU_ACCESS_KEY: ${QINIU_ACCESS_KEY:-}
+      QINIU_SECRET_KEY: ${QINIU_SECRET_KEY:-}
+      QINIU_BUCKET: ${QINIU_BUCKET:-}
+      QINIU_BUCKET_DOMAIN: ${QINIU_BUCKET_DOMAIN:-}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
+      SILICONFLOW_MODEL: ${SILICONFLOW_MODEL:-deepseek-ai/DeepSeek-V3.2}
+      SILICONFLOW_VISION_MODEL: ${SILICONFLOW_VISION_MODEL:-Qwen/Qwen3-VL-32B-Instruct}
+      SILICONFLOW_AUDIO_MODEL: ${SILICONFLOW_AUDIO_MODEL:-Qwen/Qwen3-Omni-30B-A3B-Instruct}
+      LIO_API_KEY: ${LIO_API_KEY:-}
+      LIO_BASE_URL: ${LIO_BASE_URL:-}
+      LIO_MODEL: ${LIO_MODEL:-gemini-3.1-flash-lite-preview-thinking-minimal}
+      TEXT_FALLBACK_API_KEY: ${TEXT_FALLBACK_API_KEY:-}
+      TEXT_FALLBACK_BASE_URL: ${TEXT_FALLBACK_BASE_URL:-}
+      TEXT_FALLBACK_MODEL: ${TEXT_FALLBACK_MODEL:-gpt-5.4}
+      IMAGE_PROVIDER: ${IMAGE_PROVIDER:-qy}
+      IMAGE_GATEWAY_API_KEY: ${IMAGE_GATEWAY_API_KEY:-}
+      IMAGE_GATEWAY_BASE_URL: ${IMAGE_GATEWAY_BASE_URL:-http://192.129.209.36:3001/v1}
+      XG_BASE_URL: ${XG_BASE_URL:-https://api.xgapi.top}
+      XG_API_KEY: ${XG_API_KEY:-}
+      XG_IMAGE_QUALITY: ${XG_IMAGE_QUALITY:-1k}
+      DOUYIN_IMPORT_SERVICE_BASE_URL: ${DOUYIN_IMPORT_SERVICE_BASE_URL:-}
+      COMIC_VIDEO_SERVICE_BASE_URL: ${COMIC_VIDEO_SERVICE_BASE_URL:-}
+      COMIC_VIDEO_SERVICE_API_KEY: ${COMIC_VIDEO_SERVICE_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  doodlestory-data:
