@@ -1,0 +1,4 @@
+services:
+  doodlestory:
+    ports:
+      - "127.0.0.1:${DOODLESTORY_LOCAL_PORT:-18080}:8000"

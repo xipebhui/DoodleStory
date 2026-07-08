@@ -34,13 +34,15 @@
 ## 部署与运行
 
 - 本地开发保持前后端双服务：FastAPI 后端默认监听 `127.0.0.1:8000`，Vite 前端默认监听 `127.0.0.1:3000`。
-- Docker 生产部署使用单容器形态：构建阶段生成前端静态文件，运行阶段由 FastAPI 同时提供前端页面和 `/api/v1/*` API。
+- Docker 生产部署中，DoodleStory 应用镜像使用单容器形态：构建阶段生成前端静态文件，运行阶段由 FastAPI 同时提供前端页面和 `/api/v1/*` API。
+- Docker Compose 部署可以同时编排 DoodleStory 和同级目录的 `douyin-import-service` 依赖服务；DoodleStory 通过内部服务名 `http://douyin-import-service:8010` 调用抖音导入服务，抖音导入服务不暴露公网入口。
 - 生产容器内部只监听 HTTP 端口 `8000`；在 Coolify + Traefik 节点上只能通过 `expose: "8000"` 暴露给 Traefik，不手动映射宿主机 `80/443`。
 - Docker 生产镜像通过 `DOODLESTORY_FRONTEND_DIST` 指向前端构建目录；该变量为空时不启用静态前端挂载，保留本地开发行为。
 - 容器启动时必须先执行 Alembic migration，再启动 Uvicorn。
 - SQLite 数据库和本地文件资产默认放在 `/app/data` 下，Coolify 部署时必须把 `/app/data` 配置为持久化 volume。
+- 抖音导入服务的下载产物必须放在独立持久化 volume，并以同一路径挂载给 DoodleStory 容器读取；因为导入服务返回的是本地文件路径，两个容器不能使用彼此不可见的私有文件系统路径。
 - 生产前端默认同源调用 API，不需要 `VITE_API_BASE_URL` 指向独立后端域名；如外部站点需要跨域访问 API，再显式配置 `FRONTEND_ORIGIN`。
-- 容器内的 `127.0.0.1` 只代表 DoodleStory 容器自身。抖音下载服务、图文视频服务、图片 Gateway 等外部依赖如果不在同一容器内，必须配置为容器可访问的真实地址。
+- 容器内的 `127.0.0.1` 只代表当前容器自身。抖音导入服务在同一个 Compose 应用内时应使用服务名访问；图文视频服务、图片 Gateway 等其它依赖如果不在同一容器或同一 Compose 网络内，必须配置为容器可访问的真实地址。
 
 ## 核心用户路径
 
@@ -219,7 +221,7 @@
 - 图片 Provider timeout 重试：生图请求和结果图下载如果出现 timeout，会自动重试 `IMAGE_PROVIDER_TIMEOUT_RETRY_ATTEMPTS` 次，默认 3 次；任一重试成功即停止，最终仍失败时必须写入明确错误。
 - 文件存储：支持本地磁盘、七牛对象存储和阿里云 OSS。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。QNY 公开访问域名优先使用 `QNY_PUBLIC_BASE_URL`，历史 `QNY_DOMAIN` 继续兼容；当 QNY 域名没有显式 `http://` 或 `https://` 时，由 `QNY_USE_HTTPS` 决定协议。`STORAGE_BACKEND=aliyun_oss` 时新上传和新生成资产写入阿里云 OSS，配置读取 `ALIYUN_OSS_ACCESS_KEY_ID`、`ALIYUN_OSS_ACCESS_KEY_SECRET`、`ALIYUN_OSS_BUCKET`、`ALIYUN_OSS_ENDPOINT` 和可选 `ALIYUN_OSS_PUBLIC_BASE_URL`；未配置自定义公开域名时，公开 URL 使用 `https://<bucket>.<endpoint-host>/<storage_key>`。对象存储资产使用固定公开原图 URL；为避免 CDN 忽略 query string 时用缩略图参数污染原图缓存，任务列表、小尺寸预览和原图展示均直接使用无 query 的对象原图 URL。本地资产由后端按需生成 WebP 缩略图。
 - 使用对象存储时，新写入资产上传成功后默认删除服务器存储根目录下的本地镜像，避免 `generated_image`、`douyin_media` 和 `download_archive` 长期占用系统盘；只有显式设置 `OBJECT_STORAGE_KEEP_LOCAL_MIRROR=true` 时才保留完整本地镜像。后端处理流程需要把对象存储资产转成本地文件时，允许通过 `materialize_asset_to_local` 下载到 `_cache` 短期使用，并在任务下载打包等一次性流程结束后清理该缓存。任务批量下载生成的 zip 跟随当前 `STORAGE_BACKEND` 保存；对象存储模式下 zip 上传到对象存储，不再固定保存为本地资产。
-- 抖音素材导入：已完成通过本地 `jiji262/douyin-downloader` 仓库运行的最小 adapter 和命令行验证入口；后续 `内容提取` tab 改为由 DoodleStory 后端调用同机抖音下载服务 `127.0.0.1:8010`，前端不得直接请求该本地服务。下载后的服务器绝对路径不能暴露给浏览器，必须登记为 DoodleStory 资产后再展示。
+- 抖音素材导入：已完成通过同级 `douyin-import-service` 包装 `jiji262/douyin-downloader` 的最小 HTTP 服务；`内容提取` tab 由 DoodleStory 后端调用该服务，前端不得直接请求抖音导入服务。Docker Compose 部署时默认地址为 `http://douyin-import-service:8010`；本地非 Docker 开发仍可配置为 `http://127.0.0.1:8010`。下载后的服务器绝对路径不能暴露给浏览器，必须登记为 DoodleStory 资产后再展示。
 - 内容提取模型：图文图片内容提取使用 SiliconFlow 多模态视觉模型，通过 `/chat/completions` 在同一次请求中按顺序传入全部 `image_url` 内容，要求模型结合前后图片保持叙事连贯，并按输入图片顺序逐页输出旁白、对话、内心 OS、画面描述和分格信息；图片素材登记为 DoodleStory 资产时必须使用抖音下载服务返回的原始文件 bytes，不做压缩、缩放或格式转换，并在对象存储上传完成后把资产公网原图 URL 按原顺序传给 VL，不再把图片转成 base64 data URL；没有公网 HTTP(S) URL 时必须明确失败。视频音频转写继续使用 SiliconFlow 多模态模型。内容提取和视频转写必须使用抖音下载服务返回的本地原始媒体路径，不应为了处理流程从对象存储公开 CDN 回拉刚下载的媒体。
 - 内容提取创建使用轻量后台处理：提交后立即保存记录并返回列表，后台分阶段完成解析下载和内容提取；下载媒体登记后先提交，内容提取完成后标记成功。列表按需刷新处理状态；如果后端进程重启导致同进程后台任务中断，启动恢复会把遗留 `processing` 记录标记失败并提示重新提取。仍保留显式重新提取接口用于用户在详情中重新执行，不引入外部队列或复杂状态机。
 - DY 爆款复刻复用内容提取轻量后台处理；复刻请求中的风格、图片数量和人物参考配置只作为当前同进程后台任务参数使用，内容提取成功后通过普通任务创建服务创建 `提取分镜` 任务，任务执行仍由现有进程内任务队列负责。

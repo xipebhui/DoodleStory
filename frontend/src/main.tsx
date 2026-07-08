@@ -460,7 +460,7 @@ function AuthScreen({
             placeholder="密码"
             autoComplete={mode === "login" ? "current-password" : "new-password"}
             required
-            minLength={8}
+            minLength={mode === "login" ? 1 : 8}
           />
           {message ? <p className="error">{message}</p> : null}
           <button type="submit">{mode === "login" ? "登录" : "注册"}</button>
