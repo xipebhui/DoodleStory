@@ -30,6 +30,7 @@ KNOWLEDGE_PLAN_PAGE_MARKER_PATTERN = re.compile(
     r"(?m)^\s*(?:第\s*(?P<page>\d+)\s*[页頁]|图\s*(?P<image>\d+)|P\s*(?P<p>\d+))"
     r"\s*(?:[|｜:：、.\-—]\s*(?:内容)?\s*)?"
 )
+KNOWLEDGE_PLAN_STRUCTURE_ERROR_MESSAGE = "知识方案拆页失败，系统没有生成可用的知识图文页面，请调整内容后重试。"
 
 
 class LLMProviderError(Exception):
@@ -104,38 +105,67 @@ def _extract_count_mismatch_from_raw(raw: dict[str, Any]) -> tuple[int | None, i
 def parse_knowledge_plan(
     *,
     plan_text: str,
+    style_prompt: str,
     image_count_mode: ImageCountMode,
     requested_image_count: int | None,
+    trace_context: dict[str, Any] | None = None,
 ) -> "StoryboardPlanningResult":
-    matches = list(KNOWLEDGE_PLAN_PAGE_MARKER_PATTERN.finditer(plan_text))
-    if not matches:
-        raise LLMResponseError("知识方案需要按页填写，请使用“第1页”“第2页”或“图1”“图2”标出每张图片的内容。")
+    if image_count_mode == ImageCountMode.fixed and requested_image_count is None:
+        raise LLMConfigError("固定图片数量模式必须提供 requested_image_count")
 
-    panels: list[StoryboardPanelPlan] = []
-    expected_order = 1
-    for index, match in enumerate(matches):
-        raw_order = match.group("page") or match.group("image") or match.group("p")
-        panel_order = int(raw_order)
-        if panel_order != expected_order:
-            raise LLMResponseError("知识方案页码必须从 1 开始连续递增，请检查是否漏页、重复页或页码跳号。")
-        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(plan_text)
-        content = plan_text[match.end():next_start].strip()
-        if not content:
-            raise LLMResponseError(f"知识方案第 {panel_order} 页内容为空，请补充该页的生图提示词。")
-        story_beat = first_nonempty_line(content) or f"知识方案第 {panel_order} 页"
-        panels.append(
-            StoryboardPanelPlan(
-                panel_order=panel_order,
-                panel_type=PanelType.scene,
-                story_beat=story_beat[:120],
-                visual_prompt=content,
-                image_text=ImageTextPlan(),
-                text_layout=None,
-            )
+    system_prompt = system_prompt_with_style(read_prompt("parse_knowledge_plan_v1.md"), style_prompt)
+    count_instruction = (
+        f"固定图片数量：{requested_image_count}。必须刚好输出 {requested_image_count} 个 panels。"
+        if image_count_mode == ImageCountMode.fixed
+        else "图片数量：自动判断。请按知识方案的主题、章节、条目和版式密度自然拆成连续 panels。"
+    )
+    user_prompt = json.dumps(
+        {
+            "count_instruction": count_instruction,
+            "plan_text": plan_text,
+        },
+        ensure_ascii=False,
+    )
+    raw = call_lio_json(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        prompt_name="parse_knowledge_plan_v1.md",
+        trace_context={**(trace_context or {}), "operation": "parse_knowledge_plan"},
+        temperature=0.2,
+    )
+    try:
+        result = StoryboardPlanningResult.model_validate(raw)
+    except ValidationError as exc:
+        logger.warning(
+            "knowledge plan validation failed errors=%s raw_keys=%s",
+            exc.errors(),
+            sorted(raw.keys()),
         )
-        expected_order += 1
+        log_prompt_trace(
+            logger,
+            "llm_validation_failed",
+            prompt_name="parse_knowledge_plan_v1.md",
+            context=trace_context or {},
+            errors=exc.errors(),
+            raw=raw,
+        )
+        count_mismatch = _extract_count_mismatch_from_raw(raw)
+        if count_mismatch is not None:
+            detected_count, raw_requested_count = count_mismatch
+            raise LLMResponseError(
+                extracted_storyboard_panel_count_mismatch_message(
+                    detected_count=detected_count,
+                    requested_count=requested_image_count or raw_requested_count,
+                )
+            ) from exc
+        raise LLMResponseError(KNOWLEDGE_PLAN_STRUCTURE_ERROR_MESSAGE) from exc
 
-    detected_count = len(panels)
+    ensure_continuous_panel_orders([panel.panel_order for panel in result.panels])
+    for panel in result.panels:
+        panel.panel_type = PanelType.scene
+        panel.image_text = ImageTextPlan()
+        panel.text_layout = None
+    detected_count = len(result.panels)
     if image_count_mode == ImageCountMode.fixed and detected_count != requested_image_count:
         raise LLMResponseError(
             extracted_storyboard_panel_count_mismatch_message(
@@ -144,13 +174,26 @@ def parse_knowledge_plan(
             )
         )
 
-    title = first_nonempty_line(plan_text) or "知识图文方案"
-    return StoryboardPlanningResult(
-        story_title=clean_title_for_knowledge_plan(title),
-        story_hook=f"按用户提供的 {detected_count} 页知识图文方案生成图片。",
-        story_outline=f"用户提供了 {detected_count} 页知识图文方案；系统按页保留原始提示词，不做故事改写。",
-        panels=panels,
+    logger.info(
+        "knowledge plan parsing succeeded image_count_mode=%s requested_image_count=%s panel_count=%s title=%s",
+        image_count_mode.value,
+        requested_image_count,
+        detected_count,
+        result.story_title,
     )
+    log_prompt_trace(
+        logger,
+        "knowledge_plan_parse_result",
+        context=trace_context or {},
+        image_count_mode=image_count_mode.value,
+        requested_image_count=requested_image_count,
+        story_title=result.story_title,
+        story_hook=result.story_hook,
+        story_outline=result.story_outline,
+        panel_count=detected_count,
+        panels=[panel.model_dump() for panel in result.panels],
+    )
+    return result
 
 
 def first_nonempty_line(value: str) -> str | None:

@@ -2589,8 +2589,10 @@ def process_task(task_id: str) -> None:
                     elif task.story_input_mode == StoryInputMode.knowledge_plan:
                         storyboard = parse_knowledge_plan(
                             plan_text=task.original_text,
+                            style_prompt=task.style_prompt_snapshot,
                             image_count_mode=task.image_count_mode,
                             requested_image_count=task.requested_image_count,
+                            trace_context=task_trace_context(task, "adapt_story"),
                         )
                     else:
                         storyboard = plan_storyboard_from_brief(

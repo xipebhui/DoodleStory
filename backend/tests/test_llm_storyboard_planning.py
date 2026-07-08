@@ -185,7 +185,7 @@ class StoryboardPlanningTest(unittest.TestCase):
         message = str(raised.exception)
         self.assertIn("图片解析出的分镜数量（3）和你设置的图片数量（2）不一致", message)
 
-    def test_knowledge_plan_splits_explicit_pages_without_rewriting(self) -> None:
+    def test_knowledge_plan_uses_llm_to_split_explicit_pages_without_text_fields(self) -> None:
         plan = """第1页|内容
 生成一张知识图鉴。主题「自律自控」。
 顶部标题区、中部三栏、底部金句全部保留。
@@ -194,11 +194,38 @@ class StoryboardPlanningTest(unittest.TestCase):
 生成一张知识图鉴。主题「及时止损」。
 保留左右信息框和路径条。"""
 
-        result = parse_knowledge_plan(
-            plan_text=plan,
-            image_count_mode=ImageCountMode.fixed,
-            requested_image_count=2,
-        )
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={
+                "story_title": "知识图文方案",
+                "story_hook": "两页成长知识图鉴。",
+                "story_outline": "共拆成 2 页：第1页自律自控；第2页及时止损。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "自律自控",
+                        "visual_prompt": "生成一张知识图鉴。主题「自律自控」。顶部标题区、中部三栏、底部金句全部保留。",
+                        "text_layout": "顶部标题+中部三栏+底部金句",
+                        "image_text": {"title": "自律自控"},
+                    },
+                    {
+                        "panel_order": 2,
+                        "panel_type": "scene",
+                        "story_beat": "及时止损",
+                        "visual_prompt": "生成一张知识图鉴。主题「及时止损」。保留左右信息框和路径条。",
+                        "text_layout": "左右信息框",
+                        "image_text": {"title": "及时止损"},
+                    },
+                ],
+            },
+        ) as call_json:
+            result = parse_knowledge_plan(
+                plan_text=plan,
+                style_prompt="复古知识图鉴风",
+                image_count_mode=ImageCountMode.fixed,
+                requested_image_count=2,
+            )
 
         self.assertEqual("知识图文方案", result.story_title)
         self.assertEqual([1, 2], [panel.panel_order for panel in result.panels])
@@ -207,22 +234,87 @@ class StoryboardPlanningTest(unittest.TestCase):
         self.assertIsNone(result.panels[0].text_layout)
         self.assertIsNone(result.panels[0].image_text.title)
         self.assertIsNone(result.panels[0].image_text.narration)
+        user_payload = json.loads(call_json.call_args.kwargs["user_prompt"])
+        self.assertIn("必须刚好输出 2 个 panels", user_payload["count_instruction"])
+        self.assertEqual(plan, user_payload["plan_text"])
+        self.assertEqual("parse_knowledge_plan_v1.md", call_json.call_args.kwargs["prompt_name"])
 
-    def test_knowledge_plan_requires_explicit_page_markers(self) -> None:
-        with self.assertRaisesRegex(LLMResponseError, "需要按页填写"):
-            parse_knowledge_plan(
-                plan_text="男人 25 岁之前必须要做的 5 件事",
+    def test_knowledge_plan_uses_llm_to_auto_chunk_without_page_markers(self) -> None:
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={
+                "story_title": "煤气安全知识页",
+                "story_hook": "连续知识图鉴内容页。",
+                "story_outline": "共拆成 2 页：第1页煤气泄漏；第2页舍财保命。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "煤气泄漏应对",
+                        "visual_prompt": "生成连续知识图鉴内容页。主题「煤气泄漏」。正文使用横向内容条，副文字：要立刻关好煤气，再开窗通风，别制造任何明火。",
+                        "image_text": {},
+                        "text_layout": None,
+                    },
+                    {
+                        "panel_order": 2,
+                        "panel_type": "scene",
+                        "story_beat": "舍财保命原则",
+                        "visual_prompt": "生成连续知识图鉴内容页。主题「舍财保命」。副文字：钱和身外之物都能再赚，命只有一次。",
+                        "image_text": {},
+                        "text_layout": None,
+                    },
+                ],
+            },
+        ):
+            result = parse_knowledge_plan(
+                plan_text=(
+                    "生成连续知识图鉴内容页，复古手绘风。\n"
+                    "家里忘记关煤气，反应过来时千万别抽烟或点蚊香\n"
+                    "副文字：要立刻关好煤气，再开窗通风，别制造任何明火。\n\n"
+                    "遇到不好的情况，舍财保命最重要\n"
+                    "副文字：钱和身外之物都能再赚，命只有一次。"
+                ),
+                style_prompt="复古知识图鉴风",
                 image_count_mode=ImageCountMode.auto,
                 requested_image_count=None,
             )
 
+        self.assertEqual([1, 2], [panel.panel_order for panel in result.panels])
+        self.assertIn("煤气泄漏", result.panels[0].visual_prompt)
+        self.assertIn("舍财保命", result.panels[1].visual_prompt)
+
     def test_knowledge_plan_fixed_count_mismatch_uses_friendly_error(self) -> None:
-        with self.assertRaises(LLMResponseError) as raised:
-            parse_knowledge_plan(
-                plan_text="图1：自律自控\n图2：及时止损",
-                image_count_mode=ImageCountMode.fixed,
-                requested_image_count=3,
-            )
+        with patch(
+            "app.services.llm.call_lio_json",
+            return_value={
+                "story_title": "知识方案",
+                "story_hook": "两页知识图鉴。",
+                "story_outline": "共 2 页。",
+                "panels": [
+                    {
+                        "panel_order": 1,
+                        "panel_type": "scene",
+                        "story_beat": "自律自控",
+                        "visual_prompt": "图1：自律自控",
+                        "image_text": {},
+                    },
+                    {
+                        "panel_order": 2,
+                        "panel_type": "scene",
+                        "story_beat": "及时止损",
+                        "visual_prompt": "图2：及时止损",
+                        "image_text": {},
+                    },
+                ],
+            },
+        ):
+            with self.assertRaises(LLMResponseError) as raised:
+                parse_knowledge_plan(
+                    plan_text="图1：自律自控\n图2：及时止损",
+                    style_prompt="复古知识图鉴风",
+                    image_count_mode=ImageCountMode.fixed,
+                    requested_image_count=3,
+                )
 
         self.assertIn("图片解析出的分镜数量（2）和你设置的图片数量（3）不一致", str(raised.exception))
 

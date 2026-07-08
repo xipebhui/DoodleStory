@@ -549,7 +549,7 @@ POST /api/v1/tasks
 
 - 按收到的内容原样保存 `original_text`。
 - 当 `story_input_mode = adapted` 时，调用 LLM 生成 `adapted_story_title`、`adapted_story_hook` 和 `adapted_story_text`，并直接规划连续图文分镜。
-- 当 `story_input_mode = knowledge_plan` 时，按显式页标拆分知识图文方案，直接保留每页原始提示词，不做人设提取或最终 prompt LLM 编译。
+- 当 `story_input_mode = knowledge_plan` 时，用 LLM 按知识结构自动拆分知识图文方案；显式页标可被识别但不是必填。拆页后的每页完整提示词直接进入生图，不做人设提取或最终 prompt LLM 编译。
 - 将当前登录用户保存为任务 owner。
 - 将选中风格的提示词和生图模型名快照保存到任务。
 - 当 `story_input_mode = adapted`、`extracted_storyboard` 或 `knowledge_plan` 时，任务步骤使用 `adapt_story` 形成 panels。

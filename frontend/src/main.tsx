@@ -2230,7 +2230,7 @@ function TasksView({
                   onClick={() => setStoryInputMode("knowledge_plan")}
                 >
                   <strong>知识方案</strong>
-                  <span>适合知识卡片、图鉴、清单和方法论，按你写好的页序直通生图。</span>
+                  <span>适合知识卡片、图鉴、清单和方法论，系统会按知识结构自动拆成连续内容页。</span>
                 </button>
                 <button
                   type="button"
@@ -2262,7 +2262,7 @@ function TasksView({
                       : storyInputMode === "extracted_storyboard"
                         ? "粘贴或编辑内容提取结果，例如第1页、第2页、画面、旁白、对话、内心OS和分格信息"
                         : storyInputMode === "knowledge_plan"
-                          ? "按第1页、第2页或图1、图2写清每张图的完整生图提示词、版式、文字和禁止事项"
+                          ? "输入完整知识图文方案，例如主题、版式、每条内容、正文/副文字、插图要求、作者栏和禁止事项；可写页标，也可以让系统自动拆页"
                           : storyInputMode === "dy_replicate"
                             ? "粘贴完整抖音分享文本或链接，例如 https://v.douyin.com/..."
                             : "只粘贴故事正文。不要加入标题说明、图片数量、标签、总结或其他要求"
@@ -2275,7 +2275,7 @@ function TasksView({
                 ) : storyInputMode === "extracted_storyboard" ? (
                   <small>系统只做分镜结构化，不扩写、不总结、不合并页；会把旁白、对白和内心 OS 区分成不同画面呈现形式。</small>
                 ) : storyInputMode === "knowledge_plan" ? (
-                  <small>系统只按页拆分你的原始提示词，再拼接所选风格和画面比例；不会做人设提取、故事改写或提示词总结。</small>
+                  <small>系统会用 LLM 按知识点和版式密度拆成内容页；每页生成时仍保留你的原始方案要求并直通生图，不做人设提取或故事改写。</small>
                 ) : storyInputMode === "dy_replicate" ? (
                   <small>提交后会先创建内容提取记录；提取成功后自动创建提取分镜任务并跳转到任务详情。</small>
                 ) : (
@@ -2298,12 +2298,12 @@ function TasksView({
                     <input name="requested_image_count" type="number" min="1" max="80" placeholder="例如 8" required />
                     {storyInputMode === "adapted" ? <small>固定数量就是最终图片张数，系统不会额外插入图片。</small> : null}
                     {storyInputMode === "extracted_storyboard" ? <small>固定数量必须和提取分镜页数一致，不会自动合并或补页。</small> : null}
-                    {storyInputMode === "knowledge_plan" ? <small>固定数量必须和你写出的页数一致；系统不会自动合并、补页或删页。</small> : null}
+                    {storyInputMode === "knowledge_plan" ? <small>系统会按你设置的数量把知识方案拆成对应页数。</small> : null}
                     {storyInputMode === "dy_replicate" ? <small>固定数量必须和提取出的页数一致；内容提取完成后不会自动合并或补页。</small> : null}
                   </label>
                 ) : (
                   <p className="field-hint">
-                    {storyInputMode === "knowledge_plan" ? "系统会按你写出的页数生成图片。" : "系统会根据故事长度和内容密度决定图片张数。"}
+                    {storyInputMode === "knowledge_plan" ? "系统会根据知识点、章节和内容密度自动判断图片张数。" : "系统会根据故事长度和内容密度决定图片张数。"}
                   </p>
                 )}
               </section>
