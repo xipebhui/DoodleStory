@@ -69,6 +69,46 @@ expose:
   - "8000"
 ```
 
+## 新远程节点完整流程
+
+在目标节点准备一个工作目录，例如：
+
+```bash
+mkdir -p /opt/doodlestory
+cd /opt/doodlestory
+git clone git@github.com:xipebhui/DoodleStory.git
+cd DoodleStory
+git checkout codex/remote-hotfix-20260624
+./scripts/prepare-douyin-downloader.sh
+```
+
+确认目录结构：
+
+```text
+/opt/doodlestory/
+  DoodleStory/
+  douyin-downloader/
+```
+
+如果通过 Coolify Compose 服务部署，把 `docker-compose.coolify.yml` 作为 Compose 配置，并在 Coolify 中配置本文后续环境变量、volume 和 FQDN。
+
+如果先在远程节点命令行验证，可以执行：
+
+```bash
+export SESSION_SECRET=replace-with-a-long-random-secret
+docker-compose -f docker-compose.coolify.yml -f docker-compose.local.yml up -d --build
+```
+
+命令行验证时，DoodleStory 默认只暴露到宿主机 `127.0.0.1:18080`；正式 Coolify 部署不使用 `docker-compose.local.yml`，由 Coolify/Traefik 负责公网域名和 HTTPS。
+
+如果使用文件形式配置抖音 Cookie，先启动一次服务，再写入 Cookie：
+
+```bash
+./scripts/install-douyin-cookies.sh /path/to/cookies.json
+```
+
+更换 Cookie 时重新执行同一命令即可覆盖旧 Cookie。
+
 ## 必填环境变量
 
 最少需要在 Coolify 环境变量里配置：
@@ -143,6 +183,20 @@ DOUYIN_DOWNLOAD_TIMEOUT_SECONDS=180
 ```text
 /app/douyin-downloader/.cache/douyin/cookies.json
 ```
+
+仓库提供了安装/覆盖 Cookie 的脚本。先启动一次 Compose，让 `douyin-import-service` 容器和 `douyin-import-cache` volume 创建出来，然后执行：
+
+```bash
+./scripts/install-douyin-cookies.sh /path/to/cookies.json
+```
+
+如果 `cookies.json` 放在同级 `douyin-downloader/cookies.json` 或 `douyin-downloader/.cookies.json`，也可以不传路径：
+
+```bash
+./scripts/install-douyin-cookies.sh
+```
+
+需要换 Cookie 时，用新的文件路径重新执行同一条命令即可覆盖 volume 中的旧文件。Cookie 文件是部署密钥，不要提交到 git；`douyin-downloader` 的 `.dockerignore` 已排除 `.env`、`cookies.json`、`.cookies.json`、`.cache` 和下载产物。
 
 没有有效 Cookie 时，健康检查仍可通过，但实际下载会明确失败并提示 Cookie 缺失或不可用。
 

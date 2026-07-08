@@ -62,6 +62,12 @@ tmp-project/
 ./scripts/prepare-douyin-downloader.sh
 ```
 
+如果使用文件形式配置抖音 Cookie，可在 Compose 启动后写入或覆盖依赖服务的 Cookie volume：
+
+```bash
+./scripts/install-douyin-cookies.sh /path/to/cookies.json
+```
+
 生产容器默认监听 `8000`，SQLite 数据库和本地资产默认写入 `/app/data`，部署时必须把 `/app/data` 配成持久化 volume。
 
 ## 抖音热门样本采集环境
