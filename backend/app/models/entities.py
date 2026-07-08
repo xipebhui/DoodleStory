@@ -242,6 +242,7 @@ class GenerationTask(Base, TimestampMixin):
     error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    failure_alert_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     owner: Mapped[User] = relationship(back_populates="tasks")
     style: Mapped[Style] = relationship(back_populates="tasks")

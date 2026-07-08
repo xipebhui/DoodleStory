@@ -225,6 +225,7 @@ def prepare_generation_task_retry(db: Session, task: GenerationTask) -> None:
     task.error_code = None
     task.error_message = None
     task.internal_error_ref = None
+    task.failure_alert_sent_at = None
     task.style_name_snapshot = style.name
     task.style_prompt_snapshot = style.style_prompt
     task.image_model_name_snapshot = style.image_model_name

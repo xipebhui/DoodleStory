@@ -161,6 +161,12 @@ IMAGE_GATEWAY_BASE_URL=http://192.129.209.36:3001/v1
 XG_BASE_URL=https://api.xgapi.top
 XG_API_KEY=
 XG_IMAGE_QUALITY=1k
+
+# 可选：图文生成任务进入 failed 状态时发送飞书自定义机器人告警。
+TASK_FAILURE_ALERT_WEBHOOK_URL=
+TASK_FAILURE_ALERT_TIMEOUT_SECONDS=10
+# 可选：用于在告警里拼接 /tasks/{task_id} 链接；不配置则尝试使用 FRONTEND_ORIGIN。
+TASK_FAILURE_ALERT_TASK_BASE_URL=
 ```
 
 ## 抖音导入依赖服务

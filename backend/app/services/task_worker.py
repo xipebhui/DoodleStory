@@ -88,6 +88,7 @@ from app.services.llm import (
 )
 from app.services.prompt_logging import log_prompt_trace
 from app.services.style_references import build_task_style_reference_pack, is_prompt_reference_mode
+from app.services.task_failure_alerts import notify_generation_task_failure_if_needed
 
 _queue: asyncio.Queue[str] | None = None
 _queue_loop: asyncio.AbstractEventLoop | None = None
@@ -1149,6 +1150,7 @@ def update_task_character_reference_state(db: Session, task_id: str) -> None:
         task.error_message = f"人物参考图生成失败：{len(failed)} 个角色形象未生成成功"
         task.finished_at = datetime.utcnow()
         db.commit()
+        notify_generation_task_failure_if_needed(db, task)
         return
     task.progress_current = max(task.progress_current, 3)
     task.status = TaskStatus.queued
@@ -1208,6 +1210,8 @@ def update_task_image_generation_state(db: Session, task_id: str) -> None:
         task.error_code = "ImageGenerationFailed"
         task.error_message = "所有分镜图片生成失败"
     db.commit()
+    if task.status == TaskStatus.failed:
+        notify_generation_task_failure_if_needed(db, task)
     try:
         from app.services.video_task_worker import trigger_video_tasks_for_source_task
 
@@ -1258,6 +1262,7 @@ async def recover_queued_tasks() -> None:
             .order_by(GenerationTask.created_at.asc())
         ).all()
         failed_count = 0
+        failed_alert_tasks: list[GenerationTask] = []
         resumed_image_planning_count = 0
         continued_image_job_count = 0
         for task in interrupted_tasks:
@@ -1288,8 +1293,11 @@ async def recover_queued_tasks() -> None:
             task.error_code = "WorkerInterrupted"
             task.error_message = "服务重启导致任务中断，请重新创建任务"
             task.finished_at = datetime.utcnow()
+            failed_alert_tasks.append(task)
             failed_count += 1
         db.commit()
+        for task in failed_alert_tasks:
+            notify_generation_task_failure_if_needed(db, task)
         if failed_count or resumed_image_planning_count or continued_image_job_count:
             logger.warning(
                 "recovered interrupted tasks failed_count=%s resumed_image_planning_count=%s continued_image_job_count=%s",
@@ -1412,6 +1420,7 @@ def fail_step_and_task(db: Session, task: GenerationTask, step_name: GenerationS
     task.error_message = str(exc)
     task.finished_at = datetime.utcnow()
     db.commit()
+    notify_generation_task_failure_if_needed(db, task)
 
 
 def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
@@ -1424,6 +1433,7 @@ def mark_task_failed_by_unhandled_error(task_id: str, exc: Exception) -> None:
         task.error_message = str(exc) or "任务执行出现未处理异常"
         task.finished_at = datetime.utcnow()
         db.commit()
+        notify_generation_task_failure_if_needed(db, task)
 
 
 def task_progress_total(task: GenerationTask) -> int:

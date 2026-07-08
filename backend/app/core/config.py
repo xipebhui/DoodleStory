@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     image_job_user_concurrency: int = Field(default=2, ge=1)
     image_job_lease_seconds: int = Field(default=1800, ge=60)
     video_task_worker_concurrency: int = Field(default=1, ge=1)
+    task_failure_alert_webhook_url: str = ""
+    task_failure_alert_timeout_seconds: int = Field(default=10, ge=1)
+    task_failure_alert_task_base_url: str = ""
     image_provider_debug_log_raw_io: bool = False
     image_provider_debug_log_raw_max_chars: int = 20000
     douyin_import_service_base_url: str = "http://127.0.0.1:8010"

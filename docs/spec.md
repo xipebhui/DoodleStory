@@ -216,6 +216,7 @@
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
 - 图片生成并发：任务队列由进程内 worker 池领取任务前置步骤，默认 `TASK_WORKER_CONCURRENCY=3`；真正调用图片 Provider 的单位是 `generated_images` 图片 job，由全局图片 worker 池调度。图片 job 使用 `job_kind` 区分 `panel_image` 和 `character_reference`，panel 图绑定 `panel_id`，人物参考图绑定 `character_appearance_id`。全站图片 job 并发通过 `IMAGE_JOB_CONCURRENCY` 配置，默认 6；单个普通用户同时运行的图片 job 通过 `IMAGE_JOB_USER_CONCURRENCY` 配置，默认 2。大任务会把人物参考图和每个 panel 都排成独立图片 job 逐步推进，不能独占全站图片 Provider 并发。
+- 图文生成任务失败告警：如果配置 `TASK_FAILURE_ALERT_WEBHOOK_URL`，当 `GenerationTask` 明确进入 `failed` 状态时，后端必须向飞书自定义机器人发送一次文本告警；同一个 failed 状态通过 `failure_alert_sent_at` 去重，避免恢复流程或重复检查刷屏。告警包含任务 ID、标题、用户 ID、输入模式、当前步骤、生图模型、风格、错误码、错误信息、失败时间和可选任务链接，不推送用户原始全文。用户手动重试任务时应清空该告警标记，重试后再次失败需要重新告警。飞书 webhook 调用失败时必须记录日志并保留未发送状态，但不能覆盖任务原始失败原因或把告警失败当作任务失败原因。
 - 任务取消：用户取消图文任务后，任务下仍处于 `queued` 或 `running` 的图片 job 必须同步标记为 `cancelled`，已占用积分必须释放；图片 worker 不得继续领取已取消任务下的图片 job，Provider 返回后如果任务已取消，不得保存成功资产、不得扣费、不得把任务状态从取消态改回运行或成功。已经发到第三方 Provider 的同步 HTTP 请求不依赖本地状态强制撤销，但其返回结果必须在本地丢弃并保持取消状态。
 - 任务取消接口必须保持幂等；已经处于 `cancelled` 的任务再次点击取消时，后端仍应重新执行残留图片 job 清理和积分占用释放检查，避免历史错误状态让用户无法再次停止任务。
 - 图片 Provider timeout 重试：生图请求和结果图下载如果出现 timeout，会自动重试 `IMAGE_PROVIDER_TIMEOUT_RETRY_ATTEMPTS` 次，默认 3 次；任一重试成功即停止，最终仍失败时必须写入明确错误。
