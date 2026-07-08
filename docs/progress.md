@@ -9,6 +9,7 @@
 
 ## 当前 Sprint 合同
 
+- `docs/contracts/sprint-98-content-extraction-gpt54-vl.md`
 - `docs/contracts/sprint-97-knowledge-plan-llm-auto-chunk.md`
 - `docs/contracts/sprint-96-original-story-dialogue-narration-dedupe.md`
 - `docs/contracts/sprint-95-docker-coolify-deployment.md`
@@ -24,6 +25,7 @@
 
 ## 最近完成的工作
 
+- 切换图文内容提取 VL 到 `gpt-5.4`：线上内容提取 `025b8b78e1cc454583e307ea87fa693d` 下载并注册了 14 张图片，但 Qwen VL 最终只返回 `第1页` 到 `第12页`，且把末尾图片内容合并/跳页，旧逻辑仍标记成功。现已把图文内容提取从 SiliconFlow/Qwen 改为调用 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容 `gpt-5.4` 多模态模型；结果保存前会校验模型输出页码必须严格等于下载图片的 `1..N`，少页、跳页、合并页或重复页会明确失败并提示图片解析页数和下载图片数量不一致。该变更不把 Qwen 作为兜底，不自动补页，不影响视频音频转写和角色参考图外观理解。
 - 补充抖音导入 Cookie 部署覆盖流程：新增 `scripts/install-douyin-cookies.sh`，用于把本机或远程节点上的 `cookies.json` 写入运行中的 `douyin-import-service` 持久化 volume 路径 `/app/douyin-downloader/.cache/douyin/cookies.json`；脚本支持显式传入路径，也会默认查找同级 `douyin-downloader/cookies.json` 和 `.cookies.json`，重复执行会覆盖旧 Cookie。部署文档和 README 已说明 Cookie 属于部署密钥，不提交到 git，远程节点可通过该脚本更新 Cookie。
 - 修正知识方案模式拆页方式：此前 Sprint 92 把 `knowledge_plan` 做成了必须依赖 `第1页 / 图1 / P1` 的正则硬拆，导致用户输入连续知识图文方案时直接失败并提示必须按页填写。现已改为调用 LLM 根据知识点、章节、条目、空行、标题、正文结构和固定图片数量自动拆成连续内容页；显式页标仍可识别但不是必填。拆页后的每个 panel 仍作为单页完整生图提示词直通图片生成，后端会清空 `image_text` 和 `text_layout`，不走人物提取、不走最终 prompt LLM 编译、不自动创造用户没有提供的新知识主题。前端知识方案文案已改为自动拆页说明，规格和 API 设计同步更新。
 - 轻量化抖音导入依赖部署结构：用户已 fork `douyin-downloader` 到 `git@github.com:xipebhui/douyin-downloader.git`，本轮把原同级 `douyin-import-service` 的 DoodleStory HTTP 套壳迁入该 fork 的独立 `doodlestory_import` 包，新增 `Dockerfile.doodlestory-import` 和 `requirements.doodlestory-import.txt`，由 downloader 仓库直接构建 `8010` 内部服务。DoodleStory 的 `docker-compose.coolify.yml` 改为从同级 `../douyin-downloader` 构建依赖镜像，下载产物和 Cookie cache volume 统一挂载到 `/app/douyin-downloader/...`，DoodleStory 容器用同一路径只读读取下载产物。新增 `scripts/prepare-douyin-downloader.sh`，用于在远程节点把 fork 拉到 DoodleStory 同级目录；已有仓库时只做 fast-forward 更新，分叉时明确失败，不自动 reset。README、规格、Coolify 部署文档和 Sprint 95 合同已同步为两仓库部署结构。
@@ -43,7 +45,7 @@
 - 任务导航文案调整：左侧导航中的 `任务` 已改为 `图文任务`，404 空状态里的入口提示同步改为 `图文任务`，避免与新增的视频任务能力混淆。验证：`npm run build --prefix frontend` 通过。
 - 完成 Sprint 80 生图结果比例校验重试：针对线上任务 `b0d41aea74ce4c3188f076a334491290` 出现 panel 目标比例不稳定、实际产出 `9:16` 的问题，正式 panel 生图和单 panel 修改现在会在保存资产前读取返回图片尺寸并校验目标比例；比例不符时使用同一模型、同一 prompt 和同一参考图重新生成，重试次数沿用图片 job 的 `max_attempts`，耗尽后明确失败。成功保存的生成资产会记录 `width` / `height`，方便后续排查。该改动不切换图片 provider、不新增模型兜底、不修改角色参考图或风格测试重试策略。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_image_generation_gateway_only`、`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_worker_prompt`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过。
 - Hotfix 文本模型增加火苗 OpenAI 兼容兜底：在用户明确授权后，任务生成文本 JSON LLM 仍先请求 LIO/Gemini；如果该次请求抛出异常、返回空内容或返回非 JSON，后端会切到 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容文本模型。兜底模型当前用于接入 `https://api.huomiao.art` 的 `gpt-5.4`；进入兜底后，同一次调用的后续重试只继续请求兜底模型，不再切回 Gemini。该逻辑只作用于任务生成文本链路，不改变内容提取多模态 SiliconFlow 链路，也不改变图片 Provider 或生图模型选择。
-- Hotfix 任务生成文本模型统一切到 Gemini：线上任务 `66f14820661645659452290659a90a87` 在 `extract_characters` 阶段调用 SiliconFlow `deepseek-ai/DeepSeek-V3.2` 返回 429 `System is too busy now`，该链路没有系统自动重试。现已将任务生成链路中的文本 JSON LLM 统一改为 LIO/OpenAI 兼容入口，线上按 `LIO_MODEL=gemini-3.1-flash-lite-preview-thinking-minimal` 执行；覆盖角色名提取、故事增强、故事方案规划、提取分镜结构化、任务级人物提取、panel prompt、最终生图 prompt 编译、单图 prompt 修改和 policy prompt 改写。`CHARACTER_EXTRACTION_MODEL` 不再参与任务文本模型选择，只保留 `CHARACTER_EXTRACTION_TEMPERATURE` 控制低温人物识别。内容提取图文视觉理解、视频音频转写和用户角色参考图外观理解仍继续使用 SiliconFlow 多模态模型，不属于本次文本模型切换范围。
+- Hotfix 任务生成文本模型统一切到 Gemini：线上任务 `66f14820661645659452290659a90a87` 在 `extract_characters` 阶段调用 SiliconFlow `deepseek-ai/DeepSeek-V3.2` 返回 429 `System is too busy now`，该链路没有系统自动重试。现已将任务生成链路中的文本 JSON LLM 统一改为 LIO/OpenAI 兼容入口，线上按 `LIO_MODEL=gemini-3.1-flash-lite-preview-thinking-minimal` 执行；覆盖角色名提取、故事增强、故事方案规划、提取分镜结构化、任务级人物提取、panel prompt、最终生图 prompt 编译、单图 prompt 修改和 policy prompt 改写。`CHARACTER_EXTRACTION_MODEL` 不再参与任务文本模型选择，只保留 `CHARACTER_EXTRACTION_TEMPERATURE` 控制低温人物识别。当时内容提取图文视觉理解、视频音频转写和用户角色参考图外观理解仍继续使用 SiliconFlow 多模态模型；当前 Sprint 98 已进一步把图文内容提取切到 `gpt-5.4`，只保留视频音频转写和角色参考图外观理解使用 SiliconFlow。
 - Hotfix DY 来源下载元信息改为文本文件：用户反馈任务下载包中的来源元信息文件当前保存为 `meta.json`，希望改为 txt。现已将通过 `DY 爆款复刻` 自动创建出的生成任务下载 zip 内附加文件改为 `meta.txt`，内容使用“标题 / 描述 / 标签”的可读纯文本格式；普通非 DY 来源任务下载行为不变。
 - Hotfix 完整故事固定数量切分提示词：生产任务 `b4028ba7178d458eaf5b61f4e1b0719f` 的重复叙事根因是 `segment_story` LLM 在固定 9 张时为凑数量把同一段短故事从头讲了两遍，后端当前只校验数量、页序和长度。按本次边界先不新增后置复杂校验，只收紧 `segment_story_v1.md`：固定数量仍是最高优先级，但明确固定数量只是把同一段原文从前到后切成指定数量的连续片段；禁止回到前文重新讲、重复使用已分配内容、为了凑数量讲两遍、倒序或补写。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_story_segmentation` 通过。
 - 完成 Sprint 87 视频分辨率跟随画风比例：定位到最终视频比例由 `build_episode()` 中的 `settings.comic_video_episode_width/height` 写入 episode resolution，默认 `1080x1920` 导致统一 9:16；现已改为读取上游图片任务 `style_aspect_ratio_snapshot` 计算视频宽高，保持 9:16 为 `1080x1920`，16:9 为 `1920x1080`，3:4 为 `1440x1920`，无法解析比例时明确失败，不做静默兜底。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_video_task_worker`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 125 个后端测试、空 SQLite Alembic `upgrade head` 和前端生产构建。
@@ -339,7 +341,7 @@
 - 历史本地资产尚未迁移到七牛；七牛对象存储已通过独立上传/访问烟测，仍建议用真实任务生成链路做一次端到端验证。
 - 旧的多 profile registry 已移除；生图链路已收敛到 `docs/api_v3.md` 对应的统一 OpenAI Images 兼容 Gateway，旧 SiliconFlow 直连、XG edits 和 ApexerAPI Chat 不再作为默认生图路由。
 - UI 已开始切换到 Runway / Creative AI Studio 风格，但任务页、详情页和整体组件拆分仍需继续深化。
-- 内容提取已完成同机 `127.0.0.1:8010` 可达时的真实图文下载、旧版图文 OCR、故事总结、列表和详情弹窗验证；Sprint 25 已把图文内容提取切换为 SiliconFlow 视觉模型整组图片顺序理解，仍建议用真实漫画图文链接做一次端到端验证。视频音频转写仍需用真实视频链接单独端到端验证。
+- 内容提取已完成同机 `127.0.0.1:8010` 可达时的真实图文下载、旧版图文 OCR、故事总结、列表和详情弹窗验证；Sprint 25 曾把图文内容提取切换为 SiliconFlow 视觉模型整组图片顺序理解，Sprint 98 已进一步切到 `gpt-5.4` 并增加页数连续性校验，仍建议用真实漫画图文链接做一次端到端验证。视频音频转写仍需用真实视频链接单独端到端验证。
 
 ## 建议下一步
 

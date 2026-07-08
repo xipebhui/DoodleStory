@@ -141,6 +141,7 @@ ADMIN_EMAILS=
 SILICONFLOW_API_KEY=
 SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
 SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
+# 角色参考图外观理解仍使用该视觉模型；图文内容提取不再使用 Qwen/SiliconFlow。
 SILICONFLOW_VISION_MODEL=Qwen/Qwen3-VL-32B-Instruct
 SILICONFLOW_AUDIO_MODEL=Qwen/Qwen3-Omni-30B-A3B-Instruct
 
@@ -150,6 +151,7 @@ LIO_MODEL=gemini-3.1-flash-lite-preview-thinking-minimal
 
 TEXT_FALLBACK_API_KEY=
 TEXT_FALLBACK_BASE_URL=
+# 图文内容提取和风格提示词 VL 提取共用该 OpenAI 兼容多模态模型。
 TEXT_FALLBACK_MODEL=gpt-5.4
 
 IMAGE_PROVIDER=qy

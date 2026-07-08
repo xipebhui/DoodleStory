@@ -20,7 +20,7 @@
 - 下载完成后，页面展示一个轻量媒体预览区。
 - 用户点击 `提取文案` 后，后端同步执行文案提取并返回结果：
   - 视频：从下载到的 `.mp4` 分离音频，再调用 SiliconFlow 音频理解能力提取原始口播、旁白或字幕文案。
-  - 图文：按下载图片顺序把整组图片一次性提交给 SiliconFlow 视觉理解能力，结合前后页上下文后按页输出最终内容提取结果。
+  - 图文：按下载图片顺序把整组图片一次性提交给 `TEXT_FALLBACK_*` 配置的 `gpt-5.4` 多模态视觉理解能力，结合前后页上下文后按页输出最终内容提取结果。
 - 页面以文案结果为主，媒体预览为辅助信息；多图下载结果默认折叠。
 
 ## 非目标
@@ -78,13 +78,15 @@
 
 - `app/api/content_extractions.py`：内容提取 REST API。
 - `app/services/douyin_import_service.py`：调用同机抖音下载服务。
-- `app/services/media_text_extraction.py`：SiliconFlow 多模态调用和媒体处理。
+- `app/services/media_text_extraction.py`：`gpt-5.4` 图文视觉理解、SiliconFlow 音频转写和媒体处理。
 
 新增配置：
 
 ```env
 DOUYIN_IMPORT_SERVICE_BASE_URL=http://127.0.0.1:8010
-SILICONFLOW_VISION_MODEL=Qwen/Qwen3-VL-32B-Instruct
+TEXT_FALLBACK_BASE_URL=
+TEXT_FALLBACK_API_KEY=
+TEXT_FALLBACK_MODEL=gpt-5.4
 SILICONFLOW_AUDIO_MODEL=Qwen/Qwen3-Omni-30B-A3B-Instruct
 ```
 
@@ -130,8 +132,9 @@ SILICONFLOW_AUDIO_MODEL=Qwen/Qwen3-Omni-30B-A3B-Instruct
    - 保存音频资产和最终文案。
 5. 如果 `media_type=gallery`：
    - 按 `display_order` 读取图片资产。
-   - 在一次 SiliconFlow 视觉理解请求中按顺序提交全部图片。
+   - 在一次 `gpt-5.4` 视觉理解请求中按顺序提交全部图片。
    - 模型必须结合前后页上下文，但输出仍按输入图片顺序逐页排列。
+   - 模型返回内容必须包含连续 `第1页` 到 `第N页`；页数和下载图片数量不一致时提取失败，并提示用户重新提取。
    - 模型返回内容直接保存为最终内容提取结果。
 6. 同步返回最终内容提取结果。
 
@@ -143,16 +146,16 @@ SILICONFLOW_AUDIO_MODEL=Qwen/Qwen3-Omni-30B-A3B-Instruct
 - 下载成功但没有媒体文件：请求失败，返回下载产物为空。
 - 图文中任意图片提取失败：提取请求失败，不跳过该图。
 - 视频音频分离失败：提取请求失败，不直接把视频传给模型作为兜底。
-- SiliconFlow 调用失败：提取请求失败，不返回占位文案。
+- `gpt-5.4` 图文理解或 SiliconFlow 音频转写调用失败：提取请求失败，不返回占位文案。
 
-## SiliconFlow 调用
+## 模型调用
 
-SiliconFlow 多模态模型通过 `/chat/completions` 调用，消息 `content` 支持 `image_url`、`audio_url`、`video_url` 等内容部分。第一版只使用图片与音频输入。
+图文内容提取通过 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容 `/chat/completions` 调用，消息 `content` 使用 `image_url` 内容部分，并要求模型按输入顺序逐页输出。视频音频转写仍通过 SiliconFlow 多模态模型调用，消息 `content` 使用 `audio_url`。
 
 媒体输入策略：
 
-- 本地图片和音频通过 base64 data URL 传给模型，避免要求本地文件必须有公网 URL。
-- 已上传到七牛且有公开 URL 的资产仍可读取本地内容后使用 data URL，保持本地和七牛路径一致。
+- 图文图片必须先登记为 DoodleStory 资产，并把对象存储公网原图 URL 按顺序传给 `gpt-5.4`；没有公网 HTTP(S) URL 时明确失败。
+- 视频音频转写仍从下载服务返回的本地原始视频分离音频，并用 base64 data URL 传给 SiliconFlow 音频模型。
 - 单次请求媒体大小如果超过代码内固定上限，直接失败并提示用户，不自动压缩或截断。
 
 图文图片识别 prompt：

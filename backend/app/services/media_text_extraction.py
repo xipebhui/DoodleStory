@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -79,6 +80,8 @@ STYLE_ART_PROMPT_REQUIRED_HEADINGS = (
     "【构图与透视特征】",
     "【风格迁移测试】",
 )
+
+CONTENT_EXTRACTION_PAGE_MARKER_PATTERN = re.compile(r"(?m)^\s*第\s*(\d+)\s*页\s*[：:]")
 
 @dataclass(frozen=True)
 class MediaTextResult:
@@ -257,14 +260,14 @@ def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object
     trace_context = {"model": model, "prompt_name": prompt_name}
     started = monotonic()
     logger.info(
-        "style_prompt_vl_debug multimodal_request prompt_name=%s model=%s content=%s",
+        "text_fallback_vl_debug multimodal_request prompt_name=%s model=%s content=%s",
         prompt_name,
         model,
         json.dumps(_safe_multimodal_content_for_log(content), ensure_ascii=False, default=str),
     )
     log_prompt_trace(
         logger,
-        "style_prompt_vl_request",
+        "text_fallback_vl_request",
         context=trace_context,
         provider="text_fallback",
         model=model,
@@ -279,7 +282,7 @@ def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object
     except Exception as exc:
         log_prompt_trace(
             logger,
-            "style_prompt_vl_exception",
+            "text_fallback_vl_exception",
             context=trace_context,
             elapsed_ms=round((monotonic() - started) * 1000),
             exception_type=exc.__class__.__name__,
@@ -293,9 +296,18 @@ def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object
     if message_content is None:
         raise LLMResponseError("gpt-5.4 VL 返回内容为空")
     text = str(message_content).strip()
+    logger.info(
+        "text_fallback_vl_debug multimodal_response prompt_name=%s model=%s response_id=%s finish_reason=%s content_chars=%s content=%s",
+        prompt_name,
+        model,
+        getattr(response, "id", None),
+        getattr(response.choices[0], "finish_reason", None),
+        len(text),
+        text,
+    )
     log_prompt_trace(
         logger,
-        "style_prompt_vl_response",
+        "text_fallback_vl_response",
         context=trace_context,
         elapsed_ms=round((monotonic() - started) * 1000),
         response_id=getattr(response, "id", None),
@@ -330,13 +342,29 @@ def extract_style_prompt_from_images(images: list[StylePromptImageReference]) ->
     return MediaTextResult(text=cleaned[:8000], model=model)
 
 
+def extracted_gallery_page_orders(text: str) -> list[int]:
+    return [int(match.group(1)) for match in CONTENT_EXTRACTION_PAGE_MARKER_PATTERN.finditer(text)]
+
+
+def validate_ordered_gallery_page_count(text: str, expected_count: int) -> None:
+    page_orders = extracted_gallery_page_orders(text)
+    expected_orders = list(range(1, expected_count + 1))
+    if page_orders != expected_orders:
+        detected_count = len(page_orders)
+        detected_text = "、".join(str(order) for order in page_orders) if page_orders else "无"
+        raise LLMResponseError(
+            f"图片解析出的页数（{detected_count}）和下载图片数量（{expected_count}）不一致，"
+            f"模型返回页码为：{detected_text}。请重新提取。"
+        )
+
+
 def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]) -> MediaTextResult:
     if not images:
         raise LLMResponseError("没有可提取的图文图片")
     if len(images) > MAX_CONTENT_EXTRACTION_IMAGES:
         raise LLMResponseError(f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}")
     settings = get_settings()
-    model = settings.siliconflow_vision_model.strip()
+    model = settings.text_fallback_model.strip()
     content: list[dict[str, object]] = [{"type": "text", "text": COMIC_CONTENT_EXTRACTION_PROMPT}]
     for index, image in enumerate(images, start=1):
         if not image.url.startswith(("http://", "https://")):
@@ -351,11 +379,12 @@ def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]
         [image.url for image in images],
         [image.source_path for image in images],
     )
-    text = _chat_multimodal(
+    text = _chat_text_fallback_multimodal(
         model=model,
         prompt_name="content_extraction_ordered_comic_gallery",
         content=content,
     )
+    validate_ordered_gallery_page_count(text, len(images))
     logger.info(
         "content_extraction_ai_debug ordered_gallery_result model=%s image_count=%s text_chars=%s text=%s",
         model,

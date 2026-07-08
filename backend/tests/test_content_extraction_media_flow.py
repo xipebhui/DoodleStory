@@ -64,34 +64,48 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
         self.assertEqual("尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画", result.description)
         self.assertEqual(["纯爱", "恋爱", "漫画"], result.tags)
 
-    def test_ordered_gallery_uses_public_image_urls(self) -> None:
+    def test_ordered_gallery_uses_gpt54_public_image_urls(self) -> None:
         captured: dict[str, object] = {}
 
         def fake_chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
             captured["model"] = model
             captured["content"] = content
             captured["prompt_name"] = prompt_name
-            return "第1页：测试"
+            return "第1页：测试\n第2页：测试"
 
-        settings = SimpleNamespace(siliconflow_vision_model="vision-model")
+        settings = SimpleNamespace(text_fallback_model="gpt-5.4")
         images = [
             ImageExtractionReference(url="https://cdn.example.com/1.jpg", source_path="/source/1.jpg"),
             ImageExtractionReference(url="https://cdn.example.com/2.jpg", source_path="/source/2.jpg"),
         ]
 
         with patch("app.services.media_text_extraction.get_settings", return_value=settings), patch(
-            "app.services.media_text_extraction._chat_multimodal",
+            "app.services.media_text_extraction._chat_text_fallback_multimodal",
             side_effect=fake_chat_multimodal,
         ):
             result = extract_ordered_gallery_comic_content(images)
 
-        self.assertEqual("第1页：测试", result.text)
-        self.assertEqual("vision-model", result.model)
+        self.assertEqual("第1页：测试\n第2页：测试", result.text)
+        self.assertEqual("gpt-5.4", result.model)
         content = captured["content"]
         image_parts = [part["image_url"] for part in content if part.get("type") == "image_url"]
         self.assertEqual("https://cdn.example.com/1.jpg", image_parts[0]["url"])
         self.assertEqual("https://cdn.example.com/2.jpg", image_parts[1]["url"])
         self.assertFalse(any(str(part["url"]).startswith("data:image") for part in image_parts))
+
+    def test_ordered_gallery_rejects_page_count_mismatch(self) -> None:
+        settings = SimpleNamespace(text_fallback_model="gpt-5.4")
+        images = [
+            ImageExtractionReference(url=f"https://cdn.example.com/{index}.jpg", source_path=f"/source/{index}.jpg")
+            for index in range(1, 4)
+        ]
+
+        with patch("app.services.media_text_extraction.get_settings", return_value=settings), patch(
+            "app.services.media_text_extraction._chat_text_fallback_multimodal",
+            return_value="第1页：测试\n第2页：测试",
+        ):
+            with self.assertRaisesRegex(LLMResponseError, "图片解析出的页数（2）和下载图片数量（3）不一致"):
+                extract_ordered_gallery_comic_content(images)
 
     def test_ordered_gallery_rejects_non_public_image_urls(self) -> None:
         with self.assertRaisesRegex(LLMResponseError, "公网 HTTP\\(S\\) URL"):
