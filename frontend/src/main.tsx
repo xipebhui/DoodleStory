@@ -1468,6 +1468,7 @@ function TasksView({
     }
     try {
       setCreating(true);
+      const lastPanelRealPhoto = formData.get("last_panel_real_photo") === "on";
       const storyCharacters: StoryCharacterBinding[] = shouldUseFixedRoleFlow
         ? createRoleNames
             .map((sourceName) => ({
@@ -1483,7 +1484,7 @@ function TasksView({
           requested_image_count: countMode === "fixed" ? requested : null,
           style_id: createStyleId,
           use_character_references: true,
-          last_panel_real_photo: false,
+          last_panel_real_photo: lastPanelRealPhoto,
           remove_image_text: false,
         });
         resetCreateForm();
@@ -1504,7 +1505,7 @@ function TasksView({
         requested_image_count: countMode === "fixed" ? requested : null,
         style_id: createStyleId,
         use_character_references: storyInputMode === "knowledge_plan" ? false : true,
-        last_panel_real_photo: false,
+        last_panel_real_photo: lastPanelRealPhoto,
         remove_image_text: false,
         story_characters: storyCharacters,
       });
@@ -2306,6 +2307,15 @@ function TasksView({
                     {storyInputMode === "knowledge_plan" ? "系统会根据知识条目、章节、空行块和收尾金句自动判断图片张数。" : "系统会根据故事长度和内容密度决定图片张数。"}
                   </p>
                 )}
+              </section>
+              <section className="create-section">
+                <label className="character-reference-toggle">
+                  <input name="last_panel_real_photo" type="checkbox" />
+                  <span>
+                    <strong>最后一张真人图片</strong>
+                    <small>默认关闭；勾选后最后一张按真实摄影/真人自拍质感生成，不跟随当前漫画风格。</small>
+                  </span>
+                </label>
               </section>
               <fieldset className="style-picker">
                 <legend>选择风格</legend>

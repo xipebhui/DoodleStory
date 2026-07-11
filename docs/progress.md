@@ -9,6 +9,7 @@
 
 ## 当前 Sprint 合同
 
+- `docs/contracts/sprint-101-restore-last-panel-real-photo-entry.md`
 - `docs/contracts/sprint-100-task-failure-feishu-alert.md`
 - `docs/contracts/sprint-99-knowledge-plan-template-block-chunking.md`
 - `docs/contracts/sprint-98-content-extraction-gpt54-vl.md`
@@ -27,6 +28,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 101 恢复最后一张真人图片入口：按用户要求在图文任务创建弹窗重新开放 `最后一张真人图片` checkbox，默认关闭；普通任务创建和 DY 爆款复刻创建参数都会读取用户选择并传给后端。`去掉画面文字` 入口继续隐藏并固定关闭，避免恢复此前被要求隐藏的另一个开关。验证：`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过，覆盖 164 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 100 图文任务失败飞书告警：按用户要求为正式图文生成任务增加失败告警能力，设计为 `TASK_FAILURE_ALERT_WEBHOOK_URL` 环境变量驱动，不把真实 webhook 写入仓库；`GenerationTask` 新增 `failure_alert_sent_at` 用于同一个 failed 状态去重；告警只包含任务排查所需元信息和可选任务链接，不包含用户原始全文。已覆盖人物参考图失败、panel 图片全部失败、服务重启不可恢复中断、步骤异常和 worker 未处理异常等会把任务置为 `failed` 的路径；任务手动重试会清空告警标记，重试后再次失败可重新通知。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_failure_alerts backend.tests.test_task_worker_recovery`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过，覆盖 164 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 修正知识方案自动拆页对全局模板的误判：用户提供“正向提示词 + 多个知识条目 + 收尾金句 + 负向提示词”时，旧 prompt 容易把“正文使用2条横向内容条+1条收尾金句栏”当成单页版式约束，导致煤气/舍财/收尾金句这类连续知识内容被切成 1 张图。现已明确正向提示词里的页眉、旧纸底、边框、作者栏、字体、插画风格和负向提示词是每页继承的全局模板；自动模式页数优先由独立知识条目、空行块、`副文字 + 画面` 组合和收尾金句块决定。只有用户明确写“单页 / 一张图 / 全部内容放同一页”时，才允许把多个条目合并成一页。前端知识方案提示、规格和测试已同步。
 - 切换图文内容提取 VL 到 `gpt-5.4`：线上内容提取 `025b8b78e1cc454583e307ea87fa693d` 下载并注册了 14 张图片，但 Qwen VL 最终只返回 `第1页` 到 `第12页`，且把末尾图片内容合并/跳页，旧逻辑仍标记成功。现已把图文内容提取从 SiliconFlow/Qwen 改为调用 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容 `gpt-5.4` 多模态模型；结果保存前会校验模型输出页码必须严格等于下载图片的 `1..N`，少页、跳页、合并页或重复页会明确失败并提示图片解析页数和下载图片数量不一致。该变更不把 Qwen 作为兜底，不自动补页，不影响视频音频转写和角色参考图外观理解。
