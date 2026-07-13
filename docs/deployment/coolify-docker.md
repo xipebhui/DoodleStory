@@ -147,11 +147,12 @@ SILICONFLOW_AUDIO_MODEL=Qwen/Qwen3-Omni-30B-A3B-Instruct
 
 LIO_API_KEY=
 LIO_BASE_URL=
+# 图文内容提取的火苗主平台失败后，同一张图也会复用该 LIO 配置，最多请求 3 次。
 LIO_MODEL=gemini-3.1-flash-lite-preview-thinking-minimal
 
 TEXT_FALLBACK_API_KEY=
 TEXT_FALLBACK_BASE_URL=
-# 图文内容提取和风格提示词 VL 提取共用该 OpenAI 兼容多模态模型。
+# 当前指向火苗；图文内容提取逐张调用该主平台，风格提示词 VL 提取也继续使用该模型。
 TEXT_FALLBACK_MODEL=gpt-5.4
 
 IMAGE_PROVIDER=qy

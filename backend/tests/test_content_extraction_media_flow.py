@@ -18,6 +18,7 @@ from app.models.enums import ContentExtractionMediaKind, ImageCountMode, StoryIn
 from app.services.douyin_import_service import download_douyin_content
 from app.services.media_text_extraction import (
     ImageExtractionReference,
+    LLMProviderError,
     LLMResponseError,
     extract_ordered_gallery_comic_content,
 )
@@ -64,16 +65,23 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
         self.assertEqual("尴尬开场，温柔收场，我们刚好同校。#纯爱#恋爱#漫画", result.description)
         self.assertEqual(["纯爱", "恋爱", "漫画"], result.tags)
 
-    def test_ordered_gallery_uses_gpt54_public_image_urls(self) -> None:
-        captured: dict[str, object] = {}
+    def test_ordered_gallery_submits_each_public_image_in_its_own_request(self) -> None:
+        captured_contents: list[list[dict[str, object]]] = []
 
         def fake_chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
-            captured["model"] = model
-            captured["content"] = content
-            captured["prompt_name"] = prompt_name
-            return "第1页：测试\n第2页：测试"
+            captured_contents.append(content)
+            image_part = next(part for part in content if part.get("type") == "image_url")
+            image_url = image_part["image_url"]["url"]
+            return (
+                "【分格】单页\n"
+                f"画面：当前图片 {image_url}\n"
+                "旁白：无\n"
+                "对话：无\n"
+                "内心OS：无\n"
+                "文字布局：无"
+            )
 
-        settings = SimpleNamespace(text_fallback_model="gpt-5.4")
+        settings = SimpleNamespace(text_fallback_model="gpt-5.4", lio_model="gemini-vision")
         images = [
             ImageExtractionReference(url="https://cdn.example.com/1.jpg", source_path="/source/1.jpg"),
             ImageExtractionReference(url="https://cdn.example.com/2.jpg", source_path="/source/2.jpg"),
@@ -85,27 +93,64 @@ class ContentExtractionMediaFlowTest(unittest.TestCase):
         ):
             result = extract_ordered_gallery_comic_content(images)
 
-        self.assertEqual("第1页：测试\n第2页：测试", result.text)
         self.assertEqual("gpt-5.4", result.model)
-        content = captured["content"]
-        image_parts = [part["image_url"] for part in content if part.get("type") == "image_url"]
-        self.assertEqual("https://cdn.example.com/1.jpg", image_parts[0]["url"])
-        self.assertEqual("https://cdn.example.com/2.jpg", image_parts[1]["url"])
-        self.assertFalse(any(str(part["url"]).startswith("data:image") for part in image_parts))
+        self.assertEqual(2, len(captured_contents))
+        submitted_urls: list[str] = []
+        for content in captured_contents:
+            image_parts = [part["image_url"] for part in content if part.get("type") == "image_url"]
+            self.assertEqual(1, len(image_parts))
+            submitted_urls.append(image_parts[0]["url"])
+            self.assertFalse(str(image_parts[0]["url"]).startswith("data:image"))
+        self.assertEqual(
+            ["https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg"],
+            submitted_urls,
+        )
+        self.assertIn("第1页：\n【分格】单页", result.text)
+        self.assertIn("第2页：\n【分格】单页", result.text)
+        self.assertLess(result.text.index("第1页"), result.text.index("第2页"))
 
-    def test_ordered_gallery_rejects_page_count_mismatch(self) -> None:
-        settings = SimpleNamespace(text_fallback_model="gpt-5.4")
-        images = [
-            ImageExtractionReference(url=f"https://cdn.example.com/{index}.jpg", source_path=f"/source/{index}.jpg")
-            for index in range(1, 4)
-        ]
+    def test_ordered_gallery_uses_lio_after_primary_failure_and_succeeds_on_third_attempt(self) -> None:
+        settings = SimpleNamespace(text_fallback_model="gpt-5.4", lio_model="gemini-vision")
+        image = ImageExtractionReference(url="https://cdn.example.com/1.jpg", source_path="/source/1.jpg")
+        lio_result = (
+            "【分格】上下两格\n"
+            "画面：上格人物出门，下格人物跳起。\n"
+            "旁白：无\n"
+            "对话：人物说“太好了”。\n"
+            "内心OS：无\n"
+            "文字布局：对白位于下格中央。"
+        )
 
         with patch("app.services.media_text_extraction.get_settings", return_value=settings), patch(
             "app.services.media_text_extraction._chat_text_fallback_multimodal",
-            return_value="第1页：测试\n第2页：测试",
-        ):
-            with self.assertRaisesRegex(LLMResponseError, "图片解析出的页数（2）和下载图片数量（3）不一致"):
-                extract_ordered_gallery_comic_content(images)
+            side_effect=LLMProviderError("火苗请求失败"),
+        ) as primary_chat, patch(
+            "app.services.media_text_extraction._chat_lio_multimodal",
+            side_effect=[LLMProviderError("LIO 第一次失败"), LLMResponseError("LIO 第二次失败"), lio_result],
+        ) as lio_chat, patch("app.services.media_text_extraction.sleep") as retry_sleep:
+            result = extract_ordered_gallery_comic_content([image])
+
+        self.assertEqual(1, primary_chat.call_count)
+        self.assertEqual(3, lio_chat.call_count)
+        self.assertEqual([2.0, 4.0], [call.args[0] for call in retry_sleep.call_args_list])
+        self.assertEqual("gemini-vision", result.model)
+        self.assertEqual(f"第1页：\n{lio_result}", result.text)
+
+    def test_ordered_gallery_fails_after_three_lio_attempts(self) -> None:
+        settings = SimpleNamespace(text_fallback_model="gpt-5.4", lio_model="gemini-vision")
+        image = ImageExtractionReference(url="https://cdn.example.com/1.jpg", source_path="/source/1.jpg")
+
+        with patch("app.services.media_text_extraction.get_settings", return_value=settings), patch(
+            "app.services.media_text_extraction._chat_text_fallback_multimodal",
+            side_effect=LLMProviderError("火苗请求失败"),
+        ), patch(
+            "app.services.media_text_extraction._chat_lio_multimodal",
+            side_effect=LLMProviderError("LIO 请求失败"),
+        ) as lio_chat, patch("app.services.media_text_extraction.sleep"):
+            with self.assertRaisesRegex(LLMProviderError, "第 1 张图片内容提取失败.*LIO 已尝试 3 次"):
+                extract_ordered_gallery_comic_content([image])
+
+        self.assertEqual(3, lio_chat.call_count)
 
     def test_ordered_gallery_rejects_non_public_image_urls(self) -> None:
         with self.assertRaisesRegex(LLMResponseError, "公网 HTTP\\(S\\) URL"):

@@ -1,37 +1,54 @@
 import base64
 import json
 import logging
-import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from time import monotonic
+from time import monotonic, sleep
+from typing import Any
 
 from app.core.config import get_settings
-from app.services.llm import LLMConfigError, LLMProviderError, LLMResponseError, create_text_fallback_client
+from app.services.llm import (
+    LLMConfigError,
+    LLMProviderError,
+    LLMResponseError,
+    create_lio_client,
+    create_text_fallback_client,
+)
 from app.services.prompt_logging import log_prompt_trace
 
 logger = logging.getLogger(__name__)
 
 MAX_CONTENT_EXTRACTION_IMAGES = 40
+CONTENT_EXTRACTION_LIO_MAX_ATTEMPTS = 3
+CONTENT_EXTRACTION_LIO_RETRY_BACKOFF_SECONDS = 2.0
 
-COMIC_CONTENT_EXTRACTION_PROMPT = """请把我接下来按顺序提供的一组漫画图片作为同一个连续作品理解，逐页完整提取漫画内容，并严格按以下要求输出：
+SINGLE_IMAGE_CONTENT_EXTRACTION_PROMPT = """只提取当前这一张图片中实际可见、可用于复刻画面的内容，不推断前后故事，不补写上下文，不总结或改写剧情。
 
-1、旁白文字：原文旁白必须逐字照抄，一字不改、一字不漏。
-2、对话文字：原文对话必须逐字照抄，保留标点和语气，一字不改。
-3、人物内心OS/独白/心里话：完整逐字照抄，标注为【内心OS】。
-4、画面描述：客观描述每页画面内容（人物动作、神态、环境、道具），不做删减。
-5、分格信息：如果是分格漫画，明确标注【上格】【中格】【下格】及各格内容。
-6、必须结合前后图片保持内容连贯，但输出必须按输入图片顺序逐页排列，不要跳页、合并页或改写成故事总结。
+要求：
+1、客观描述构图、镜头、分格、人物外观与位置、动作、表情、环境、道具、色彩和光线。
+2、图片中的旁白、对白、内心OS、标题及其他可见文字必须逐字照抄，保留原标点和语气，一字不改、一字不漏。
+3、说明每段可见文字所在区域以及使用的旁白框、对白气泡、思想气泡或无框文字类型。
+4、只描述当前图片实际可见内容；不得根据人物、画面或文字推断前因后果、人物关系或下一页剧情。
+5、不要输出页码、Markdown 标题、代码块或要求之外的解释。
 
 输出格式：
-第X页：
-【分格】单页 / 上中下三格等
-画面：（客观描述画面内容）
+【分格】单页 / 上下两格 / 上中下三格 / 其他实际布局
+画面：（客观描述构图和所有可见画面内容）
 旁白：（逐字照抄原文旁白，无则写"无"）
-对话：（逐字照抄原文对话，无则写"无"）
-内心OS：（逐字照抄，无则写"无"）"""
+对话：（逐字照抄原文对白并说明位置，无则写"无"）
+内心OS：（逐字照抄内心文字并说明位置，无则写"无"）
+文字布局：（列出标题及其他文字的位置、框体或气泡类型，无则写"无"）"""
+
+SINGLE_IMAGE_CONTENT_REQUIRED_HEADINGS = (
+    "【分格】",
+    "画面：",
+    "旁白：",
+    "对话：",
+    "内心OS：",
+    "文字布局：",
+)
 
 AUDIO_TRANSCRIPTION_PROMPT = """请转录这段音频中的原始口播、旁白或对白。
 保持原始语气词、停顿和句子顺序，尽量不要改写。
@@ -81,8 +98,6 @@ STYLE_ART_PROMPT_REQUIRED_HEADINGS = (
     "【风格迁移测试】",
 )
 
-CONTENT_EXTRACTION_PAGE_MARKER_PATTERN = re.compile(r"(?m)^\s*第\s*(\d+)\s*页\s*[：:]")
-
 @dataclass(frozen=True)
 class MediaTextResult:
     text: str
@@ -93,6 +108,13 @@ class MediaTextResult:
 class ImageExtractionReference:
     url: str
     source_path: str
+
+
+@dataclass(frozen=True)
+class SingleImageTextResult:
+    text: str
+    model: str
+    provider: str
 
 
 @dataclass(frozen=True)
@@ -253,23 +275,29 @@ def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_nam
     return text
 
 
-def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
-    if not model.strip():
-        raise LLMConfigError("TEXT_FALLBACK_MODEL 未配置")
-    client = create_text_fallback_client()
-    trace_context = {"model": model, "prompt_name": prompt_name}
+def _chat_openai_compatible_multimodal(
+    *,
+    client: Any,
+    provider: str,
+    provider_label: str,
+    model: str,
+    content: list[dict[str, object]],
+    prompt_name: str,
+) -> str:
+    trace_context = {"provider": provider, "model": model, "prompt_name": prompt_name}
     started = monotonic()
     logger.info(
-        "text_fallback_vl_debug multimodal_request prompt_name=%s model=%s content=%s",
+        "openai_compatible_vl_debug multimodal_request provider=%s prompt_name=%s model=%s content=%s",
+        provider,
         prompt_name,
         model,
         json.dumps(_safe_multimodal_content_for_log(content), ensure_ascii=False, default=str),
     )
     log_prompt_trace(
         logger,
-        "text_fallback_vl_request",
+        "openai_compatible_vl_request",
         context=trace_context,
-        provider="text_fallback",
+        provider=provider,
         model=model,
         content_part_count=len(content),
     )
@@ -282,7 +310,7 @@ def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object
     except Exception as exc:
         log_prompt_trace(
             logger,
-            "text_fallback_vl_exception",
+            "openai_compatible_vl_exception",
             context=trace_context,
             elapsed_ms=round((monotonic() - started) * 1000),
             exception_type=exc.__class__.__name__,
@@ -291,13 +319,14 @@ def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object
         raise LLMProviderError(str(exc)) from exc
 
     if not response.choices:
-        raise LLMResponseError("gpt-5.4 VL 没有返回 choices")
+        raise LLMResponseError(f"{provider_label}多模态模型没有返回 choices")
     message_content = response.choices[0].message.content
     if message_content is None:
-        raise LLMResponseError("gpt-5.4 VL 返回内容为空")
+        raise LLMResponseError(f"{provider_label}多模态模型返回内容为空")
     text = str(message_content).strip()
     logger.info(
-        "text_fallback_vl_debug multimodal_response prompt_name=%s model=%s response_id=%s finish_reason=%s content_chars=%s content=%s",
+        "openai_compatible_vl_debug multimodal_response provider=%s prompt_name=%s model=%s response_id=%s finish_reason=%s content_chars=%s content=%s",
+        provider,
         prompt_name,
         model,
         getattr(response, "id", None),
@@ -307,7 +336,7 @@ def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object
     )
     log_prompt_trace(
         logger,
-        "text_fallback_vl_response",
+        "openai_compatible_vl_response",
         context=trace_context,
         elapsed_ms=round((monotonic() - started) * 1000),
         response_id=getattr(response, "id", None),
@@ -317,6 +346,32 @@ def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object
         raw_content=text,
     )
     return text
+
+
+def _chat_text_fallback_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
+    if not model.strip():
+        raise LLMConfigError("TEXT_FALLBACK_MODEL 未配置")
+    return _chat_openai_compatible_multimodal(
+        client=create_text_fallback_client(),
+        provider="text_fallback",
+        provider_label="主图文提取平台",
+        model=model,
+        content=content,
+        prompt_name=prompt_name,
+    )
+
+
+def _chat_lio_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
+    if not model.strip():
+        raise LLMConfigError("LIO_MODEL 未配置")
+    return _chat_openai_compatible_multimodal(
+        client=create_lio_client(),
+        provider="lio",
+        provider_label="LIO ",
+        model=model,
+        content=content,
+        prompt_name=prompt_name,
+    )
 
 
 def extract_style_prompt_from_images(images: list[StylePromptImageReference]) -> MediaTextResult:
@@ -342,20 +397,90 @@ def extract_style_prompt_from_images(images: list[StylePromptImageReference]) ->
     return MediaTextResult(text=cleaned[:8000], model=model)
 
 
-def extracted_gallery_page_orders(text: str) -> list[int]:
-    return [int(match.group(1)) for match in CONTENT_EXTRACTION_PAGE_MARKER_PATTERN.finditer(text)]
+def validate_single_image_content(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        raise LLMResponseError("单图内容提取结果为空")
+    missing_headings = [heading for heading in SINGLE_IMAGE_CONTENT_REQUIRED_HEADINGS if heading not in cleaned]
+    if missing_headings:
+        raise LLMResponseError(f"单图内容提取结果缺少结构：{', '.join(missing_headings)}")
+    return cleaned
 
 
-def validate_ordered_gallery_page_count(text: str, expected_count: int) -> None:
-    page_orders = extracted_gallery_page_orders(text)
-    expected_orders = list(range(1, expected_count + 1))
-    if page_orders != expected_orders:
-        detected_count = len(page_orders)
-        detected_text = "、".join(str(order) for order in page_orders) if page_orders else "无"
-        raise LLMResponseError(
-            f"图片解析出的页数（{detected_count}）和下载图片数量（{expected_count}）不一致，"
-            f"模型返回页码为：{detected_text}。请重新提取。"
+def extract_single_image_content(image: ImageExtractionReference, image_index: int) -> SingleImageTextResult:
+    settings = get_settings()
+    primary_model = settings.text_fallback_model.strip()
+    content: list[dict[str, object]] = [
+        {"type": "text", "text": SINGLE_IMAGE_CONTENT_EXTRACTION_PROMPT},
+        {"type": "image_url", "image_url": {"url": image.url, "detail": "high"}},
+    ]
+    try:
+        text = _chat_text_fallback_multimodal(
+            model=primary_model,
+            prompt_name="content_extraction_single_image",
+            content=content,
         )
+        return SingleImageTextResult(
+            text=validate_single_image_content(text),
+            model=primary_model,
+            provider="text_fallback",
+        )
+    except (LLMConfigError, LLMProviderError, LLMResponseError) as primary_error:
+        log_prompt_trace(
+            logger,
+            "content_extraction_single_image_fallback_to_lio",
+            provider="text_fallback",
+            fallback_provider="lio",
+            model=primary_model,
+            image_index=image_index,
+            image_url=image.url,
+            error_type=primary_error.__class__.__name__,
+            error=str(primary_error),
+        )
+
+    lio_model = settings.lio_model.strip()
+    if not lio_model:
+        raise LLMConfigError(f"第 {image_index} 张图片主平台提取失败，且 LIO_MODEL 未配置")
+
+    last_error: Exception | None = None
+    for attempt in range(1, CONTENT_EXTRACTION_LIO_MAX_ATTEMPTS + 1):
+        try:
+            text = _chat_lio_multimodal(
+                model=lio_model,
+                prompt_name="content_extraction_single_image_lio_fallback",
+                content=content,
+            )
+            return SingleImageTextResult(
+                text=validate_single_image_content(text),
+                model=lio_model,
+                provider="lio",
+            )
+        except LLMConfigError as exc:
+            raise LLMConfigError(f"第 {image_index} 张图片无法切换到 LIO：{exc}") from exc
+        except (LLMProviderError, LLMResponseError) as exc:
+            last_error = exc
+            if attempt >= CONTENT_EXTRACTION_LIO_MAX_ATTEMPTS:
+                break
+            delay = CONTENT_EXTRACTION_LIO_RETRY_BACKOFF_SECONDS * attempt
+            log_prompt_trace(
+                logger,
+                "content_extraction_single_image_lio_retrying",
+                provider="lio",
+                model=lio_model,
+                image_index=image_index,
+                attempt=attempt,
+                max_attempts=CONTENT_EXTRACTION_LIO_MAX_ATTEMPTS,
+                retry_delay_seconds=delay,
+                error_type=exc.__class__.__name__,
+                error=str(exc),
+            )
+            if delay > 0:
+                sleep(delay)
+
+    raise LLMProviderError(
+        f"第 {image_index} 张图片内容提取失败：主平台失败，"
+        f"LIO 已尝试 {CONTENT_EXTRACTION_LIO_MAX_ATTEMPTS} 次仍失败。最后错误：{last_error}"
+    ) from last_error
 
 
 def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]) -> MediaTextResult:
@@ -363,30 +488,35 @@ def extract_ordered_gallery_comic_content(images: list[ImageExtractionReference]
         raise LLMResponseError("没有可提取的图文图片")
     if len(images) > MAX_CONTENT_EXTRACTION_IMAGES:
         raise LLMResponseError(f"图文图片数量超过上限：{MAX_CONTENT_EXTRACTION_IMAGES}")
-    settings = get_settings()
-    model = settings.text_fallback_model.strip()
-    content: list[dict[str, object]] = [{"type": "text", "text": COMIC_CONTENT_EXTRACTION_PROMPT}]
-    for index, image in enumerate(images, start=1):
+    for image in images:
         if not image.url.startswith(("http://", "https://")):
             raise LLMResponseError(f"图片理解需要公网 HTTP(S) URL：{image.source_path}")
-        content.append({"type": "text", "text": f"第 {index} 张图片："})
-        content.append({"type": "image_url", "image_url": {"url": image.url, "detail": "high"}})
+
     logger.info(
-        "content_extraction_ai_debug ordered_gallery_prompt model=%s image_count=%s prompt=%s image_urls=%s source_paths=%s",
-        model,
+        "content_extraction_ai_debug sequential_single_image_extract_start image_count=%s image_urls=%s source_paths=%s",
         len(images),
-        COMIC_CONTENT_EXTRACTION_PROMPT,
         [image.url for image in images],
         [image.source_path for image in images],
     )
-    text = _chat_text_fallback_multimodal(
-        model=model,
-        prompt_name="content_extraction_ordered_comic_gallery",
-        content=content,
-    )
-    validate_ordered_gallery_page_count(text, len(images))
+
+    page_blocks: list[str] = []
+    used_models: list[str] = []
+    for index, image in enumerate(images, start=1):
+        result = extract_single_image_content(image, index)
+        page_blocks.append(f"第{index}页：\n{result.text}")
+        used_models.append(result.model)
+        logger.info(
+            "content_extraction_ai_debug single_image_extract_done image_index=%s provider=%s model=%s text_chars=%s",
+            index,
+            result.provider,
+            result.model,
+            len(result.text),
+        )
+
+    text = "\n\n".join(page_blocks)
+    model = ", ".join(dict.fromkeys(used_models))
     logger.info(
-        "content_extraction_ai_debug ordered_gallery_result model=%s image_count=%s text_chars=%s text=%s",
+        "content_extraction_ai_debug sequential_single_image_extract_done models=%s image_count=%s text_chars=%s text=%s",
         model,
         len(images),
         len(text),
