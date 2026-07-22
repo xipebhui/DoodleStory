@@ -27,7 +27,7 @@ Complete（2026-07-22）。正式前端整合、真实两格漫画链路和指�
 
 - 不实现固定角色、临时角色、`@角色` 的后端解析或生图引用；角色仍通过现有 `角色管理` 入口维护，但 AI 模式不展示一个看似可用、实际未生效的角色引用入口。
 - 不实现用户维度 Memory、创作习惯、用户规则或自定义 Skill。
-- 不实现 Panel 修改、重新生成版本、版本恢复、`inspect_image` 或 VL 闭环；这些属于 Sprint 108。
+- 不实现 Panel 修改、重新生成版本、版本恢复、`inspect_image` 或 VL 闭环；这些已顺延至 Sprint 109。
 - 不实现抠图、Remotion、文字转语音、视频解说或其它多媒体 Tool。
 - 不实现 `@任务/@Panel/@图片版本`、参考漫画、抖音输入、知识方案或旧 Pipeline 迁移。
 - 不新增 Agent 数据库表、通用资源表、任务来源字段、Tool 注册平台、外部队列或多 Agent。
@@ -85,8 +85,8 @@ git diff --check
 ## Handoff
 
 - Sprint 107 完成后，更新 `docs/progress.md` 和全局路线图，并记录正式页面截图或浏览器验收结果。
-- 下一阶段是 Sprint 108 Draft：`docs/contracts/sprint-108-agent-panel-iteration-vl-draft.md`。
-- Sprint 108 评审前不得提前实现 Panel 版本操作或 VL。
+- 后续 Sprint 108 已 Complete：`docs/contracts/sprint-108-agent-demo-alignment.md`，正式 Agent 内部工作区已与已调试 Demo 对齐。
+- Panel/VL 已顺延为 Sprint 109 Draft：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`；评审前不得提前实现 Panel 版本操作或 VL。
 - 固定角色与其它资源引用在 Panel/VL 阶段之后单独建立合同。
 
 ## Assumptions reviewed

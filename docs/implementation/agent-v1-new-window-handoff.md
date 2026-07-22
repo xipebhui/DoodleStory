@@ -1,10 +1,10 @@
 # Agent V1 新窗口实施交接
 
-> 状态更新（2026-07-22）：Sprint 105、106 已 Complete。当前唯一 Active Sprint 是 `docs/contracts/sprint-107-agent-frontend-workspace-integration.md`；原 Panel/VL 合同已顺延为 Sprint 108 Draft。
+> 状态更新（2026-07-22）：Sprint 105、106、107、108 已 Complete。当前没有 Active Sprint；Panel/VL 合同已顺延为 `docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`，仍为 Draft，评审前不得实施。
 
 ## 1. 新窗口目标
 
-新窗口只实现 Sprint 107：把现有传统任务前端和已经验证的 Agent 会话前端整合进同一套 DoodleStory 正式工作台。
+新窗口只实现 Sprint 108：保留 Sprint 107 已接通的统一正式工作台和真实 Agent 数据，把 `/agent` 内部工作区对齐 Sprint 103 已调试 Demo。
 
 本次不扩展 Agent 后端能力。完成后用户应能在一套全局侧边栏中，通过顶部 `传统构建 / AI 构建` 切换 `/tasks` 和 `/agent`，并从 Agent 任务卡片打开同一个 `/tasks/{task_id}` 任务详情。
 
@@ -18,7 +18,7 @@ git status --short
 
 预期分支：`codex/agent-feature`。
 
-当前以下未跟踪内容属于用户或其它工作，不得加入 Sprint 107 提交、删除或覆盖：
+当前以下未跟踪内容属于用户或其它工作，不得加入 Sprint 108 提交、删除或覆盖：
 
 - `.agents/skills/koubo/`
 - `content-lab/self-media-scripts/`
@@ -38,12 +38,15 @@ git status --short
 3. `docs/spec.md`
 4. `docs/progress.md`
 5. `docs/implementation/agent-v1-implementation-roadmap.md`
-6. `docs/contracts/sprint-107-agent-frontend-workspace-integration.md`
-7. `docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
-8. `docs/design/agent-creative-workspace-frontend-brief.md`
+6. `docs/contracts/sprint-108-agent-demo-alignment.md`
+7. `docs/contracts/sprint-107-agent-frontend-workspace-integration.md`
+8. `docs/contracts/sprint-103-agent-conversation-demo.md`
 9. `docs/design/agent-conversation-demo/README.md`
-10. `docs/standards/frontend.md`
-11. `docs/standards/ui-interaction.md`
+10. `docs/design/agent-conversation-demo/index.html`
+11. `docs/design/agent-conversation-demo/styles.css`
+12. `docs/design/agent-conversation-demo/app.js`
+13. `docs/standards/frontend.md`
+14. `docs/standards/ui-interaction.md`
 
 随后检查真实实现，不要仅根据 Demo 猜正式代码：
 
@@ -57,7 +60,7 @@ git status --short
 
 ## 4. 可直接粘贴到新窗口的启动提示词
 
-> 在 `/Users/pengfei.shi/workspace/tmp-project/DoodleStory` 的 `codex/agent-feature` 分支实施当前唯一 Active 合同 `docs/contracts/sprint-107-agent-frontend-workspace-integration.md`。先完整阅读根目录 `AGENTS.md`、`README.md`、`docs/spec.md`、`docs/progress.md`、Agent V1 全局路线图、Sprint 107 合同、已完成的 Sprint 106 合同、Agent 前端设计 Brief、Demo README，以及前端和 UI 交互标准；然后检查正式 `frontend` 和现有 Agent API 实现。只做 Sprint 107：保留现有 DoodleStory 全局侧边栏、账号、积分和资源入口，在 `/tasks` 与 `/agent` 顶部加入 `传统构建 / AI 构建` 路由切换；AI 模式保留真实会话历史、空白新对话、历史恢复、一个真实风格、运行状态和真实任务卡片，不复制 Demo 的第二套 Logo、Agent Studio 外壳、假数据或尚未接通的操作。Agent 任务卡片必须能打开同一个 `/tasks/{task_id}`，并验证该任务能在传统任务列表找到。不要实现角色引用、Memory、用户规则、自定义 Skill、Panel 修改/版本恢复/VL、抠图、Remotion、TTS、视频解说、旧 Pipeline 迁移或任何 Mock/占位结果。先检查并保留工作树中的用户未跟踪文件；实现后运行前端生产构建、真实浏览器 1440×900 与 1280×800 回归、`git diff --check` 和 `./scripts/check.sh`，更新合同、路线图和 `docs/progress.md`，并按仓库规范创建详细中文 commit。除非合同与真实代码冲突，不要停留在讨论，直接实现并验证完整 Sprint。
+> Sprint 108 已按以下范围完成：保留 Sprint 107 的全局 Shell、稳定路由和真实 Conversation、Message、Run、Style、TaskCard 数据，把 `/agent` 内部工作区对齐 Sprint 103 已调试 Demo；未复制 Demo 品牌、账号、Mock 数据、角色、Panel 操作、版本、暂停或 VL。复现范围与证据见 `docs/contracts/sprint-108-agent-demo-alignment.md` 和 `docs/testing/agent-demo-alignment-browser-report.json`。
 
 ## 5. 推荐实施顺序
 
@@ -95,7 +98,7 @@ git status --short
 1. 只做实现所需的小组件拆分，不顺手全量重构 `main.tsx`。
 2. 运行合同全部 Verification。
 3. 把真实实现、浏览器验收、未验证内容和下一步写入 `docs/progress.md`。
-4. Sprint 107 全部 Done means 满足后，将合同标记 Complete、路线图阶段 3 标记已完成；Sprint 108 仍保持 Draft，不能自动开始。
+4. Sprint 108 全部 Done means 满足后，将合同标记 Complete、路线图阶段 4 标记已完成；Sprint 109 仍保持 Draft，不能自动开始。
 5. 创建符合仓库规范的详细中文 commit。
 
 ## 6. 验收重点

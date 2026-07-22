@@ -5,12 +5,13 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 107 传统构建与 AI 构建正式前端整合完成。正式产品只保留一套 DoodleStory 全局侧边栏、账号、积分和资源入口，`/tasks` 与 `/agent` 使用顶部模式切换；真实 Agent Task `0cec81a45b1b4139bd6a43ff4c4c8135` 生成两张真实图片，并从 Agent 卡片打开同一个 `/tasks/{task_id}`，传统任务列表可按完整 ID 核对。1440×900、1280×800、草稿恢复、强刷、直接链接、前进后退、键盘焦点和认证后控制台均通过。`./scripts/check.sh` 最近完整基线覆盖 196 个后端测试、空库 Alembic migration 和前端生产构建。
+- 最近验证状态：Sprint 108 正式 Agent 前端与已调试 Demo 对齐完成。`/agent` 保留统一正式 Shell 与真实 API，内部改为平面全高会话工作区；真实 Conversation `3aa7454244754acda99f9475433195e5`、Run `e89097e4d0294e01b27e40dd7f2f71bb` 和 Task `c59151ece9a34b47a32042aeafcfbc04` 使用 `粗线条暖色` 成功生成两张真实图片，Agent 卡片与传统任务详情使用同一 Task。1440×900、1280×800、资源、草稿、运行/完成、模式往返、刷新、键盘和认证后控制台均通过。`./scripts/check.sh` 覆盖 196 个后端测试、空库 Alembic migration 和前端生产构建。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-108-agent-demo-alignment.md`
+- Draft：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-107-agent-frontend-workspace-integration.md`
-- Draft：`docs/contracts/sprint-108-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
 - Complete：`docs/contracts/sprint-105-agent-runtime-foundation.md`
 - 全局路线：`docs/implementation/agent-v1-implementation-roadmap.md`
@@ -35,6 +36,10 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 108 正式 Agent 前端与已调试 Demo 对齐：移除 `/agent` 内部大圆角工作区和后台聊天页视觉，迁入 Demo 已确认的平面全高会话导航、空白创作入口、固定输入区和克制的单一橙色状态层级；三个快捷入口只填草稿，`+`/`@` 只搜索真实 active 风格，支持选择、移除且不覆盖输入。会话列表按日期显示真实摘要、状态和时间，草稿与风格按 Conversation 恢复，运行期间可继续准备草稿，传统/AI 模式往返回到最近 Conversation。真实 Conversation `3aa7454244754acda99f9475433195e5`、Run `e89097e4d0294e01b27e40dd7f2f71bb`、Task `c59151ece9a34b47a32042aeafcfbc04` 和图片 `22dec874850045ed906428471781f1a8`、`8538ef7bd44f4291adae88738fc9caef` 全部成功，积分从 30 降至 28；Agent 卡片与传统详情确认同一 Task。1440×900、1280×800、刷新、模式往返、键盘与认证后 0 console error/warning 通过，证据保存于 `docs/testing/agent-demo-alignment-browser-report.json`；`./scripts/check.sh` 覆盖 196 个测试、空库 migration 和前端构建。Panel/VL 继续保留在 Sprint 109 Draft，未实现角色、Panel 操作、暂停、VL、Mock 或占位能力。
+
+- 激活 Sprint 108 正式 Agent 前端与已调试 Demo 对齐：完整回放 Sprint 103 Demo 的空白会话、三个快捷入口、`+`/`@` 资源搜索、Panel 3 检查器、保留草稿引用、重新生成确认、暂停说明和跨会话草稿恢复；将原 Panel/VL Draft 顺延为 Sprint 109。Sprint 108 只重构 `/agent` 内部布局并保留 Sprint 107 的真实 Conversation、Message、Run、Style、TaskCard 和 GenerationTask 关联，不实现或展示角色、Panel 修改、版本、暂停、VL、Mock 或占位能力。
 
 - 完成 Sprint 107 传统构建与 AI 构建正式前端整合：移除侧边栏独立 `漫画 Agent` 一级入口，让 `/tasks` 与 `/agent` 共用 `图文任务` 全局导航语义，并在两页顶部增加同一个 `传统构建 / AI 构建` 切换。AI 模式保留真实会话历史、空白新对话、历史恢复、一个真实风格引用、Run 状态和真实任务卡片；Conversation 切换会清空旧详情并恢复各自未发送 Idea/风格草稿。Agent 任务卡片新增完整 task ID 和 `/tasks/{task_id}` 入口，传统任务行同步展示完整 ID。真实浏览器创建 Conversation `e1c4bb05abe24e3ea80fc09bb3f7431f`、Run `a176d894556b471d9ef887abbeea6c8d` 和 Task `0cec81a45b1b4139bd6a43ff4c4c8135`，使用 `粗线条暖色` 生成两张真实图片，积分从 30 扣至 28；Agent 卡片、传统列表和任务详情确认引用同一任务。1440×900 与 1280×800 完成空白、运行、成功、任务详情、草稿切换、刷新、前进后退、直接链接和键盘切换回归，认证后的检查阶段无新增 console error/warning。证据保存于 `docs/testing/agent-frontend-workspace-integration-browser-report.json`；生产构建、`git diff --check` 和 `./scripts/check.sh` 通过。未实现 Sprint 108 或其它明确排除能力。
 

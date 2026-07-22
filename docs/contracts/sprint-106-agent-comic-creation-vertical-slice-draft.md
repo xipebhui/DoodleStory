@@ -66,7 +66,7 @@ Sprint 106 最低验证集合：
 
 ## Handoff
 
-阶段 3 已根据用户确认调整为正式前端整合，Active 合同是 `docs/contracts/sprint-107-agent-frontend-workspace-integration.md`。原 Panel 修改、版本恢复和 `inspect_image` 合同已顺延为 `docs/contracts/sprint-108-agent-panel-iteration-vl-draft.md`，尚未激活、尚未实现。
+阶段 3 已由 Sprint 107 完成正式前端整合；当前 Active 合同是 `docs/contracts/sprint-108-agent-demo-alignment.md`，用于把正式 Agent 内部工作区对齐已调试 Demo。原 Panel 修改、版本恢复和 `inspect_image` 合同已顺延为 `docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`，尚未激活、尚未实现。
 
 ## Assumptions to review when activating
 

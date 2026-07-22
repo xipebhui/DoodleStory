@@ -1,0 +1,57 @@
+{
+  "sprint": 108,
+  "tested_at": "2026-07-22T11:11:00Z",
+  "environment": "local development with real Agent model providers, real image provider, and authenticated Playwright browser",
+  "scope": "production Agent workspace alignment with the tested Sprint 103 demo while retaining Sprint 107 real APIs and shared task identity",
+  "demo_replay": [
+    "Default blank conversation and all three starter prompts",
+    "Resource selection through + and @ search",
+    "Panel 3 inspector, draft-preserving Panel references, regeneration confirmation, and pause semantics",
+    "Cross-conversation draft and resource restoration"
+  ],
+  "real_flow": {
+    "conversation_id": "3aa7454244754acda99f9475433195e5",
+    "run_id": "e89097e4d0294e01b27e40dd7f2f71bb",
+    "run_status": "succeeded",
+    "task_id": "c59151ece9a34b47a32042aeafcfbc04",
+    "task_status": "succeeded",
+    "style_name": "粗线条暖色",
+    "image_versions": [
+      "22dec874850045ed906428471781f1a8",
+      "8538ef7bd44f4291adae88738fc9caef"
+    ],
+    "credit_balance_before": 30,
+    "credit_balance_after": 28
+  },
+  "viewports": [
+    "1440x900",
+    "1280x800"
+  ],
+  "checks": [
+    "The global DoodleStory shell and the shared 传统构建 / AI 构建 switch remained intact.",
+    "The Agent interior is flat and full-height, with a grouped conversation list, blank creation entry, real message thread, real task card, and fixed bottom composer.",
+    "All three starter prompts only filled the composer and did not submit.",
+    "The + menu and @ trigger searched only real active styles; selecting and removing a style did not overwrite the draft.",
+    "The conversation list displayed real message summaries, run state, update time, and date grouping.",
+    "A draft could be prepared while a real Run was active, while submit remained disabled until completion.",
+    "Conversation switching, traditional/AI mode switching, and refresh restored the selected Conversation, its draft, and style within the browser session.",
+    "The real task card updated in place from planning through image generation to two completed real images.",
+    "The task-card action opened /tasks/c59151ece9a34b47a32042aeafcfbc04, matching the task ID in the traditional list and detail.",
+    "An authenticated fresh page produced zero console errors and zero warnings."
+  ],
+  "screenshots": [
+    "output/playwright/sprint-108/agent-empty-1440x900.png",
+    "output/playwright/sprint-108/agent-running-1440x900.png",
+    "output/playwright/sprint-108/agent-running-1280x800.png",
+    "output/playwright/sprint-108/agent-complete-1280x800.png",
+    "output/playwright/sprint-108/agent-complete-1440x900.png"
+  ],
+  "excluded": [
+    "character references",
+    "Panel modification, regeneration, version restoration, or acceptance",
+    "task pause or resume",
+    "VL inspection or automatic Agent revision",
+    "Memory, custom Skills, video, Remotion, TTS, or legacy Pipeline migration",
+    "mock or placeholder results"
+  ]
+}

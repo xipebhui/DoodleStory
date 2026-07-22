@@ -1,12 +1,12 @@
-# Sprint 108：Agent Panel 迭代与 VL 闭环
+# Sprint 109：Agent Panel 迭代与 VL 闭环
 
 ## Status
 
-Draft。由原 Sprint 107 顺延；只有 Sprint 107 正式前端整合完成并通过验收后，才允许评审激活。
+Draft。由原 Sprint 108 顺延；只有 Sprint 108 正式 Agent 前端与已调试 Demo 对齐完成并通过验收后，才允许评审激活。
 
 ## Goal
 
-在 Sprint 106 的真实两格漫画链路和 Sprint 107 的统一前端工作台上，增加指定 Panel 修改、已有版本恢复和 `inspect_image` 证据闭环；所有副作用继续由 Runtime 执行权限、预算、幂等、取消和恢复约束。
+在 Sprint 106 的真实两格漫画链路、Sprint 107 的统一前端工作台和 Sprint 108 的 Demo 对齐界面上，增加指定 Panel 修改、已有版本恢复和 `inspect_image` 证据闭环；所有副作用继续由 Runtime 执行权限、预算、幂等、取消和恢复约束。
 
 ## Proposed in scope
 
@@ -29,7 +29,7 @@ Draft。由原 Sprint 107 顺延；只有 Sprint 107 正式前端整合完成并
 
 ## Activation gate
 
-激活前必须确认 Sprint 107 已完成，并评审 VL Provider/API shape、单轮 Tool 预算、最大自动修改次数、`waiting_for_input` 条件、取消与晚到结果状态机，以及对应 Evaluation 用例和真实 Provider 验收方法。
+激活前必须确认 Sprint 108 已完成，并评审 VL Provider/API shape、单轮 Tool 预算、最大自动修改次数、`waiting_for_input` 条件、取消与晚到结果状态机，以及对应 Evaluation 用例和真实 Provider 验收方法。
 
 ## Done means
 

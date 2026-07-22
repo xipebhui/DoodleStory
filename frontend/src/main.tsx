@@ -94,6 +94,7 @@ const viewRoutes: Record<View, string> = {
   creditUsage: "/credit-usage",
   settings: "/settings",
 };
+const lastAgentConversationKey = "doodlestory.agentLastConversationId";
 const adminOnlyViews = new Set<View>(["videoTasks", "audioReferences", "users", "creditUsage"]);
 
 function normalizedPathname(pathname: string) {
@@ -603,6 +604,8 @@ function CreationModeSwitch({
   active: "tasks" | "agent";
   onNavigatePath: (path: string) => void;
 }) {
+  const lastConversationId = window.sessionStorage.getItem(lastAgentConversationKey);
+  const agentPath = lastConversationId ? `${viewRoutes.agent}/${encodeURIComponent(lastConversationId)}` : viewRoutes.agent;
   return (
     <nav className="creation-mode-switch" aria-label="图文创作方式">
       <a
@@ -617,12 +620,12 @@ function CreationModeSwitch({
         传统构建
       </a>
       <a
-        href={viewRoutes.agent}
+        href={agentPath}
         className={active === "agent" ? "active" : ""}
         aria-current={active === "agent" ? "page" : undefined}
         onClick={(event) => {
           event.preventDefault();
-          onNavigatePath(viewRoutes.agent);
+          onNavigatePath(agentPath);
         }}
       >
         AI 构建
@@ -688,7 +691,7 @@ function AgentTaskCardView({
     <article className="agent-task-card">
       <header>
         <div>
-          <span className="agent-eyebrow">两格漫画任务</span>
+          <span className="agent-eyebrow">漫画任务 · {card.panels.length} 个 Panel</span>
           <h3>{card.title}</h3>
         </div>
         <span className={`status ${card.status}`}>{agentTaskStatusLabel(card.status)}</span>
@@ -717,18 +720,17 @@ function AgentTaskCardView({
               )}
             </div>
             <div className="agent-panel-copy">
-              <strong>Panel {panel.panel_order}</strong>
+              <strong>第 {panel.panel_order} 张</strong>
               <p>{panel.story_beat}</p>
-              {panel.visual_goal ? <small>{panel.visual_goal}</small> : null}
             </div>
           </section>
         ))}
       </div>
       {card.error_message ? <p className="error agent-card-error">{card.error_message}</p> : null}
       <footer className="agent-task-card-footer">
-        <span>任务 ID · {card.task_id}</span>
+        <span title={card.task_id}>任务 ID · {card.task_id}</span>
         <button type="button" className="secondary-button" onClick={() => onOpenTask(card.task_id)}>
-          查看传统任务详情
+          查看任务
           <ArrowUpRight size={16} />
         </button>
       </footer>
@@ -738,6 +740,36 @@ function AgentTaskCardView({
 
 function agentDraftKey(conversationId: string, field: "idea" | "style") {
   return `doodlestory.agentDraft.${conversationId}.${field}`;
+}
+
+const newAgentDraftId = "new";
+
+function agentConversationGroupLabel(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayOffset = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+  if (dayOffset === 0) return "今天";
+  if (dayOffset === 1) return "昨天";
+  if (dayOffset < 7) return "最近 7 天";
+  return "更早";
+}
+
+function agentConversationTime(value: string) {
+  const date = new Date(value);
+  const group = agentConversationGroupLabel(value);
+  if (group === "今天") return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  if (group === "昨天") return "昨天";
+  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function agentConversationSummary(conversation: AgentConversation, detail: AgentConversationDetail | null) {
+  if (detail?.id === conversation.id) {
+    const message = [...detail.messages].reverse().find((item) => item.role !== "task_card");
+    if (message?.content) return message.content;
+  }
+  return conversation.status === "archived" ? "已归档的历史对话" : "继续上次创作";
 }
 
 function AgentView({
@@ -755,25 +787,50 @@ function AgentView({
   const [selectedStyleId, setSelectedStyleId] = useState("");
   const [idea, setIdea] = useState("");
   const [search, setSearch] = useState("");
+  const [resourceSearch, setResourceSearch] = useState("");
+  const [resourceMenuOpen, setResourceMenuOpen] = useState(false);
+  const [conversationMetadata, setConversationMetadata] = useState<Record<string, { summary: string; runStatus: AgentRunStatus | null }>>({});
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const routeConversationIdRef = useRef(routeConversationId);
+  const ideaInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     routeConversationIdRef.current = routeConversationId;
+    if (routeConversationId) window.sessionStorage.setItem(lastAgentConversationKey, routeConversationId);
   }, [routeConversationId]);
 
-  async function loadConversations() {
+  async function loadConversations(hydrateMetadata = false) {
     try {
       const result = await api.agentConversations({ limit: 100 });
       setConversations(result.items);
+      if (hydrateMetadata) void hydrateConversationMetadata(result.items.slice(0, 12));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "会话列表加载失败");
     } finally {
       setLoadingList(false);
+    }
+  }
+
+  async function hydrateConversationMetadata(items: AgentConversation[]) {
+    try {
+      const details = await Promise.all(items.map((conversation) => api.agentConversation(conversation.id)));
+      setConversationMetadata((current) => {
+        const next = { ...current };
+        details.forEach((conversation) => {
+          const message = [...conversation.messages].reverse().find((item) => item.role !== "task_card");
+          next[conversation.id] = {
+            summary: message?.content || (conversation.status === "archived" ? "已归档的历史对话" : "继续上次创作"),
+            runStatus: conversation.runs[0]?.status || null,
+          };
+        });
+        return next;
+      });
+    } catch (metadataError) {
+      setError(metadataError instanceof Error ? metadataError.message : "部分会话状态加载失败");
     }
   }
 
@@ -783,6 +840,14 @@ function AgentView({
       const result = await api.agentConversation(conversationId);
       if (routeConversationIdRef.current !== conversationId) return null;
       setDetail(result);
+      const message = [...result.messages].reverse().find((item) => item.role !== "task_card");
+      setConversationMetadata((current) => ({
+        ...current,
+        [conversationId]: {
+          summary: message?.content || (result.status === "archived" ? "已归档的历史对话" : "继续上次创作"),
+          runStatus: result.runs[0]?.status || null,
+        },
+      }));
       setError("");
       return result;
     } catch (loadError) {
@@ -794,19 +859,15 @@ function AgentView({
   }
 
   useEffect(() => {
-    void loadConversations();
+    void loadConversations(true);
     api
       .styleSelectOptions({ status: "active", limit: 100 })
       .then((result) => {
         setStyles(result.items);
-        const conversationId = routeConversationIdRef.current;
-        const draftStyleId = conversationId
-          ? window.sessionStorage.getItem(agentDraftKey(conversationId, "style"))
-          : null;
+        const draftId = routeConversationIdRef.current || newAgentDraftId;
+        const draftStyleId = window.sessionStorage.getItem(agentDraftKey(draftId, "style"));
         setSelectedStyleId(
-          draftStyleId && result.items.some((style) => style.id === draftStyleId)
-            ? draftStyleId
-            : result.items[0]?.id || "",
+          draftStyleId && result.items.some((style) => style.id === draftStyleId) ? draftStyleId : "",
         );
       })
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "风格加载失败"));
@@ -815,19 +876,20 @@ function AgentView({
   useEffect(() => {
     if (!routeConversationId) {
       setDetail(null);
-      setIdea("");
+      setIdea(window.sessionStorage.getItem(agentDraftKey(newAgentDraftId, "idea")) || "");
+      const draftStyleId = window.sessionStorage.getItem(agentDraftKey(newAgentDraftId, "style"));
+      setSelectedStyleId(draftStyleId && styles.some((style) => style.id === draftStyleId) ? draftStyleId : "");
       return;
     }
     setDetail(null);
     setIdea(window.sessionStorage.getItem(agentDraftKey(routeConversationId, "idea")) || "");
     const draftStyleId = window.sessionStorage.getItem(agentDraftKey(routeConversationId, "style"));
     setSelectedStyleId(
-      draftStyleId && styles.some((style) => style.id === draftStyleId)
-        ? draftStyleId
-        : styles[0]?.id || "",
+      draftStyleId && styles.some((style) => style.id === draftStyleId) ? draftStyleId : "",
     );
+    setResourceMenuOpen(false);
     void loadDetail(routeConversationId);
-  }, [routeConversationId]);
+  }, [routeConversationId, styles]);
 
   const hasActiveWork = Boolean(
     detail?.runs.some((run) => activeAgentRunStatuses.has(run.status)) ||
@@ -849,29 +911,22 @@ function AgentView({
     }
   }, [detail?.runs[0]?.status]);
 
-  async function createConversation() {
-    if (creatingConversation) return;
-    setCreatingConversation(true);
-    setError("");
-    try {
-      const conversation = await api.createAgentConversation({ title: "新漫画创作" });
-      await loadConversations();
-      onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversation.id)}`);
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "新建会话失败");
-    } finally {
-      setCreatingConversation(false);
-    }
+  function startNewConversation() {
+    window.sessionStorage.removeItem(lastAgentConversationKey);
+    if (routeConversationId) onNavigatePath(viewRoutes.agent);
+    window.setTimeout(() => ideaInputRef.current?.focus(), 0);
   }
 
   async function sendMessage(event: React.FormEvent) {
     event.preventDefault();
-    if (!routeConversationId || !idea.trim() || !selectedStyleId) return;
+    if (!idea.trim() || !selectedStyleId || hasActiveWork) return;
     const selectedStyle = styles.find((style) => style.id === selectedStyleId);
     setSending(true);
+    setCreatingConversation(!routeConversationId);
     setError("");
     try {
-      await api.sendAgentMessage(routeConversationId, {
+      const conversationId = routeConversationId || (await api.createAgentConversation({ title: "新漫画创作" })).id;
+      await api.sendAgentMessage(conversationId, {
         content: idea,
         resource_refs: [
           {
@@ -882,19 +937,52 @@ function AgentView({
         ],
       });
       setIdea("");
-      window.sessionStorage.removeItem(agentDraftKey(routeConversationId, "idea"));
-      await loadDetail(routeConversationId, true);
+      const draftId = routeConversationId || newAgentDraftId;
+      window.sessionStorage.removeItem(agentDraftKey(draftId, "idea"));
+      if (!routeConversationId) {
+        window.sessionStorage.setItem(agentDraftKey(conversationId, "style"), selectedStyleId);
+        window.sessionStorage.removeItem(agentDraftKey(newAgentDraftId, "style"));
+        onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversationId)}`);
+      } else {
+        await loadDetail(conversationId, true);
+      }
       await loadConversations();
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : "消息发送失败");
     } finally {
       setSending(false);
+      setCreatingConversation(false);
     }
   }
 
-  const filteredConversations = conversations.filter((conversation) =>
-    conversation.title.toLowerCase().includes(search.trim().toLowerCase()),
-  );
+  function selectStyle(styleId: string) {
+    setSelectedStyleId(styleId);
+    const draftId = routeConversationId || newAgentDraftId;
+    window.sessionStorage.setItem(agentDraftKey(draftId, "style"), styleId);
+    setResourceMenuOpen(false);
+    setResourceSearch("");
+    window.setTimeout(() => ideaInputRef.current?.focus(), 0);
+  }
+
+  function removeSelectedStyle() {
+    setSelectedStyleId("");
+    window.sessionStorage.removeItem(agentDraftKey(routeConversationId || newAgentDraftId, "style"));
+  }
+
+  function fillStarter(value: string) {
+    setIdea(value);
+    window.sessionStorage.setItem(agentDraftKey(routeConversationId || newAgentDraftId, "idea"), value);
+    window.setTimeout(() => ideaInputRef.current?.focus(), 0);
+  }
+
+  const filteredConversations = conversations.filter((conversation) => {
+    const query = search.trim().toLowerCase();
+    const summary = conversationMetadata[conversation.id]?.summary || agentConversationSummary(conversation, detail);
+    return !query || `${conversation.title} ${summary}`.toLowerCase().includes(query);
+  });
+  const conversationGroups = [...new Set(filteredConversations.map((conversation) => agentConversationGroupLabel(conversation.last_message_at)))];
+  const filteredStyles = styles.filter((style) => style.name.toLowerCase().includes(resourceSearch.trim().toLowerCase()));
+  const selectedStyle = styles.find((style) => style.id === selectedStyleId) || null;
   const visibleMessages = detail?.messages.filter((message) => message.role !== "task_card") || [];
   const latestRun = detail?.runs[0] || null;
 
@@ -904,75 +992,101 @@ function AgentView({
       <section className="agent-workspace">
       <aside className="agent-conversation-list">
         <div className="agent-list-heading">
-          <div>
-            <span className="agent-eyebrow">ComicDirectorAgent</span>
-            <h1>漫画创作</h1>
-          </div>
-          <button type="button" aria-label="新建对话" disabled={creatingConversation} onClick={() => void createConversation()}>
-            {creatingConversation ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
+          <div><span className="agent-eyebrow">AI 构建</span><h1>创作对话</h1></div>
+          <button type="button" aria-label="新建对话" onClick={startNewConversation}>
+            <Plus size={18} />
           </button>
         </div>
+        <button className="agent-new-chat" type="button" onClick={startNewConversation}>
+          <Plus size={16} />
+          新对话
+        </button>
         <label className="search-box agent-search">
           <Search size={16} />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索历史对话" />
+          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索对话" />
         </label>
-        <div className="agent-conversation-scroll">
+        <nav className="agent-conversation-scroll" aria-label="历史对话">
           {loadingList ? <div className="agent-list-state">加载会话中…</div> : null}
           {!loadingList && filteredConversations.length === 0 ? (
-            <div className="agent-list-state">还没有对话，点击右上角新建。</div>
+            <div className="agent-list-state">没有匹配的历史对话。</div>
           ) : null}
-          {filteredConversations.map((conversation) => (
-            <button
-              type="button"
-              key={conversation.id}
-              className={routeConversationId === conversation.id ? "active" : ""}
-              onClick={() => onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversation.id)}`)}
-            >
-              <strong>{conversation.title}</strong>
-              <span>{new Date(conversation.last_message_at).toLocaleString()}</span>
-            </button>
+          {conversationGroups.map((group) => (
+            <div className="agent-conversation-group" key={group}>
+              <span className="agent-conversation-group-label">{group}</span>
+              {filteredConversations.filter((conversation) => agentConversationGroupLabel(conversation.last_message_at) === group).map((conversation) => {
+                const isActive = routeConversationId === conversation.id;
+                const runStatus = conversationMetadata[conversation.id]?.runStatus || (isActive ? latestRun?.status : null);
+                const summary = conversationMetadata[conversation.id]?.summary || agentConversationSummary(conversation, detail);
+                const status = runStatus ? agentRunStatusLabel(runStatus) : conversation.status === "archived" ? "已归档" : "可继续";
+                return (
+                  <button
+                    type="button"
+                    key={conversation.id}
+                    className={isActive ? "active" : ""}
+                    aria-current={isActive ? "page" : undefined}
+                    onClick={() => onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversation.id)}`)}
+                  >
+                    <span className="agent-conversation-item-head">
+                      <i className={runStatus && activeAgentRunStatuses.has(runStatus) ? "running" : conversation.status} />
+                      <strong>{conversation.title}</strong>
+                      <time>{agentConversationTime(conversation.last_message_at)}</time>
+                    </span>
+                    <span className="agent-conversation-summary">{summary}</span>
+                    <small>{status}</small>
+                  </button>
+                );
+              })}
+            </div>
           ))}
-        </div>
+        </nav>
       </aside>
 
       <div className="agent-chat">
-        {!routeConversationId ? (
-          <div className="agent-empty-chat">
-            <MessageCircle size={34} />
-            <h2>从一个 Idea 开始两格漫画</h2>
-            <p>新建对话，选择一个已启用风格。Agent 会规划连续两格并调用真实图片 Provider。</p>
-            <button type="button" disabled={creatingConversation} onClick={() => void createConversation()}>
-              {creatingConversation ? <Loader2 className="spin" size={17} /> : <Plus size={17} />}
-              {creatingConversation ? "正在新建" : "新建对话"}
-            </button>
-            {error ? <p className="error">{error}</p> : null}
+        <header className="agent-chat-header">
+          <div>
+            <h2>{detail?.title || "新对话"}</h2>
+            <p>{detail ? "真实会话 · 两格漫画" : "从一个想法开始，资源可以稍后添加"}</p>
           </div>
-        ) : loadingDetail && !detail ? (
-          <div className="agent-empty-chat"><Loader2 className="spin" />加载对话中…</div>
-        ) : (
-          <>
-            <header className="agent-chat-header">
-              <div>
-                <span className="agent-eyebrow">真实模型 · 真实图片任务</span>
-                <h2>{detail?.title || "漫画创作"}</h2>
+          {latestRun ? (
+            <span className={`agent-run-state ${latestRun.status}`}>
+              {activeAgentRunStatuses.has(latestRun.status) ? <Loader2 className="spin" size={14} /> : null}
+              {agentRunStatusLabel(latestRun.status)}
+            </span>
+          ) : null}
+        </header>
+
+        <div className="agent-message-scroll" aria-live="polite">
+          {loadingDetail && !detail ? (
+            <div className="agent-loading-state"><Loader2 className="spin" />加载对话中…</div>
+          ) : visibleMessages.length === 0 ? (
+            <div className="agent-welcome">
+              <span className="agent-welcome-mark">画</span>
+              <h2>今天想创作什么？</h2>
+              <p>从一个 idea、一段故事，或者一个想重新设计的情节开始。</p>
+              <div className="agent-starters">
+                <button type="button" onClick={() => fillStarter("我有一个很简单的 idea，帮我把它发展成两格漫画。")}>从一个 idea 开始 <span>→</span></button>
+                <button type="button" onClick={() => fillStarter("我有一段完整故事，帮我设计成连续的两格漫画。")}>把故事做成漫画 <span>→</span></button>
+                <button type="button" onClick={() => fillStarter("我想重新设计一个故事的人物关系和结局。")}>重新设计人物和结局 <span>→</span></button>
               </div>
-              {latestRun ? (
-                <span className={`agent-run-state ${latestRun.status}`}>
-                  {activeAgentRunStatuses.has(latestRun.status) ? <Loader2 className="spin" size={15} /> : null}
-                  {agentRunStatusLabel(latestRun.status)}
-                </span>
-              ) : null}
-            </header>
-            <div className="agent-message-scroll" aria-live="polite">
-              {visibleMessages.length === 0 ? (
-                <div className="agent-welcome">
-                  <strong>告诉我你想画什么。</strong>
-                  <p>例如：一个加班到深夜的人，在便利店遇见十年后的自己。</p>
+              {styles.length > 0 ? (
+                <div className="agent-common-resources">
+                  <div><span>常用风格</span><button type="button" onClick={() => setResourceMenuOpen(true)}>查看全部</button></div>
+                  <div className="agent-resource-shortcuts">
+                    {styles.slice(0, 3).map((style) => (
+                      <button type="button" key={style.id} onClick={() => selectStyle(style.id)}>
+                        <span className="agent-resource-swatch" />
+                        <span><strong>{style.name}</strong><small>风格</small></span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : null}
+            </div>
+          ) : (
+            <div className="agent-thread-inner">
               {visibleMessages.map((message) => (
                 <div key={message.id} className={`agent-message ${message.role}`}>
-                  <span>{message.role === "user" ? "你" : message.role === "assistant" ? "Agent" : "系统"}</span>
+                  <span>{message.role === "user" ? "你" : message.role === "assistant" ? "DoodleStory Agent" : "系统"}</span>
                   <p>{message.content}</p>
                   {message.resource_refs.map((ref) => (
                     <small key={`${ref.kind}-${ref.id}`}>@{ref.display_name || "风格"}</small>
@@ -980,57 +1094,79 @@ function AgentView({
                 </div>
               ))}
               {detail?.task_cards.map((card) => (
-                <AgentTaskCardView
-                  key={card.task_id}
-                  card={card}
-                  onOpenTask={(taskId) => onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(taskId)}`)}
-                />
+                <AgentTaskCardView key={card.task_id} card={card} onOpenTask={(taskId) => onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(taskId)}`)} />
               ))}
               {latestRun?.status === "failed" && !latestRun.task_id ? (
                 <div className="agent-run-error"><AlertCircle size={18} />{latestRun.error_message || "本轮执行失败"}</div>
               ) : null}
             </div>
-            <form className="agent-composer" onSubmit={sendMessage}>
-              <div className="agent-style-select">
-                <Sparkles size={16} />
-                <select
-                  aria-label="选择漫画风格"
-                  value={selectedStyleId}
-                  onChange={(event) => {
-                    const nextStyleId = event.target.value;
-                    setSelectedStyleId(nextStyleId);
-                    if (routeConversationId) {
-                      window.sessionStorage.setItem(agentDraftKey(routeConversationId, "style"), nextStyleId);
-                    }
-                  }}
-                  disabled={sending || hasActiveWork}
-                >
-                  {styles.length === 0 ? <option value="">没有可用风格</option> : null}
-                  {styles.map((style) => <option key={style.id} value={style.id}>@{style.name}</option>)}
-                </select>
-              </div>
-              <textarea
-                aria-label="漫画 Idea"
-                value={idea}
-                onChange={(event) => {
-                  const nextIdea = event.target.value;
-                  setIdea(nextIdea);
-                  if (routeConversationId) {
-                    window.sessionStorage.setItem(agentDraftKey(routeConversationId, "idea"), nextIdea);
-                  }
-                }}
-                placeholder="输入一个漫画 Idea…"
-                rows={3}
-                disabled={sending || hasActiveWork}
-              />
-              <button type="submit" disabled={sending || hasActiveWork || !idea.trim() || !selectedStyleId}>
-                {sending ? <Loader2 className="spin" size={18} /> : <ArrowUpRight size={18} />}
-                {hasActiveWork ? "本轮生成中" : "生成两格漫画"}
+          )}
+        </div>
+
+        <footer className="agent-composer-shell">
+          {selectedStyle ? (
+            <div className="agent-context-row">
+              <span>@风格 · {selectedStyle.name}<button type="button" aria-label={`移除风格 ${selectedStyle.name}`} onClick={removeSelectedStyle}>×</button></span>
+            </div>
+          ) : null}
+          <form className="agent-composer" onSubmit={sendMessage}>
+            <div className="agent-resource-menu-wrap">
+              <button
+                className="agent-composer-tool"
+                type="button"
+                aria-label="添加风格资源"
+                aria-haspopup="menu"
+                aria-expanded={resourceMenuOpen}
+                onClick={() => setResourceMenuOpen((open) => !open)}
+              >
+                <Plus size={19} />
               </button>
-              {error ? <p className="error">{error}</p> : null}
-            </form>
-          </>
-        )}
+              {resourceMenuOpen ? (
+                <div className="agent-resource-menu" role="menu">
+                  <div className="agent-resource-menu-head"><strong>加入创作上下文</strong><small>当前仅支持真实风格</small></div>
+                  <label><Search size={15} /><input autoFocus type="search" value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)} placeholder="搜索风格" /></label>
+                  <span className="agent-resource-group-label">可用风格</span>
+                  {filteredStyles.map((style) => (
+                    <button type="button" role="menuitem" key={style.id} onClick={() => selectStyle(style.id)}>
+                      <span className="agent-resource-swatch" />
+                      <span><strong>风格</strong><small>{style.name}</small></span>
+                    </button>
+                  ))}
+                  {filteredStyles.length === 0 ? <p>没有匹配的风格</p> : null}
+                </div>
+              ) : null}
+            </div>
+            <textarea
+              ref={ideaInputRef}
+              aria-label="告诉 Agent 你想创作什么"
+              value={idea}
+              onChange={(event) => {
+                const nextIdea = event.target.value;
+                setIdea(nextIdea);
+                window.sessionStorage.setItem(agentDraftKey(routeConversationId || newAgentDraftId, "idea"), nextIdea);
+                if (nextIdea.endsWith("@")) setResourceMenuOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setResourceMenuOpen(false);
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder="告诉 Agent 你想创作什么，或输入 @ 引用风格"
+              rows={1}
+              disabled={sending}
+            />
+            <button className="agent-send-button" type="submit" aria-label="发送消息" disabled={sending || hasActiveWork || !idea.trim() || !selectedStyleId}>
+              {sending || creatingConversation ? <Loader2 className="spin" size={18} /> : <ArrowUpRight size={18} />}
+            </button>
+          </form>
+          <div className="agent-composer-note">
+            <span>Enter 发送 · Shift + Enter 换行</span>
+            <span>{hasActiveWork ? "Agent 正在执行当前任务，你可以继续准备下一条草稿" : selectedStyle ? `已选择真实风格：${selectedStyle.name}` : "发送前请选择一个真实风格"}</span>
+          </div>
+          {error ? <p className="error agent-composer-error">{error}</p> : null}
+        </footer>
       </div>
       </section>
     </section>
