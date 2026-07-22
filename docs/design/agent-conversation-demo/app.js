@@ -118,6 +118,7 @@ const state = {
   inspectorOpen: false,
   query: "",
   toastTimer: null,
+  pendingRegeneration: null,
 };
 
 const shell = document.querySelector("#demo-shell");
@@ -137,6 +138,10 @@ const resourceMenu = document.querySelector("#resource-menu");
 const resourceSearch = document.querySelector("#resource-search");
 const resourceEmpty = document.querySelector("#resource-empty");
 const backdrop = document.querySelector("#mobile-backdrop");
+const regenerateDialog = document.querySelector("#regenerate-dialog");
+const regenerateDialogDescription = document.querySelector("#regenerate-dialog-description");
+const regenerateDialogContext = document.querySelector("#regenerate-dialog-context");
+const confirmRegenerate = document.querySelector("#confirm-regenerate");
 
 function activeConversation() {
   return conversations.find((conversation) => conversation.id === state.activeConversationId);
@@ -214,6 +219,7 @@ function renderNavigation() {
 
 function renderTaskCard(task) {
   const currentActivity = [...task.activities].reverse().find((activity) => activity.current) || task.activities.at(-1);
+  const activityIconClass = task.status === "已暂停" ? "activity-pause" : currentActivity?.current ? "activity-spinner" : "activity-check";
   return `
     <article class="task-card" data-task-card="${task.id}">
       <div class="task-card-main">
@@ -228,14 +234,14 @@ function renderTaskCard(task) {
         <div class="task-progress"><span style="width: ${task.progress}%"></span></div>
         <div class="task-card-meta">
           <span>${task.completed}/${task.total} 张已完成</span>
-          <span>${task.status === "已完成" ? "可以继续修改" : "离开对话后仍会继续"}</span>
+          <span>${task.status === "已完成" ? "可以继续修改" : task.status === "已暂停" ? "继续任务后恢复" : "离开对话后仍会继续"}</span>
         </div>
         <div class="mini-panel-strip" aria-label="任务分镜">
           ${task.panels
-            .map((panel) => `<button class="mini-panel ${panel.className}" type="button" data-task-panel="${panel.order}" data-order="${panel.order}" aria-label="打开 Panel ${panel.order}，${escapeHtml(panel.status)}"></button>`)
+            .map((panel) => `<button class="mini-panel ${panel.className}" type="button" data-task-panel="${panel.order}" data-order="${panel.order}" aria-label="打开 Panel ${panel.order}，${escapeHtml(panel.generatingVersion ? `正在生成 ${panel.generatingVersion}` : panel.status)}"></button>`)
             .join("")}
         </div>
-        <div class="task-current-activity"><span class="${currentActivity?.current ? "activity-spinner" : "activity-check"}"></span>${escapeHtml(currentActivity?.text || "等待下一步")}</div>
+        <div class="task-current-activity"><span class="${activityIconClass}"></span>${escapeHtml(currentActivity?.text || "等待下一步")}</div>
       </div>
       <footer class="task-card-footer">
         <button class="task-link-button" type="button" data-task-action="mention" data-task-id="${task.id}">在对话中引用</button>
@@ -468,14 +474,21 @@ function renderInspector() {
   inspectorTitle.textContent = task.title;
   const selected = task.panels.find((panel) => panel.order === task.selectedPanel) || task.panels[0];
   const selectedVersion = selected.version || (selected.className === "waiting" ? "—" : "v1");
-  const selectedReview = selected.review || (selected.className === "done" ? "当前版本已经完成，可以继续接受或提出修改。" : "正在等待 Agent 更新检查结论。");
+  const selectedStatus = selected.generatingVersion ? `正在生成 ${selected.generatingVersion}` : selected.status;
+  const selectedReview = selected.generatingVersion
+    ? `正在复用 ${selectedVersion} 的最终提示词、风格和角色参考资源生成 ${selected.generatingVersion}。当前版本不会被覆盖。`
+    : selected.review || (selected.className === "done" ? "当前版本已经完成，可以继续接受或提出修改。" : "正在等待 Agent 更新检查结论。");
   inspectorContent.innerHTML = `
     <div class="inspector-status-row">
       <strong>${task.completed}/${task.total} 张</strong>
-      <span class="status-pill">${escapeHtml(task.status)}</span>
+      <div class="inspector-task-controls">
+        <span class="status-pill">${escapeHtml(task.status)}</span>
+        ${task.status === "已完成" ? "" : `<button class="task-control-button" type="button" id="pause-task-action">${task.status === "已暂停" ? "继续任务" : "暂停任务"}</button>`}
+      </div>
     </div>
     <p class="inspector-description">任务属于当前对话。关闭详情后仍可继续聊天，之后也可以从左侧历史对话重新进入。</p>
     <div class="task-progress"><span style="width: ${task.progress}%"></span></div>
+    <p class="task-control-note">${task.status === "已完成" ? "任务已经完成；你仍可以选择任一 Panel 继续创建新版本。" : task.status === "已暂停" ? "已暂停：不会启动新的 Panel 或 Agent 步骤；已经提交的图片仍会完成并保存。" : "暂停只会阻止后续 Panel 和 Agent 步骤；已经提交给图片模型的请求仍会完成并保存。"}</p>
 
     <section class="inspector-section">
       <div class="inspector-section-head"><h3>分镜</h3><span>选择要检查的画面</span></div>
@@ -485,7 +498,7 @@ function renderInspector() {
             (panel) => `
               <button class="panel-button ${panel.className} ${panel.order === task.selectedPanel ? "selected" : ""}" type="button" data-panel-order="${panel.order}">
                 <span class="panel-thumb" data-panel-art="${panel.order}">${panel.order}</span>
-                <small>${panel.order}. ${escapeHtml(panel.status)}</small>
+                <small>${panel.order}. ${escapeHtml(panel.generatingVersion ? `生成 ${panel.generatingVersion}` : panel.status)}</small>
               </button>
             `,
           )
@@ -496,7 +509,7 @@ function renderInspector() {
         <strong>${escapeHtml(selectedVersion)}</strong>
       </div>
       <div class="selected-panel-detail">
-        <div><strong>Panel ${selected.order} · ${escapeHtml(selectedVersion)}</strong><span class="panel-state ${selected.className}">${escapeHtml(selected.status)}</span></div>
+        <div><strong>Panel ${selected.order} · ${escapeHtml(selectedVersion)}</strong><span class="panel-state ${selected.className}">${escapeHtml(selectedStatus)}</span></div>
         <p>${escapeHtml(selected.text)}</p>
         <div class="review-note"><span>Agent 检查</span><p>${escapeHtml(selectedReview)}</p></div>
       </div>
@@ -518,9 +531,8 @@ function renderInspector() {
         <button class="secondary-action" type="button" id="accept-panel-action" ${selected.className === "waiting" || selected.className === "running" ? "disabled" : ""}>接受 ${escapeHtml(selectedVersion)}</button>
       </div>
       <div class="secondary-action-row">
-        <button class="text-action" type="button" id="retry-panel-action">重新生成</button>
+        <button class="text-action" type="button" id="retry-panel-action" ${selectedVersion === "—" || selected.className === "running" || task.status === "已暂停" ? "disabled" : ""}>再生成一个版本</button>
         <button class="text-action" type="button" id="restore-panel-action" ${selectedVersion === "v1" || selectedVersion === "—" ? "disabled" : ""}>恢复上一版</button>
-        <button class="text-action" type="button" id="pause-task-action">${task.status === "已暂停" ? "继续任务" : "暂停任务"}</button>
       </div>
     </section>
   `;
@@ -552,13 +564,18 @@ function renderInspector() {
     showToast(`Panel ${selected.order} 已接受（设计演示）`);
   });
   inspectorContent.querySelector("#retry-panel-action").addEventListener("click", () => {
-    selected.status = "生成中";
-    selected.className = "running";
-    task.activities.forEach((activity) => { activity.current = false; });
-    task.activities.push({ text: `正在为 Panel ${selected.order} 生成新版本`, time: "现在", current: true });
-    renderConversation();
-    renderInspector();
-    showToast(`Panel ${selected.order} 已开始重新生成（设计演示）`);
+    const versionNumber = Number.parseInt(selectedVersion.replace(/^v/, ""), 10);
+    const nextVersion = `v${Number.isFinite(versionNumber) ? versionNumber + 1 : 1}`;
+    state.pendingRegeneration = {
+      conversationId: conversation.id,
+      taskId: task.id,
+      panelOrder: selected.order,
+      sourceVersion: selectedVersion,
+      nextVersion,
+    };
+    regenerateDialogDescription.textContent = `将使用 Panel ${selected.order} 当前版本 ${selectedVersion} 已保存的最终提示词和参考资源，生成 ${nextVersion}。原版本会继续保留。`;
+    regenerateDialogContext.innerHTML = `<span>相同 Prompt</span><span>相同风格与角色参考</span><span>正式功能预计消耗 1 积分</span>`;
+    regenerateDialog.showModal();
   });
   inspectorContent.querySelector("#restore-panel-action").addEventListener("click", () => {
     selected.version = "v1";
@@ -569,17 +586,62 @@ function renderInspector() {
     renderInspector();
     showToast(`Panel ${selected.order} 已恢复 v1（设计演示）`);
   });
-  inspectorContent.querySelector("#pause-task-action").addEventListener("click", () => {
+  inspectorContent.querySelector("#pause-task-action")?.addEventListener("click", () => {
     const wasPaused = task.status === "已暂停";
     task.status = wasPaused ? "生成中" : "已暂停";
     conversation.status = wasPaused ? "running" : "paused";
-    conversation.preview = wasPaused ? `第 ${task.selectedPanel} 张继续处理中` : "任务已暂停，可以随时继续";
+    conversation.preview = wasPaused ? "任务已继续，将从未完成步骤恢复" : "任务已暂停，已提交的图片仍会完成";
+    task.activities.forEach((activity) => { activity.current = false; });
+    task.activities.push({
+      text: wasPaused ? "任务已继续，将从下一个未完成步骤恢复" : "任务已暂停，不再启动新的 Panel",
+      time: "现在",
+      current: wasPaused,
+    });
     renderNavigation();
     renderConversation();
     renderInspector();
     showToast(wasPaused ? "任务已继续（设计演示）" : "任务已暂停（设计演示）");
   });
 }
+
+confirmRegenerate.addEventListener("click", () => {
+  const pending = state.pendingRegeneration;
+  if (!pending) return;
+  const conversation = conversations.find((item) => item.id === pending.conversationId);
+  const task = conversation?.task?.id === pending.taskId ? conversation.task : null;
+  const panel = task?.panels.find((item) => item.order === pending.panelOrder);
+  if (!conversation || !task || !panel) return;
+
+  panel.generatingVersion = pending.nextVersion;
+  panel.className = "running";
+  task.activities.forEach((activity) => { activity.current = false; });
+  task.activities.push({ text: `正在使用 ${pending.sourceVersion} 的生成配置创建 Panel ${panel.order} · ${pending.nextVersion}`, time: "现在", current: true });
+  regenerateDialog.close();
+  state.pendingRegeneration = null;
+  renderNavigation();
+  renderConversation();
+  if (state.inspectorOpen && state.activeConversationId === conversation.id) renderInspector();
+  showToast(`正在生成 Panel ${panel.order} · ${pending.nextVersion}（设计演示）`);
+
+  window.setTimeout(() => {
+    panel.version = pending.nextVersion;
+    panel.generatingVersion = null;
+    panel.status = "待决定";
+    panel.className = "review";
+    panel.review = "新版本已经生成。请比较当前结果，决定接受、继续修改或恢复上一版。";
+    task.activities.forEach((activity) => { activity.current = false; });
+    task.activities.push({ text: `Panel ${panel.order} · ${pending.nextVersion} 已生成，等待用户决定`, time: "现在" });
+    renderNavigation();
+    if (state.activeConversationId === conversation.id) {
+      renderConversation();
+      if (state.inspectorOpen) renderInspector();
+    }
+  }, 1200);
+});
+
+regenerateDialog.addEventListener("close", () => {
+  state.pendingRegeneration = null;
+});
 
 function submitMessage(event) {
   event.preventDefault();
