@@ -1,0 +1,54 @@
+{
+  "sprint": 107,
+  "tested_at": "2026-07-22T10:14:30Z",
+  "environment": "local development with real Agent model providers, real image provider, and authenticated browser",
+  "scope": "shared DoodleStory shell, tasks/agent mode routing, real conversation recovery, real task card, and shared GenerationTask detail",
+  "real_flow": {
+    "conversation_id": "e1c4bb05abe24e3ea80fc09bb3f7431f",
+    "run_id": "a176d894556b471d9ef887abbeea6c8d",
+    "run_status": "succeeded",
+    "task_id": "0cec81a45b1b4139bd6a43ff4c4c8135",
+    "task_status": "succeeded",
+    "style_name": "粗线条暖色",
+    "image_versions": [
+      "6a9370d5e92a42578e2474f7c1642423",
+      "416f3910c1c448fa874f3bba95f02b1f"
+    ],
+    "credit_balance_before": 30,
+    "credit_balance_after": 28,
+    "task_identity_check": "The Agent task card, traditional task list row, and /tasks/{task_id} detail all displayed 0cec81a45b1b4139bd6a43ff4c4c8135."
+  },
+  "viewports": [
+    "1440x900",
+    "1280x800"
+  ],
+  "checks": [
+    "The global shell remained unchanged while switching between /tasks and /agent, and 图文任务 stayed selected in both modes.",
+    "The formal Agent page contained no second logo, Agent Studio shell, mock conversation, mock resource, or unavailable Panel action.",
+    "The /agent blank state created a real empty Conversation and the bounded history restored both created Conversations.",
+    "Unsaved Idea and selected style were preserved per Conversation while switching history entries.",
+    "A real active style ID and Idea created a real two-panel task; the composer was disabled while the Run was active and re-enabled after completion.",
+    "The task card updated in place from model planning to image generation to two real completed images.",
+    "The task-card action opened /tasks/0cec81a45b1b4139bd6a43ff4c4c8135, whose traditional list row displayed the same full task ID.",
+    "Hard refresh restored /agent/{conversation_id}; direct access followed by login restored /tasks/{task_id}; browser back and forward preserved route context.",
+    "The mode switch was activated with Tab and Enter, and visible focus styling is defined for both links.",
+    "After authentication, the checked flow added no browser console errors or warnings. The only 401 console entries occurred during intentional unauthenticated auth checks before login."
+  ],
+  "screenshots": [
+    "output/playwright/sprint-107/tasks-1440x900.png",
+    "output/playwright/sprint-107/agent-empty-1440x900.png",
+    "output/playwright/sprint-107/agent-running-1280x800.png",
+    "output/playwright/sprint-107/agent-complete-1280x800.png",
+    "output/playwright/sprint-107/agent-complete-1440x900.png",
+    "output/playwright/sprint-107/task-detail-1440x900.png",
+    "output/playwright/sprint-107/tasks-with-agent-task-1280x800.png"
+  ],
+  "excluded": [
+    "character references or Memory",
+    "user rules or custom Skills",
+    "Panel modification, retry, version restore, or VL",
+    "background removal, Remotion, TTS, or video narration",
+    "legacy Pipeline migration",
+    "mock or placeholder results"
+  ]
+}

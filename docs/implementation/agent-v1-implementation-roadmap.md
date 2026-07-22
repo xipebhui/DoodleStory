@@ -43,7 +43,7 @@ flowchart LR
 | 0 | 产品、架构、交互、平台和 Evaluation 基线 | 已完成 | Sprint 103、104 |
 | 1 | 可持久化、可恢复、可切换 Provider 的 Agent Runtime | 已完成 | Sprint 105 |
 | 2 | 对话创建两格真实漫画的纵向链路 | 已完成 | Sprint 106 |
-| 3 | 传统构建与 AI 构建正式前端整合 | 进行中 | Sprint 107 Active |
+| 3 | 传统构建与 AI 构建正式前端整合 | 已完成 | Sprint 107 Complete |
 | 4 | 指定 Panel 修改、重试、版本恢复和 VL 检查闭环 | 待评审 | Sprint 108 Draft |
 | 5 | 角色、任务、图片、参考漫画和抖音等资源入口 | 未开始 | 阶段 4 后创建合同 |
 | 6 | 旧入口迁移到 Agent 并移除重复编排 | 未开始 | 阶段 5 后创建合同 |
@@ -125,7 +125,9 @@ Sprint 106 已完成并通过全部退出门槛。真实 `/agent` 页面支持 I
 
 ## 7. 阶段 3：正式前端整合
 
-Sprint 107 已激活，合同为 `docs/contracts/sprint-107-agent-frontend-workspace-integration.md`。
+### 完成结论
+
+Sprint 107 已完成并通过全部退出门槛。正式工作台只保留一套 DoodleStory 全局侧边栏、账号、积分和资源入口；`/tasks` 与 `/agent` 通过顶部 `传统构建 / AI 构建` 切换，Agent 会话历史作为 AI 模式局部导航。真实浏览器使用 active 风格完成 Conversation `e1c4bb05abe24e3ea80fc09bb3f7431f`、Run `a176d894556b471d9ef887abbeea6c8d` 和 Task `0cec81a45b1b4139bd6a43ff4c4c8135` 的两格真实图片生成，Agent 卡片、传统任务列表和 `/tasks/{task_id}` 详情确认使用同一任务记录。1440×900、1280×800、稳定 URL、草稿恢复、键盘访问与认证后控制台检查均通过，证据保存在 `docs/testing/agent-frontend-workspace-integration-browser-report.json`。
 
 ### 用户可感知结果
 

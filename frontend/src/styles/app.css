@@ -315,6 +315,47 @@ textarea {
   margin-bottom: 24px;
 }
 
+.creation-mode-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(132px, 1fr));
+  gap: 3px;
+  width: fit-content;
+  margin-bottom: 22px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  background: #111318;
+}
+
+.creation-mode-switch a {
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+  border-radius: 6px;
+  padding: 0 18px;
+  color: #7f8896;
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: none;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.creation-mode-switch a:hover {
+  color: #dfe4ec;
+}
+
+.creation-mode-switch a.active {
+  background: #e8edf3;
+  color: #111318;
+}
+
+.creation-mode-switch a:focus-visible {
+  outline: 2px solid #e0ac52;
+  outline-offset: 2px;
+}
+
 .page h1 {
   margin: 0;
   font-size: 34px;
@@ -2033,7 +2074,7 @@ textarea {
 
 .tasks-workspace {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   width: 100%;
   max-width: none;
   min-height: calc(100dvh - (var(--content-gutter) * 2));
@@ -4398,10 +4439,22 @@ textarea {
 .agent-workspace {
   display: grid;
   grid-template-columns: 290px minmax(0, 1fr);
-  height: 100dvh;
-  margin: calc(-1 * var(--content-gutter));
+  min-height: 0;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
   background: #0b0d10;
+}
+
+.agent-creation-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100dvh - (var(--content-gutter) * 2));
+  min-height: 0;
+}
+
+.agent-creation-page > .creation-mode-switch {
+  margin-bottom: 18px;
 }
 
 .agent-conversation-list {
@@ -4619,6 +4672,29 @@ textarea {
   font-size: 12px;
 }
 
+.agent-task-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agent-task-card-footer span {
+  overflow: hidden;
+  color: #737d8b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-task-card-footer button {
+  flex: 0 0 auto;
+}
+
 .agent-panel-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4744,11 +4820,14 @@ textarea {
 }
 
 @media (max-width: 760px) {
+  .agent-creation-page {
+    height: auto;
+  }
+
   .agent-workspace {
     display: block;
     height: auto;
     min-height: 100vh;
-    margin: -18px;
     overflow: visible;
   }
 

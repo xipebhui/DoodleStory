@@ -5,11 +5,11 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 106 对话创建两格真实漫画完成。真实 `/agent` 页面已从 Idea + 一个 active 全局风格生成固定两格 ComicPlan，经两个幂等 `generate_image` job 产出真实资产并恢复对话任务卡片；真实 HTTP、纯浏览器和中断恢复 smoke 均通过。Sprint 107 已激活，下一步把 `/tasks` 与 `/agent` 整合进同一套正式工作台，通过顶部 `传统构建 / AI 构建` 切换。`./scripts/check.sh` 最近完整基线覆盖 196 个后端测试、空库 Alembic migration 和前端生产构建。
+- 最近验证状态：Sprint 107 传统构建与 AI 构建正式前端整合完成。正式产品只保留一套 DoodleStory 全局侧边栏、账号、积分和资源入口，`/tasks` 与 `/agent` 使用顶部模式切换；真实 Agent Task `0cec81a45b1b4139bd6a43ff4c4c8135` 生成两张真实图片，并从 Agent 卡片打开同一个 `/tasks/{task_id}`，传统任务列表可按完整 ID 核对。1440×900、1280×800、草稿恢复、强刷、直接链接、前进后退、键盘焦点和认证后控制台均通过。`./scripts/check.sh` 最近完整基线覆盖 196 个后端测试、空库 Alembic migration 和前端生产构建。
 
 ## 当前 Sprint 合同
 
-- Active：`docs/contracts/sprint-107-agent-frontend-workspace-integration.md`
+- Complete：`docs/contracts/sprint-107-agent-frontend-workspace-integration.md`
 - Draft：`docs/contracts/sprint-108-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
 - Complete：`docs/contracts/sprint-105-agent-runtime-foundation.md`
@@ -35,6 +35,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 107 传统构建与 AI 构建正式前端整合：移除侧边栏独立 `漫画 Agent` 一级入口，让 `/tasks` 与 `/agent` 共用 `图文任务` 全局导航语义，并在两页顶部增加同一个 `传统构建 / AI 构建` 切换。AI 模式保留真实会话历史、空白新对话、历史恢复、一个真实风格引用、Run 状态和真实任务卡片；Conversation 切换会清空旧详情并恢复各自未发送 Idea/风格草稿。Agent 任务卡片新增完整 task ID 和 `/tasks/{task_id}` 入口，传统任务行同步展示完整 ID。真实浏览器创建 Conversation `e1c4bb05abe24e3ea80fc09bb3f7431f`、Run `a176d894556b471d9ef887abbeea6c8d` 和 Task `0cec81a45b1b4139bd6a43ff4c4c8135`，使用 `粗线条暖色` 生成两张真实图片，积分从 30 扣至 28；Agent 卡片、传统列表和任务详情确认引用同一任务。1440×900 与 1280×800 完成空白、运行、成功、任务详情、草稿切换、刷新、前进后退、直接链接和键盘切换回归，认证后的检查阶段无新增 console error/warning。证据保存于 `docs/testing/agent-frontend-workspace-integration-browser-report.json`；生产构建、`git diff --check` 和 `./scripts/check.sh` 通过。未实现 Sprint 108 或其它明确排除能力。
 
 - 完成 Sprint 107 开发前置规划并激活合同：全局路线在已完成的两格真实漫画纵向链路与 Panel/VL 之间增加“正式前端整合”阶段；正式产品保留一套 DoodleStory 全局侧边栏、账号、积分和资源入口，在 `/tasks` 与 `/agent` 顶部提供 `传统构建 / AI 构建` 切换。Sprint 107 只把真实会话、一个真实风格、运行状态和同一 GenerationTask 任务卡片整合进正式页面，不实现角色引用、Memory、创作规则、自定义 Skill、Panel/VL、抠图、Remotion、文字转语音或视频解说。原 Panel/VL 合同顺延为 Sprint 108 Draft。新窗口交接已更新为 Sprint 107 的必读文件、实施顺序、浏览器验收和可直接粘贴的启动提示词。规划文档引用一致性、`git diff --check` 与 `./scripts/check.sh` 已通过；全量检查覆盖 196 个后端测试、空库 Alembic migration 和前端生产构建。
 - 明确 Sprint 103 Agent 会话 Demo 的版本生成与暂停语义：Panel 操作中的`重新生成`改为`再生成一个版本`，执行前通过确认弹窗说明复用当前最终 Prompt、风格和角色参考资源、保留旧版本、创建下一个版本以及正式功能预计消耗 1 积分；确定性演示会展示 v2 保留、v3 生成中和 v3 待决定。`暂停任务`从 Panel 操作区移到任务顶部，只阻止后续 Panel 和 Agent 步骤，明确说明已提交给图片 Provider 的请求仍会完成并保存；历史列表、会话顶部、任务卡和检查器同步暂停/继续状态，已完成任务不展示暂停入口。设计 Brief 与 Demo README 已同步该语义。本次仍只修改独立前端 Demo，不接后端或 Sprint 106。验证：Playwright 在 1440×900 完成新版本确认、v2 到 v3 状态变化和任务暂停回归，控制台 0 error/0 warning；`node --check`、`git diff --check` 和 `./scripts/check.sh` 通过，覆盖 196 个后端测试、空库 Alembic migration 与正式前端生产构建。

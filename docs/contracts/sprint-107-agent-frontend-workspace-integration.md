@@ -2,7 +2,7 @@
 
 ## Status
 
-Active（2026-07-22）。Sprint 106 已完成；用户已确认在新窗口开始本 Sprint。
+Complete（2026-07-22）。正式前端整合、真实两格漫画链路和指定桌面视口验收均已完成。
 
 ## Goal
 
@@ -94,3 +94,14 @@ git diff --check
 - Sprint 106 已证明 `/agent`、真实会话、真实风格、两格任务和刷新恢复可用，本 Sprint 不重新设计后端 Runtime。
 - Agent 任务已经写入现有 `generation_tasks`，`agent_runs.task_id` 已建立关系，因此前端整合不需要复制任务数据。
 - 第一版继续聚焦漫画；用户维度 Memory 和其它图片/音频/视频能力明确延后讨论。
+
+## Completion record
+
+- 正式全局侧边栏移除了独立 `漫画 Agent` 一级入口；`图文任务` 在 `/tasks`、`/agent` 和 `/agent/{conversation_id}` 下保持同一创作模块选中语义，品牌、账号、积分、联系入口、风格和角色管理仍只有一套。
+- `/tasks` 与 `/agent` 顶部使用同一个可键盘操作的 `传统构建 / AI 构建` 控件；模式、Conversation 与 Task Detail 都继续由稳定 URL 驱动。
+- AI 工作区只使用真实 Conversation、Message、Run、active Style 和 Task Card API。会话切换会丢弃旧详情显示并读取目标 Conversation；未发送 Idea 和风格选择按 Conversation 保存在当前浏览器会话中，切换历史对话后可恢复。
+- Agent 任务卡片新增同一 `task_id` 的明确展示与 `查看传统任务详情` 入口，直接进入 `/tasks/{task_id}`；传统任务行也展示完整 task ID，便于确认列表、Agent 卡片和详情引用同一条 `generation_tasks` 记录。
+- 真实浏览器创建 Conversation `e1c4bb05abe24e3ea80fc09bb3f7431f`，Run `a176d894556b471d9ef887abbeea6c8d` 使用真实风格 `粗线条暖色`，创建 Task `0cec81a45b1b4139bd6a43ff4c4c8135` 并生成两个真实图片版本；任务与 Run 均成功，测试账号积分从 30 变为 28。
+- 1440×900 与 1280×800 已验证传统任务页、AI 空白页、历史会话、运行态、完成态和任务详情；同时验证会话草稿恢复、强制刷新、直接链接登录后恢复、浏览器前进后退和键盘切换。认证后的检查阶段没有新增 console error 或 warning。
+- 浏览器证据记录于 `docs/testing/agent-frontend-workspace-integration-browser-report.json`；截图保存在本地未跟踪目录 `output/playwright/sprint-107/`，未改动或纳入提交用户已有的 `output/` 内容。
+- `npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 已通过。角色引用、Memory、用户规则、自定义 Skill、Panel/VL、版本恢复、抠图、Remotion、TTS、视频解说和旧 Pipeline 迁移均未实现。

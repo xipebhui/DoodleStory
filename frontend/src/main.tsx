@@ -513,7 +513,6 @@ function Shell({
   children: React.ReactNode;
 }) {
   const items = [
-    { key: "agent" as const, label: "漫画 Agent", icon: MessageCircle, path: viewRoutes.agent },
     { key: "tasks" as const, label: "图文任务", icon: Images, path: viewRoutes.tasks },
     ...(user.role === "admin" ? [{ key: "videoTasks" as const, label: "视频任务", icon: Film, path: viewRoutes.videoTasks }] : []),
     ...(user.role === "admin"
@@ -548,7 +547,7 @@ function Shell({
           {items.map((item) => (
             <a
               key={item.key}
-              className={view === item.key ? "active" : ""}
+              className={view === item.key || (item.key === "tasks" && view === "agent") ? "active" : ""}
               href={item.path}
               onClick={(event) => {
                 event.preventDefault();
@@ -594,6 +593,41 @@ function Shell({
       </aside>
       <main className="content">{children}</main>
     </div>
+  );
+}
+
+function CreationModeSwitch({
+  active,
+  onNavigatePath,
+}: {
+  active: "tasks" | "agent";
+  onNavigatePath: (path: string) => void;
+}) {
+  return (
+    <nav className="creation-mode-switch" aria-label="图文创作方式">
+      <a
+        href={viewRoutes.tasks}
+        className={active === "tasks" ? "active" : ""}
+        aria-current={active === "tasks" ? "page" : undefined}
+        onClick={(event) => {
+          event.preventDefault();
+          onNavigatePath(viewRoutes.tasks);
+        }}
+      >
+        传统构建
+      </a>
+      <a
+        href={viewRoutes.agent}
+        className={active === "agent" ? "active" : ""}
+        aria-current={active === "agent" ? "page" : undefined}
+        onClick={(event) => {
+          event.preventDefault();
+          onNavigatePath(viewRoutes.agent);
+        }}
+      >
+        AI 构建
+      </a>
+    </nav>
   );
 }
 
@@ -643,7 +677,13 @@ function agentTaskStatusLabel(status: AgentTaskCard["status"]) {
   return "图片生成中";
 }
 
-function AgentTaskCardView({ card }: { card: AgentTaskCard }) {
+function AgentTaskCardView({
+  card,
+  onOpenTask,
+}: {
+  card: AgentTaskCard;
+  onOpenTask: (taskId: string) => void;
+}) {
   return (
     <article className="agent-task-card">
       <header>
@@ -685,8 +725,19 @@ function AgentTaskCardView({ card }: { card: AgentTaskCard }) {
         ))}
       </div>
       {card.error_message ? <p className="error agent-card-error">{card.error_message}</p> : null}
+      <footer className="agent-task-card-footer">
+        <span>任务 ID · {card.task_id}</span>
+        <button type="button" className="secondary-button" onClick={() => onOpenTask(card.task_id)}>
+          查看传统任务详情
+          <ArrowUpRight size={16} />
+        </button>
+      </footer>
     </article>
   );
+}
+
+function agentDraftKey(conversationId: string, field: "idea" | "style") {
+  return `doodlestory.agentDraft.${conversationId}.${field}`;
 }
 
 function AgentView({
@@ -706,8 +757,14 @@ function AgentView({
   const [search, setSearch] = useState("");
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [creatingConversation, setCreatingConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const routeConversationIdRef = useRef(routeConversationId);
+
+  useEffect(() => {
+    routeConversationIdRef.current = routeConversationId;
+  }, [routeConversationId]);
 
   async function loadConversations() {
     try {
@@ -724,6 +781,7 @@ function AgentView({
     if (!quiet) setLoadingDetail(true);
     try {
       const result = await api.agentConversation(conversationId);
+      if (routeConversationIdRef.current !== conversationId) return null;
       setDetail(result);
       setError("");
       return result;
@@ -741,7 +799,15 @@ function AgentView({
       .styleSelectOptions({ status: "active", limit: 100 })
       .then((result) => {
         setStyles(result.items);
-        setSelectedStyleId((current) => current || result.items[0]?.id || "");
+        const conversationId = routeConversationIdRef.current;
+        const draftStyleId = conversationId
+          ? window.sessionStorage.getItem(agentDraftKey(conversationId, "style"))
+          : null;
+        setSelectedStyleId(
+          draftStyleId && result.items.some((style) => style.id === draftStyleId)
+            ? draftStyleId
+            : result.items[0]?.id || "",
+        );
       })
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "风格加载失败"));
   }, []);
@@ -749,8 +815,17 @@ function AgentView({
   useEffect(() => {
     if (!routeConversationId) {
       setDetail(null);
+      setIdea("");
       return;
     }
+    setDetail(null);
+    setIdea(window.sessionStorage.getItem(agentDraftKey(routeConversationId, "idea")) || "");
+    const draftStyleId = window.sessionStorage.getItem(agentDraftKey(routeConversationId, "style"));
+    setSelectedStyleId(
+      draftStyleId && styles.some((style) => style.id === draftStyleId)
+        ? draftStyleId
+        : styles[0]?.id || "",
+    );
     void loadDetail(routeConversationId);
   }, [routeConversationId]);
 
@@ -775,12 +850,17 @@ function AgentView({
   }, [detail?.runs[0]?.status]);
 
   async function createConversation() {
+    if (creatingConversation) return;
+    setCreatingConversation(true);
+    setError("");
     try {
       const conversation = await api.createAgentConversation({ title: "新漫画创作" });
       await loadConversations();
       onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversation.id)}`);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "新建会话失败");
+    } finally {
+      setCreatingConversation(false);
     }
   }
 
@@ -802,6 +882,7 @@ function AgentView({
         ],
       });
       setIdea("");
+      window.sessionStorage.removeItem(agentDraftKey(routeConversationId, "idea"));
       await loadDetail(routeConversationId, true);
       await loadConversations();
     } catch (sendError) {
@@ -818,15 +899,17 @@ function AgentView({
   const latestRun = detail?.runs[0] || null;
 
   return (
-    <section className="agent-workspace">
+    <section className="agent-creation-page">
+      <CreationModeSwitch active="agent" onNavigatePath={onNavigatePath} />
+      <section className="agent-workspace">
       <aside className="agent-conversation-list">
         <div className="agent-list-heading">
           <div>
             <span className="agent-eyebrow">ComicDirectorAgent</span>
             <h1>漫画创作</h1>
           </div>
-          <button type="button" aria-label="新建对话" onClick={() => void createConversation()}>
-            <Plus size={18} />
+          <button type="button" aria-label="新建对话" disabled={creatingConversation} onClick={() => void createConversation()}>
+            {creatingConversation ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
           </button>
         </div>
         <label className="search-box agent-search">
@@ -858,9 +941,11 @@ function AgentView({
             <MessageCircle size={34} />
             <h2>从一个 Idea 开始两格漫画</h2>
             <p>新建对话，选择一个已启用风格。Agent 会规划连续两格并调用真实图片 Provider。</p>
-            <button type="button" onClick={() => void createConversation()}>
-              <Plus size={17} /> 新建对话
+            <button type="button" disabled={creatingConversation} onClick={() => void createConversation()}>
+              {creatingConversation ? <Loader2 className="spin" size={17} /> : <Plus size={17} />}
+              {creatingConversation ? "正在新建" : "新建对话"}
             </button>
+            {error ? <p className="error">{error}</p> : null}
           </div>
         ) : loadingDetail && !detail ? (
           <div className="agent-empty-chat"><Loader2 className="spin" />加载对话中…</div>
@@ -894,7 +979,13 @@ function AgentView({
                   ))}
                 </div>
               ))}
-              {detail?.task_cards.map((card) => <AgentTaskCardView key={card.task_id} card={card} />)}
+              {detail?.task_cards.map((card) => (
+                <AgentTaskCardView
+                  key={card.task_id}
+                  card={card}
+                  onOpenTask={(taskId) => onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(taskId)}`)}
+                />
+              ))}
               {latestRun?.status === "failed" && !latestRun.task_id ? (
                 <div className="agent-run-error"><AlertCircle size={18} />{latestRun.error_message || "本轮执行失败"}</div>
               ) : null}
@@ -905,7 +996,13 @@ function AgentView({
                 <select
                   aria-label="选择漫画风格"
                   value={selectedStyleId}
-                  onChange={(event) => setSelectedStyleId(event.target.value)}
+                  onChange={(event) => {
+                    const nextStyleId = event.target.value;
+                    setSelectedStyleId(nextStyleId);
+                    if (routeConversationId) {
+                      window.sessionStorage.setItem(agentDraftKey(routeConversationId, "style"), nextStyleId);
+                    }
+                  }}
                   disabled={sending || hasActiveWork}
                 >
                   {styles.length === 0 ? <option value="">没有可用风格</option> : null}
@@ -915,7 +1012,13 @@ function AgentView({
               <textarea
                 aria-label="漫画 Idea"
                 value={idea}
-                onChange={(event) => setIdea(event.target.value)}
+                onChange={(event) => {
+                  const nextIdea = event.target.value;
+                  setIdea(nextIdea);
+                  if (routeConversationId) {
+                    window.sessionStorage.setItem(agentDraftKey(routeConversationId, "idea"), nextIdea);
+                  }
+                }}
                 placeholder="输入一个漫画 Idea…"
                 rows={3}
                 disabled={sending || hasActiveWork}
@@ -929,6 +1032,7 @@ function AgentView({
           </>
         )}
       </div>
+      </section>
     </section>
   );
 }
@@ -2016,6 +2120,7 @@ function TasksView({
 
   return (
     <section className="page tasks-workspace">
+      <CreationModeSwitch active="tasks" onNavigatePath={onNavigatePath} />
       <header className="page-header">
         <div>
           <h1>任务</h1>
@@ -2147,6 +2252,7 @@ function TasksView({
                   <div>
                     <strong>{task.display_title}</strong>
                     <p>{task.original_text_preview}</p>
+	                    <small>任务 ID · {task.id}</small>
 	                    {user.role === "admin" ? (
 	                      <small>{task.owner_display_name || task.owner_email || shortId(task.owner_user_id)}</small>
 	                    ) : null}
