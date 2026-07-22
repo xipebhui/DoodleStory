@@ -2,13 +2,14 @@
 
 ## 当前基线
 
-- 分支：`codex/remote-hotfix-20260624`
+- 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
 - 最近验证状态：Sprint 102 完成后，LIO 真实单图冒烟测试、内容提取与风格提取针对性测试、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；完整检查覆盖 165 个后端测试、空库 Alembic 迁移和前端生产构建。
 
 ## 当前 Sprint 合同
 
+- `docs/contracts/sprint-103-agent-conversation-demo.md`
 - `docs/contracts/sprint-102-single-image-content-extraction-lio-fallback.md`
 - `docs/contracts/sprint-101-restore-last-panel-real-photo-entry.md`
 - `docs/contracts/sprint-100-task-failure-feishu-alert.md`
@@ -29,6 +30,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 103 Agent 会话前端交互 Demo：在独立目录 `docs/design/agent-conversation-demo/` 实现可点击原型，首屏以历史会话和当前对话为主体，支持新建空白对话、切换并继续历史对话、对话内持续更新的漫画任务卡片、按需打开任务详情、选择 Panel 后带回输入区，以及通过资源菜单引用风格、角色和任务；同步把设计 Brief 从画布优先修正为会话优先。Demo 使用明确标注的确定性本地数据，不连接后端、模型或积分系统，也不修改现有正式前端。浏览器在 1440×900 和 1280×800 视口完成核心链路回归且控制台无错误；`node --check docs/design/agent-conversation-demo/app.js`、`git diff --check` 和 `./scripts/check.sh` 通过，完整检查覆盖 165 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 102 图文逐图内容提取与 LIO 备用重试：用户明确将目标从跨页故事理解改为逐张提取可用于复刻的图片可见内容。实现前先用最近真实抖音图片完成 LIO 单图冒烟测试，当前 `gemini-3.1-flash-lite-preview-thinking-minimal` 能识别上下分格、人物动作、场景、原文文字和文字位置。后端链路现按 `display_order` 顺序逐图请求，每次只传一个公网 `image_url`；单图先调用 `TEXT_FALLBACK_*` 当前指向的火苗平台，配置、请求、空响应或结构校验失败后切现有 `LIO_*`，LIO 最多请求 3 次，任意图片仍失败则整项失败。后端为成功结果确定性添加连续 `第X页` 并按原顺序合并，不再依赖模型生成页码。验证：内容提取与风格提取针对性测试、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；完整检查覆盖 165 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 101 恢复最后一张真人图片入口：按用户要求在图文任务创建弹窗重新开放 `最后一张真人图片` checkbox，默认关闭；普通任务创建和 DY 爆款复刻创建参数都会读取用户选择并传给后端。`去掉画面文字` 入口继续隐藏并固定关闭，避免恢复此前被要求隐藏的另一个开关。验证：`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过，覆盖 164 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 100 图文任务失败飞书告警：按用户要求为正式图文生成任务增加失败告警能力，设计为 `TASK_FAILURE_ALERT_WEBHOOK_URL` 环境变量驱动，不把真实 webhook 写入仓库；`GenerationTask` 新增 `failure_alert_sent_at` 用于同一个 failed 状态去重；告警只包含任务排查所需元信息和可选任务链接，不包含用户原始全文。已覆盖人物参考图失败、panel 图片全部失败、服务重启不可恢复中断、步骤异常和 worker 未处理异常等会把任务置为 `failed` 的路径；任务手动重试会清空告警标记，重试后再次失败可重新通知。验证：`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend.tests.test_task_failure_alerts backend.tests.test_task_worker_recovery`、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过，覆盖 164 个后端测试、空库 Alembic 迁移和前端生产构建。

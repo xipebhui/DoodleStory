@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DoodleStory Agent 会话 Demo</title>
+    <link rel="icon" href="../../../frontend/public/favicon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="demo-shell" id="demo-shell">
+      <aside class="conversation-sidebar" aria-label="对话列表">
+        <div class="brand-row">
+          <a class="brand" href="#" aria-label="DoodleStory">
+            <img src="../../../frontend/public/doodlestory-icon.svg" alt="" />
+            <span>
+              <strong>DoodleStory</strong>
+              <small>Agent Studio</small>
+            </span>
+          </a>
+          <span class="demo-label">设计演示</span>
+        </div>
+
+        <button class="new-chat-button" id="new-chat-button" type="button">
+          <span class="button-icon">＋</span>
+          新对话
+          <kbd>⌘ K</kbd>
+        </button>
+
+        <label class="conversation-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="conversation-search" type="search" placeholder="搜索对话" />
+        </label>
+
+        <nav class="conversation-nav" id="conversation-nav" aria-label="历史对话"></nav>
+
+        <div class="sidebar-footer">
+          <button type="button" class="profile-button">
+            <span class="profile-avatar">P</span>
+            <span>
+              <strong>Pengfei</strong>
+              <small>本地工作区</small>
+            </span>
+            <span aria-hidden="true">···</span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="conversation-workspace">
+        <header class="conversation-header">
+          <button class="mobile-sidebar-button" id="mobile-sidebar-button" type="button" aria-label="打开对话列表">☰</button>
+          <div class="conversation-title-wrap">
+            <div class="conversation-title-row">
+              <h1 id="conversation-title">对话</h1>
+              <span class="conversation-state" id="conversation-state"></span>
+            </div>
+            <p id="conversation-subtitle">在对话中创建和继续漫画任务</p>
+          </div>
+          <div class="conversation-actions">
+            <button class="quiet-button" id="open-current-task" type="button" hidden>
+              <span class="live-dot"></span>
+              查看任务
+            </button>
+            <button class="icon-button" type="button" aria-label="对话菜单">•••</button>
+          </div>
+        </header>
+
+        <section class="thread" id="thread" aria-live="polite"></section>
+
+        <footer class="composer-shell">
+          <div class="context-row" id="context-row"></div>
+          <form class="composer" id="composer">
+            <div class="resource-menu-wrap">
+              <button class="composer-tool" id="resource-button" type="button" aria-haspopup="menu" aria-expanded="false">
+                ＋
+              </button>
+              <div class="resource-menu" id="resource-menu" role="menu" hidden>
+                <p>加入创作上下文</p>
+                <button type="button" role="menuitem" data-resource="风格 · 暖灰铅笔">
+                  <span class="resource-swatch style-swatch"></span>
+                  <span><strong>风格</strong><small>暖灰铅笔电影感</small></span>
+                </button>
+                <button type="button" role="menuitem" data-resource="角色 · 林夏">
+                  <span class="resource-avatar">林</span>
+                  <span><strong>角色</strong><small>林夏 · 固定角色</small></span>
+                </button>
+                <button type="button" role="menuitem" data-resource="任务 · 五格漫画">
+                  <span class="resource-task-icon">▦</span>
+                  <span><strong>任务</strong><small>被裁员的第七天</small></span>
+                </button>
+              </div>
+            </div>
+            <textarea id="message-input" rows="1" placeholder="告诉 Agent 你想创作什么，或输入 @ 引用资源"></textarea>
+            <button class="send-button" id="send-button" type="submit" aria-label="发送消息">↑</button>
+          </form>
+          <div class="composer-note">
+            <span>Enter 发送 · Shift + Enter 换行</span>
+            <span>本页面仅演示前端行为，不会调用模型或消耗积分</span>
+          </div>
+        </footer>
+      </main>
+
+      <aside class="task-inspector" id="task-inspector" aria-label="任务详情" aria-hidden="true">
+        <div class="inspector-header">
+          <div>
+            <span>对话中的任务</span>
+            <h2 id="inspector-title">漫画任务</h2>
+          </div>
+          <button class="icon-button" id="close-inspector" type="button" aria-label="关闭任务详情">×</button>
+        </div>
+        <div id="inspector-content" class="inspector-content"></div>
+      </aside>
+    </div>
+
+    <div class="mobile-backdrop" id="mobile-backdrop" hidden></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

@@ -11,6 +11,7 @@
 - [内容提取列表化 UI 设计](content-extraction-list-redesign.md)：内容提取任务列表、创建弹窗和详情弹窗的历史设计；其中故事总结入口已被当前整组图文内容提取方案取代。
   - 效果图：`content-extraction-list-redesign-list.png`、`content-extraction-list-redesign-create.png`、`content-extraction-list-redesign-detail.png`。
 - [Agent 漫画创作工作台前端设计 Brief](agent-creative-workspace-frontend-brief.md)：用于独立设计和对比 Agent 对话、结构化分镜画布与对象检查器的高保真交互原型。
+- [Agent 会话前端 Demo](agent-conversation-demo/README.md)：独立、无后端的可点击原型，用于体验新建/恢复对话、对话内任务卡片、任务详情和 Panel 上下文引用。
 
 ## 设计原则
 
