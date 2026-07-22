@@ -15,8 +15,8 @@
 - [Agent V1 Runtime 与模型路由](agent-runtime-architecture.md)：单 Agent、应用侧上下文、checkpoint、拟议状态表和火苗/LIO 路由边界。
 - [Agent V1 Tool 契约](agent-tool-contracts.md)：模型端口、生图工具、VL 检查工具与 `@资源` 注入规则。
 - [Agent 模型平台兼容性实测](../testing/agent-model-provider-compatibility-report.md)：火苗与 LIO 的 Chat、JSON、工具、多模态和 Responses 能力结论。
-- [Agent V1 全局实施路线图](../implementation/agent-v1-implementation-roadmap.md)：从 Runtime、真实生图、Panel 迭代、资源改编到旧 Pipeline 迁移和发布的阶段顺序与退出门槛。
-- [Agent V1 新窗口实施交接](../implementation/agent-v1-new-window-handoff.md)：新实现窗口的必读顺序、Sprint 105/106 启动提示词和验证收尾流程。
+- [Agent V1 全局实施路线图](../implementation/agent-v1-implementation-roadmap.md)：从 Runtime、真实生图、正式前端整合、Panel 迭代、资源改编到旧 Pipeline 迁移和发布的阶段顺序与退出门槛。
+- [Agent V1 新窗口实施交接](../implementation/agent-v1-new-window-handoff.md)：当前 Sprint 107 新窗口的必读顺序、可直接使用的启动提示词和验证收尾流程。
 
 ## 设计原则
 

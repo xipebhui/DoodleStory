@@ -28,6 +28,19 @@
 
 结构化分镜画布属于“任务详情”，不是产品首屏。不要一进入页面就用大画布替代对话历史和会话入口。
 
+### 0.1 Sprint 107 正式产品整合约束
+
+本文档和独立 Demo 最初用于比较 Agent 交互，不代表正式产品需要第二套全局外壳。Sprint 107 实现时以下约束优先于后文原型描述：
+
+- 保留现有 DoodleStory 全局侧边栏、账号、积分和资源管理入口，不复制 Demo 左上角 Logo 或 `Agent Studio` 品牌区。
+- 图文创作主区域顶部使用 `传统构建 / AI 构建` 切换；传统模式对应 `/tasks`，AI 模式对应 `/agent`。
+- Agent 历史会话栏是 AI 模式内部的局部导航，不是全站第二套侧边栏。
+- 正式页面只接真实 Conversation、Message、Run、风格和 GenerationTask；Demo 中的确定性假数据不得进入生产代码。
+- Sprint 107 只开放已经接通的一个真实风格引用。角色、Panel、图片版本、VL 和版本操作仍是后续交互方向，本 Sprint 不展示成可用功能。
+- Agent 任务卡片的查看入口进入现有 `/tasks/{task_id}`，传统任务列表与 Agent 对话使用同一条任务数据。
+
+Sprint 107 的最终实施边界以 `docs/contracts/sprint-107-agent-frontend-workspace-integration.md` 为准。
+
 ## 1. 产品背景
 
 DoodleStory 是一个把 idea、故事文本或参考作品创作成连续漫画图片的产品。
