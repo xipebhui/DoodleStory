@@ -208,10 +208,11 @@
 
 ## 技术形态
 
-- 前端：具体框架未选择。产品 UI 设计见 `docs/design/ui.md`。
-- 后端：具体框架未选择。初始 REST API 设计见 `docs/design/api.md`。
+- 前端：React + Vite。产品 UI 设计见 `docs/design/ui.md`。
+- 后端：Python + FastAPI + SQLAlchemy + Alembic。REST API 设计见 `docs/design/api.md`。
 - 存储：关系型 OLTP 数据库设计见 `docs/design/database.md`。
-- 外部集成：任务生成链路中的文本 JSON LLM 统一使用 LIO/OpenAI 兼容配置，当前线上主模型为 Gemini；不再把分镜结构化、故事方案规划、角色名提取、任务级人物提取、panel prompt、最终生图 prompt 编译或 policy prompt 改写发送到 SiliconFlow 文本模型。用户已明确授权文本模型兜底：当 LIO/Gemini 当次请求失败时，后端使用 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容文本模型继续请求；进入兜底后，同一次调用的后续重试只使用该兜底模型，不再切回 Gemini。图文内容提取逐图使用 `TEXT_FALLBACK_*` 当前指向的火苗多模态模型作为主平台，单图失败后反向切换到 `LIO_*` 并最多请求 3 次，不把 SiliconFlow/Qwen 作为降级路径；风格提示词提取仍只使用 `TEXT_FALLBACK_*` 配置的 `gpt-5.4`，失败时不切 LIO。SiliconFlow 仍保留给视频音频转写和用户角色参考图外观理解等多模态能力。生图默认使用 `docs/api_v4.md` 中已同意的 OpenAI Images 兼容统一服务（`IMAGE_PROVIDER=qy`），生图 API key 和 base url 从 `IMAGE_GATEWAY_API_KEY`、`IMAGE_GATEWAY_BASE_URL` 读取。为临时排查内部 QY 多图不稳定，允许通过 `IMAGE_PROVIDER=xgapi` 显式切到 xgapi 直连；该切换不是 fallback，所选 provider 失败时任务必须明确失败，不自动切换到另一个 provider。无论使用 QY 还是 xgapi，请求体里的 `model` 都必须来自任务保存的风格模型快照，不允许用环境变量或代码默认值覆盖用户在风格中指定的模型；如果任务风格模型为空或 provider 不支持该模型，必须明确报错。当前 QY 可用生图模型精确限定为 `gpt-image-2`、`gpt-image-2(线路XF)`、`gr-image-2`、`nano-banana`、`nano-banana-hd`、`nano-banana-pro`、`Tongyi-MAI/Z-Image`、`Qwen/Qwen-Image`、`baidu/ERNIE-Image-Turbo`、`gemini_3.1_flash_image_preview`、`gemini_3.0_pro_image_preview`、`gemini_3.1_flash_image_preview_4K`、`gemini_3.0_pro_image_preview_4K`、`gemini-3.1-flash-image-preview` 和 `gemini-3-pro-image-preview`。QY 请求 `/v1/images/generations`；QY 图片接口只对已验证的 `1:1`、`16:9`、`9:16` 显式传 `size`，`3:4` 和 `4:3` 这类画面比例只写入最终生图 prompt，不把视频/Grok 的 `864x1152`、`1152x864` 映射误传给图片接口；xgapi 无参考图请求 `/v1/images/generations` JSON，有参考图请求 `/v1/images/edits` multipart，后端必须先下载任务资产公网 URL 对应的参考图，再用重复的 `image` 文件字段提交，不把参考图 URL 数组放进 JSON。xgapi 图片接口只允许 `auto`、`low`、`medium`、`high` 质量参数；当环境里沿用 `1k`、`2k`、`4k` 配置时，xgapi generation 和 edit 请求都统一发送为 `high`。QY 的参考图直接使用资产公网 URL；xgapi 的参考图只在发起 edit 请求前下载为请求文件，不改变资产事实来源。返回的 `data[0].url` 或 `data[0].b64_json` 必须立即下载或解码并保存为 DoodleStory 资产；未列入清单或未配置所选 provider 的模型/API key 必须明确报错。
+- 现有生成链路外部集成：任务生成链路中的文本 JSON LLM 统一使用 LIO/OpenAI 兼容配置，当前线上主模型为 Gemini；不再把分镜结构化、故事方案规划、角色名提取、任务级人物提取、panel prompt、最终生图 prompt 编译或 policy prompt 改写发送到 SiliconFlow 文本模型。用户已明确授权文本模型兜底：当 LIO/Gemini 当次请求失败时，后端使用 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容文本模型继续请求；进入兜底后，同一次调用的后续重试只使用该兜底模型，不再切回 Gemini。图文内容提取逐图使用 `TEXT_FALLBACK_*` 当前指向的火苗多模态模型作为主平台，单图失败后反向切换到 `LIO_*` 并最多请求 3 次，不把 SiliconFlow/Qwen 作为降级路径；风格提示词提取仍只使用 `TEXT_FALLBACK_*` 配置的 `gpt-5.4`，失败时不切 LIO。SiliconFlow 仍保留给视频音频转写和用户角色参考图外观理解等多模态能力。生图默认使用 `docs/api_v4.md` 中已同意的 OpenAI Images 兼容统一服务（`IMAGE_PROVIDER=qy`），生图 API key 和 base url 从 `IMAGE_GATEWAY_API_KEY`、`IMAGE_GATEWAY_BASE_URL` 读取。为临时排查内部 QY 多图不稳定，允许通过 `IMAGE_PROVIDER=xgapi` 显式切到 xgapi 直连；该切换不是 fallback，所选 provider 失败时任务必须明确失败，不自动切换到另一个 provider。无论使用 QY 还是 xgapi，请求体里的 `model` 都必须来自任务保存的风格模型快照，不允许用环境变量或代码默认值覆盖用户在风格中指定的模型；如果任务风格模型为空或 provider 不支持该模型，必须明确报错。当前 QY 可用生图模型精确限定为 `gpt-image-2`、`gpt-image-2(线路XF)`、`gr-image-2`、`nano-banana`、`nano-banana-hd`、`nano-banana-pro`、`Tongyi-MAI/Z-Image`、`Qwen/Qwen-Image`、`baidu/ERNIE-Image-Turbo`、`gemini_3.1_flash_image_preview`、`gemini_3.0_pro_image_preview`、`gemini_3.1_flash_image_preview_4K`、`gemini_3.0_pro_image_preview_4K`、`gemini-3.1-flash-image-preview` 和 `gemini-3-pro-image-preview`。QY 请求 `/v1/images/generations`；QY 图片接口只对已验证的 `1:1`、`16:9`、`9:16` 显式传 `size`，`3:4` 和 `4:3` 这类画面比例只写入最终生图 prompt，不把视频/Grok 的 `864x1152`、`1152x864` 映射误传给图片接口；xgapi 无参考图请求 `/v1/images/generations` JSON，有参考图请求 `/v1/images/edits` multipart，后端必须先下载任务资产公网 URL 对应的参考图，再用重复的 `image` 文件字段提交，不把参考图 URL 数组放进 JSON。xgapi 图片接口只允许 `auto`、`low`、`medium`、`high` 质量参数；当环境里沿用 `1k`、`2k`、`4k` 配置时，xgapi generation 和 edit 请求都统一发送为 `high`。QY 的参考图直接使用资产公网 URL；xgapi 的参考图只在发起 edit 请求前下载为请求文件，不改变资产事实来源。返回的 `data[0].url` 或 `data[0].b64_json` 必须立即下载或解码并保存为 DoodleStory 资产；未列入清单或未配置所选 provider 的模型/API key 必须明确报错。
+- Agent V1（已设计、尚未实现）：创意扩写、分镜规划、生图提示词、结果检查和重试决策统一交给单个漫画导演 Agent；Runtime 只向模型暴露最基础的生图和 VL 检查工具，并负责权限、状态、预算、幂等和可靠性，不把旧 pipeline 的 prompt 拼接步骤原样包装成 Tool。Agent 对话、Run、Step、Tool Call/Output 和 `@风格/@角色/@任务/@Panel/@图片版本` 引用由 DoodleStory 数据库保存，用户关闭页面或服务重启后可从完整 step checkpoint 继续，不假设用户必须一直停留在同一对话框。模型线路采用火苗 `TEXT_FALLBACK_*` 作为主平台、LIO `LIO_*` 作为备用平台；2026-07-22 实测确认两边所需 Chat Completions、JSON、Function Calling、Tool Output 和多模态能力通过，但 LIO 不支持 Responses API，因此 V1 统一使用 Chat Completions，不依赖 Provider response ID 保存上下文。跨平台切换由 DoodleStory Router 执行，且只允许在尚未输出部分结果或执行不可判定副作用的可重试错误上发生；永久请求、权限、schema、策略或能力错误必须明确失败。正式 Agent 落地前，当前生产生成 pipeline 保持不变，后续按独立 Sprint 迁移，不在同一改动中大范围替换。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。
@@ -266,7 +267,7 @@
 - 当图片 Provider 明确返回 Google policy blocked 类错误，例如 `Unable to show the generated image`、`Generative AI Prohibited Use policy` 或 `filtered out`，说明当前 prompt 被上游策略拦截；此时先调用 LLM 改写最终生图提示词中的敏感动作意图表达，在不改变画面效果、主体、构图、风格、图片内文字和参考图关系的前提下，把疼痛、伤害、惩罚、触碰、危险意图等表达改为更中性客观的视觉状态，然后使用原图片模型和原参考图重新提交一次。该逻辑只适用于明确 policy blocked 错误，不适用于普通 Provider 响应错误。
 - 开启人物参考的任务如果没有识别到可用于参考图的主要人物，任务应失败并显示明确错误，不能静默降级为普通生图。
 - 单 panel 修改在人物参考任务中必须继续携带该 panel 已绑定的人物参考图。
-- 技术选型仍未确定。未来实现代码前，应先通过 sprint contract 选择具体技术栈。
+- Agent Runtime 的具体 SDK 版本仍需在实现 Sprint 中锁定；不得因为引入 SDK 改变已确认的 Chat Completions、应用侧持久化和 Router 错误分类契约。
 
 ## 非目标
 
@@ -281,8 +282,6 @@
 
 ## 未决问题
 
-- DoodleStory 第一版前端和后端技术栈使用什么？
-- 第一版接入哪个 LLM provider 和图片生成 provider？
+- Agent V1 是否直接采用 OpenAI Agents SDK，或先用现有 OpenAI client 实现最小 Runner？该选择不得改变既定产品和状态契约。
 - 风格除了名称、描述、参考图片、prompt、状态和生图模型名外，还需要哪些元数据？
-- 认证模块选择 Supabase Auth、Better Auth，还是其他与最终技术栈匹配的方案？
 - 批量下载支持哪些图片格式和命名规则？

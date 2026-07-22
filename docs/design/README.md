@@ -12,6 +12,9 @@
   - 效果图：`content-extraction-list-redesign-list.png`、`content-extraction-list-redesign-create.png`、`content-extraction-list-redesign-detail.png`。
 - [Agent 漫画创作工作台前端设计 Brief](agent-creative-workspace-frontend-brief.md)：用于独立设计和对比 Agent 对话、结构化分镜画布与对象检查器的高保真交互原型。
 - [Agent 会话前端 Demo](agent-conversation-demo/README.md)：独立、无后端的可点击原型，用于体验新建/恢复对话、对话内任务卡片、任务详情和 Panel 上下文引用。
+- [Agent V1 Runtime 与模型路由](agent-runtime-architecture.md)：单 Agent、应用侧上下文、checkpoint、拟议状态表和火苗/LIO 路由边界。
+- [Agent V1 Tool 契约](agent-tool-contracts.md)：模型端口、生图工具、VL 检查工具与 `@资源` 注入规则。
+- [Agent 模型平台兼容性实测](../testing/agent-model-provider-compatibility-report.md)：火苗与 LIO 的 Chat、JSON、工具、多模态和 Responses 能力结论。
 
 ## 设计原则
 
