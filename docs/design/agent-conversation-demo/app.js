@@ -1,5 +1,18 @@
 const conversations = [
   {
+    id: "draft-welcome",
+    title: "新对话",
+    preview: "还没有发送消息",
+    group: "今天",
+    time: "现在",
+    status: "draft",
+    subtitle: "从一个想法开始，资源可以稍后添加",
+    messages: [],
+    task: null,
+    draft: "",
+    contexts: [],
+  },
+  {
     id: "street-artist",
     title: "被裁员的第七天",
     preview: "第 4 张正在进行人物一致性检查",
@@ -28,13 +41,6 @@ const conversations = [
         time: "10:25",
         taskId: "task-104",
       },
-      {
-        id: "m4",
-        role: "agent",
-        text: "前三张已经完成。第 4 张正在检查人物一致性，第 5 张会在检查通过后继续生成。",
-        time: "10:27",
-        activity: "正在用 VL 检查 Panel 4",
-      },
     ],
     task: {
       id: "task-104",
@@ -45,11 +51,11 @@ const conversations = [
       progress: 68,
       selectedPanel: 3,
       panels: [
-        { order: 1, status: "已完成", className: "done", text: "早高峰，她逆着人群走出地铁。" },
-        { order: 2, status: "已完成", className: "done", text: "她在街角第一次展开速写本。" },
-        { order: 3, status: "v2 当前", className: "active", text: "家人的消息让她强忍住情绪。" },
-        { order: 4, status: "检查中", className: "running", text: "陌生女孩举起手机记录她画画。" },
-        { order: 5, status: "等待", className: "waiting", text: "雨停后，她收到第一笔订单。" },
+        { order: 1, status: "已接受", className: "done", version: "v1", text: "早高峰，她逆着人群走出地铁。", review: "人物与场景连续性正常。" },
+        { order: 2, status: "已接受", className: "done", version: "v1", text: "她在街角第一次展开速写本。", review: "构图与故事节奏符合预期。" },
+        { order: 3, status: "待决定", className: "review", version: "v2", text: "家人的消息让她强忍住情绪。", review: "人物和场景连续性正常，但表情过于平静，没有表现出紧张和愧疚。" },
+        { order: 4, status: "检查中", className: "running", version: "v1", text: "陌生女孩举起手机记录她画画。", review: "正在检查人物外观与前序画面的连续性。" },
+        { order: 5, status: "等待生成", className: "waiting", version: "—", text: "雨停后，她收到第一笔订单。", review: "将在 Panel 4 检查完成后开始生成。" },
       ],
       activities: [
         { text: "故事和五格分镜已确定", time: "10:25" },
@@ -108,8 +114,7 @@ const conversations = [
 ];
 
 const state = {
-  activeConversationId: "street-artist",
-  contexts: [],
+  activeConversationId: "draft-welcome",
   inspectorOpen: false,
   query: "",
   toastTimer: null,
@@ -129,10 +134,30 @@ const messageInput = document.querySelector("#message-input");
 const contextRow = document.querySelector("#context-row");
 const resourceButton = document.querySelector("#resource-button");
 const resourceMenu = document.querySelector("#resource-menu");
+const resourceSearch = document.querySelector("#resource-search");
+const resourceEmpty = document.querySelector("#resource-empty");
 const backdrop = document.querySelector("#mobile-backdrop");
 
 function activeConversation() {
   return conversations.find((conversation) => conversation.id === state.activeConversationId);
+}
+
+function activeContexts() {
+  const conversation = activeConversation();
+  if (!conversation) return [];
+  if (!conversation.contexts) conversation.contexts = [];
+  return conversation.contexts;
+}
+
+function saveActiveDraft() {
+  const conversation = activeConversation();
+  if (conversation) conversation.draft = messageInput.value;
+}
+
+function restoreActiveDraft() {
+  const conversation = activeConversation();
+  messageInput.value = conversation?.draft || "";
+  resizeInput();
 }
 
 function escapeHtml(value) {
@@ -148,11 +173,13 @@ function statusLabel(status) {
   if (status === "running") return "生成中";
   if (status === "done") return "已完成";
   if (status === "waiting") return "等待回复";
+  if (status === "paused") return "已暂停";
   return "新对话";
 }
 
 function renderNavigation() {
   const filtered = conversations.filter((conversation) => {
+    if (conversation.status === "draft" && !conversation.messages.length) return false;
     const query = state.query.trim().toLowerCase();
     return !query || `${conversation.title} ${conversation.preview}`.toLowerCase().includes(query);
   });
@@ -186,6 +213,7 @@ function renderNavigation() {
 }
 
 function renderTaskCard(task) {
+  const currentActivity = [...task.activities].reverse().find((activity) => activity.current) || task.activities.at(-1);
   return `
     <article class="task-card" data-task-card="${task.id}">
       <div class="task-card-main">
@@ -202,11 +230,12 @@ function renderTaskCard(task) {
           <span>${task.completed}/${task.total} 张已完成</span>
           <span>${task.status === "已完成" ? "可以继续修改" : "离开对话后仍会继续"}</span>
         </div>
-        <div class="mini-panel-strip">
+        <div class="mini-panel-strip" aria-label="任务分镜">
           ${task.panels
-            .map((panel) => `<span class="mini-panel ${panel.className}" data-order="${panel.order}" title="Panel ${panel.order} · ${escapeHtml(panel.status)}"></span>`)
+            .map((panel) => `<button class="mini-panel ${panel.className}" type="button" data-task-panel="${panel.order}" data-order="${panel.order}" aria-label="打开 Panel ${panel.order}，${escapeHtml(panel.status)}"></button>`)
             .join("")}
         </div>
+        <div class="task-current-activity"><span class="${currentActivity?.current ? "activity-spinner" : "activity-check"}"></span>${escapeHtml(currentActivity?.text || "等待下一步")}</div>
       </div>
       <footer class="task-card-footer">
         <button class="task-link-button" type="button" data-task-action="mention" data-task-id="${task.id}">在对话中引用</button>
@@ -246,6 +275,7 @@ function renderConversation() {
   conversationState.textContent = statusLabel(conversation.status);
   conversationState.hidden = conversation.status === "draft";
   openCurrentTask.hidden = !conversation.task;
+  openCurrentTask.lastChild.textContent = state.inspectorOpen ? " 收起任务" : " 查看任务";
 
   if (!conversation.messages.length) {
     thread.innerHTML = `
@@ -259,15 +289,37 @@ function renderConversation() {
             <button class="starter-button" type="button" data-starter="我有一段完整故事，帮我设计成连续漫画。"><span>把故事做成漫画</span><span>→</span></button>
             <button class="starter-button" type="button" data-starter="我想参考一个作品，重新改编人物和结局。"><span>参考作品进行改编</span><span>→</span></button>
           </div>
+          <div class="available-resources">
+            <div class="available-resources-head">
+              <span>你的常用资源</span>
+              <button type="button" data-open-resources>查看全部</button>
+            </div>
+            <div class="resource-shortcuts">
+              <button type="button" data-quick-resource="角色 · 林夏"><span class="resource-avatar">林</span><span><strong>林夏</strong><small>角色</small></span></button>
+              <button type="button" data-quick-resource="风格 · 暖灰铅笔电影感"><span class="resource-swatch style-swatch"></span><span><strong>暖灰铅笔</strong><small>风格</small></span></button>
+              <button type="button" data-quick-resource="角色 · 阿布"><span class="resource-avatar cat-avatar">阿</span><span><strong>阿布</strong><small>角色</small></span></button>
+            </div>
+          </div>
         </div>
       </div>
     `;
     thread.querySelectorAll("[data-starter]").forEach((button) => {
       button.addEventListener("click", () => {
         messageInput.value = button.dataset.starter;
+        conversation.draft = messageInput.value;
         resizeInput();
         messageInput.focus();
       });
+    });
+    thread.querySelectorAll("[data-quick-resource]").forEach((button) => {
+      button.addEventListener("click", () => {
+        addContext(button.dataset.quickResource);
+        messageInput.focus();
+      });
+    });
+    thread.querySelector("[data-open-resources]")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openResourceMenu(true);
     });
   } else {
     thread.innerHTML = `<div class="thread-inner">${conversation.messages.map((message) => renderMessage(message, conversation)).join("")}</div>`;
@@ -279,29 +331,40 @@ function renderConversation() {
 }
 
 function renderContexts() {
-  contextRow.innerHTML = state.contexts
+  const contexts = activeContexts();
+  contextRow.innerHTML = contexts
     .map((context, index) => `<span class="context-chip">@${escapeHtml(context)}<button type="button" data-remove-context="${index}" aria-label="移除 ${escapeHtml(context)}">×</button></span>`)
     .join("");
   contextRow.querySelectorAll("[data-remove-context]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.contexts.splice(Number(button.dataset.removeContext), 1);
+      contexts.splice(Number(button.dataset.removeContext), 1);
       renderContexts();
     });
   });
 }
 
 function selectConversation(id) {
+  saveActiveDraft();
   state.activeConversationId = id;
-  state.contexts = [];
   closeInspector();
   shell.classList.remove("sidebar-open");
   backdrop.hidden = true;
   renderNavigation();
   renderConversation();
   renderContexts();
+  restoreActiveDraft();
 }
 
 function createConversation() {
+  saveActiveDraft();
+  const current = activeConversation();
+  if (current?.status === "draft" && !current.messages.length && !current.draft) {
+    closeInspector();
+    current.contexts = [];
+    renderContexts();
+    messageInput.focus();
+    return;
+  }
   const conversation = {
     id: `draft-${Date.now()}`,
     title: "未命名对话",
@@ -312,6 +375,8 @@ function createConversation() {
     subtitle: "新对话 · 还没有创建任务",
     messages: [],
     task: null,
+    draft: "",
+    contexts: [],
   };
   conversations.unshift(conversation);
   selectConversation(conversation.id);
@@ -336,10 +401,20 @@ function bindTaskCardActions() {
   thread.querySelectorAll("[data-task-card]").forEach((card) => {
     card.addEventListener("dblclick", openInspector);
   });
+  thread.querySelectorAll("[data-task-panel]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const conversation = activeConversation();
+      if (!conversation?.task) return;
+      conversation.task.selectedPanel = Number(button.dataset.taskPanel);
+      openInspector();
+    });
+  });
 }
 
 function addContext(context) {
-  if (!state.contexts.includes(context)) state.contexts.push(context);
+  const contexts = activeContexts();
+  if (!contexts.includes(context)) contexts.push(context);
   renderContexts();
 }
 
@@ -351,6 +426,7 @@ function openInspector() {
   inspector.setAttribute("aria-hidden", "false");
   if (window.innerWidth <= 900) backdrop.hidden = false;
   renderInspector();
+  renderConversation();
 }
 
 function closeInspector() {
@@ -358,6 +434,31 @@ function closeInspector() {
   shell.classList.remove("inspector-open");
   inspector.setAttribute("aria-hidden", "true");
   backdrop.hidden = true;
+  renderConversation();
+}
+
+function openResourceMenu(focusSearch = false) {
+  resourceMenu.hidden = false;
+  resourceButton.setAttribute("aria-expanded", "true");
+  resourceSearch.value = "";
+  filterResources("");
+  if (focusSearch) resourceSearch.focus();
+}
+
+function closeResourceMenu() {
+  resourceMenu.hidden = true;
+  resourceButton.setAttribute("aria-expanded", "false");
+}
+
+function filterResources(query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  let visibleCount = 0;
+  resourceMenu.querySelectorAll("[data-resource]").forEach((button) => {
+    const matches = !normalizedQuery || button.textContent.toLowerCase().includes(normalizedQuery);
+    button.hidden = !matches;
+    if (matches) visibleCount += 1;
+  });
+  resourceEmpty.hidden = visibleCount > 0;
 }
 
 function renderInspector() {
@@ -366,6 +467,8 @@ function renderInspector() {
   if (!task) return;
   inspectorTitle.textContent = task.title;
   const selected = task.panels.find((panel) => panel.order === task.selectedPanel) || task.panels[0];
+  const selectedVersion = selected.version || (selected.className === "waiting" ? "—" : "v1");
+  const selectedReview = selected.review || (selected.className === "done" ? "当前版本已经完成，可以继续接受或提出修改。" : "正在等待 Agent 更新检查结论。");
   inspectorContent.innerHTML = `
     <div class="inspector-status-row">
       <strong>${task.completed}/${task.total} 张</strong>
@@ -375,28 +478,33 @@ function renderInspector() {
     <div class="task-progress"><span style="width: ${task.progress}%"></span></div>
 
     <section class="inspector-section">
-      <div class="inspector-section-head"><h3>分镜</h3><span>点击后加入对话上下文</span></div>
+      <div class="inspector-section-head"><h3>分镜</h3><span>选择要检查的画面</span></div>
       <div class="panel-grid">
         ${task.panels
           .map(
             (panel) => `
               <button class="panel-button ${panel.className} ${panel.order === task.selectedPanel ? "selected" : ""}" type="button" data-panel-order="${panel.order}">
-                <span class="panel-thumb">${panel.order}</span>
-                <small>${escapeHtml(panel.status)}</small>
+                <span class="panel-thumb" data-panel-art="${panel.order}">${panel.order}</span>
+                <small>${panel.order}. ${escapeHtml(panel.status)}</small>
               </button>
             `,
           )
           .join("")}
       </div>
+      <div class="selected-panel-preview" data-panel-art="${selected.order}">
+        <span>Panel ${selected.order}</span>
+        <strong>${escapeHtml(selectedVersion)}</strong>
+      </div>
       <div class="selected-panel-detail">
-        <strong>Panel ${selected.order} · ${escapeHtml(selected.status)}</strong>
+        <div><strong>Panel ${selected.order} · ${escapeHtml(selectedVersion)}</strong><span class="panel-state ${selected.className}">${escapeHtml(selected.status)}</span></div>
         <p>${escapeHtml(selected.text)}</p>
+        <div class="review-note"><span>Agent 检查</span><p>${escapeHtml(selectedReview)}</p></div>
       </div>
     </section>
 
-    <section class="inspector-section">
-      <div class="inspector-section-head"><h3>Agent 行动</h3><span>用户可见轨迹</span></div>
-      <div class="activity-list">
+    <section class="inspector-section activity-section">
+      <div class="inspector-section-head"><h3>Agent 行动</h3><button class="text-action" type="button" id="toggle-activity">查看轨迹</button></div>
+      <div class="activity-list" id="activity-list" hidden>
         ${task.activities
           .map((activity) => `<div class="activity-item ${activity.current ? "current" : ""}"><span>${escapeHtml(activity.text)}</span><time>${escapeHtml(activity.time)}</time></div>`)
           .join("")}
@@ -404,10 +512,15 @@ function renderInspector() {
     </section>
 
     <section class="inspector-section">
-      <div class="inspector-section-head"><h3>继续操作</h3><span>操作会回到对话</span></div>
+      <div class="inspector-section-head"><h3>继续操作</h3><span>当前对象：Panel ${selected.order}</span></div>
       <div class="inspector-actions">
-        <button class="primary-action" type="button" id="mention-panel-action">在对话中修改</button>
-        <button class="secondary-action" type="button" id="pause-task-action">${task.status === "已暂停" ? "继续任务" : "暂停任务"}</button>
+        <button class="primary-action" type="button" id="mention-panel-action">引用 Panel ${selected.order} 并修改</button>
+        <button class="secondary-action" type="button" id="accept-panel-action" ${selected.className === "waiting" || selected.className === "running" ? "disabled" : ""}>接受 ${escapeHtml(selectedVersion)}</button>
+      </div>
+      <div class="secondary-action-row">
+        <button class="text-action" type="button" id="retry-panel-action">重新生成</button>
+        <button class="text-action" type="button" id="restore-panel-action" ${selectedVersion === "v1" || selectedVersion === "—" ? "disabled" : ""}>恢复上一版</button>
+        <button class="text-action" type="button" id="pause-task-action">${task.status === "已暂停" ? "继续任务" : "暂停任务"}</button>
       </div>
     </section>
   `;
@@ -415,21 +528,51 @@ function renderInspector() {
   inspectorContent.querySelectorAll("[data-panel-order]").forEach((button) => {
     button.addEventListener("click", () => {
       task.selectedPanel = Number(button.dataset.panelOrder);
-      addContext(`Panel ${task.selectedPanel}`);
       renderInspector();
     });
   });
   inspectorContent.querySelector("#mention-panel-action").addEventListener("click", () => {
     addContext(`Panel ${task.selectedPanel}`);
+    if (selectedVersion !== "—") addContext(`当前图片 ${selectedVersion}`);
     closeInspector();
-    messageInput.value = `重新处理第 ${task.selectedPanel} 张，`;
-    resizeInput();
     messageInput.focus();
+  });
+  inspectorContent.querySelector("#toggle-activity").addEventListener("click", (event) => {
+    const list = inspectorContent.querySelector("#activity-list");
+    list.hidden = !list.hidden;
+    event.currentTarget.textContent = list.hidden ? "查看轨迹" : "收起轨迹";
+  });
+  inspectorContent.querySelector("#accept-panel-action").addEventListener("click", () => {
+    selected.status = "已接受";
+    selected.className = "done";
+    selected.version = selectedVersion;
+    task.activities.push({ text: `Panel ${selected.order} 的 ${selectedVersion} 已被接受`, time: "现在" });
+    renderConversation();
+    renderInspector();
+    showToast(`Panel ${selected.order} 已接受（设计演示）`);
+  });
+  inspectorContent.querySelector("#retry-panel-action").addEventListener("click", () => {
+    selected.status = "生成中";
+    selected.className = "running";
+    task.activities.forEach((activity) => { activity.current = false; });
+    task.activities.push({ text: `正在为 Panel ${selected.order} 生成新版本`, time: "现在", current: true });
+    renderConversation();
+    renderInspector();
+    showToast(`Panel ${selected.order} 已开始重新生成（设计演示）`);
+  });
+  inspectorContent.querySelector("#restore-panel-action").addEventListener("click", () => {
+    selected.version = "v1";
+    selected.status = "待决定";
+    selected.className = "review";
+    selected.review = "已恢复上一版本，请确认是否接受。";
+    renderConversation();
+    renderInspector();
+    showToast(`Panel ${selected.order} 已恢复 v1（设计演示）`);
   });
   inspectorContent.querySelector("#pause-task-action").addEventListener("click", () => {
     const wasPaused = task.status === "已暂停";
     task.status = wasPaused ? "生成中" : "已暂停";
-    conversation.status = wasPaused ? "running" : "waiting";
+    conversation.status = wasPaused ? "running" : "paused";
     conversation.preview = wasPaused ? `第 ${task.selectedPanel} 张继续处理中` : "任务已暂停，可以随时继续";
     renderNavigation();
     renderConversation();
@@ -444,7 +587,7 @@ function submitMessage(event) {
   if (!text) return;
   const conversation = activeConversation();
   if (!conversation) return;
-  const attachedContexts = [...state.contexts];
+  const attachedContexts = [...activeContexts()];
   conversation.messages.push({ id: `user-${Date.now()}`, role: "user", text, resources: attachedContexts, time: "现在" });
   if (conversation.status === "draft") {
     conversation.title = text.slice(0, 16) + (text.length > 16 ? "…" : "");
@@ -452,7 +595,8 @@ function submitMessage(event) {
     conversation.subtitle = "新漫画项目 · 正在建立上下文";
   }
   conversation.status = "running";
-  state.contexts = [];
+  conversation.contexts = [];
+  conversation.draft = "";
   messageInput.value = "";
   resizeInput();
   renderContexts();
@@ -506,6 +650,8 @@ function createDemoTask(text) {
       status: order === 1 ? "生成中" : "等待",
       className: order === 1 ? "running" : "waiting",
       text: order === 1 ? "Agent 正在设计第一张分镜。" : "等待前序分镜完成。",
+      version: order === 1 ? "v1" : "—",
+      review: order === 1 ? "正在生成画面。" : "等待前序分镜完成后开始。",
     })),
     activities: [{ text: "正在整理故事和角色上下文", time: "现在", current: true }],
   };
@@ -527,14 +673,22 @@ function showToast(message) {
 document.querySelector("#new-chat-button").addEventListener("click", createConversation);
 document.querySelector("#composer").addEventListener("submit", submitMessage);
 document.querySelector("#close-inspector").addEventListener("click", closeInspector);
-openCurrentTask.addEventListener("click", openInspector);
+openCurrentTask.addEventListener("click", () => {
+  if (state.inspectorOpen) closeInspector();
+  else openInspector();
+});
 
 document.querySelector("#conversation-search").addEventListener("input", (event) => {
   state.query = event.target.value;
   renderNavigation();
 });
 
-messageInput.addEventListener("input", resizeInput);
+messageInput.addEventListener("input", () => {
+  resizeInput();
+  const conversation = activeConversation();
+  if (conversation) conversation.draft = messageInput.value;
+  if (messageInput.value.endsWith("@")) openResourceMenu(false);
+});
 messageInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
@@ -544,23 +698,30 @@ messageInput.addEventListener("keydown", (event) => {
 
 resourceButton.addEventListener("click", () => {
   const isOpen = !resourceMenu.hidden;
-  resourceMenu.hidden = isOpen;
-  resourceButton.setAttribute("aria-expanded", String(!isOpen));
+  if (isOpen) closeResourceMenu();
+  else openResourceMenu(true);
+});
+
+resourceSearch.addEventListener("input", () => filterResources(resourceSearch.value));
+resourceSearch.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.stopPropagation();
+    closeResourceMenu();
+    messageInput.focus();
+  }
 });
 
 resourceMenu.querySelectorAll("[data-resource]").forEach((button) => {
   button.addEventListener("click", () => {
     addContext(button.dataset.resource);
-    resourceMenu.hidden = true;
-    resourceButton.setAttribute("aria-expanded", "false");
+    closeResourceMenu();
     messageInput.focus();
   });
 });
 
 document.addEventListener("click", (event) => {
   if (!event.target.closest(".resource-menu-wrap")) {
-    resourceMenu.hidden = true;
-    resourceButton.setAttribute("aria-expanded", "false");
+    closeResourceMenu();
   }
 });
 
@@ -580,7 +741,7 @@ document.addEventListener("keydown", (event) => {
     createConversation();
   }
   if (event.key === "Escape") {
-    resourceMenu.hidden = true;
+    closeResourceMenu();
     shell.classList.remove("sidebar-open");
     if (state.inspectorOpen) closeInspector();
   }
@@ -589,3 +750,4 @@ document.addEventListener("keydown", (event) => {
 renderNavigation();
 renderConversation();
 renderContexts();
+restoreActiveDraft();

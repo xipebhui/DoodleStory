@@ -61,7 +61,6 @@
               <span class="live-dot"></span>
               查看任务
             </button>
-            <button class="icon-button" type="button" aria-label="对话菜单">•••</button>
           </div>
         </header>
 
@@ -75,8 +74,16 @@
                 ＋
               </button>
               <div class="resource-menu" id="resource-menu" role="menu" hidden>
-                <p>加入创作上下文</p>
-                <button type="button" role="menuitem" data-resource="风格 · 暖灰铅笔">
+                <div class="resource-menu-head">
+                  <strong>加入创作上下文</strong>
+                  <small>也可以在输入框中输入 @</small>
+                </div>
+                <label class="resource-search">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="resource-search" type="search" placeholder="搜索风格、角色或任务" />
+                </label>
+                <div class="resource-group-label">常用资源</div>
+                <button type="button" role="menuitem" data-resource="风格 · 暖灰铅笔电影感">
                   <span class="resource-swatch style-swatch"></span>
                   <span><strong>风格</strong><small>暖灰铅笔电影感</small></span>
                 </button>
@@ -84,10 +91,15 @@
                   <span class="resource-avatar">林</span>
                   <span><strong>角色</strong><small>林夏 · 固定角色</small></span>
                 </button>
+                <button type="button" role="menuitem" data-resource="角色 · 阿布">
+                  <span class="resource-avatar cat-avatar">阿</span>
+                  <span><strong>角色</strong><small>阿布 · 橘白流浪猫</small></span>
+                </button>
                 <button type="button" role="menuitem" data-resource="任务 · 五格漫画">
                   <span class="resource-task-icon">▦</span>
                   <span><strong>任务</strong><small>被裁员的第七天</small></span>
                 </button>
+                <p class="resource-empty" id="resource-empty" hidden>没有匹配的资源</p>
               </div>
             </div>
             <textarea id="message-input" rows="1" placeholder="告诉 Agent 你想创作什么，或输入 @ 引用资源"></textarea>
