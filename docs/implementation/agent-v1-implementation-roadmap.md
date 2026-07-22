@@ -41,8 +41,8 @@ flowchart LR
 | 阶段 | 目标 | 状态 | 对应合同 |
 | --- | --- | --- | --- |
 | 0 | 产品、架构、交互、平台和 Evaluation 基线 | 已完成 | Sprint 103、104 |
-| 1 | 可持久化、可恢复、可切换 Provider 的 Agent Runtime | 下一步 | Sprint 105 |
-| 2 | 对话创建两格真实漫画的纵向链路 | 等待阶段 1 | Sprint 106 Draft |
+| 1 | 可持久化、可恢复、可切换 Provider 的 Agent Runtime | 已完成 | Sprint 105 |
+| 2 | 对话创建两格真实漫画的纵向链路 | 下一步 | Sprint 106 Active |
 | 3 | 指定 Panel 修改、重试、版本恢复和 VL 检查闭环 | 未开始 | 阶段 2 后创建合同 |
 | 4 | 角色、任务、图片、参考漫画和抖音等资源入口 | 未开始 | 阶段 3 后创建合同 |
 | 5 | 旧入口迁移到 Agent 并移除重复编排 | 未开始 | 阶段 4 后创建合同 |
@@ -61,9 +61,13 @@ flowchart LR
 
 ### 已知验证边界
 
-当前探测确认两个平台的 Chat Completions、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本请求可用。Responses 形态下由 OpenAI Agents SDK 执行 Function Calling 与 Tool Output 的完整循环，仍需在阶段 1 用实际 SDK 验证。
+阶段 1 已进一步确认两个平台均能通过 `openai-agents==0.18.3` 执行 Responses Function Calling、Tool Output、final response 和应用侧完整输入重放；正式 Runtime 已锁定 Responses，不使用 Provider continuation ID。
 
 ## 5. 阶段 1：Agent Runtime 基础
+
+### 完成结论
+
+Sprint 105 已完成并通过全部退出门槛。四张 Agent 表、最小 API、进程内队列、应用侧上下文、主备 Router、完整 Step checkpoint 与启动恢复均已落地；双平台 SDK 报告和两轮真实 Runtime smoke 报告保存在 `docs/testing/`。全量检查覆盖 190 个后端测试、空库 migration 和前端生产构建，现有生成 Pipeline 未修改。
 
 ### 用户可感知结果
 

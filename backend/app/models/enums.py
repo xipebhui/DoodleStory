@@ -6,6 +6,47 @@ class UserRole(StrEnum):
     admin = "admin"
 
 
+class AgentConversationStatus(StrEnum):
+    active = "active"
+    archived = "archived"
+
+
+class AgentMessageRole(StrEnum):
+    user = "user"
+    assistant = "assistant"
+    system_event = "system_event"
+    task_card = "task_card"
+
+
+class AgentRunStatus(StrEnum):
+    queued = "queued"
+    running = "running"
+    waiting_for_tool = "waiting_for_tool"
+    waiting_for_input = "waiting_for_input"
+    paused = "paused"
+    retrying = "retrying"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancel_requested = "cancel_requested"
+    cancelled = "cancelled"
+
+
+class AgentStepType(StrEnum):
+    model_call = "model_call"
+    tool_call = "tool_call"
+    tool_result = "tool_result"
+    wait = "wait"
+    final = "final"
+
+
+class AgentStepStatus(StrEnum):
+    pending = "pending"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
 class StyleStatus(StrEnum):
     draft = "draft"
     active = "active"

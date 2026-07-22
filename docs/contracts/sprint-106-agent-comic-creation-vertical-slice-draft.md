@@ -1,8 +1,8 @@
-# Sprint 106 Draft：对话创建两格真实漫画
+# Sprint 106：对话创建两格真实漫画
 
 ## Status
 
-Draft，Blocked by Sprint 105。只有 Sprint 105 的 Done means 和 Verification 全部满足、路线图阶段 1 标记完成后，才能评审并将本合同改为 Active。
+Active（2026-07-22）。Sprint 105 的 SDK、API shape、四表 migration、Router、两轮真实对话与恢复验证均已通过；本 Sprint 只能复用该 Runtime，不重新引入 Provider 远程上下文依赖。
 
 ## Goal
 
@@ -43,7 +43,18 @@ Draft，Blocked by Sprint 105。只有 Sprint 105 的 Done means 和 Verificatio
 
 ## Verification
 
-激活本合同前需要根据 Sprint 105 最终模块名补全精确命令。最低验证集合：
+Sprint 105 Runtime 回归基线：
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python -m unittest \
+  backend.tests.test_agent_model_router \
+  backend.tests.test_agent_conversations \
+  backend.tests.test_agent_runner_recovery
+
+backend/.venv/bin/alembic -c alembic.ini upgrade head
+```
+
+Sprint 106 最低验证集合：
 
 - ComicPlan schema、资源权限、任务原子创建和 Prompt 边界单测。
 - `generate_image` Tool 幂等、积分、失败、取消/晚到结果边界测试。
@@ -59,6 +70,6 @@ Draft，Blocked by Sprint 105。只有 Sprint 105 的 Done means 和 Verificatio
 
 ## Assumptions to review when activating
 
-- Sprint 105 的最终 SDK/API shape、Router 和四张 Agent 表已经稳定。
-- 当前图片 job worker 能以受控接口被 `generate_image` Tool 复用，而不需要调用旧任务创作编排。
-- 两格固定数量是架构验证限制，不是最终产品限制。
+- 已确认 Sprint 105 的最终 SDK/API shape、Router 和四张 Agent 表稳定，并已有 190 个后端测试的全量回归基线。
+- 已确认当前图片 job 以 `GeneratedImage` 持久化状态并由独立图片 worker 领取；Sprint 106 需要新增受控的 `generate_image` Tool adapter 复用该边界，禁止调用旧任务创作编排。
+- 两格固定数量继续作为架构验证限制，不是最终产品限制。

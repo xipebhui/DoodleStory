@@ -5,12 +5,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.api import audio_references, assets, auth, characters, content_extractions, credits, style_tests, styles, tasks, video_tasks
+from app.api import agent_conversations, audio_references, assets, auth, characters, content_extractions, credits, style_tests, styles, tasks, video_tasks
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.services.task_worker import init_task_queue, recover_queued_tasks, shutdown_task_queue
 from app.services.video_task_worker import init_video_task_queue, recover_video_tasks, shutdown_video_task_queue
+from app.services.agent_runner import init_agent_queue, recover_agent_runs, shutdown_agent_queue
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -52,13 +53,16 @@ def create_app() -> FastAPI:
         styles.recover_interrupted_style_tests()
         init_task_queue()
         init_video_task_queue()
+        init_agent_queue()
         await recover_queued_tasks()
         await recover_video_tasks()
+        await recover_agent_runs()
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
         await shutdown_task_queue()
         await shutdown_video_task_queue()
+        await shutdown_agent_queue()
 
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(styles.router, prefix="/api/v1")
@@ -70,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(content_extractions.router, prefix="/api/v1")
     app.include_router(assets.router, prefix="/api/v1")
     app.include_router(credits.router, prefix="/api/v1")
+    app.include_router(agent_conversations.router, prefix="/api/v1")
 
     @app.get("/health")
     def health() -> dict[str, str]:

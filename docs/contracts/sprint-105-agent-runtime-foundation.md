@@ -2,7 +2,7 @@
 
 ## Status
 
-Active。该 Sprint 是 Agent V1 全局路线的阶段 1；完成前不得实现 Sprint 106 的漫画生图链路。
+Complete（2026-07-22）。该 Sprint 的 Done means 与 Verification 已全部满足；Sprint 106 已评审并激活，本合同保留为 Runtime 状态与可靠性基线。
 
 ## Goal
 
@@ -97,13 +97,22 @@ backend/.venv/bin/python scripts/check_agent_sdk_compatibility.py \
   --model gpt-5.6-terra \
   --output /tmp/doodlestory-agent-sdk-provider-report.json
 
-backend/.venv/bin/alembic -c backend/alembic.ini upgrade head
+backend/.venv/bin/alembic -c alembic.ini upgrade head
 backend/.venv/bin/python -m compileall backend/app scripts
 git diff --check
 ./scripts/check.sh
 ```
 
 如果实际文件名因实现结构调整，必须在合同和 `docs/progress.md` 中同步最终命令。真实 SDK Provider 探测不得用单元测试替代。
+
+## Completion evidence
+
+- SDK 决策：`openai-agents==0.18.3`、`openai==2.45.0`、Responses API、`gpt-5.6-terra`；火苗与 LIO 独立真实 Tool Loop 均通过，见 `docs/testing/agent-sdk-provider-compatibility-report.json`。
+- Migration：`x8f9a0b1c2d3_add_agent_runtime_foundation.py` 可从空 SQLite 数据库升级到 head，只创建四张 Agent 表。
+- API：Conversation 创建/分页/有界详情/发送消息和 Run 查询已完成认证与 owner 范围约束；Admin 没有跨用户入口。
+- 路由与恢复：故障注入覆盖火苗一次重试后切 LIO、永久 503 语义不切换、fallback 单一最终回答、成功模型 Step 恢复不重复调用和重复 Run 投递幂等。
+- 真实两轮：Conversation `7980d1bac60b476f834e8d191fa6a832`，Run `7fdd4824f69243ae94c450198628e00f`、`0e744b264dc54b1180b475210351d52d`；第二轮验证应用数据库历史，见 `docs/testing/agent-runtime-two-turn-smoke-report.json`。
+- 全量验证：190 个后端测试、空库 Alembic `upgrade head`、前端生产构建、Python compileall 与 `git diff --check` 通过。
 
 ## Handoff
 

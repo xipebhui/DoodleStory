@@ -5,12 +5,12 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Agent V1 路线图与新窗口交接准备完成；更新 LIO API key 后重新执行零 fallback 双平台合并探测，火苗和 LIO 均使用 `gpt-5.6-terra` 通过 Chat、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本，命令以退出码 0 完成。兼容性脚本 7 个离线单测、20 个 Eval case 结构校验、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 172 个后端测试、空库 Alembic 迁移和前端生产构建。
+- 最近验证状态：Sprint 105 Agent Runtime 基础完成。真实 SDK 决策门锁定 `openai-agents==0.18.3`、`openai==2.45.0`、Responses API 和 `gpt-5.6-terra`；火苗、LIO 分别在零底层 retry、零跨 Provider fallback 下通过 Function Call → Tool Output → final response 与应用侧完整输入重放。真实 Runtime 两轮 smoke 通过，故障注入、永久错误、fallback 单回答、重启恢复、重复执行、权限和有界历史测试通过；`./scripts/check.sh` 覆盖 190 个后端测试、空库 Alembic migration 和前端生产构建。
 
 ## 当前 Sprint 合同
 
-- Active：`docs/contracts/sprint-105-agent-runtime-foundation.md`
-- Draft / Blocked by Sprint 105：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
+- Active：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
+- Complete：`docs/contracts/sprint-105-agent-runtime-foundation.md`
 - 全局路线：`docs/implementation/agent-v1-implementation-roadmap.md`
 - `docs/contracts/sprint-104-agent-foundation-and-provider-spike.md`
 - `docs/contracts/sprint-103-agent-conversation-demo.md`
@@ -34,6 +34,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 105 可持久化 Agent Runtime 基础：锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API，新增独立 SDK 探测脚本并用真实火苗/LIO `gpt-5.6-terra` 分别完成 Function Calling、Tool Output、final response 和应用侧历史重放；脱敏证据保存于 `docs/testing/agent-sdk-provider-compatibility-report.json`。新增 Alembic revision `x8f9a0b1c2d3`，只创建 `agent_conversations`、`agent_messages`、`agent_runs`、`agent_steps`，并补齐 owner、消息顺序、恢复查询和幂等约束/索引。新增 Conversation 创建/分页/有界详情/发消息与 Run 查询 API，普通用户和 Admin 均只能访问自己的 Agent 数据；资源引用以受控 JSON 保存但不解析。实现只调度 `run_id` 的进程内队列、应用数据库完整上下文、文本版 `ComicDirectorAgent`、模型 Step/最终消息事务 checkpoint 与启动恢复。Router 关闭 SDK/client retry，火苗只对允许的临时错误重试一次后切 LIO；永久错误不切换。故障注入证明 fallback 后只有一个回答，恢复测试证明成功模型 Step 和重复投递不重复调用或写消息。真实两轮 Conversation `7980d1bac60b476f834e8d191fa6a832`、Run `7fdd4824f69243ae94c450198628e00f` / `0e744b264dc54b1180b475210351d52d` 验证第二轮从应用数据库取回第一轮上下文，证据保存于 `docs/testing/agent-runtime-two-turn-smoke-report.json`。验证：4 个 Agent 测试模块共 18 个测试通过，真实双平台 SDK 探测与真实两轮 Runtime smoke 通过，Python compileall、空库 Alembic `upgrade head`、OpenAPI 路径校验、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 190 个后端测试与前端生产构建。Sprint 106 已按交接要求评审并激活，但本次未实现 ComicPlan、生图 Tool 或正式前端。
 - 完成 Agent V1 全局实施路线和新窗口交接准备：新增从阶段 0 到阶段 6 的全局路线图，把 Runtime、真实对话生图、Panel/VL 迭代、资源与参考改编、旧 Pipeline 迁移和发布门槛串成一条路径；每个阶段只定义交付效果和退出门槛，具体实现继续由小 Sprint 合同控制。Sprint 105 已作为唯一 Active 合同，聚焦 OpenAI Agents SDK 决策门、四张最小 Agent 表、Conversation/Message/Run API、应用侧上下文、进程内 Runner 和火苗到 LIO Router；Sprint 106 以 Draft 保存，只预定义“Idea + 一个 @风格 → 两格真实漫画”的纵向链路，阶段 1 未通过前不得实现。新增新窗口必读顺序、两阶段启动提示词、开发顺序和验证收尾规则，并明确保留用户未跟踪文件。模型证据同步更新：火苗和更新 API key 后的 LIO 使用 `gpt-5.6-terra` 均通过现有五组 HTTP 探测；Sprint 105 仍需用实际 Agents SDK 验证 Responses Function Calling/Tool Output，不能把基础 Responses 文本通过误当成 SDK Tool Loop 已通过。
 - 完成 Sprint 104 Agent 开发前置契约与真实模型平台验证：新增 Agent V1 精简 PRD、单 Agent Runtime/状态/checkpoint 设计和基础 Tool 契约，明确创作决策由 Agent 承担，Runtime 只负责权限、持久化、预算、幂等和 Provider 可靠性，不把旧 pipeline 的 prompt 拼接步骤原样包装成 Tool；会话、Run、Step、Tool Call/Output 与 `@资源` 由应用数据库保存，页面关闭或服务重启后可从完整步骤恢复。新增脱敏兼容性探测脚本和 7 个离线单测，初次基于旧模型配置完成能力探测；随后按用户要求将两个平台临时统一为 `gpt-5.6-terra` 复测。火苗全部通过；LIO 第一个 key 因 `[origin]` 分组无渠道失败，更新 key 后 Chat、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本全部通过。实测确认 Router 必须联合判断 HTTP 状态、`invalid_request`、`model_not_found` 和错误语义。新增 20 个 Agent Eval 场景与确定性、质量、运行三层评估规则。未安装 Agents SDK，未实现 Router/Agent Loop/数据库迁移，也未修改现有生产生成链路。验证：兼容性脚本单测、脚本编译、Eval JSONL 校验、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 172 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 103 Agent 会话前端交互 Demo：在独立目录 `docs/design/agent-conversation-demo/` 实现可点击原型，首屏以历史会话和当前对话为主体，支持新建空白对话、切换并继续历史对话、对话内持续更新的漫画任务卡片、按需打开任务详情、选择 Panel 后带回输入区，以及通过资源菜单引用风格、角色和任务；同步把设计 Brief 从画布优先修正为会话优先。Demo 使用明确标注的确定性本地数据，不连接后端、模型或积分系统，也不修改现有正式前端。浏览器在 1440×900 和 1280×800 视口完成核心链路回归且控制台无错误；`node --check docs/design/agent-conversation-demo/app.js`、`git diff --check` 和 `./scripts/check.sh` 通过，完整检查覆盖 165 个后端测试、空库 Alembic 迁移和前端生产构建。

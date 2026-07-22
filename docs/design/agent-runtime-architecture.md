@@ -46,9 +46,9 @@ flowchart LR
 
 不保存“半个流式 Token”作为可恢复状态。进程中断后从最后一个完整 Step 恢复；如果外部副作用状态不确定，先按幂等键查询既有结果，再决定是否重放。
 
-## 4. 拟议数据模型
+## 4. 数据模型
 
-本 Sprint 只定义，不创建 migration。
+Sprint 104 只完成设计；Sprint 105 已通过 revision `x8f9a0b1c2d3` 创建下列四张表，没有增加通用事件仓库或阶段 2 资源表。
 
 ### 4.1 `agent_conversations`
 
@@ -147,11 +147,11 @@ stateDiagram-v2
 
 2026-07-22 使用更新后的 API key 和统一模型 `gpt-5.6-terra` 复测：火苗和 LIO 的 Chat Completions、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本请求全部通过。
 
-当前决策是：
+最终决策是：
 
-- Sprint 105 先锁定 OpenAI Agents SDK 与兼容 OpenAI client 版本，并验证两个平台相同的 Responses SDK Function Call → Tool Output → final response 完整循环。
-- 两个平台都通过后，正式 Runtime 使用 Responses 模型形态；任一失败时暂停并更新合同，不在同一 workflow 混用 Responses 和 Chat Completions。
-- 即使使用 Responses，每次调用仍由应用数据库重放规范化上下文，不使用 Provider response ID 作为恢复事实来源。
+- 正式 Runtime 锁定 `openai-agents==0.18.3` 与 `openai==2.45.0`。
+- 火苗和 LIO 的 Responses SDK Function Call → Tool Output → final response 完整循环和应用侧第二轮重放均已真实通过，因此正式 Runtime 只使用 Responses 模型形态，不在同一 workflow 混用 Chat Completions。
+- 每次调用由应用数据库重放规范化上下文，不使用 Provider response ID 作为恢复事实来源。
 - 所有模型结构化输出继续做应用层 schema 校验；返回合法 JSON 不代表业务字段正确。
 
 完整证据见 `docs/testing/agent-model-provider-compatibility-report.md`。

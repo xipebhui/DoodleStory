@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-22T07:11:40.375102+00:00",
+  "sdk": {
+    "openai_agents": "0.18.3",
+    "openai": "2.45.0"
+  },
+  "probe_policy": {
+    "api_shape": "responses",
+    "client_retry_attempts": 0,
+    "sdk_retry_attempts": 0,
+    "cross_provider_fallback": false,
+    "application_history_replay": true
+  },
+  "providers": [
+    {
+      "provider": "huomiao",
+      "host": "api.huomiao.art",
+      "model": "gpt-5.6-terra",
+      "api_shape": "responses",
+      "status": "pass",
+      "latency_ms": 17496,
+      "tool_loop": {
+        "function_call_count": 1,
+        "tool_output_observed_in_final": true
+      },
+      "application_replay": {
+        "uses_previous_response_id": false,
+        "replayed_item_count": 5,
+        "second_turn_passed": true
+      },
+      "usage": {
+        "requests": 3,
+        "input_tokens": 661,
+        "output_tokens": 104,
+        "total_tokens": 765
+      },
+      "provider_request_ids": []
+    },
+    {
+      "provider": "lio",
+      "host": "api.apilio.ai",
+      "model": "gpt-5.6-terra",
+      "api_shape": "responses",
+      "status": "pass",
+      "latency_ms": 11806,
+      "tool_loop": {
+        "function_call_count": 1,
+        "tool_output_observed_in_final": true
+      },
+      "application_replay": {
+        "uses_previous_response_id": false,
+        "replayed_item_count": 4,
+        "second_turn_passed": true
+      },
+      "usage": {
+        "requests": 3,
+        "input_tokens": 737,
+        "output_tokens": 46,
+        "total_tokens": 783
+      },
+      "provider_request_ids": [
+        "53c6ef38-9b6d-4ec0-a55a-ce0fe28e27a4",
+        "d4f057ef-b40b-4f4a-b844-8976edda2bc8",
+        "c4f1286c-5b2c-4aa3-9bcd-e2eb954847cf"
+      ]
+    }
+  ]
+}

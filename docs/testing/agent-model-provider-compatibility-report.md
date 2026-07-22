@@ -1,6 +1,18 @@
 # Agent 模型平台兼容性实测报告
 
-## 结论
+## Sprint 105 最终结论
+
+2026-07-22 的 OpenAI Agents SDK 决策门已经通过。正式 Runtime 锁定：
+
+- `openai-agents==0.18.3`。
+- `openai==2.45.0`。
+- 火苗和 LIO 均使用 `gpt-5.6-terra` 与 Responses API。
+- 两个平台分别在零 SDK retry、零 client retry、零跨 Provider fallback 下完成 Responses Function Call → Tool Output → final response，并通过应用侧完整输入重放的第二轮请求。
+- 正式 Runtime 不使用 `previous_response_id` 或 Provider remote conversation 作为上下文事实来源。
+
+脱敏机器可读证据保存于 `docs/testing/agent-sdk-provider-compatibility-report.json`。最终实测中，火苗完整探测耗时 17496 ms；LIO 完整探测耗时 11806 ms，并返回 3 个可追踪 Provider request ID。成功响应正文与 API key 均未写入报告。
+
+## Sprint 104 基础 HTTP 结论
 
 火苗主平台和 LIO 备用平台使用统一模型 `gpt-5.6-terra` 时，当前直接 HTTP 兼容性探测全部通过：
 
@@ -10,7 +22,7 @@
 - 多模态 `image_url` 输入。
 - 基础 Responses 文本请求。
 
-这证明两个平台都具备进入 OpenAI Agents SDK 实测的基础能力，但还没有锁定正式 Runtime 的 API shape。当前脚本的 Function Calling/Tool Output 使用 Chat Completions，Responses 项只验证文本输出；Sprint 105 必须继续验证“Agents SDK + Responses Function Call + Tool Output + 应用侧完整输入重放”。只有两个平台的同一 SDK Tool Loop 都通过，才能正式选择 Responses 模型形态。
+这些直接 HTTP 结果是进入 SDK 决策门的基础证据；正式 API shape 已由上面的 Sprint 105 SDK 探测锁定为 Responses。
 
 本次结果是接口能力证据，不是长期可用率或 SLA。延迟分位数、真实 fallback 和运行稳定性需要在 Agent Runtime 落地后通过 trace、故障注入和重复 Eval 建立基线。
 
@@ -54,6 +66,26 @@
 
 ## 验证命令
 
+Sprint 105 最终 SDK 决策门：
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python scripts/check_agent_sdk_compatibility.py \
+  --provider all \
+  --model gpt-5.6-terra \
+  --output /tmp/doodlestory-agent-sdk-provider-report-final.json
+```
+
+正式 Runtime 两轮真实对话：
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python scripts/check_agent_runtime_smoke.py \
+  --output /tmp/doodlestory-agent-runtime-smoke-report.json
+```
+
+该 smoke 的脱敏证据保存于 `docs/testing/agent-runtime-two-turn-smoke-report.json`；Conversation ID 为 `7980d1bac60b476f834e8d191fa6a832`，两个 Run ID 为 `7fdd4824f69243ae94c450198628e00f`、`0e744b264dc54b1180b475210351d52d`。第二轮从应用数据库重放 4 条规范化消息，并验证了第一轮上下文标记。
+
+Sprint 104 直接 HTTP 能力探测：
+
 最终模型通过进程环境临时覆盖，未修改仓库 `.env`：
 
 ```bash
@@ -80,10 +112,10 @@ PYTHONPATH=backend backend/.venv/bin/python -m unittest \
   backend.tests.test_agent_model_compatibility
 ```
 
-## Sprint 105 的输入
+## Sprint 105 的落地结果
 
-1. 锁定 OpenAI Agents SDK 与兼容 OpenAI client 版本。
-2. 分别对火苗、LIO 运行相同的 Responses SDK Tool Loop，不在探测脚本中 fallback。
-3. 验证 Function Call、Tool Output、final response 和应用侧完整历史重放，不只验证 Responses 文本。
-4. 两个平台都通过后正式使用 Responses；任一失败时暂停并更新架构合同，不在一个 workflow 混用 API shape。
-5. 正式 Runtime 底层关闭自动重试，由 Router 统一执行有界重试、错误语义分类和一次备用切换。
+1. 已锁定 OpenAI Agents SDK 与兼容 OpenAI client 版本。
+2. 火苗、LIO 的 Responses SDK Tool Loop 均在独立、零 fallback 条件下通过。
+3. Function Call、Tool Output、final response 和应用侧完整历史重放均已验证。
+4. 正式 Runtime 只使用 Responses，不在同一 workflow 混用 API shape。
+5. 正式 Runtime 底层自动重试关闭，由 Router 统一执行有界重试、错误语义分类和一次备用切换。

@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     text_fallback_model: str = ""
     text_fallback_max_attempts: int = Field(default=3, ge=1)
     text_fallback_retry_backoff_seconds: float = Field(default=2.0, ge=0)
+    agent_model: str = "gpt-5.6-terra"
+    agent_request_timeout_seconds: int = Field(default=120, ge=1)
+    agent_primary_retry_attempts: int = Field(default=1, ge=0, le=1)
+    agent_retry_backoff_seconds: float = Field(default=0.5, ge=0)
+    agent_worker_concurrency: int = Field(default=1, ge=1)
+    agent_context_message_limit: int = Field(default=200, ge=1, le=1000)
     character_extraction_temperature: float = 0.1
     prompt_trace_log_max_chars: int = 60000
     image_provider: str = "qy"

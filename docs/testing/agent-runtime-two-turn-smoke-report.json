@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-22T07:04:02.499721+00:00",
+  "status": "pass",
+  "model": "gpt-5.6-terra",
+  "api_shape": "responses",
+  "context": {
+    "source": "application_database",
+    "uses_previous_response_id": false,
+    "second_turn_marker_verified": true
+  },
+  "conversation_id": "7980d1bac60b476f834e8d191fa6a832",
+  "run_ids": [
+    "7fdd4824f69243ae94c450198628e00f",
+    "0e744b264dc54b1180b475210351d52d"
+  ],
+  "message_count": 4,
+  "model_steps": [
+    {
+      "step_id": "ce51d72aa82f458da33c7075dd24a4cb",
+      "run_id": "7fdd4824f69243ae94c450198628e00f",
+      "provider": "huomiao",
+      "model": "gpt-5.6-terra",
+      "api_shape": "responses",
+      "attempt": 1,
+      "provider_request_id": null,
+      "status": "succeeded"
+    },
+    {
+      "step_id": "545b3e26ba1e46ecbe0af29162876dcf",
+      "run_id": "0e744b264dc54b1180b475210351d52d",
+      "provider": "huomiao",
+      "model": "gpt-5.6-terra",
+      "api_shape": "responses",
+      "attempt": 1,
+      "provider_request_id": null,
+      "status": "succeeded"
+    }
+  ]
+}
