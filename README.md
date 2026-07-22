@@ -179,7 +179,9 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 
 - [项目规格](docs/spec.md)
 - [进度记录](docs/progress.md)
-- [当前 Sprint 合同](docs/contracts/sprint-104-agent-foundation-and-provider-spike.md)
+- [Agent V1 全局实施路线图](docs/implementation/agent-v1-implementation-roadmap.md)
+- [Agent V1 新窗口实施交接](docs/implementation/agent-v1-new-window-handoff.md)
+- [当前 Sprint 合同：Sprint 105](docs/contracts/sprint-105-agent-runtime-foundation.md)
 - [产品设计](docs/design/README.md)
 - [开发规范](docs/standards/)
 - [参考：Harness design: Building long-running applications with LLMs](docs/references/harness-design-long-running-apps.md)

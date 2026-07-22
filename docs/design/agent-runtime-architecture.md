@@ -72,21 +72,15 @@ flowchart LR
 | `turn_id` | 所属用户 Turn，可为空 |
 | `role` | `user / assistant / system_event / task_card` |
 | `content` | 用户可见文本 |
+| `resource_refs_json` | 当前 Turn 已鉴权资源引用的受控 JSON；阶段 1 可为空 |
 | `sequence` | 对话内稳定顺序 |
 | `created_at` | 时间戳 |
 
 对话消息按 `(conversation_id, sequence)` 有界分页。大体积 Tool Payload 不写入消息正文。
 
-### 4.3 `agent_message_resource_refs`
+### 4.3 资源引用的阶段化保存
 
-| 字段 | 说明 |
-| --- | --- |
-| `message_id` | 引用所属消息 |
-| `resource_type` | `style / character / task / panel / image_version` |
-| `resource_id` | 稳定资源 ID |
-| `display_name_snapshot` | 当时展示名称 |
-
-`(message_id, resource_type, resource_id)` 唯一，避免相同引用重复写入。
+Sprint 105 只创建四张 Agent 表，资源引用先作为 `agent_messages.resource_refs_json` 的受控结构保存；该阶段不解析具体资源。只有阶段 2 之后出现真实的跨消息查询、独立约束或资源引用生命周期需求时，才评审是否拆分 `agent_message_resource_refs`，不为未来资源预建通用表。
 
 ### 4.4 `agent_runs`
 
@@ -151,14 +145,14 @@ stateDiagram-v2
 
 ## 6. 模型调用形态
 
-2026-07-22 的真实兼容性探测已经完成：火苗 `gpt-5.4` 六项通过；LIO `gemini-3.1-flash-lite-preview-thinking-minimal` 的 Chat Completions、JSON 输出、Function Calling、Tool Output 和多模态输入通过，但明确不支持 `/v1/responses`。
+2026-07-22 使用更新后的 API key 和统一模型 `gpt-5.6-terra` 复测：火苗和 LIO 的 Chat Completions、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本请求全部通过。
 
-因此 Agent V1 锁定以下决策：
+当前决策是：
 
-- 两个平台统一使用 Chat Completions 模型形态。
-- 同一 workflow 不混用 Responses 和 Chat Completions，避免 Tool、状态和流式语义不一致。
+- Sprint 105 先锁定 OpenAI Agents SDK 与兼容 OpenAI client 版本，并验证两个平台相同的 Responses SDK Function Call → Tool Output → final response 完整循环。
+- 两个平台都通过后，正式 Runtime 使用 Responses 模型形态；任一失败时暂停并更新合同，不在同一 workflow 混用 Responses 和 Chat Completions。
+- 即使使用 Responses，每次调用仍由应用数据库重放规范化上下文，不使用 Provider response ID 作为恢复事实来源。
 - 所有模型结构化输出继续做应用层 schema 校验；返回合法 JSON 不代表业务字段正确。
-- 当前仓库的 `openai==1.59.7` 不在本 Sprint 升级；下一 Sprint 单独评估并锁定 `openai-agents` 与 `openai` 版本。
 
 完整证据见 `docs/testing/agent-model-provider-compatibility-report.md`。
 
@@ -172,9 +166,7 @@ stateDiagram-v2
 2. 主平台发生可重试错误时，在配置的短退避后进行有界重试。
 3. 主平台仍失败时，使用同一份应用侧上下文调用 LIO。
 4. LIO 失败后 Run 明确失败，不返回占位结果。
-5. 主平台连续故障达到阈值后打开进程内短时熔断；熔断到期用一个 half-open 请求探测。
-
-第一版进程内熔断器足够；数据库仍保存每次真实请求结果。多实例部署出现后再评估共享健康状态。
+5. 第一版到此结束，不实现熔断器或动态 Provider 健康评分。只有真实运行数据证明每次请求都等待主平台会造成明显问题时，再评审熔断。
 
 ### 7.2 错误分类
 
@@ -185,7 +177,7 @@ stateDiagram-v2
 | HTTP 408、409、429 | 是 | 是 | 有界退避，尊重 `Retry-After` |
 | HTTP 500、502、503、504 且错误语义为临时故障 | 是 | 是 | 不能只判断状态码 |
 | HTTP 400、401、403、404、422 | 否 | 否 | 请求、密钥、权限或能力配置错误 |
-| 任意 HTTP 状态但错误码/语义为 `invalid_request`、不支持 API/模型 | 否 | 否 | LIO 实测会用 503 表达永久路径不兼容 |
+| 任意 HTTP 状态但错误码/语义为 `invalid_request`、`model_not_found`、无渠道、不支持 API/模型 | 否 | 否 | LIO 实测会用 503 表达永久配置/能力错误 |
 | 内容拒绝或安全策略拦截 | 否 | 否 | 不通过换 Provider 绕过策略 |
 | Tool Schema 或应用校验错误 | 否 | 否 | 修复契约，不隐藏程序错误 |
 | 已向用户输出部分流或已经执行副作用 | 否 | 否 | 自动重放不安全 |

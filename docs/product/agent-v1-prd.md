@@ -109,7 +109,7 @@ Panel 是漫画中有明确顺序的画面单元。每次生成或修改产生�
 - 用户权限和资源归属。
 - Conversation、Run、Step、Tool Call 和任务状态持久化。
 - Tool 参数结构校验。
-- Provider 路由、超时、重试、熔断和失败分类。
+- Provider 路由、超时、有界重试和失败分类；熔断只在真实运行数据证明需要后评审。
 - 图片生成积分占用、成功扣费和失败释放。
 - Tool 幂等、任务取消和服务重启恢复。
 - 最大 Turn、模型调用、图片调用和费用边界。
@@ -177,7 +177,6 @@ Panel 是漫画中有明确顺序的画面单元。每次生成或修改产生�
 
 ## 11. 上线前仍需确认
 
-- LIO 当前模型是否完整支持 Function Calling 和多轮 Tool Output。
-- 火苗是否完整支持 Responses API；若不支持，V1 统一使用 Chat Completions 模型形态。
+- 火苗和 LIO 的 `gpt-5.6-terra` 是否都能通过 OpenAI Agents SDK 的 Responses Function Calling、Tool Output 和应用侧完整输入重放；该结果决定正式 API shape。
 - 第一版新版本通过 VL 检查后是自动成为当前版本，还是等待用户接受。
 - Agent 每个 Run 的默认最大模型调用数、生图次数和费用上限。

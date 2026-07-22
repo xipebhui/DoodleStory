@@ -5,10 +5,13 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 104 完成后，火苗/LIO 真实 Agent 能力探测、兼容性脚本 7 个离线单测、20 个 Eval case 结构校验、`git diff --check` 和 `./scripts/check.sh` 已执行；全平台探测按设计因 LIO 不支持 Responses API 返回非零并生成完整报告，其余目标能力通过；全量检查覆盖 172 个后端测试、空库 Alembic 迁移和前端生产构建。
+- 最近验证状态：Agent V1 路线图与新窗口交接准备完成；更新 LIO API key 后重新执行零 fallback 双平台合并探测，火苗和 LIO 均使用 `gpt-5.6-terra` 通过 Chat、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本，命令以退出码 0 完成。兼容性脚本 7 个离线单测、20 个 Eval case 结构校验、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 172 个后端测试、空库 Alembic 迁移和前端生产构建。
 
 ## 当前 Sprint 合同
 
+- Active：`docs/contracts/sprint-105-agent-runtime-foundation.md`
+- Draft / Blocked by Sprint 105：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
+- 全局路线：`docs/implementation/agent-v1-implementation-roadmap.md`
 - `docs/contracts/sprint-104-agent-foundation-and-provider-spike.md`
 - `docs/contracts/sprint-103-agent-conversation-demo.md`
 - `docs/contracts/sprint-102-single-image-content-extraction-lio-fallback.md`
@@ -31,7 +34,8 @@
 
 ## 最近完成的工作
 
-- 完成 Sprint 104 Agent 开发前置契约与真实模型平台验证：新增 Agent V1 精简 PRD、单 Agent Runtime/状态/checkpoint 设计和基础 Tool 契约，明确创作决策由 Agent 承担，Runtime 只负责权限、持久化、预算、幂等和 Provider 可靠性，不把旧 pipeline 的 prompt 拼接步骤原样包装成 Tool；会话、Run、Step、Tool Call/Output 与 `@资源` 由应用数据库保存，页面关闭或服务重启后可从完整步骤恢复。新增脱敏兼容性探测脚本和 7 个离线单测，使用当前真实配置分别测试火苗 `gpt-5.4` 与 LIO `gemini-3.1-flash-lite-preview-thinking-minimal`：两边 Chat Completions、JSON、Function Calling、Tool Output 续写和多模态均通过，火苗 Responses 通过，LIO `/v1/responses` 明确不支持；因此 Agent V1 锁定统一 Chat Completions，不混用 Provider 状态协议。实测还发现 LIO 会用 HTTP 503 表达 `invalid_request` 永久能力错误，Router 设计已改为联合判断状态码和错误语义。新增 20 个 Agent Eval 场景与确定性、质量、运行三层评估规则。未安装 Agents SDK，未实现 Router/Agent Loop/数据库迁移，也未修改现有生产生成链路。验证：兼容性脚本单测、脚本编译、Eval JSONL 校验、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 172 个后端测试、空库 Alembic 迁移和前端生产构建。下一步按独立 Sprint 实现 Chat Completions `AgentModelRouter`、Agent 状态表和最小对话到结构化 ComicPlan 的纵向切片。
+- 完成 Agent V1 全局实施路线和新窗口交接准备：新增从阶段 0 到阶段 6 的全局路线图，把 Runtime、真实对话生图、Panel/VL 迭代、资源与参考改编、旧 Pipeline 迁移和发布门槛串成一条路径；每个阶段只定义交付效果和退出门槛，具体实现继续由小 Sprint 合同控制。Sprint 105 已作为唯一 Active 合同，聚焦 OpenAI Agents SDK 决策门、四张最小 Agent 表、Conversation/Message/Run API、应用侧上下文、进程内 Runner 和火苗到 LIO Router；Sprint 106 以 Draft 保存，只预定义“Idea + 一个 @风格 → 两格真实漫画”的纵向链路，阶段 1 未通过前不得实现。新增新窗口必读顺序、两阶段启动提示词、开发顺序和验证收尾规则，并明确保留用户未跟踪文件。模型证据同步更新：火苗和更新 API key 后的 LIO 使用 `gpt-5.6-terra` 均通过现有五组 HTTP 探测；Sprint 105 仍需用实际 Agents SDK 验证 Responses Function Calling/Tool Output，不能把基础 Responses 文本通过误当成 SDK Tool Loop 已通过。
+- 完成 Sprint 104 Agent 开发前置契约与真实模型平台验证：新增 Agent V1 精简 PRD、单 Agent Runtime/状态/checkpoint 设计和基础 Tool 契约，明确创作决策由 Agent 承担，Runtime 只负责权限、持久化、预算、幂等和 Provider 可靠性，不把旧 pipeline 的 prompt 拼接步骤原样包装成 Tool；会话、Run、Step、Tool Call/Output 与 `@资源` 由应用数据库保存，页面关闭或服务重启后可从完整步骤恢复。新增脱敏兼容性探测脚本和 7 个离线单测，初次基于旧模型配置完成能力探测；随后按用户要求将两个平台临时统一为 `gpt-5.6-terra` 复测。火苗全部通过；LIO 第一个 key 因 `[origin]` 分组无渠道失败，更新 key 后 Chat、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本全部通过。实测确认 Router 必须联合判断 HTTP 状态、`invalid_request`、`model_not_found` 和错误语义。新增 20 个 Agent Eval 场景与确定性、质量、运行三层评估规则。未安装 Agents SDK，未实现 Router/Agent Loop/数据库迁移，也未修改现有生产生成链路。验证：兼容性脚本单测、脚本编译、Eval JSONL 校验、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 172 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 103 Agent 会话前端交互 Demo：在独立目录 `docs/design/agent-conversation-demo/` 实现可点击原型，首屏以历史会话和当前对话为主体，支持新建空白对话、切换并继续历史对话、对话内持续更新的漫画任务卡片、按需打开任务详情、选择 Panel 后带回输入区，以及通过资源菜单引用风格、角色和任务；同步把设计 Brief 从画布优先修正为会话优先。Demo 使用明确标注的确定性本地数据，不连接后端、模型或积分系统，也不修改现有正式前端。浏览器在 1440×900 和 1280×800 视口完成核心链路回归且控制台无错误；`node --check docs/design/agent-conversation-demo/app.js`、`git diff --check` 和 `./scripts/check.sh` 通过，完整检查覆盖 165 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 102 图文逐图内容提取与 LIO 备用重试：用户明确将目标从跨页故事理解改为逐张提取可用于复刻的图片可见内容。实现前先用最近真实抖音图片完成 LIO 单图冒烟测试，当前 `gemini-3.1-flash-lite-preview-thinking-minimal` 能识别上下分格、人物动作、场景、原文文字和文字位置。后端链路现按 `display_order` 顺序逐图请求，每次只传一个公网 `image_url`；单图先调用 `TEXT_FALLBACK_*` 当前指向的火苗平台，配置、请求、空响应或结构校验失败后切现有 `LIO_*`，LIO 最多请求 3 次，任意图片仍失败则整项失败。后端为成功结果确定性添加连续 `第X页` 并按原顺序合并，不再依赖模型生成页码。验证：内容提取与风格提取针对性测试、`backend/.venv/bin/python -m compileall backend/app`、`git diff --check` 和 `./scripts/check.sh` 通过；完整检查覆盖 165 个后端测试、空库 Alembic 迁移和前端生产构建。
 - 完成 Sprint 101 恢复最后一张真人图片入口：按用户要求在图文任务创建弹窗重新开放 `最后一张真人图片` checkbox，默认关闭；普通任务创建和 DY 爆款复刻创建参数都会读取用户选择并传给后端。`去掉画面文字` 入口继续隐藏并固定关闭，避免恢复此前被要求隐藏的另一个开关。验证：`npm run build --prefix frontend`、`git diff --check` 和 `./scripts/check.sh` 通过，覆盖 164 个后端测试、空库 Alembic 迁移和前端生产构建。

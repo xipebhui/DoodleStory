@@ -2,69 +2,88 @@
 
 ## 结论
 
-Agent V1 的火苗主平台与 LIO 备用平台统一采用 OpenAI Chat Completions 形态。
+火苗主平台和 LIO 备用平台使用统一模型 `gpt-5.6-terra` 时，当前直接 HTTP 兼容性探测全部通过：
 
-- 火苗 `gpt-5.4`：Chat Completions、JSON 输出、Function Calling、Tool Output 续写、多模态输入和 Responses API 全部通过。
-- LIO `gemini-3.1-flash-lite-preview-thinking-minimal`：Chat Completions、JSON 输出、Function Calling、Tool Output 续写和多模态输入通过；`/v1/responses` 明确不支持。
-- 不在同一个 Agent workflow 中混用 Responses 与 Chat Completions。即使火苗支持 Responses，只要透明备用线路 LIO 不支持，V1 就统一使用 Chat Completions，并由 DoodleStory 保存可重放的完整消息与工具历史。
-- LIO 对“不支持 `/v1/responses`”返回 HTTP 503，但错误体是 `invalid_request` 和永久能力错误。正式 Router 必须联合判断 HTTP 状态码、Provider 错误码和错误语义，不能把所有 503 都重试或切换。
+- Chat Completions 文本请求。
+- JSON object 结构化输出。
+- Chat Completions Function Calling 和 Tool Output 续写。
+- 多模态 `image_url` 输入。
+- 基础 Responses 文本请求。
 
-本次实测确认的是接口兼容性，不等于长期稳定性结论。持续可用率、延迟分位数和故障切换仍需要在 Agent Runtime 落地后通过结构化 trace 和故障注入验证。
+这证明两个平台都具备进入 OpenAI Agents SDK 实测的基础能力，但还没有锁定正式 Runtime 的 API shape。当前脚本的 Function Calling/Tool Output 使用 Chat Completions，Responses 项只验证文本输出；Sprint 105 必须继续验证“Agents SDK + Responses Function Call + Tool Output + 应用侧完整输入重放”。只有两个平台的同一 SDK Tool Loop 都通过，才能正式选择 Responses 模型形态。
+
+本次结果是接口能力证据，不是长期可用率或 SLA。延迟分位数、真实 fallback 和运行稳定性需要在 Agent Runtime 落地后通过 trace、故障注入和重复 Eval 建立基线。
 
 ## 测试环境
 
-测试时间：2026-07-22（Asia/Shanghai）。
+最终测试时间：2026-07-22（Asia/Shanghai）。
 
-| 角色 | Host | 模型 | 配置来源 |
+| 角色 | Host | 模型 | 密钥配置来源 |
 | --- | --- | --- | --- |
-| 主平台 | `api.huomiao.art` | `gpt-5.4` | `TEXT_FALLBACK_*` |
-| 备用平台 | `api.apilio.ai` | `gemini-3.1-flash-lite-preview-thinking-minimal` | `LIO_*` |
+| 主平台 | `api.huomiao.art` | `gpt-5.6-terra` | `TEXT_FALLBACK_*` |
+| 备用平台 | `api.apilio.ai` | `gpt-5.6-terra` | `LIO_*` |
 
 脚本直接调用 OpenAI 兼容 HTTP 接口；每项请求零自动重试、零跨平台 fallback。报告不保存 API key，不保存成功响应原文，只保存通过证据、延迟和脱敏错误摘要。
 
 ## 最终实测矩阵
 
-| 能力 | 火苗 | LIO | Agent V1 决策 |
+| 能力 | 火苗 | LIO | 当前结论 |
 | --- | --- | --- | --- |
-| Chat Completions | 通过，1698 ms | 通过，1544 ms | 使用 |
-| JSON object | 通过，5030 ms | 通过，721 ms | 使用，但仍做应用层 schema 校验 |
-| Function Calling + Tool Output | 通过，3871 ms | 通过，2363 ms | 使用 |
-| 多模态 `image_url` | 通过，1795 ms | 通过，1534 ms | 可作为 VL 模型调用形态 |
-| Responses API | 通过，2215 ms | 失败，327 ms | V1 不使用 |
+| Chat Completions | 通过，4127 ms | 通过，2469 ms | 两个平台可用 |
+| JSON object | 通过，4301 ms | 通过，2739 ms | 两个平台可用，仍需应用 schema 校验 |
+| Chat Function Calling + Tool Output | 通过，3567 ms | 通过，6072 ms | 两个平台可用 |
+| 多模态 `image_url` | 通过，3049 ms | 通过，8792 ms | 两个平台可用 |
+| 基础 Responses 文本 | 通过，1680 ms | 通过，8159 ms | 进入 SDK Tool Loop 决策门 |
 
-延迟为一次兼容性请求的观测值，不作为性能基准或 SLA。
+延迟是单次兼容性请求的观测值，不作为性能门槛。
+
+## LIO API key 更新过程
+
+第一次把 LIO 模型临时覆盖为 `gpt-5.6-terra` 时，`/v1/models` 可以看到该模型，但实际请求返回 HTTP 503、错误码 `model_not_found`，语义是当前 API key 所属 `[origin]` 分组没有可用渠道。用户更新 LIO API key 后，五组探测全部通过。
+
+这个过程产生两个 Router 约束：
+
+- `/v1/models` 可见不等于当前 key/group 实际可调用，必须用真实请求验收。
+- Provider 可能用 HTTP 503 包装永久配置错误；Router 必须联合判断错误码和错误语义。`model_not_found`、无可用渠道、`invalid_request` 和 API/模型不支持不得按临时 503 自动重试或切换。
 
 ## JSON 输出校准发现
 
-LIO 首次 JSON 探测使用了“返回这段 JSON 的含义”这一有歧义的指令。平台返回了合法 JSON，但把要求的字段改写成一个 `meaning` 字段。将测试改成明确约束“键名、类型、值均不得重命名、翻译、包装或省略”后通过。
+早期 LIO JSON 探测使用了“返回这段 JSON 的含义”这一有歧义的指令。平台返回合法 JSON，但把要求字段改写成 `meaning`。将测试明确为“键名、类型、值均不得重命名、翻译、包装或省略”后通过。
 
-这说明 Evaluation 不能只判断“能否解析 JSON”，还必须验证字段、类型和业务不变量。正式 Runtime 对所有模型结构化结果都要执行应用层 schema 校验；校验失败属于模型输出不合格，不应当被当作网络错误无限重试。
-
-## Responses 失败性质
-
-LIO `/v1/responses` 返回 HTTP 503，但脱敏后的核心语义是：当前模型所有分组均不支持该 API 路径，错误码为 `invalid_request`。这是永久能力不匹配，而不是临时服务不可用：
-
-- 不应在同一平台重复请求同一路径。
-- 不应依靠 HTTP 503 单独判断为可重试。
-- 不应在一次 workflow 中让火苗使用 Responses、切到 LIO 时再临时转换为 Chat Completions。
+因此 Evaluation 不能只判断能否解析 JSON；正式 Runtime 对模型结构化结果必须继续执行应用层 schema 和业务不变量校验。
 
 ## 验证命令
+
+最终模型通过进程环境临时覆盖，未修改仓库 `.env`：
+
+```bash
+TEXT_FALLBACK_MODEL=gpt-5.6-terra \
+LIO_MODEL=gpt-5.6-terra \
+backend/.venv/bin/python scripts/check_agent_model_compatibility.py \
+  --provider all \
+  --output /tmp/doodlestory-agent-gpt-5.6-terra-report.json
+```
+
+LIO 更新 key 后的独立复测也保留为诊断证据：
+
+```bash
+LIO_MODEL=gpt-5.6-terra \
+backend/.venv/bin/python scripts/check_agent_model_compatibility.py \
+  --provider lio \
+  --output /tmp/doodlestory-agent-gpt-5.6-terra-lio-updated-key-report.json
+```
+
+离线脚本测试：
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python -m unittest \
   backend.tests.test_agent_model_compatibility
-
-backend/.venv/bin/python scripts/check_agent_model_compatibility.py \
-  --provider all \
-  --output /tmp/doodlestory-agent-provider-report.json
 ```
 
-全平台命令按设计返回非零退出码，因为 LIO Responses 能力失败；JSON 报告仍完整生成。单测覆盖敏感信息脱敏、Chat/Responses 内容提取、能力参数解析和暂时/永久错误分类。
+## Sprint 105 的输入
 
-## 下一 Sprint 的输入
-
-1. 用 Chat Completions 模型形态实现一个 `AgentModelRouter`，火苗主用、LIO 备用。
-2. 底层 Client 关闭自动重试；Router 统一负责有界重试和跨平台切换。
-3. Router 解析 Provider 错误体，识别“503 + invalid_request/unsupported”为永久错误。
-4. 每次模型请求从应用数据库重放规范化消息、Tool Call 与 Tool Output，不依赖 Provider response ID。
-5. 用故障注入分别验收“主平台临时失败后切 LIO”和“请求/权限/能力错误不切换”。
+1. 锁定 OpenAI Agents SDK 与兼容 OpenAI client 版本。
+2. 分别对火苗、LIO 运行相同的 Responses SDK Tool Loop，不在探测脚本中 fallback。
+3. 验证 Function Call、Tool Output、final response 和应用侧完整历史重放，不只验证 Responses 文本。
+4. 两个平台都通过后正式使用 Responses；任一失败时暂停并更新架构合同，不在一个 workflow 混用 API shape。
+5. 正式 Runtime 底层关闭自动重试，由 Router 统一执行有界重试、错误语义分类和一次备用切换。

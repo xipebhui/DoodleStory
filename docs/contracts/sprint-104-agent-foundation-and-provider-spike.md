@@ -63,8 +63,8 @@
 ## Completion record
 
 - 真实测试时间：2026-07-22。
-- 火苗 `gpt-5.4` 的 Chat Completions、JSON、Function Calling、Tool Output、多模态和 Responses 全部通过。
-- LIO `gemini-3.1-flash-lite-preview-thinking-minimal` 除 Responses 外全部通过；`/v1/responses` 返回永久路径不兼容。
-- Agent V1 因此统一选择 Chat Completions，完整结论见 `docs/testing/agent-model-provider-compatibility-report.md`。
+- 用户随后要求两个平台统一使用 `gpt-5.6-terra`；火苗的 Chat、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 全部通过。
+- LIO 初始 API key 能在模型列表看到 `gpt-5.6-terra`，但实际返回 `[origin]` 分组无渠道；用户更新 API key 后，同一组能力全部通过。
+- 直接 HTTP 能力已经满足。正式 API shape 仍需 Sprint 105 用 OpenAI Agents SDK 验证 Responses Function Calling 与 Tool Output 后锁定，完整结论见 `docs/testing/agent-model-provider-compatibility-report.md`。
 - Evaluation 数据集包含 20 个场景，见 `evals/agent_v1/cases.jsonl`。
 - 本 Sprint 未安装 SDK、未创建 Agent 表、未实现 Router 或修改现有生产链路，符合 Out of scope。
