@@ -99,6 +99,17 @@ class AgentModelRouterTests(unittest.TestCase):
         self.assertFalse(failure.retryable)
         self.assertEqual("AgentModelPermanentError", failure.code)
 
+    def test_stream_interruption_408_is_temporary_even_when_provider_labels_invalid_request(self):
+        failure = classify_agent_model_error(
+            FakeHTTPError(
+                408,
+                "invalid_request_error: stream disconnected before completion: stream closed before response.completed",
+            )
+        )
+
+        self.assertTrue(failure.retryable)
+        self.assertEqual("AgentModelTemporaryError", failure.code)
+
     def test_primary_temporary_errors_retry_then_fallback_once(self):
         router, routes = make_router([temporary_failure(), temporary_failure(), "fallback answer"])
 

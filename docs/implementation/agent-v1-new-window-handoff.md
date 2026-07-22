@@ -1,5 +1,7 @@
 # Agent V1 新窗口实施交接
 
+> 状态更新（2026-07-22）：本文中的“第二阶段启动提示词”已执行完成，Sprint 106 已 Complete。当前没有 Active Sprint；阶段 3 只有 `docs/contracts/sprint-107-agent-panel-iteration-vl-draft.md`，评审激活前不得实施 VL 或 Panel 迭代。
+
 ## 1. 是否应该换新窗口
 
 推荐换新窗口，并继续使用当前仓库与分支 `codex/agent-feature`。

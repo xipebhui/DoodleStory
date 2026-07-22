@@ -39,6 +39,10 @@ import {
   api,
   type ActivationCode,
   type ActivationCodeCreated,
+  type AgentConversation,
+  type AgentConversationDetail,
+  type AgentRunStatus,
+  type AgentTaskCard,
   type AdminCreditTransaction,
   type AdminCreditUsage,
   type AdminUserCreditDetail,
@@ -69,7 +73,7 @@ import {
 } from "./api/client";
 import "./styles/app.css";
 
-type View = "tasks" | "videoTasks" | "audioReferences" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
+type View = "agent" | "tasks" | "videoTasks" | "audioReferences" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
 const TASK_ROW_IMAGE_PREVIEW_LIMIT = 4;
 const CONTACT_WECHAT_QR_SRC = "/wechat-contact-qr.png";
 const aspectRatioOptions = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -79,6 +83,7 @@ const styleReferenceModeLabels: Record<Style["style_reference_mode"], string> = 
   image: "参考图参考",
 };
 const viewRoutes: Record<View, string> = {
+  agent: "/agent",
   tasks: "/tasks",
   videoTasks: "/video-tasks",
   audioReferences: "/audio-references",
@@ -97,6 +102,7 @@ function normalizedPathname(pathname: string) {
 
 function viewFromPathname(pathname: string): View | null {
   const path = normalizedPathname(pathname);
+  if (path === viewRoutes.agent || path.startsWith(`${viewRoutes.agent}/`)) return "agent";
   if (path === "/" || path === viewRoutes.tasks || path.startsWith(`${viewRoutes.tasks}/`)) return "tasks";
   if (path === viewRoutes.videoTasks || path.startsWith(`${viewRoutes.videoTasks}/`)) return "videoTasks";
   if (path === viewRoutes.audioReferences) return "audioReferences";
@@ -107,6 +113,14 @@ function viewFromPathname(pathname: string): View | null {
   if (path === viewRoutes.creditUsage) return "creditUsage";
   if (path === viewRoutes.settings) return "settings";
   return null;
+}
+
+function agentConversationIdFromPathname(pathname: string): string | null {
+  const path = normalizedPathname(pathname);
+  const prefix = `${viewRoutes.agent}/`;
+  if (!path.startsWith(prefix)) return null;
+  const rawId = path.slice(prefix.length).split("/")[0];
+  return rawId ? decodeURIComponent(rawId) : null;
 }
 
 function taskIdFromPathname(pathname: string): string | null {
@@ -259,6 +273,7 @@ function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [loading, setLoading] = useState(true);
   const view = viewFromPathname(pathname);
+  const routeAgentConversationId = agentConversationIdFromPathname(pathname);
   const routeTaskId = taskIdFromPathname(pathname);
   const routeVideoTaskId = videoTaskIdFromPathname(pathname);
 
@@ -382,6 +397,13 @@ function App() {
       onNavigate={navigateToView}
       onLogout={() => setUser(null)}
     >
+      {view === "agent" ? (
+        <AgentView
+          routeConversationId={routeAgentConversationId}
+          onNavigatePath={navigateToPath}
+          onCreditsChanged={refreshCredits}
+        />
+      ) : null}
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "videoTasks" ? <VideoTasksView user={user} routeVideoTaskId={routeVideoTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "audioReferences" ? <AudioReferencesView user={user} /> : null}
@@ -491,6 +513,7 @@ function Shell({
   children: React.ReactNode;
 }) {
   const items = [
+    { key: "agent" as const, label: "漫画 Agent", icon: MessageCircle, path: viewRoutes.agent },
     { key: "tasks" as const, label: "图文任务", icon: Images, path: viewRoutes.tasks },
     ...(user.role === "admin" ? [{ key: "videoTasks" as const, label: "视频任务", icon: Film, path: viewRoutes.videoTasks }] : []),
     ...(user.role === "admin"
@@ -584,6 +607,328 @@ function NotFoundView() {
         </div>
       </header>
       <div className="empty">请从左侧导航进入图文任务、内容提取、风格或设置页面。</div>
+    </section>
+  );
+}
+
+const activeAgentRunStatuses = new Set<AgentRunStatus>([
+  "queued",
+  "running",
+  "waiting_for_tool",
+  "retrying",
+]);
+
+function agentRunStatusLabel(status: AgentRunStatus) {
+  const labels: Record<AgentRunStatus, string> = {
+    queued: "等待导演处理",
+    running: "正在整理两格分镜",
+    waiting_for_tool: "正在生成真实图片",
+    waiting_for_input: "等待你的输入",
+    paused: "已暂停",
+    retrying: "模型线路重试中",
+    succeeded: "本轮已完成",
+    failed: "本轮失败",
+    cancel_requested: "取消中",
+    cancelled: "已取消",
+  };
+  return labels[status];
+}
+
+function agentTaskStatusLabel(status: AgentTaskCard["status"]) {
+  if (status === "succeeded") return "两格已完成";
+  if (status === "partial_succeeded") return "部分图片失败";
+  if (status === "failed") return "生成失败";
+  if (status === "cancel_requested") return "取消中";
+  if (status === "cancelled") return "已取消";
+  return "图片生成中";
+}
+
+function AgentTaskCardView({ card }: { card: AgentTaskCard }) {
+  return (
+    <article className="agent-task-card">
+      <header>
+        <div>
+          <span className="agent-eyebrow">两格漫画任务</span>
+          <h3>{card.title}</h3>
+        </div>
+        <span className={`status ${card.status}`}>{agentTaskStatusLabel(card.status)}</span>
+      </header>
+      <div className="agent-panel-grid">
+        {card.panels.map((panel) => (
+          <section className="agent-panel" key={panel.id}>
+            <div className="agent-panel-image">
+              {panel.image?.status === "succeeded" && panel.image.asset_id ? (
+                <LazyAssetImage
+                  assetId={panel.image.asset_id}
+                  alt={`第 ${panel.panel_order} 格：${panel.story_beat}`}
+                  variant="original"
+                  eager
+                />
+              ) : panel.image?.status === "failed" || panel.image?.status === "cancelled" ? (
+                <div className="agent-panel-state is-error">
+                  <AlertCircle size={22} />
+                  <span>{panel.image.error_message || "图片生成失败"}</span>
+                </div>
+              ) : (
+                <div className="agent-panel-state">
+                  <Loader2 className="spin" size={24} />
+                  <span>{panel.image?.status === "running" ? "图片 Provider 生成中" : "等待图片 worker"}</span>
+                </div>
+              )}
+            </div>
+            <div className="agent-panel-copy">
+              <strong>Panel {panel.panel_order}</strong>
+              <p>{panel.story_beat}</p>
+              {panel.visual_goal ? <small>{panel.visual_goal}</small> : null}
+            </div>
+          </section>
+        ))}
+      </div>
+      {card.error_message ? <p className="error agent-card-error">{card.error_message}</p> : null}
+    </article>
+  );
+}
+
+function AgentView({
+  routeConversationId,
+  onNavigatePath,
+  onCreditsChanged,
+}: {
+  routeConversationId: string | null;
+  onNavigatePath: (path: string) => void;
+  onCreditsChanged: () => Promise<CreditOverview | null>;
+}) {
+  const [conversations, setConversations] = useState<AgentConversation[]>([]);
+  const [detail, setDetail] = useState<AgentConversationDetail | null>(null);
+  const [styles, setStyles] = useState<StyleSelectOption[]>([]);
+  const [selectedStyleId, setSelectedStyleId] = useState("");
+  const [idea, setIdea] = useState("");
+  const [search, setSearch] = useState("");
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadConversations() {
+    try {
+      const result = await api.agentConversations({ limit: 100 });
+      setConversations(result.items);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "会话列表加载失败");
+    } finally {
+      setLoadingList(false);
+    }
+  }
+
+  async function loadDetail(conversationId: string, quiet = false) {
+    if (!quiet) setLoadingDetail(true);
+    try {
+      const result = await api.agentConversation(conversationId);
+      setDetail(result);
+      setError("");
+      return result;
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "会话加载失败");
+      return null;
+    } finally {
+      if (!quiet) setLoadingDetail(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadConversations();
+    api
+      .styleSelectOptions({ status: "active", limit: 100 })
+      .then((result) => {
+        setStyles(result.items);
+        setSelectedStyleId((current) => current || result.items[0]?.id || "");
+      })
+      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "风格加载失败"));
+  }, []);
+
+  useEffect(() => {
+    if (!routeConversationId) {
+      setDetail(null);
+      return;
+    }
+    void loadDetail(routeConversationId);
+  }, [routeConversationId]);
+
+  const hasActiveWork = Boolean(
+    detail?.runs.some((run) => activeAgentRunStatuses.has(run.status)) ||
+      detail?.task_cards.some((card) => ["queued", "running", "retrying"].includes(card.status)),
+  );
+
+  useEffect(() => {
+    if (!routeConversationId || !hasActiveWork) return;
+    const timer = window.setInterval(() => {
+      void loadDetail(routeConversationId, true);
+      void loadConversations();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [routeConversationId, hasActiveWork]);
+
+  useEffect(() => {
+    if (detail?.runs[0]?.status === "succeeded" || detail?.runs[0]?.status === "failed") {
+      void onCreditsChanged();
+    }
+  }, [detail?.runs[0]?.status]);
+
+  async function createConversation() {
+    try {
+      const conversation = await api.createAgentConversation({ title: "新漫画创作" });
+      await loadConversations();
+      onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversation.id)}`);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "新建会话失败");
+    }
+  }
+
+  async function sendMessage(event: React.FormEvent) {
+    event.preventDefault();
+    if (!routeConversationId || !idea.trim() || !selectedStyleId) return;
+    const selectedStyle = styles.find((style) => style.id === selectedStyleId);
+    setSending(true);
+    setError("");
+    try {
+      await api.sendAgentMessage(routeConversationId, {
+        content: idea,
+        resource_refs: [
+          {
+            kind: "style",
+            id: selectedStyleId,
+            display_name: selectedStyle?.name || null,
+          },
+        ],
+      });
+      setIdea("");
+      await loadDetail(routeConversationId, true);
+      await loadConversations();
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "消息发送失败");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const filteredConversations = conversations.filter((conversation) =>
+    conversation.title.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+  const visibleMessages = detail?.messages.filter((message) => message.role !== "task_card") || [];
+  const latestRun = detail?.runs[0] || null;
+
+  return (
+    <section className="agent-workspace">
+      <aside className="agent-conversation-list">
+        <div className="agent-list-heading">
+          <div>
+            <span className="agent-eyebrow">ComicDirectorAgent</span>
+            <h1>漫画创作</h1>
+          </div>
+          <button type="button" aria-label="新建对话" onClick={() => void createConversation()}>
+            <Plus size={18} />
+          </button>
+        </div>
+        <label className="search-box agent-search">
+          <Search size={16} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索历史对话" />
+        </label>
+        <div className="agent-conversation-scroll">
+          {loadingList ? <div className="agent-list-state">加载会话中…</div> : null}
+          {!loadingList && filteredConversations.length === 0 ? (
+            <div className="agent-list-state">还没有对话，点击右上角新建。</div>
+          ) : null}
+          {filteredConversations.map((conversation) => (
+            <button
+              type="button"
+              key={conversation.id}
+              className={routeConversationId === conversation.id ? "active" : ""}
+              onClick={() => onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversation.id)}`)}
+            >
+              <strong>{conversation.title}</strong>
+              <span>{new Date(conversation.last_message_at).toLocaleString()}</span>
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <div className="agent-chat">
+        {!routeConversationId ? (
+          <div className="agent-empty-chat">
+            <MessageCircle size={34} />
+            <h2>从一个 Idea 开始两格漫画</h2>
+            <p>新建对话，选择一个已启用风格。Agent 会规划连续两格并调用真实图片 Provider。</p>
+            <button type="button" onClick={() => void createConversation()}>
+              <Plus size={17} /> 新建对话
+            </button>
+          </div>
+        ) : loadingDetail && !detail ? (
+          <div className="agent-empty-chat"><Loader2 className="spin" />加载对话中…</div>
+        ) : (
+          <>
+            <header className="agent-chat-header">
+              <div>
+                <span className="agent-eyebrow">真实模型 · 真实图片任务</span>
+                <h2>{detail?.title || "漫画创作"}</h2>
+              </div>
+              {latestRun ? (
+                <span className={`agent-run-state ${latestRun.status}`}>
+                  {activeAgentRunStatuses.has(latestRun.status) ? <Loader2 className="spin" size={15} /> : null}
+                  {agentRunStatusLabel(latestRun.status)}
+                </span>
+              ) : null}
+            </header>
+            <div className="agent-message-scroll" aria-live="polite">
+              {visibleMessages.length === 0 ? (
+                <div className="agent-welcome">
+                  <strong>告诉我你想画什么。</strong>
+                  <p>例如：一个加班到深夜的人，在便利店遇见十年后的自己。</p>
+                </div>
+              ) : null}
+              {visibleMessages.map((message) => (
+                <div key={message.id} className={`agent-message ${message.role}`}>
+                  <span>{message.role === "user" ? "你" : message.role === "assistant" ? "Agent" : "系统"}</span>
+                  <p>{message.content}</p>
+                  {message.resource_refs.map((ref) => (
+                    <small key={`${ref.kind}-${ref.id}`}>@{ref.display_name || "风格"}</small>
+                  ))}
+                </div>
+              ))}
+              {detail?.task_cards.map((card) => <AgentTaskCardView key={card.task_id} card={card} />)}
+              {latestRun?.status === "failed" && !latestRun.task_id ? (
+                <div className="agent-run-error"><AlertCircle size={18} />{latestRun.error_message || "本轮执行失败"}</div>
+              ) : null}
+            </div>
+            <form className="agent-composer" onSubmit={sendMessage}>
+              <div className="agent-style-select">
+                <Sparkles size={16} />
+                <select
+                  aria-label="选择漫画风格"
+                  value={selectedStyleId}
+                  onChange={(event) => setSelectedStyleId(event.target.value)}
+                  disabled={sending || hasActiveWork}
+                >
+                  {styles.length === 0 ? <option value="">没有可用风格</option> : null}
+                  {styles.map((style) => <option key={style.id} value={style.id}>@{style.name}</option>)}
+                </select>
+              </div>
+              <textarea
+                aria-label="漫画 Idea"
+                value={idea}
+                onChange={(event) => setIdea(event.target.value)}
+                placeholder="输入一个漫画 Idea…"
+                rows={3}
+                disabled={sending || hasActiveWork}
+              />
+              <button type="submit" disabled={sending || hasActiveWork || !idea.trim() || !selectedStyleId}>
+                {sending ? <Loader2 className="spin" size={18} /> : <ArrowUpRight size={18} />}
+                {hasActiveWork ? "本轮生成中" : "生成两格漫画"}
+              </button>
+              {error ? <p className="error">{error}</p> : null}
+            </form>
+          </>
+        )}
+      </div>
     </section>
   );
 }

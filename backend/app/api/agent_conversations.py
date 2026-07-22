@@ -5,12 +5,22 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
-from app.models.entities import AgentConversation, AgentMessage, AgentRun, AgentStep, User, new_id
+from app.models.entities import (
+    AgentConversation,
+    AgentMessage,
+    AgentRun,
+    AgentStep,
+    GeneratedImage,
+    GenerationTask,
+    TaskPanel,
+    User,
+    new_id,
+)
 from app.models.enums import AgentConversationStatus, AgentMessageRole, AgentRunStatus
 from app.schemas.agent import (
     AgentConversationCreate,
@@ -20,11 +30,16 @@ from app.schemas.agent import (
     AgentMessageRead,
     AgentResourceRef,
     AgentRunRead,
+    AgentRunSummaryRead,
     AgentStepRead,
+    AgentTaskCardImageRead,
+    AgentTaskCardPanelRead,
+    AgentTaskCardRead,
     AgentTurnAcceptedRead,
 )
 from app.schemas.common import ApiData, ApiList
 from app.services.agent_runner import enqueue_agent_run
+from app.services.agent_comic_creation import AgentComicCreationError, load_authorized_style
 
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -76,6 +91,7 @@ def run_to_read(db: Session, run: AgentRun) -> AgentRunRead:
         id=run.id,
         conversation_id=run.conversation_id,
         turn_id=run.turn_id,
+        task_id=run.task_id,
         status=run.status,
         current_step_sequence=run.current_step_sequence,
         model_call_count=run.model_call_count,
@@ -87,6 +103,52 @@ def run_to_read(db: Session, run: AgentRun) -> AgentRunRead:
         created_at=run.created_at,
         updated_at=run.updated_at,
         steps=[AgentStepRead.model_validate(step) for step in steps],
+    )
+
+
+def task_card_to_read(run: AgentRun) -> AgentTaskCardRead:
+    task = run.task
+    if task is None:
+        raise RuntimeError("Agent Run 任务卡片缺少 GenerationTask")
+    images_by_panel = {
+        image.panel_id: image
+        for image in task.generated_images
+        if image.panel_id is not None
+    }
+    panels: list[AgentTaskCardPanelRead] = []
+    for panel in sorted(task.panels, key=lambda item: item.panel_order):
+        image = images_by_panel.get(panel.id)
+        panels.append(
+            AgentTaskCardPanelRead(
+                id=panel.id,
+                panel_order=panel.panel_order,
+                story_beat=panel.original_text_segment,
+                visual_goal=panel.text_layout,
+                image=(
+                    AgentTaskCardImageRead(
+                        id=image.id,
+                        status=image.status,
+                        asset_id=image.asset_id,
+                        width=image.asset.width if image.asset else None,
+                        height=image.asset.height if image.asset else None,
+                        error_code=image.error_code,
+                        error_message=image.error_message,
+                    )
+                    if image is not None
+                    else None
+                ),
+            )
+        )
+    return AgentTaskCardRead(
+        task_id=task.id,
+        run_id=run.id,
+        title=task.display_title,
+        status=task.status,
+        progress_current=task.progress_current,
+        progress_total=task.progress_total,
+        error_code=task.error_code,
+        error_message=task.error_message,
+        panels=panels,
     )
 
 
@@ -140,11 +202,37 @@ def get_agent_conversation(
         .limit(message_limit + 1)
     ).all()
     visible = messages[:message_limit]
+    task_runs = db.scalars(
+        select(AgentRun)
+        .where(
+            AgentRun.conversation_id == conversation.id,
+            AgentRun.task_id.is_not(None),
+        )
+        .options(
+            selectinload(AgentRun.task)
+            .selectinload(GenerationTask.panels)
+            .selectinload(TaskPanel.generated_images)
+            .selectinload(GeneratedImage.asset),
+            selectinload(AgentRun.task)
+            .selectinload(GenerationTask.generated_images)
+            .selectinload(GeneratedImage.asset),
+        )
+        .order_by(AgentRun.created_at.asc())
+        .limit(20)
+    ).all()
+    recent_runs = db.scalars(
+        select(AgentRun)
+        .where(AgentRun.conversation_id == conversation.id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(20)
+    ).all()
     return ApiData(
         data=AgentConversationDetailRead(
             **AgentConversationRead.model_validate(conversation).model_dump(),
             messages=[message_to_read(message) for message in visible],
             message_page=build_page(message_limit, message_cursor, len(messages)),
+            task_cards=[task_card_to_read(run) for run in task_runs],
+            runs=[AgentRunSummaryRead.model_validate(run) for run in recent_runs],
         )
     )
 
@@ -181,6 +269,25 @@ async def create_agent_message(
         )
         if pending_run is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="当前会话上一轮仍在运行")
+
+    style_refs = [item for item in payload.resource_refs if item.kind.value == "style"]
+    if payload.resource_refs:
+        if len(payload.resource_refs) != 1 or len(style_refs) != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Sprint 106 每条漫画创建消息必须且只能选择一个风格",
+            )
+        try:
+            style = load_authorized_style(db, style_refs[0].id)
+        except AgentComicCreationError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        payload = payload.model_copy(
+            update={
+                "resource_refs": [
+                    style_refs[0].model_copy(update={"display_name": style.name})
+                ]
+            }
+        )
 
     turn_id = new_id()
     message = AgentMessage(

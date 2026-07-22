@@ -2,7 +2,7 @@
 
 ## Status
 
-Active（2026-07-22）。Sprint 105 的 SDK、API shape、四表 migration、Router、两轮真实对话与恢复验证均已通过；本 Sprint 只能复用该 Runtime，不重新引入 Provider 远程上下文依赖。
+Complete（2026-07-22）。Sprint 105 的 Runtime 契约保持不变；本 Sprint 已完成真实模型、真实图片 Provider、浏览器刷新恢复和全量回归验收。
 
 ## Goal
 
@@ -66,10 +66,22 @@ Sprint 106 最低验证集合：
 
 ## Handoff
 
-完成后创建阶段 3 的独立 Sprint 合同，只增加指定 Panel 修改、版本恢复和 `inspect_image` 闭环，不把阶段 4 资源和旧 Pipeline 迁移并入同一 Sprint。
+阶段 3 的独立 Draft 合同已创建为 `docs/contracts/sprint-107-agent-panel-iteration-vl-draft.md`。该合同只规划指定 Panel 修改、版本恢复和 `inspect_image` 闭环，尚未激活、尚未实现。
 
 ## Assumptions to review when activating
 
 - 已确认 Sprint 105 的最终 SDK/API shape、Router 和四张 Agent 表稳定，并已有 190 个后端测试的全量回归基线。
 - 已确认当前图片 job 以 `GeneratedImage` 持久化状态并由独立图片 worker 领取；Sprint 106 需要新增受控的 `generate_image` Tool adapter 复用该边界，禁止调用旧任务创作编排。
 - 两格固定数量继续作为架构验证限制，不是最终产品限制。
+
+## Completion record
+
+- `/agent` 已接入真实 Conversation、Message、Run 和任务卡片 API；稳定 URL 支持新建、继续、刷新和重新打开对话。
+- 本阶段只解析一个 `style` resource ref。当前 `Style` 是全局风格库、没有 owner 字段，因此“可访问”定义为已登录用户可读取 active、未删除的全局风格；伪造、停用或已删除 ID 均由后端拒绝。本 Sprint 未擅自引入风格所有权迁移。
+- 严格 `ComicPlan` 固定包含有序且剧情不同的 `panel-1`、`panel-2`。Runtime 原子创建 GenerationTask、两个 Panel、两个 GeneratedImage job，并把 Agent 的单图 `image_prompt` 原样保存为 `final_prompt`，不进入旧故事拆分或最终 Prompt 编译。
+- 每个图片 Tool Call 先保存稳定幂等键，再创建图片 job；恢复时复用 `run.task_id`、既有 job 和积分流水。图片到达终态后各写一次 Tool Result，再恢复最终模型回答。
+- 真实 HTTP smoke、纯浏览器提交和中断恢复证据保存在 `docs/testing/agent-comic-vertical-slice-smoke-report.json`；三组证据均为真实模型和真实图片 Provider，不包含 Mock 或占位图。
+- Evaluation 映射覆盖 `idea_to_comic_basic` 的 Sprint 106 固定两格变体、`mention_style_resource` 和 `duplicate_tool_call_idempotency`。
+- 针对性回归 39 个测试通过；`./scripts/check.sh` 通过，覆盖 196 个后端测试、空库 Alembic `upgrade head` 和前端生产构建；`git diff --check` 通过。
+- 浏览器完成“登录 → 新建对话 → 选一个风格 → 提交 Idea → 看到两张真实图片 → 新标签恢复 → 强制刷新恢复”，认证后的 Agent 页面控制台 0 error / 0 warning。
+- VL、Panel 修改/重试/版本恢复、角色、抖音和旧 Pipeline 迁移均未实现。

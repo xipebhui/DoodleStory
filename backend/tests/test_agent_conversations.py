@@ -16,7 +16,8 @@ from app.api.agent_conversations import (
 )
 from app.api.pagination import Pagination
 from app.core.database import Base
-from app.models.entities import AgentMessage, AgentRun, User
+from app.models.entities import AgentMessage, AgentRun, Style, User
+from app.models.enums import StyleStatus
 from app.schemas.agent import (
     AgentConversationCreate,
     AgentMessageCreate,
@@ -38,6 +39,15 @@ class AgentConversationTests(unittest.TestCase):
         self.owner = User(email="agent-owner@example.com", password_hash="hash")
         self.other = User(email="agent-other@example.com", password_hash="hash")
         self.db.add_all([self.owner, self.other])
+        self.db.commit()
+        self.style = Style(
+            name="水彩",
+            status=StyleStatus.active,
+            image_model_name="gpt-image-2",
+            aspect_ratio="3:4",
+            style_prompt="清透水彩漫画",
+        )
+        self.db.add(self.style)
         self.db.commit()
 
     def tearDown(self) -> None:
@@ -86,7 +96,7 @@ class AgentConversationTests(unittest.TestCase):
         payload = AgentMessageCreate(
             content="  保留用户原始空格  ",
             resource_refs=[
-                AgentResourceRef(kind=AgentResourceKind.style, id="style-1", display_name="水彩")
+                AgentResourceRef(kind=AgentResourceKind.style, id=self.style.id, display_name="旧名称")
             ],
         )
 
@@ -102,7 +112,8 @@ class AgentConversationTests(unittest.TestCase):
 
         enqueue.assert_awaited_once_with(accepted.run.id)
         self.assertEqual("  保留用户原始空格  ", accepted.message.content)
-        self.assertEqual("style-1", accepted.message.resource_refs[0].id)
+        self.assertEqual(self.style.id, accepted.message.resource_refs[0].id)
+        self.assertEqual("水彩", accepted.message.resource_refs[0].display_name)
         saved_message = self.db.get(AgentMessage, accepted.message.id)
         saved_run = self.db.get(AgentRun, accepted.run.id)
         self.assertEqual("  保留用户原始空格  ", saved_message.content)
@@ -113,6 +124,28 @@ class AgentConversationTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as raised:
             get_agent_run(accepted.run.id, user=self.other, db=self.db)
         self.assertEqual(404, raised.exception.status_code)
+
+    def test_rejects_unknown_style_resource_before_creating_run(self):
+        conversation = self.create_conversation()
+        payload = AgentMessageCreate(
+            content="创建两格漫画",
+            resource_refs=[
+                AgentResourceRef(kind=AgentResourceKind.style, id="not-owned-or-visible")
+            ],
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(
+                create_agent_message(
+                    conversation.id,
+                    payload,
+                    user=self.owner,
+                    db=self.db,
+                )
+            )
+
+        self.assertEqual(403, raised.exception.status_code)
+        self.assertEqual(0, len(self.db.scalars(select(AgentRun)).all()))
 
     def test_rejects_second_message_while_turn_is_pending(self):
         conversation = self.create_conversation()

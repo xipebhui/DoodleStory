@@ -1,0 +1,92 @@
+{
+  "sprint": 106,
+  "tested_at": "2026-07-22T08:20:30Z",
+  "scope": "Idea + one style resource -> two-panel ComicPlan -> real generate_image -> conversation task card",
+  "environment": "local development with real Agent model providers and real image provider",
+  "http_smoke": {
+    "conversation_id": "c424ee6e53bb4143a5efcf1f3d71a759",
+    "run_id": "4b5f49b6a0844a7cb3ef86dcccd311f2",
+    "run_status": "succeeded",
+    "task_id": "5a241273a6914c19ae23eec5cea5f50e",
+    "task_status": "succeeded",
+    "panel_ids": [
+      "74ecc6ae31c94c3e87825a21f358a3cc",
+      "423c24b966b34a4cb04f632c3d718e39"
+    ],
+    "image_versions": [
+      {
+        "id": "84a12953953e487f894d4acaedb89c70",
+        "asset_id": "8930037d277541d68882bec79ef90672",
+        "status": "succeeded"
+      },
+      {
+        "id": "46b724b38b9d42d39efe32658a990154",
+        "asset_id": "f839268d39544869a5e88f9c8b7b9574",
+        "status": "succeeded"
+      }
+    ],
+    "tool_call_count": 2,
+    "tool_result_count": 2,
+    "image_call_count": 2,
+    "model_route": [
+      "comic_plan: huomiao attempt 1 temporary stream interruption",
+      "comic_plan: huomiao attempt 2 temporary stream interruption",
+      "comic_plan: lio fallback succeeded",
+      "comic_final: huomiao attempt 1 succeeded"
+    ],
+    "visual_review": "Both panels use the same short-haired protagonist, pale-yellow sweater and location; the rain and neighboring umbrellas progress continuously, and the requested Chinese text is readable."
+  },
+  "browser_smoke": {
+    "viewport": "desktop",
+    "conversation_id": "efa4838d817544d8b4b629557af4c8c3",
+    "run_id": "f707c6b326934ed795ba266ed0f43e05",
+    "run_status": "succeeded",
+    "task_id": "3ad0413bf70641a5ab297088b0c95fa0",
+    "panel_ids": [
+      "77c2986621bf4c9d9fbbe83e5f4e42ac",
+      "7bf67d0a532040ba9c4420d9d08a477c"
+    ],
+    "image_versions": [
+      {
+        "id": "15caa194e79a48e1b7286d087d9c6923",
+        "asset_id": "0dae226760e040698f33194114e42d7d",
+        "status": "succeeded"
+      },
+      {
+        "id": "7af64cf2f9d94c96a60eec9b5e3c94bb",
+        "asset_id": "b74cbf297cd340b0a6b6be84d59c0b74",
+        "status": "succeeded"
+      }
+    ],
+    "tool_call_count": 2,
+    "tool_result_count": 2,
+    "image_call_count": 2,
+    "credit_evidence": "Each image has exactly one reserve transaction and one successful charge transaction.",
+    "checks": [
+      "Created a new conversation from /agent",
+      "Selected exactly one active style and submitted an idea through the UI",
+      "Composer and style selector were disabled while the run was active",
+      "The task card displayed two real image assets after completion",
+      "A fresh authenticated tab and a hard refresh restored the same conversation, task card and images",
+      "Authenticated Agent page console contained zero errors and zero warnings"
+    ]
+  },
+  "recovery_smoke": {
+    "conversation_id": "6fc0d9095e0f4de1b41e8b970b18c89c",
+    "run_id": "52d1261ee7274839a08e8989b8bb9a6c",
+    "task_id": "99630a351da2489485530b0be28df936",
+    "result": "After final-model interruption, re-queueing the run reused both successful image jobs and charges, wrote no duplicate image job, and completed through the configured model route."
+  },
+  "evaluation_mapping": {
+    "idea_to_comic_basic": "Executed as the Sprint 106 fixed-two-panel variant in both HTTP and browser real-provider smokes.",
+    "mention_style_resource": "Covered by active-style API authorization tests plus both real-provider smokes using a stable style ID and snapshot.",
+    "duplicate_tool_call_idempotency": "Covered by atomic adapter unit tests and the real recovery smoke, which reused the existing task and two image jobs."
+  },
+  "excluded": [
+    "inspect_image or other VL",
+    "Panel retry, modification or version restore",
+    "character resources",
+    "Douyin inputs",
+    "legacy Pipeline migration"
+  ]
+}

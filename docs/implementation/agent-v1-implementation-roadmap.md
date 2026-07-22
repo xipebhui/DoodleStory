@@ -42,8 +42,8 @@ flowchart LR
 | --- | --- | --- | --- |
 | 0 | 产品、架构、交互、平台和 Evaluation 基线 | 已完成 | Sprint 103、104 |
 | 1 | 可持久化、可恢复、可切换 Provider 的 Agent Runtime | 已完成 | Sprint 105 |
-| 2 | 对话创建两格真实漫画的纵向链路 | 下一步 | Sprint 106 Active |
-| 3 | 指定 Panel 修改、重试、版本恢复和 VL 检查闭环 | 未开始 | 阶段 2 后创建合同 |
+| 2 | 对话创建两格真实漫画的纵向链路 | 已完成 | Sprint 106 |
+| 3 | 指定 Panel 修改、重试、版本恢复和 VL 检查闭环 | 待评审 | Sprint 107 Draft |
 | 4 | 角色、任务、图片、参考漫画和抖音等资源入口 | 未开始 | 阶段 3 后创建合同 |
 | 5 | 旧入口迁移到 Agent 并移除重复编排 | 未开始 | 阶段 4 后创建合同 |
 | 6 | 完整 Evaluation、稳定性、成本和发布门槛 | 未开始 | 阶段 5 后创建合同 |
@@ -95,6 +95,10 @@ Sprint 105 已完成并通过全部退出门槛。四张 Agent 表、最小 API�
 
 ## 6. 阶段 2：对话式真实漫画生成
 
+### 完成结论
+
+Sprint 106 已完成并通过全部退出门槛。真实 `/agent` 页面支持 Idea + 一个 active 全局风格，Agent 结构化输出固定两格 ComicPlan，Runtime 原子保存任务与两个 Panel，并通过两个有幂等键的真实 `generate_image` job 生成资产；图片完成后写 Tool Output、恢复最终回答，并在对话任务卡片中展示。真实 HTTP、浏览器和中断恢复 smoke 均通过，证据保存在 `docs/testing/agent-comic-vertical-slice-smoke-report.json`；全量检查覆盖 196 个后端测试、空库 migration 和前端生产构建。现有旧 Pipeline 未迁移，VL、Panel 迭代、角色和抖音均未实现。
+
 ### 用户可感知结果
 
 用户在真实 Agent 页面新建或继续对话，输入漫画 Idea 并选择一个 `@风格`，Agent 自主生成两格 `ComicPlan`、调用真实生图 Tool，并在对话中展示任务卡片和两张图片。
@@ -119,6 +123,8 @@ Sprint 105 已完成并通过全部退出门槛。四张 Agent 表、最小 API�
 - 阶段 2 的针对性测试和 `./scripts/check.sh` 通过。
 
 ## 7. 阶段 3：Panel 迭代与 VL 闭环
+
+阶段 3 已建立 `docs/contracts/sprint-107-agent-panel-iteration-vl-draft.md`，当前仅待评审，不代表授权实施。
 
 ### 用户可感知结果
 

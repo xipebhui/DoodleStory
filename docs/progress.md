@@ -5,11 +5,13 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 105 Agent Runtime 基础完成。真实 SDK 决策门锁定 `openai-agents==0.18.3`、`openai==2.45.0`、Responses API 和 `gpt-5.6-terra`；火苗、LIO 分别在零底层 retry、零跨 Provider fallback 下通过 Function Call → Tool Output → final response 与应用侧完整输入重放。真实 Runtime 两轮 smoke 通过，故障注入、永久错误、fallback 单回答、重启恢复、重复执行、权限和有界历史测试通过；`./scripts/check.sh` 覆盖 190 个后端测试、空库 Alembic migration 和前端生产构建。
+- 最近验证状态：Sprint 106 对话创建两格真实漫画完成。真实 `/agent` 页面已从 Idea + 一个 active 全局风格生成固定两格 ComicPlan，经两个幂等 `generate_image` job 产出真实资产并恢复对话任务卡片；真实 HTTP、纯浏览器和中断恢复 smoke 均通过。`./scripts/check.sh` 覆盖 196 个后端测试、空库 Alembic migration 和前端生产构建。
 
 ## 当前 Sprint 合同
 
-- Active：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
+- Active：无。Sprint 107 仍为 Draft，必须评审后才能激活。
+- Draft：`docs/contracts/sprint-107-agent-panel-iteration-vl-draft.md`
+- Complete：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
 - Complete：`docs/contracts/sprint-105-agent-runtime-foundation.md`
 - 全局路线：`docs/implementation/agent-v1-implementation-roadmap.md`
 - `docs/contracts/sprint-104-agent-foundation-and-provider-spike.md`
@@ -33,6 +35,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 106 对话创建两格真实漫画纵向链路：新增严格两格 `ComicPlan`，解析且鉴权一个风格资源引用；当前风格库没有 owner 字段，因此只允许已登录用户使用 active、未删除的全局风格，并拒绝伪造、停用或删除 ID。Runtime 原子创建 GenerationTask、两个 Panel 和两个 GeneratedImage job，Agent 的 `image_prompt` 直接成为图片 job `final_prompt`，不经过旧故事拆分或最终 Prompt 编译。两个 `generate_image` Tool Call 在副作用前保存稳定幂等键，Run 等待真实图片 job 后各写一次 Tool Result，再恢复最终模型回答；恢复复用既有 task/job/积分流水，不重复生图或扣费。新增 `agent_runs.task_id` migration、Conversation 详情任务卡片/Run 摘要和正式 `/agent` 会话页面，支持有界历史、选一个风格、应用级状态、两张真实图片、刷新及重新打开恢复。真实 HTTP smoke、纯浏览器提交和中断恢复均通过，完整脱敏证据保存于 `docs/testing/agent-comic-vertical-slice-smoke-report.json`；认证后的 Agent 页面控制台 0 error / 0 warning。针对性回归 39 个测试、Python compileall、前端生产构建、`git diff --check` 与 `./scripts/check.sh` 全部通过；全量检查覆盖 196 个后端测试和空库 Alembic `upgrade head`。阶段 3 只创建了 Sprint 107 Draft 合同，未实现 VL、Panel 修改/重试/版本恢复、角色、抖音或旧 Pipeline 迁移。
 
 - 迭代 Sprint 103 独立 Agent 会话前端 Demo，不触碰正式 React 页面、后端或 Sprint 106 实现：页面现在默认进入空白对话，只克制展示三个常用角色/风格资源；输入区资源入口支持搜索，也可通过输入 `@` 唤起。任务卡去除重复的进度消息并展示原位行动状态，缩略图可直接打开具体 Panel。右侧详情改为 Panel 检查器，明确区分“当前选中”和“Agent 正在运行”，展示大图、版本、剧情目标、检查结论，以及接受、重试、恢复、暂停和“引用 Panel 并修改”等确定性演示动作。资源与输入草稿按对话保存，引用 Panel 不再覆盖用户草稿，切换历史对话后能够恢复。设计 Brief 和 Demo README 已同步默认空白页与显式引用语义。验证：`node --check docs/design/agent-conversation-demo/app.js`、`git diff --check` 通过；Playwright 在 1440×900 完成空白页、资源搜索、任务卡直达 Panel、保留草稿引用 Panel、跨对话恢复链路，控制台 0 error/0 warning；`./scripts/check.sh` 通过，覆盖 196 个后端测试、空库 Alembic migration 和正式前端生产构建。
 - 完成 Sprint 105 可持久化 Agent Runtime 基础：锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API，新增独立 SDK 探测脚本并用真实火苗/LIO `gpt-5.6-terra` 分别完成 Function Calling、Tool Output、final response 和应用侧历史重放；脱敏证据保存于 `docs/testing/agent-sdk-provider-compatibility-report.json`。新增 Alembic revision `x8f9a0b1c2d3`，只创建 `agent_conversations`、`agent_messages`、`agent_runs`、`agent_steps`，并补齐 owner、消息顺序、恢复查询和幂等约束/索引。新增 Conversation 创建/分页/有界详情/发消息与 Run 查询 API，普通用户和 Admin 均只能访问自己的 Agent 数据；资源引用以受控 JSON 保存但不解析。实现只调度 `run_id` 的进程内队列、应用数据库完整上下文、文本版 `ComicDirectorAgent`、模型 Step/最终消息事务 checkpoint 与启动恢复。Router 关闭 SDK/client retry，火苗只对允许的临时错误重试一次后切 LIO；永久错误不切换。故障注入证明 fallback 后只有一个回答，恢复测试证明成功模型 Step 和重复投递不重复调用或写消息。真实两轮 Conversation `7980d1bac60b476f834e8d191fa6a832`、Run `7fdd4824f69243ae94c450198628e00f` / `0e744b264dc54b1180b475210351d52d` 验证第二轮从应用数据库取回第一轮上下文，证据保存于 `docs/testing/agent-runtime-two-turn-smoke-report.json`。验证：4 个 Agent 测试模块共 18 个测试通过，真实双平台 SDK 探测与真实两轮 Runtime smoke 通过，Python compileall、空库 Alembic `upgrade head`、OpenAPI 路径校验、`git diff --check` 和 `./scripts/check.sh` 通过；全量检查覆盖 190 个后端测试与前端生产构建。Sprint 106 已按交接要求评审并激活，但本次未实现 ComicPlan、生图 Tool 或正式前端。

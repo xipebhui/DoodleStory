@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import (
     AgentConversationStatus,
@@ -9,6 +9,8 @@ from app.models.enums import (
     AgentRunStatus,
     AgentStepStatus,
     AgentStepType,
+    GeneratedImageStatus,
+    TaskStatus,
 )
 from app.schemas.common import OrmModel, PageInfo, TimestampFields
 
@@ -25,6 +27,57 @@ class AgentResourceRef(BaseModel):
     kind: AgentResourceKind
     id: str = Field(min_length=1, max_length=120)
     display_name: str | None = Field(default=None, max_length=160)
+
+
+class ComicPlanPanel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    panel_key: str = Field(pattern=r"^panel-[12]$")
+    story_beat: str = Field(min_length=1, max_length=500)
+    visual_goal: str = Field(min_length=1, max_length=800)
+    image_prompt: str = Field(min_length=1, max_length=3000)
+    required_text: list[str] = Field(default_factory=list, max_length=6)
+
+    @field_validator("story_beat", "visual_goal", "image_prompt")
+    @classmethod
+    def strip_required_text_fields(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("ComicPlan 文本字段不能为空")
+        return cleaned
+
+    @field_validator("required_text")
+    @classmethod
+    def validate_required_text(cls, value: list[str]) -> list[str]:
+        cleaned = [item.strip() for item in value]
+        if any(not item or len(item) > 120 for item in cleaned):
+            raise ValueError("图片内文字必须是 1 到 120 字的非空文本")
+        return cleaned
+
+
+class ComicPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=120)
+    summary: str = Field(min_length=1, max_length=800)
+    panels: list[ComicPlanPanel] = Field(min_length=2, max_length=2)
+
+    @field_validator("title", "summary")
+    @classmethod
+    def strip_plan_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("ComicPlan 标题和概要不能为空")
+        return cleaned
+
+    @field_validator("panels")
+    @classmethod
+    def validate_panel_keys(cls, value: list[ComicPlanPanel]) -> list[ComicPlanPanel]:
+        if [panel.panel_key for panel in value] != ["panel-1", "panel-2"]:
+            raise ValueError("ComicPlan 必须按 panel-1、panel-2 顺序提供两格")
+        if value[0].story_beat == value[1].story_beat:
+            raise ValueError("两格漫画必须包含连续但不同的剧情推进")
+        return value
 
 
 class AgentConversationCreate(BaseModel):
@@ -69,9 +122,52 @@ class AgentMessageRead(OrmModel):
     created_at: datetime
 
 
+class AgentTaskCardImageRead(BaseModel):
+    id: str
+    status: GeneratedImageStatus
+    asset_id: str | None
+    width: int | None
+    height: int | None
+    error_code: str | None
+    error_message: str | None
+
+
+class AgentTaskCardPanelRead(BaseModel):
+    id: str
+    panel_order: int
+    story_beat: str
+    visual_goal: str | None
+    image: AgentTaskCardImageRead | None
+
+
+class AgentTaskCardRead(BaseModel):
+    task_id: str
+    run_id: str
+    title: str
+    status: TaskStatus
+    progress_current: int
+    progress_total: int
+    error_code: str | None
+    error_message: str | None
+    panels: list[AgentTaskCardPanelRead]
+
+
+class AgentRunSummaryRead(TimestampFields):
+    id: str
+    turn_id: str
+    task_id: str | None
+    status: AgentRunStatus
+    model_call_count: int
+    image_call_count: int
+    error_code: str | None
+    error_message: str | None
+
+
 class AgentConversationDetailRead(AgentConversationRead):
     messages: list[AgentMessageRead]
     message_page: PageInfo
+    task_cards: list[AgentTaskCardRead] = Field(default_factory=list)
+    runs: list[AgentRunSummaryRead] = Field(default_factory=list)
 
 
 class AgentStepRead(TimestampFields):
@@ -99,6 +195,7 @@ class AgentRunRead(TimestampFields):
     id: str
     conversation_id: str
     turn_id: str
+    task_id: str | None
     status: AgentRunStatus
     current_step_sequence: int
     model_call_count: int

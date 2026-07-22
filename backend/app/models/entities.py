@@ -261,6 +261,7 @@ class GenerationTask(Base, TimestampMixin):
     )
     generated_images: Mapped[list["GeneratedImage"]] = relationship(back_populates="task", cascade="all, delete-orphan")
     downloads: Mapped[list["TaskDownload"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    agent_runs: Mapped[list["AgentRun"]] = relationship(back_populates="task")
 
     @property
     def character_references(self) -> list[dict[str, object]]:
@@ -759,6 +760,9 @@ class AgentRun(Base, TimestampMixin):
         ForeignKey("agent_conversations.id", ondelete="CASCADE"), index=True
     )
     turn_id: Mapped[str] = mapped_column(String(32), index=True)
+    task_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("generation_tasks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[AgentRunStatus] = mapped_column(Enum(AgentRunStatus), default=AgentRunStatus.queued, index=True)
     current_step_sequence: Mapped[int] = mapped_column(Integer, default=0)
     model_call_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -770,6 +774,7 @@ class AgentRun(Base, TimestampMixin):
     internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     conversation: Mapped[AgentConversation] = relationship(back_populates="runs")
+    task: Mapped[Optional[GenerationTask]] = relationship(back_populates="agent_runs")
     steps: Mapped[list["AgentStep"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )

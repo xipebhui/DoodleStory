@@ -13,6 +13,7 @@ from agents.models.openai_provider import OpenAIProvider
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 
 from app.core.config import Settings, get_settings
+from app.schemas.agent import ComicPlan
 
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class AgentModelResult:
     provider_request_id: str | None
     raw_result: Any
     route: AgentModelRoute
+    structured_output: Any | None = None
 
 
 class AgentModelRoutingError(RuntimeError):
@@ -144,8 +146,23 @@ def classify_agent_model_error(
         "connection reset",
         "connection refused",
     )
+    stream_interruption_markers = (
+        "stream disconnected before completion",
+        "stream closed before",
+        "response stream disconnected",
+    )
     internal_ref = f"{type(exc).__name__}:{status_code or 'none'}"
 
+    if status_code in {408, 500, 502, 503, 504} and any(
+        marker in lowered for marker in stream_interruption_markers
+    ):
+        return AgentModelFailure(
+            code="AgentModelTemporaryError",
+            safe_message="模型响应流暂时中断，请稍后重试",
+            retryable=True,
+            status_code=status_code,
+            internal_error_ref=internal_ref,
+        )
     if any(marker in lowered for marker in permanent_markers):
         return AgentModelFailure(
             code="AgentModelPermanentError",
@@ -288,6 +305,195 @@ class AgentModelRouter:
             raw_result=result,
             route=route,
         )
+
+    async def _invoke_comic_plan(
+        self,
+        config: AgentProviderConfig,
+        route: AgentModelRoute,
+        input_items: list[dict[str, Any]],
+        style_context: dict[str, object],
+    ) -> AgentModelResult:
+        agent = Agent(
+            name="ComicDirectorAgent",
+            instructions=(
+                "你是 DoodleStory 的漫画导演。根据用户 Idea 和已鉴权风格，直接规划一部固定两格的连续漫画。"
+                "两格必须共享同一事件、人物状态和视觉语境：panel-1 建立动作或矛盾，panel-2 给出紧接着的推进、"
+                "反应或结果，不能是两个互不相关的插画。image_prompt 是将直接交给图片模型的最终单图指令，"
+                "必须完整但简洁，明确主体、动作、表情、场景、构图、光线、风格和需要准确绘制的文字；"
+                "不要解释计划，不要输出内部思维过程，不要提及旧 Pipeline。严格输出 ComicPlan schema。\n"
+                f"已鉴权风格快照：{style_context}"
+            ),
+            model=self.model,
+            output_type=ComicPlan,
+            model_settings=ModelSettings(
+                retry=ModelRetrySettings(max_retries=0),
+                store=False,
+            ),
+        )
+        provider = self._provider(config)
+        try:
+            result = await Runner.run(
+                agent,
+                input_items,
+                run_config=RunConfig(
+                    model_provider=provider,
+                    tracing_disabled=True,
+                    workflow_name="DoodleStory ComicPlan",
+                ),
+                max_turns=2,
+            )
+        finally:
+            await provider._client.close()
+        plan = ComicPlan.model_validate(result.final_output)
+        raw_responses = list(result.raw_responses)
+        request_ids = [
+            response.request_id
+            for response in raw_responses
+            if getattr(response, "request_id", None)
+        ]
+        return AgentModelResult(
+            final_output=plan.model_dump_json(),
+            usage=summarize_agent_usage(raw_responses),
+            provider_request_id=request_ids[-1] if request_ids else None,
+            raw_result=result,
+            route=route,
+            structured_output=plan,
+        )
+
+    async def _invoke_comic_final(
+        self,
+        config: AgentProviderConfig,
+        route: AgentModelRoute,
+        input_items: list[dict[str, Any]],
+    ) -> AgentModelResult:
+        agent = Agent(
+            name="ComicDirectorAgent",
+            instructions=(
+                "你是 DoodleStory 的漫画导演。应用上下文已经包含本轮 ComicPlan 和两次 generate_image Tool Output。"
+                "只根据这些真实状态给用户一句简洁结果说明：全部成功时说明两格漫画已完成；存在失败时明确指出"
+                "失败的格数与可见原因，绝不能把失败说成成功。不要输出内部思维过程，不要声称进行了图片检查或重试。"
+            ),
+            model=self.model,
+            model_settings=ModelSettings(
+                retry=ModelRetrySettings(max_retries=0),
+                store=False,
+            ),
+        )
+        provider = self._provider(config)
+        try:
+            result = await Runner.run(
+                agent,
+                input_items,
+                run_config=RunConfig(
+                    model_provider=provider,
+                    tracing_disabled=True,
+                    workflow_name="DoodleStory Comic Result",
+                ),
+                max_turns=2,
+            )
+        finally:
+            await provider._client.close()
+        final_output = str(result.final_output or "").strip()
+        if not final_output:
+            raise ValueError("Agent model returned an empty comic result response")
+        raw_responses = list(result.raw_responses)
+        request_ids = [
+            response.request_id
+            for response in raw_responses
+            if getattr(response, "request_id", None)
+        ]
+        return AgentModelResult(
+            final_output=final_output,
+            usage=summarize_agent_usage(raw_responses),
+            provider_request_id=request_ids[-1] if request_ids else None,
+            raw_result=result,
+            route=route,
+        )
+
+    async def _run_specialized_attempt(
+        self,
+        config: AgentProviderConfig,
+        route: AgentModelRoute,
+        input_items: list[dict[str, Any]],
+        observer: AgentModelAttemptObserver,
+        invoke,
+    ) -> tuple[AgentModelResult | None, AgentModelFailure | None]:
+        await observer.attempt_started(route)
+        started = time.perf_counter()
+        try:
+            result = await invoke(config, route, input_items)
+        except Exception as exc:  # noqa: BLE001
+            failure = classify_agent_model_error(
+                exc,
+                secrets=(self.primary.api_key, self.fallback.api_key),
+            )
+            latency_ms = round((time.perf_counter() - started) * 1000)
+            await observer.attempt_failed(route, failure, latency_ms)
+            return None, failure
+        latency_ms = round((time.perf_counter() - started) * 1000)
+        await observer.attempt_succeeded(route, result, latency_ms)
+        return result, None
+
+    async def _run_specialized(
+        self,
+        input_items: list[dict[str, Any]],
+        observer: AgentModelAttemptObserver,
+        invoke,
+    ) -> AgentModelResult:
+        last_failure: AgentModelFailure | None = None
+        primary_attempts = 1 + self.settings.agent_primary_retry_attempts
+        for attempt in range(1, primary_attempts + 1):
+            route = AgentModelRoute(
+                provider=self.primary.name,
+                model=self.model,
+                api_shape=API_SHAPE,
+                attempt=attempt,
+            )
+            result, failure = await self._run_specialized_attempt(
+                self.primary, route, input_items, observer, invoke
+            )
+            if result is not None:
+                return result
+            assert failure is not None
+            last_failure = failure
+            if not failure.retryable:
+                raise AgentModelRoutingError(failure)
+            if attempt < primary_attempts and self.settings.agent_retry_backoff_seconds:
+                await asyncio.sleep(self.settings.agent_retry_backoff_seconds)
+        assert last_failure is not None
+        fallback_route = AgentModelRoute(
+            provider=self.fallback.name,
+            model=self.model,
+            api_shape=API_SHAPE,
+            attempt=1,
+            fallback_from=self.primary.name,
+            fallback_reason=last_failure.code,
+        )
+        result, failure = await self._run_specialized_attempt(
+            self.fallback, fallback_route, input_items, observer, invoke
+        )
+        if result is not None:
+            return result
+        assert failure is not None
+        raise AgentModelRoutingError(failure)
+
+    async def run_comic_plan(
+        self,
+        input_items: list[dict[str, Any]],
+        style_context: dict[str, object],
+        observer: AgentModelAttemptObserver,
+    ) -> AgentModelResult:
+        async def invoke(config, route, items):
+            return await self._invoke_comic_plan(config, route, items, style_context)
+
+        return await self._run_specialized(input_items, observer, invoke)
+
+    async def run_comic_final(
+        self,
+        input_items: list[dict[str, Any]],
+        observer: AgentModelAttemptObserver,
+    ) -> AgentModelResult:
+        return await self._run_specialized(input_items, observer, self._invoke_comic_final)
 
     async def _run_attempt(
         self,

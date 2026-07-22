@@ -145,6 +145,108 @@ export type StyleSelectOption = {
   name: string;
 };
 
+export type AgentResourceRef = {
+  kind: "style";
+  id: string;
+  display_name: string | null;
+};
+
+export type AgentConversation = {
+  id: string;
+  title: string;
+  status: "active" | "archived";
+  last_message_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentMessage = {
+  id: string;
+  conversation_id: string;
+  turn_id: string | null;
+  role: "user" | "assistant" | "system_event" | "task_card";
+  content: string;
+  resource_refs: AgentResourceRef[];
+  sequence: number;
+  created_at: string;
+};
+
+export type AgentRunStatus =
+  | "queued"
+  | "running"
+  | "waiting_for_tool"
+  | "waiting_for_input"
+  | "paused"
+  | "retrying"
+  | "succeeded"
+  | "failed"
+  | "cancel_requested"
+  | "cancelled";
+
+export type AgentRunSummary = {
+  id: string;
+  turn_id: string;
+  task_id: string | null;
+  status: AgentRunStatus;
+  model_call_count: number;
+  image_call_count: number;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentTaskCardImage = {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  asset_id: string | null;
+  width: number | null;
+  height: number | null;
+  error_code: string | null;
+  error_message: string | null;
+};
+
+export type AgentTaskCard = {
+  task_id: string;
+  run_id: string;
+  title: string;
+  status: Task["status"];
+  progress_current: number;
+  progress_total: number;
+  error_code: string | null;
+  error_message: string | null;
+  panels: Array<{
+    id: string;
+    panel_order: number;
+    story_beat: string;
+    visual_goal: string | null;
+    image: AgentTaskCardImage | null;
+  }>;
+};
+
+export type AgentConversationDetail = AgentConversation & {
+  messages: AgentMessage[];
+  message_page: PageInfo;
+  task_cards: AgentTaskCard[];
+  runs: AgentRunSummary[];
+};
+
+export type AgentRun = AgentRunSummary & {
+  conversation_id: string;
+  current_step_sequence: number;
+  started_at: string | null;
+  finished_at: string | null;
+  steps: Array<{
+    id: string;
+    step_type: "model_call" | "tool_call" | "tool_result" | "wait" | "final";
+    status: "pending" | "running" | "succeeded" | "failed" | "cancelled";
+    provider: string | null;
+    model: string | null;
+    error_code: string | null;
+    error_message: string | null;
+  }>;
+};
+
 export type FileAsset = {
   id: string;
   purpose: string;
@@ -650,6 +752,28 @@ export const api = {
       (result) => result.data,
     ),
   logout: () => request<ApiData<{ ok: boolean }>>("/auth/logout", { method: "POST" }),
+  agentConversations: (params?: { cursor?: string | null; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.cursor) search.set("cursor", params.cursor);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AgentConversation>>(`/agent/conversations${suffix}`);
+  },
+  createAgentConversation: (payload: { title: string }) =>
+    request<ApiData<AgentConversation>>("/agent/conversations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  agentConversation: (conversationId: string) =>
+    request<ApiData<AgentConversationDetail>>(`/agent/conversations/${conversationId}?message_limit=100`).then(
+      (result) => result.data,
+    ),
+  sendAgentMessage: (conversationId: string, payload: { content: string; resource_refs: AgentResourceRef[] }) =>
+    request<ApiData<{ message: AgentMessage; run: AgentRun }>>(`/agent/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  agentRun: (runId: string) => request<ApiData<AgentRun>>(`/agent/runs/${runId}`).then((result) => result.data),
   myCredits: () => request<ApiData<CreditOverview>>("/credits/me").then((result) => result.data),
   redeemCreditCode: (payload: { code: string }) =>
     request<ApiData<CreditOverview>>("/credits/redeem", {

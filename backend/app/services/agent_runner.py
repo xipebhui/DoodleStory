@@ -26,6 +26,15 @@ from app.services.agent_model_router import (
     AgentModelRouter,
     AgentModelRoutingError,
 )
+from app.schemas.agent import ComicPlan
+from app.services.agent_comic_creation import (
+    AgentComicCreationError,
+    build_style_context,
+    checkpoint_image_tool_results,
+    create_comic_task_and_image_tools,
+    load_authorized_style,
+    style_ref_from_message,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -33,6 +42,7 @@ RECOVERABLE_RUN_STATUSES = {
     AgentRunStatus.queued,
     AgentRunStatus.running,
     AgentRunStatus.retrying,
+    AgentRunStatus.waiting_for_tool,
 }
 TERMINAL_RUN_STATUSES = {
     AgentRunStatus.succeeded,
@@ -91,8 +101,9 @@ def build_agent_input(db: Session, run: AgentRun) -> list[dict[str, Any]]:
 
 
 class DatabaseAgentAttemptObserver(AgentModelAttemptObserver):
-    def __init__(self, run_id: str):
+    def __init__(self, run_id: str, phase: str = "text"):
         self.run_id = run_id
+        self.phase = phase
         self.step_ids: dict[tuple[str, int, str | None], str] = {}
 
     @staticmethod
@@ -164,7 +175,7 @@ class DatabaseAgentAttemptObserver(AgentModelAttemptObserver):
             step = self._load_step(db, route)
             step.status = AgentStepStatus.succeeded
             step.output_ref = json.dumps(
-                {"assistant_content": result.final_output},
+                {"phase": self.phase, "assistant_content": result.final_output},
                 ensure_ascii=False,
             )
             step.usage_json = json.dumps(result.usage, ensure_ascii=False, sort_keys=True)
@@ -205,8 +216,8 @@ class DatabaseAgentAttemptObserver(AgentModelAttemptObserver):
             db.commit()
 
 
-def _successful_model_step(db: Session, run_id: str) -> AgentStep | None:
-    return db.scalar(
+def _successful_model_steps(db: Session, run_id: str) -> list[AgentStep]:
+    return db.scalars(
         select(AgentStep)
         .where(
             AgentStep.run_id == run_id,
@@ -214,7 +225,22 @@ def _successful_model_step(db: Session, run_id: str) -> AgentStep | None:
             AgentStep.status == AgentStepStatus.succeeded,
         )
         .order_by(AgentStep.sequence.desc())
-        .limit(1)
+    ).all()
+
+
+def _model_step_phase(step: AgentStep) -> str:
+    try:
+        payload = json.loads(step.output_ref or "")
+    except (json.JSONDecodeError, TypeError):
+        return "text"
+    phase = payload.get("phase")
+    return phase if isinstance(phase, str) else "text"
+
+
+def _successful_model_step(db: Session, run_id: str, phase: str = "text") -> AgentStep | None:
+    return next(
+        (step for step in _successful_model_steps(db, run_id) if _model_step_phase(step) == phase),
+        None,
     )
 
 
@@ -305,13 +331,14 @@ def prepare_agent_run(run_id: str) -> str | None:
         run = db.get(AgentRun, run_id)
         if run is None or run.status in TERMINAL_RUN_STATUSES:
             return None
-        successful_step = _successful_model_step(db, run.id)
+        successful_step = _successful_model_step(db, run.id, "text")
         if successful_step is not None:
             return _assistant_content_from_step(successful_step)
 
         interrupted_steps = db.scalars(
             select(AgentStep).where(
                 AgentStep.run_id == run.id,
+                AgentStep.step_type == AgentStepType.model_call,
                 AgentStep.status == AgentStepStatus.running,
             )
         ).all()
@@ -328,6 +355,115 @@ def prepare_agent_run(run_id: str) -> str | None:
         run.internal_error_ref = None
         db.commit()
         return None
+
+
+def _latest_user_message(db: Session, run: AgentRun) -> AgentMessage:
+    message = db.scalar(
+        select(AgentMessage).where(
+            AgentMessage.conversation_id == run.conversation_id,
+            AgentMessage.turn_id == run.turn_id,
+            AgentMessage.role == AgentMessageRole.user,
+        )
+    )
+    if message is None:
+        raise AgentCheckpointError("Agent Run 缺少对应用户消息")
+    return message
+
+
+def _comic_plan_from_checkpoint(db: Session, run_id: str) -> ComicPlan | None:
+    step = _successful_model_step(db, run_id, "comic_plan")
+    if step is None:
+        return None
+    return ComicPlan.model_validate_json(_assistant_content_from_step(step))
+
+
+async def _wait_for_image_tools(run_id: str) -> list[dict[str, object]]:
+    while True:
+        with database.SessionLocal() as db:
+            run = db.get(AgentRun, run_id)
+            if run is None:
+                raise AgentCheckpointError("Agent Run 不存在")
+            if run.status in {AgentRunStatus.cancel_requested, AgentRunStatus.cancelled}:
+                raise AgentCheckpointError("Agent Run 已取消")
+            outputs = checkpoint_image_tool_results(db, run)
+            if outputs is not None:
+                return outputs
+        await asyncio.sleep(1)
+
+
+async def process_comic_agent_run(
+    run_id: str,
+    *,
+    router: AgentModelRouter,
+) -> None:
+    with database.SessionLocal() as db:
+        run = db.get(AgentRun, run_id)
+        if run is None:
+            raise AgentCheckpointError("Agent Run 不存在")
+        user_message = _latest_user_message(db, run)
+        style_ref = style_ref_from_message(user_message)
+        if style_ref is None:
+            raise AgentCheckpointError("漫画创建 Run 缺少风格资源")
+        style = load_authorized_style(db, style_ref.id)
+        input_items = build_agent_input(db, run)
+        plan = _comic_plan_from_checkpoint(db, run.id)
+        final_step = _successful_model_step(db, run.id, "comic_final")
+        if final_step is not None:
+            finalize_agent_run(run.id, _assistant_content_from_step(final_step))
+            return
+        style_context = build_style_context(style)
+
+    if plan is None:
+        result = await router.run_comic_plan(
+            input_items,
+            style_context,
+            DatabaseAgentAttemptObserver(run_id, "comic_plan"),
+        )
+        plan = ComicPlan.model_validate(result.structured_output or json.loads(result.final_output))
+
+    with database.SessionLocal() as db:
+        run = db.get(AgentRun, run_id)
+        if run is None:
+            raise AgentCheckpointError("Agent Run 不存在")
+        user_message = _latest_user_message(db, run)
+        style_ref = style_ref_from_message(user_message)
+        if style_ref is None:
+            raise AgentCheckpointError("漫画创建 Run 缺少风格资源")
+        style = load_authorized_style(db, style_ref.id)
+        create_comic_task_and_image_tools(
+            db=db,
+            run=run,
+            user_message=user_message,
+            style=style,
+            plan=plan,
+        )
+
+    tool_outputs = await _wait_for_image_tools(run_id)
+    final_context = {
+        "title": plan.title,
+        "summary": plan.summary,
+        "panels": [
+            {"panel_key": panel.panel_key, "story_beat": panel.story_beat}
+            for panel in plan.panels
+        ],
+        "tool_outputs": tool_outputs,
+    }
+    final_input = [
+        *input_items,
+        {
+            "role": "user",
+            "content": (
+                "以下是应用数据库中已提交的 ComicPlan 与真实 generate_image Tool Output。"
+                "请只汇报结果，不要重新规划或生成：\n"
+                f"ResultContext={json.dumps(final_context, ensure_ascii=False)}"
+            ),
+        },
+    ]
+    result = await router.run_comic_final(
+        final_input,
+        DatabaseAgentAttemptObserver(run_id, "comic_final"),
+    )
+    finalize_agent_run(run_id, result.final_output)
 
 
 async def _claim_run(run_id: str) -> bool:
@@ -353,8 +489,13 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
             run = db.get(AgentRun, run_id)
             if run is None or run.status in TERMINAL_RUN_STATUSES:
                 return
+            user_message = _latest_user_message(db, run)
+            style_ref = style_ref_from_message(user_message)
             input_items = build_agent_input(db, run)
         model_router = router or AgentModelRouter()
+        if style_ref is not None:
+            await process_comic_agent_run(run_id, router=model_router)
+            return
         result = await model_router.run(input_items, DatabaseAgentAttemptObserver(run_id))
         finalize_agent_run(run_id, result.final_output)
     except AgentModelRoutingError as exc:
@@ -370,6 +511,13 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
             code="AgentContextLimitExceeded",
             message=str(exc),
             internal_error_ref="AgentContextLimitExceeded",
+        )
+    except AgentComicCreationError as exc:
+        fail_agent_run(
+            run_id,
+            code="AgentComicCreationError",
+            message=str(exc),
+            internal_error_ref="AgentComicCreationError",
         )
     except AgentCheckpointError:
         logger.error("agent_checkpoint_error run_id=%s", run_id)
