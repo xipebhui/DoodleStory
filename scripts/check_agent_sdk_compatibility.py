@@ -281,7 +281,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default="gpt-5.6-terra",
+        default="gpt-5.5",
         help="Exact model to test on every provider",
     )
     parser.add_argument(

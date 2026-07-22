@@ -54,7 +54,7 @@ def permanent_failure() -> AgentModelFailure:
 def make_router(outcomes):
     router = AgentModelRouter.__new__(AgentModelRouter)
     router.settings = SimpleNamespace(agent_primary_retry_attempts=1, agent_retry_backoff_seconds=0)
-    router.model = "gpt-5.6-terra"
+    router.model = "gpt-5.5"
     router.primary = AgentProviderConfig("huomiao", "https://primary.example/v1", "primary-key")
     router.fallback = AgentProviderConfig("lio", "https://fallback.example/v1", "fallback-key")
     routes = []

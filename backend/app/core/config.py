@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     text_fallback_model: str = ""
     text_fallback_max_attempts: int = Field(default=3, ge=1)
     text_fallback_retry_backoff_seconds: float = Field(default=2.0, ge=0)
-    agent_model: str = "gpt-5.6-terra"
+    agent_model: str = "gpt-5.5"
     agent_request_timeout_seconds: int = Field(default=120, ge=1)
     agent_primary_retry_attempts: int = Field(default=1, ge=0, le=1)
     agent_retry_backoff_seconds: float = Field(default=0.5, ge=0)

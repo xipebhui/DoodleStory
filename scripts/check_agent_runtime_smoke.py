@@ -130,7 +130,7 @@ async def run_smoke(output: Path | None) -> dict[str, object]:
                 "schema_version": 1,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "status": "pass",
-                "model": "gpt-5.6-terra",
+                "model": "gpt-5.5",
                 "api_shape": "responses",
                 "context": {
                     "source": "application_database",

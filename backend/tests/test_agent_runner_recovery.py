@@ -29,7 +29,7 @@ class FakeSuccessfulRouter:
         self.call_count += 1
         route = AgentModelRoute(
             provider="huomiao",
-            model="gpt-5.6-terra",
+            model="gpt-5.5",
             api_shape="responses",
             attempt=1,
         )
@@ -63,7 +63,7 @@ class InjectedHTTPError(Exception):
 def fault_injection_router(outcomes):
     router = AgentModelRouter.__new__(AgentModelRouter)
     router.settings = SimpleNamespace(agent_primary_retry_attempts=1, agent_retry_backoff_seconds=0)
-    router.model = "gpt-5.6-terra"
+    router.model = "gpt-5.5"
     router.primary = AgentProviderConfig("huomiao", "https://primary.example/v1", "primary-key")
     router.fallback = AgentProviderConfig("lio", "https://fallback.example/v1", "fallback-key")
 
@@ -154,7 +154,7 @@ class AgentRunnerRecoveryTests(unittest.TestCase):
                     step_type=AgentStepType.model_call,
                     status=AgentStepStatus.succeeded,
                     provider="huomiao",
-                    model="gpt-5.6-terra",
+                    model="gpt-5.5",
                     api_shape="responses",
                     attempt=1,
                     output_ref=json.dumps({"assistant_content": "checkpoint 回答"}, ensure_ascii=False),
@@ -190,7 +190,7 @@ class AgentRunnerRecoveryTests(unittest.TestCase):
                     step_type=AgentStepType.model_call,
                     status=AgentStepStatus.running,
                     provider="huomiao",
-                    model="gpt-5.6-terra",
+                    model="gpt-5.5",
                     api_shape="responses",
                     attempt=1,
                 )

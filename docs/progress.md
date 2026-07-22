@@ -9,6 +9,7 @@
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-110-agent-default-model-gpt55.md`
 - Complete：`docs/contracts/sprint-108-agent-demo-alignment.md`
 - Draft：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-107-agent-frontend-workspace-integration.md`
@@ -36,6 +37,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 110 Agent 默认模型切换：火苗主平台与 LIO 备用平台共用的 `AGENT_MODEL` 默认值由 `gpt-5.6-terra` 改为 `gpt-5.5`，同步配置示例、漫画 Panel 模型快照、SDK/Runtime 探测脚本和相关测试；历史兼容性报告保留当时真实使用的旧模型记录。后端与前端开发服务已重启，并确认运行时加载 `gpt-5.5`。
 
 - 完成 Sprint 108 正式 Agent 前端与已调试 Demo 对齐：移除 `/agent` 内部大圆角工作区和后台聊天页视觉，迁入 Demo 已确认的平面全高会话导航、空白创作入口、固定输入区和克制的单一橙色状态层级；三个快捷入口只填草稿，`+`/`@` 只搜索真实 active 风格，支持选择、移除且不覆盖输入。会话列表按日期显示真实摘要、状态和时间，草稿与风格按 Conversation 恢复，运行期间可继续准备草稿，传统/AI 模式往返回到最近 Conversation。真实 Conversation `3aa7454244754acda99f9475433195e5`、Run `e89097e4d0294e01b27e40dd7f2f71bb`、Task `c59151ece9a34b47a32042aeafcfbc04` 和图片 `22dec874850045ed906428471781f1a8`、`8538ef7bd44f4291adae88738fc9caef` 全部成功，积分从 30 降至 28；Agent 卡片与传统详情确认同一 Task。1440×900、1280×800、刷新、模式往返、键盘与认证后 0 console error/warning 通过，证据保存于 `docs/testing/agent-demo-alignment-browser-report.json`；`./scripts/check.sh` 覆盖 196 个测试、空库 migration 和前端构建。Panel/VL 继续保留在 Sprint 109 Draft，未实现角色、Panel 操作、暂停、VL、Mock 或占位能力。
 

@@ -171,7 +171,7 @@ def create_comic_task_and_image_tools(
             text_layout=planned_panel.visual_goal,
             prompt_status=PromptStatus.generated,
             generated_prompt=planned_panel.image_prompt,
-            prompt_model_snapshot="agent:gpt-5.6-terra",
+            prompt_model_snapshot="agent:gpt-5.5",
         )
         db.add(panel)
         db.flush()

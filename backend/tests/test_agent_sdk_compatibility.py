@@ -21,10 +21,10 @@ class FakeResponse:
 
 class AgentSDKCompatibilityTests(unittest.TestCase):
     def test_config_uses_explicit_probe_model_for_both_providers(self):
-        configs = load_provider_configs("gpt-5.6-terra")
+        configs = load_provider_configs("gpt-5.5")
 
-        self.assertEqual(configs["huomiao"].model, "gpt-5.6-terra")
-        self.assertEqual(configs["lio"].model, "gpt-5.6-terra")
+        self.assertEqual(configs["huomiao"].model, "gpt-5.5")
+        self.assertEqual(configs["lio"].model, "gpt-5.5")
 
     def test_provider_forces_responses_and_disables_client_retries(self):
         provider = build_openai_provider(
@@ -32,7 +32,7 @@ class AgentSDKCompatibilityTests(unittest.TestCase):
                 name="test",
                 base_url="https://gateway.example/v1",
                 api_key="private-key",
-                model="gpt-5.6-terra",
+                model="gpt-5.5",
             ),
             timeout_seconds=12,
         )
