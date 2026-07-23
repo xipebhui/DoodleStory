@@ -4,7 +4,7 @@
 
 Agent V1 使用当前 FastAPI、SQLAlchemy、SQLite/关系型数据库和进程内队列，不引入 LangChain、LangGraph 或外部工作流引擎。
 
-第一版采用一个“漫画导演 Agent”。Agent 负责创作决策和工具选择，Runtime 负责持久化、恢复、权限、预算、幂等和 Provider 可靠性。
+第一版采用一个通用创作 Agent。Agent 负责理解目标、选择并加载 Skill、生成创作方案和选择 Tool；Skill 负责方法、步骤、质量门槛和确认点；Runtime 负责持久化、恢复、权限、预算、幂等、Provider 可靠性、安全事件和观测。不同创作方式通过 Skill 组合原子 Tool，不为每种方式增加硬编码业务 Workflow。
 
 ```mermaid
 flowchart LR
@@ -12,15 +12,21 @@ flowchart LR
     API --> DB["数据库：Conversation / Run / Step"]
     API --> Q["进程内 Agent Queue"]
     Q --> R["Agent Runner"]
+    R --> SR["SkillRegistry / load_skill"]
     R --> MR["AgentModelRouter"]
     MR --> H["火苗主平台"]
     MR --> L["LIO 备用平台"]
     R --> IG["generate_image"]
     R --> VL["inspect_image"]
+    R --> HITL["Artifact / Approval"]
+    R --> EV["持久化安全事件 / SSE"]
+    R --> ML["MLflow Trace"]
     IG --> T["现有任务 / Panel / Image Job"]
     VL --> T
     R --> DB
 ```
+
+产品运行时 Skill 保存在 `backend/app/agent_skills/<skill-id>/SKILL.md`，与服务 Codex 开发协作的 `.agents/skills/` 分离。基础 Agent 只看到 Skill catalog，调用 `load_skill` 后才加载完整方法；Skill name、version 和内容 hash 必须进入 AgentStep 与 MLflow。
 
 ## 2. 为什么不把模型上下文交给 Provider 保存
 
@@ -48,7 +54,7 @@ flowchart LR
 
 ## 4. 数据模型
 
-Sprint 104 只完成设计；Sprint 105 已通过 revision `x8f9a0b1c2d3` 创建下列四张表，没有增加通用事件仓库或阶段 2 资源表。
+Sprint 104 只完成设计；Sprint 105 已通过 revision `x8f9a0b1c2d3` 创建下列四张表，没有增加通用事件仓库或阶段 2 资源表。Sprint 114 计划在真实 HITL 与 SSE 需求出现时增加最小 `agent_artifacts`、`agent_approval_requests` 和 `agent_events`；MLflow 不作为业务状态表。
 
 ### 4.1 `agent_conversations`
 
@@ -116,9 +122,17 @@ Sprint 105 只创建四张 Agent 表，资源引用先作为 `agent_messages.res
 
 ### 4.6 现有漫画任务关系
 
-- Conversation 与现有 `generation_tasks` 使用关联表或任务上的可空 `conversation_id` 关联。
+- 当前通过 `agent_runs.task_id` 关联现有 `generation_tasks.id`；一个 Conversation 可以通过多个 Run 关联多个任务，不创建 Agent 专用任务表。
 - Panel 与 Generated Image 继续使用现有表，不复制到 Agent 表。
 - Agent Step 只保存关联任务/Panel/图片版本 ID，不把完整图片结果复制进事件表。
+
+### 4.7 Sprint 114 计划新增的用户可见状态
+
+- `agent_artifacts`：保存通过 schema 校验、用户可查看和版本化的漫画方案。
+- `agent_approval_requests`：保存方案 hash、等待用户确认和批准/修改决定。
+- `agent_events`：保存用户安全事件并为 SSE 断线补发提供事实来源。
+
+这些表只解决已经明确的 Artifact/HITL/SSE 查询，不扩展成通用事件溯源、Workflow 引擎或任意多态内容平台。
 
 ## 5. Agent Runner 状态流
 
@@ -145,7 +159,7 @@ stateDiagram-v2
 
 ## 6. 模型调用形态
 
-2026-07-22 使用更新后的 API key 和统一模型 `gpt-5.6-terra` 复测：火苗和 LIO 的 Chat Completions、JSON、Chat Function Calling/Tool Output、多模态和基础 Responses 文本请求全部通过。
+2026-07-22 使用更新后的 API key 和当时统一模型 `gpt-5.6-terra` 完成兼容性复测；Sprint 110 已把当前 Agent 默认模型统一切换为 `gpt-5.5`。历史报告保留当时真实模型，当前运行配置以 `AGENT_MODEL=gpt-5.5` 为准。
 
 最终决策是：
 
@@ -198,16 +212,16 @@ stateDiagram-v2
 
 ## 9. 用户可见事件与流式策略
 
-第一版优先输出应用级事件：
+Sprint 114 计划使用数据库持久化的用户安全事件和 SSE：
 
-- `正在理解创作目标`
-- `已整理五格分镜`
-- `正在生成 Panel 3`
-- `正在检查人物一致性`
-- `已切换备用模型线路`
-- `等待你确认结局方向`
+- `skill.loaded`
+- `artifact.created`
+- `approval.requested / approval.resolved`
+- `tool.started / tool.progress / tool.completed / tool.failed`
+- `assistant.message`
+- `run.completed / run.failed`
 
-不展示 Chain of Thought。模型 Token 流暂不作为验收要求；完整模型响应校验通过后再保存为 assistant 消息，可显著降低主备切换和恢复复杂度。
+不展示 Chain of Thought、完整系统 Prompt 或原始 Provider 响应。SSE 只传已持久化的安全事件，支持 cursor 断点续传；事件断线不能影响业务 Run 或造成 Tool 重放。完整模型响应仍在校验通过后保存为 assistant 消息，Token 级输出不是漫画 V1 的必要门槛。
 
 ## 10. 可观测性字段
 
@@ -222,4 +236,4 @@ stateDiagram-v2
 - Provider request ID
 - 错误分类和脱敏错误摘要
 
-Agents SDK Trace 可以作为调试和 Evaluation 输入，但 DoodleStory 数据库与结构化日志仍是业务状态和 Provider fallback 的事实来源。
+Sprint 112 计划接入 MLflow Tracing。MLflow 可以记录 Agent/Skill/Tool/Approval/Provider span 并作为 Evaluation 输入，但 DoodleStory 数据库与结构化日志仍是业务状态、权限、恢复和 Provider fallback 的事实来源。默认不向 MLflow 发送用户全文、完整 Prompt、图片 URL、API key 或 Provider 原始响应。

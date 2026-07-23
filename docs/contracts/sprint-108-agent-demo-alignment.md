@@ -4,6 +4,8 @@
 
 Complete（2026-07-22）。正式界面对齐、真实两格链路和指定桌面视口验收均已完成。
 
+> 后续决策（2026-07-23）：本 Sprint 的统一旧 Shell 与旧任务详情入口保留为历史完成记录，但已被 Sprint 111 的独立 Agent Shell 和 AI 专属任务检查器方向替代。不要以本合同启动新的前端实现。
+
 ## Goal
 
 保留 Sprint 107 已接通的一套正式产品外壳、稳定路由和真实 Conversation、Message、Run、Style、TaskCard 数据，把 `/agent` 内部工作区的结构、视觉层级和已支持交互对齐 Sprint 103 已调试 Demo。此 Sprint 是纯前端整合，不修改 Agent Runtime、数据库或后端业务模型。

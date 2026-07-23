@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft。由原 Sprint 108 顺延；只有 Sprint 108 正式 Agent 前端与已调试 Demo 对齐完成并通过验收后，才允许评审激活。
+Superseded（未实施）。2026-07-23 的最新 Agent 路线决定先完成独立 Agent Shell、MLflow、Skill/Tool Runtime、`idea-to-comic` Skill、HITL、事件流和结构化资源引用，再实现 Panel/VL 闭环。本草案不再激活，其有效目标已重新拆入 `docs/contracts/sprint-116-agent-panel-version-vl-loop.md`。
 
 ## Goal
 
@@ -51,5 +51,6 @@ Draft。由原 Sprint 108 顺延；只有 Sprint 108 正式 Agent 前端与已�
 
 ## Handoff
 
-- 激活前把 `Proposed in scope`、预算和验证草案改成最终合同。
-- 固定角色和其它资源入口仍在本 Sprint 之后单独建立合同。
+- 不再激活或直接实施本合同。
+- 前端独立模块从 Sprint 111 开始，Panel/VL 最终合同为 Sprint 116。
+- 本文件仅保留历史决策背景，避免其它窗口误把旧 Draft 当成当前工作。

@@ -12,11 +12,11 @@
   - 效果图：`content-extraction-list-redesign-list.png`、`content-extraction-list-redesign-create.png`、`content-extraction-list-redesign-detail.png`。
 - [Agent 漫画创作工作台前端设计 Brief](agent-creative-workspace-frontend-brief.md)：用于独立设计和对比 Agent 对话、结构化分镜画布与对象检查器的高保真交互原型。
 - [Agent 会话前端 Demo](agent-conversation-demo/README.md)：独立、无后端的可点击原型，用于体验新建/恢复对话、对话内任务卡片、任务详情和 Panel 上下文引用。
-- [Agent V1 Runtime 与模型路由](agent-runtime-architecture.md)：单 Agent、应用侧上下文、checkpoint、拟议状态表和火苗/LIO 路由边界。
-- [Agent V1 Tool 契约](agent-tool-contracts.md)：模型端口、生图工具、VL 检查工具与 `@资源` 注入规则。
+- [Agent V1 Runtime 与模型路由](agent-runtime-architecture.md)：单 Agent、Skill/Tool Runtime、应用侧上下文、checkpoint、HITL、安全事件、MLflow 和火苗/LIO 路由边界。
+- [Agent V1 Tool 契约](agent-tool-contracts.md)：模型端口、`load_skill`、生图工具、VL 检查工具、Artifact/Approval 与 `@资源` 注入规则。
 - [Agent 模型平台兼容性实测](../testing/agent-model-provider-compatibility-report.md)：火苗与 LIO 的 Chat、JSON、工具、多模态和 Responses 能力结论。
-- [Agent V1 全局实施路线图](../implementation/agent-v1-implementation-roadmap.md)：从 Runtime、真实生图、正式前端整合、Panel 迭代、资源改编到旧 Pipeline 迁移和发布的阶段顺序与退出门槛。
-- [Agent V1 新窗口实施交接](../implementation/agent-v1-new-window-handoff.md)：当前 Sprint 107 新窗口的必读顺序、可直接使用的启动提示词和验证收尾流程。
+- [Agent V1 全局实施路线图](../implementation/agent-v1-implementation-roadmap.md)：Sprint 111–117 从独立 Agent Shell、MLflow、Skill/Tool Runtime、HITL/SSE、资源引用、Panel/VL 到 Evaluation 内部开放的顺序与退出门槛。
+- [Agent V1 新窗口实施交接](../implementation/agent-v1-new-window-handoff.md)：当前 Sprint 111 和后续每个 Sprint 的必读顺序、可直接使用的启动提示词和验证收尾流程。
 
 ## 设计原则
 

@@ -28,18 +28,18 @@
 
 结构化分镜画布属于“任务详情”，不是产品首屏。不要一进入页面就用大画布替代对话历史和会话入口。
 
-### 0.1 Sprint 107 正式产品整合约束
+### 0.1 最新正式产品整合约束
 
-本文档和独立 Demo 最初用于比较 Agent 交互，不代表正式产品需要第二套全局外壳。Sprint 107 实现时以下约束优先于后文原型描述：
+Sprint 107/108 曾把 Agent 嵌入旧工作台 Shell，并使用顶部 `传统构建 / AI 构建` 切换；该实现保留为历史完成记录，但其产品层级已被 2026-07-23 的后续决策替代。Sprint 111 及之后以下约束优先于后文旧原型描述：
 
-- 保留现有 DoodleStory 全局侧边栏、账号、积分和资源管理入口，不复制 Demo 左上角 Logo 或 `Agent Studio` 品牌区。
-- 图文创作主区域顶部使用 `传统构建 / AI 构建` 切换；传统模式对应 `/tasks`，AI 模式对应 `/agent`。
-- Agent 历史会话栏是 AI 模式内部的局部导航，不是全站第二套侧边栏。
-- 正式页面只接真实 Conversation、Message、Run、风格和 GenerationTask；Demo 中的确定性假数据不得进入生产代码。
-- Sprint 107 只开放已经接通的一个真实风格引用。角色、Panel、图片版本、VL 和版本操作仍是后续交互方向，本 Sprint 不展示成可用功能。
-- Agent 任务卡片的查看入口进入现有 `/tasks/{task_id}`，传统任务列表与 Agent 对话使用同一条任务数据。
+- `/agent` 是独立创作模块，左侧只承担新对话、搜索和历史会话，不常驻旧图文任务、内容提取、风格、角色等后台导航。
+- Agent 页面不显示 `传统构建 / AI 构建` 分段切换；只保留一个低层级“返回传统工作台”入口。
+- Agent 模块继续复用 DoodleStory 登录用户、积分、Style、Character、GenerationTask、Panel、GeneratedImage 和 FileAsset 数据，不建立第二套业务表。
+- Agent 任务卡片的查看入口进入 AI 专属检查器 `/agent/{conversation_id}/tasks/{task_id}`，不把旧 `/tasks/{task_id}` 详情当作 Agent 共同创作界面。
+- 正式页面只接真实 Conversation、Message、Run、Resource、Artifact、Approval、Event 和 Task 数据；独立 Demo 中的确定性假数据不得进入生产代码。
+- 后端尚未完成的角色、Panel、图片版本、VL、版本、暂停或其它写操作不得显示为可用按钮；对应能力在各自 Sprint 中与真实后端一起开放。
 
-Sprint 107 的最终实施边界以 `docs/contracts/sprint-107-agent-frontend-workspace-integration.md` 为准。
+当前实施边界以 `docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md` 和 Agent V1 全局路线图为准。
 
 ## 1. 产品背景
 

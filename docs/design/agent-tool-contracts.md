@@ -6,7 +6,7 @@ Agent V1 只向模型暴露完成漫画创作所需的最小能力。工具数�
 
 Runtime 不把数据库、积分、Provider 选择、队列或文件系统直接暴露给模型。
 
-## 2. 三个能力端口
+## 2. 能力端口与 Skill 加载
 
 ### 2.1 `AgentModelPort`
 
@@ -34,6 +34,14 @@ V1 必须支持：
 职责：检查一张或一组图片是否满足明确的漫画质量标准。
 
 模型可见工具名：`inspect_image`。
+
+### 2.4 `SkillRegistry`
+
+Skill 不是外部能力端口，而是 Agent 按需加载的方法说明。基础 instructions 只包含 Skill 的 name、description、version 和内容 hash；模型通过只读 `load_skill` 取得完整 `SKILL.md`。
+
+模型可见工具名：`load_skill`。
+
+Runtime Skill 只能从 `backend/app/agent_skills/` 受控目录读取，不允许模型提供文件路径或任意 URL。Skill 加载必须记录 name、version、hash 和 AgentStep；它不产生业务副作用或费用。
 
 ## 3. 资源引用不是 Tool
 
@@ -194,6 +202,8 @@ VL 给出检查证据，漫画导演 Agent 决定是否重试；Runtime 仍检�
 
 Runtime 校验完整计划后保存任务和 Panel。保存失败时 Run 明确失败，不把部分计划当作成功任务。
 
+Sprint 114 起，漫画计划先保存为版本化 `comic_plan` Artifact，并创建绑定 Artifact hash 的 Approval Request。用户批准前，Runtime 不创建图片 job、不占用图片积分；请求修改会创建新 Artifact 版本，旧版本保留为 superseded。Artifact/Approval 是 Runtime 确定性状态，不作为模型可绕过的自由 Tool。
+
 ## 7. Runtime 内部操作
 
 以下能力不向模型暴露为 Tool：
@@ -206,6 +216,8 @@ Runtime 校验完整计划后保存任务和 Panel。保存失败时 Run 明确�
 - 文件存储与公网 URL 生成。
 - 暂停、继续、取消和服务重启恢复。
 - 生成用户可见进度事件。
+- 保存 Artifact、Approval 和用户安全事件。
+- MLflow Trace 关联与脱敏。
 
 这些操作由 Runtime 根据已校验的模型输出和 Tool Call 确定性执行，避免模型获得不必要的系统权限。
 

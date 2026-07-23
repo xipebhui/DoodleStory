@@ -48,10 +48,11 @@
 
 0. 进入工作台。
    - 已登录用户访问根路径 `/` 时进入任务页 `/tasks`。
-   - 图文创作提供两种构建模式：`传统构建` 使用 `/tasks`，`AI 构建` 使用 `/agent`；两者在主内容顶部使用同一组分段切换控件，不作为两套全局产品导航。`/agent/{conversation_id}` 用于稳定恢复指定 Agent 会话。
-   - 主工作台只保留一套品牌、侧边栏、账号、积分和资源管理入口。`/tasks` 与 `/agent` 都属于左侧 `图文任务` 的创作模块；正式 Agent 页面不得复制独立 Demo 的 Logo、`Agent Studio` 外壳或第二套全局导航。
-   - `/agent` 内部工作区以 Sprint 103 已调试 Demo 为视觉和交互事实来源：使用平面、全高的会话列表、对话区和固定底部输入区；生产页面只接入真实会话、消息、运行、风格和任务数据，不展示 Demo 的 Mock 数据、角色引用或未接通的 Panel 操作。
-   - 主工作台页面必须有稳定二级路径：传统任务页 `/tasks`、AI 构建页 `/agent`、管理员视频任务页 `/video-tasks`、管理员音频管理页 `/audio-references`、内容提取页 `/content-extractions`、风格页 `/styles`、角色管理页 `/characters`、管理员用户管理页 `/users`、管理员积分消耗页 `/credit-usage`、设置页 `/settings`。
+   - 传统构建继续使用旧工作台 `/tasks`；Agent 创作使用独立模块 `/agent`。两者共享用户、积分、风格、角色、任务、Panel、图片版本和资产数据，但不共享页面 Shell，也不在 Agent 页面常驻旧后台导航。
+   - `/agent` 的主导航是新建对话、搜索和历史会话；页面保留 DoodleStory 品牌、用户、积分和一个低层级“返回传统工作台”入口，不显示旧 `图文任务/内容提取/风格/角色` 导航或 `传统构建 / AI 构建` 分段切换。
+   - `/agent/{conversation_id}` 稳定恢复指定 Agent 会话；`/agent/{conversation_id}/tasks/{task_id}` 在同一 Agent 上下文中打开 AI 专属任务检查器。Agent 任务检查器不复用旧 Pipeline 任务抽屉，旧 `/tasks/{task_id}` 继续服务传统工作台。
+   - `/agent` 以 Sprint 103 已调试 Demo 的会话优先交互为视觉事实来源，但正式页面的 Conversation、Message、Run、Style、Character、Task、Panel、Image Version、Artifact、Approval 和 Event 必须来自真实 API/数据库，不得包含 Mock、占位成功或未接通假操作。
+   - 传统工作台页面保持稳定二级路径：`/tasks`、`/video-tasks`、`/audio-references`、`/content-extractions`、`/styles`、`/characters`、`/users`、`/credit-usage`、`/settings`。
    - 用户刷新页面、复制链接或使用浏览器前进后退时，当前工作台页面必须与 URL 保持一致，不能刷新后回到默认任务页。
    - 普通用户和管理员都应在工作台左下角实时看到当前积分余额；余额变化后，任务提交、风格测试、单图修改和激活码兑换等操作应刷新该余额。
 
@@ -215,12 +216,16 @@
 - 后端：Python + FastAPI + SQLAlchemy + Alembic。REST API 设计见 `docs/design/api.md`。
 - 存储：关系型 OLTP 数据库设计见 `docs/design/database.md`。
 - 现有生成链路外部集成：任务生成链路中的文本 JSON LLM 统一使用 LIO/OpenAI 兼容配置，当前线上主模型为 Gemini；不再把分镜结构化、故事方案规划、角色名提取、任务级人物提取、panel prompt、最终生图 prompt 编译或 policy prompt 改写发送到 SiliconFlow 文本模型。用户已明确授权文本模型兜底：当 LIO/Gemini 当次请求失败时，后端使用 `TEXT_FALLBACK_*` 配置的 OpenAI 兼容文本模型继续请求；进入兜底后，同一次调用的后续重试只使用该兜底模型，不再切回 Gemini。图文内容提取逐图使用 `TEXT_FALLBACK_*` 当前指向的火苗多模态模型作为主平台，单图失败后反向切换到 `LIO_*` 并最多请求 3 次，不把 SiliconFlow/Qwen 作为降级路径；风格提示词提取仍只使用 `TEXT_FALLBACK_*` 配置的 `gpt-5.4`，失败时不切 LIO。SiliconFlow 仍保留给视频音频转写和用户角色参考图外观理解等多模态能力。生图默认使用 `docs/api_v4.md` 中已同意的 OpenAI Images 兼容统一服务（`IMAGE_PROVIDER=qy`），生图 API key 和 base url 从 `IMAGE_GATEWAY_API_KEY`、`IMAGE_GATEWAY_BASE_URL` 读取。为临时排查内部 QY 多图不稳定，允许通过 `IMAGE_PROVIDER=xgapi` 显式切到 xgapi 直连；该切换不是 fallback，所选 provider 失败时任务必须明确失败，不自动切换到另一个 provider。无论使用 QY 还是 xgapi，请求体里的 `model` 都必须来自任务保存的风格模型快照，不允许用环境变量或代码默认值覆盖用户在风格中指定的模型；如果任务风格模型为空或 provider 不支持该模型，必须明确报错。当前 QY 可用生图模型精确限定为 `gpt-image-2`、`gpt-image-2(线路XF)`、`gr-image-2`、`nano-banana`、`nano-banana-hd`、`nano-banana-pro`、`Tongyi-MAI/Z-Image`、`Qwen/Qwen-Image`、`baidu/ERNIE-Image-Turbo`、`gemini_3.1_flash_image_preview`、`gemini_3.0_pro_image_preview`、`gemini_3.1_flash_image_preview_4K`、`gemini_3.0_pro_image_preview_4K`、`gemini-3.1-flash-image-preview` 和 `gemini-3-pro-image-preview`。QY 请求 `/v1/images/generations`；QY 图片接口只对已验证的 `1:1`、`16:9`、`9:16` 显式传 `size`，`3:4` 和 `4:3` 这类画面比例只写入最终生图 prompt，不把视频/Grok 的 `864x1152`、`1152x864` 映射误传给图片接口；xgapi 无参考图请求 `/v1/images/generations` JSON，有参考图请求 `/v1/images/edits` multipart，后端必须先下载任务资产公网 URL 对应的参考图，再用重复的 `image` 文件字段提交，不把参考图 URL 数组放进 JSON。xgapi 图片接口只允许 `auto`、`low`、`medium`、`high` 质量参数；当环境里沿用 `1k`、`2k`、`4k` 配置时，xgapi generation 和 edit 请求都统一发送为 `high`。QY 的参考图直接使用资产公网 URL；xgapi 的参考图只在发起 edit 请求前下载为请求文件，不改变资产事实来源。返回的 `data[0].url` 或 `data[0].b64_json` 必须立即下载或解码并保存为 DoodleStory 资产；未列入清单或未配置所选 provider 的模型/API key 必须明确报错。
-- Agent V1 Runtime 与第一条漫画纵向链路已完成：创意扩写、分镜规划和生图提示词由单个漫画导演 Agent 决定；Runtime 负责权限、状态、预算、幂等和可靠性，不把旧 pipeline 的 prompt 拼接步骤原样包装成 Tool。基础表为 `agent_conversations`、`agent_messages`、`agent_runs` 和 `agent_steps`，`agent_runs.task_id` 可关联本轮创建的 GenerationTask；API 提供 Conversation 列表/创建/详情/发消息与 Run 查询，普通用户和 Admin 都只能访问自己的 Agent 会话数据。真实 `/agent` 页面支持新建、继续、刷新和通过稳定 URL 重新打开 Conversation；详情有界返回最近 Run 和任务卡片，不加载无界历史。
-- Sprint 107 把 Agent 正式页面与现有产品外壳整合：`/tasks` 和 `/agent` 使用顶部 `传统构建 / AI 构建` 切换，共用全局侧边栏、账号、积分、风格、角色和任务基础设施。Agent 会话历史是 AI 模式的局部导航，不替代全局侧边栏；Agent 任务卡片和传统任务列表必须指向同一个 `generation_tasks` 记录与 `/tasks/{task_id}` 详情。
-- Sprint 106 只解析一个 `style` resource ref，拒绝其它资源种类、多个风格、伪造、停用或已删除的 ID。当前 `Style` 是没有 owner 字段的全局风格库，因此所有已登录用户可使用 active、未删除风格；本阶段没有虚构跨用户归属或增加所有权迁移。后端用数据库中的规范名称和配置创建风格快照，不信任客户端 display name。
-- 带一个风格的 Agent Turn 必须先得到严格结构化的两格 `ComicPlan`：Panel key 依次为 `panel-1`、`panel-2`，两格 story beat 不得相同，并各自包含可直接提交图片 Provider 的单图 `image_prompt`。Runtime 在同一事务中创建一个 GenerationTask、两个 Panel、两个 queued GeneratedImage job，并使每个图片 job 的 `final_prompt` 与对应 ComicPlan `image_prompt` 完全一致；不得调用旧故事拆分、Storyboard planning 或最终 Prompt 编译。每个 `generate_image` Tool Call 在创建副作用前保存稳定幂等键，相同 Run 恢复时复用 `task_id` 和现有图片 job，不重复占用或扣除积分。
-- Agent Run 等待图片 job 时持久化 wait checkpoint；两个图片到达成功或失败终态后，各写一次安全 Tool Result，并恢复最终模型回答。任务卡片从 GenerationTask、Panel、GeneratedImage 和资产事实构建，页面只用有界轮询展示真实状态和图片，不返回 Mock 或占位图。图片失败、积分不足和 Provider 错误必须明确失败；现有任务取消与 Provider 晚到结果规则继续生效。当前阶段固定 Idea + 一个风格 + 两格，不支持 VL、Panel 修改/重试/版本恢复、角色、抖音或旧 Pipeline 迁移。
-- Agent V1 当前不实现用户维度 Memory、创作习惯规则、自定义 Skill、抠图、Remotion、文字转语音或视频解说；这些能力不为 Sprint 107 预建通用框架，等漫画 Agent V1 完成并通过 Evaluation 后再讨论。
+- Agent 当前真实基线由 Sprint 105/106 完成：基础表为 `agent_conversations`、`agent_messages`、`agent_runs` 和 `agent_steps`，`agent_runs.task_id` 关联同一 `generation_tasks`；API 支持 Conversation 列表/创建/详情/发消息与 Run 查询。当前代码仍只解析一个 Style resource ref、固定生成两格 ComicPlan、规划后立即生图、用轮询读取进度；这些是待迁移基线，不是最终产品约束。
+- Sprint 107/108 已完成的统一 Shell 和旧 Task 详情跳转保留为历史实现记录，但其产品方向已被 2026-07-23 的最新决定替代。新路线从 Sprint 111 开始：`/agent` 拆为独立 Agent 模块，Agent Task 仍与传统列表共享同一个 GenerationTask，但使用 AI 专属任务检查器。
+- Agent 漫画 V1 的目标架构是“通用创作 Agent + 按需加载 Skill + 原子 Tool + 通用 Runtime”。Skill 定义创作方法、步骤、质量门槛和确认点；Tool 只代表真实基础能力，V1 使用 `generate_image` 与 `inspect_image`；Runtime 负责权限、状态、预算、幂等、Provider 路由、等待、恢复、暂停、取消、安全事件和 MLflow 观测。不为每种创作方式增加硬编码 Workflow，不把旧故事拆分、复杂 Prompt 拼接或重试编排包装成 Tool。
+- 产品运行时 Skill 保存在 `backend/app/agent_skills/<skill-id>/SKILL.md`，与服务 Codex 开发的 `.agents/skills/` 分离。基础 Agent 只读取 Skill catalog；调用 `load_skill` 后才获得完整 Skill 正文。选中 Skill 的 name、version 和内容 hash 必须写入 AgentStep 与 MLflow trace。
+- 首个生产 Skill 为 `idea-to-comic`：用户提交 Idea 与一个真实风格后，Agent 补齐并检查故事、规划 2–8 个连续 Panel、生成简洁的最终单图 Prompt，先保存用户可见 ComicPlan Artifact 并进入 `waiting_for_input`；只有 Conversation owner 批准与当前 Artifact hash 一致的方案后，Runtime 才能创建 GenerationTask、Panel 和图片 job。请求修改会创建方案新版本，不能覆盖历史或提前占用图片积分。
+- Agent 用户安全进度使用数据库持久化 Event 和 SSE 展示，包括 Skill 加载、Artifact、Approval、Tool 开始/进度/完成/失败和最终消息；不得展示 chain-of-thought、完整系统 Prompt、Provider 原始响应或敏感 URL。断线重连从事件 cursor 补发，不得重复副作用；未经明确授权不增加隐藏轮询兜底。
+- `@风格/@角色/@任务/@Panel/@图片版本` 是用户显式选择的结构化上下文。Runtime 必须在消息入队前完成所有权、状态、父子关系与组合校验，并用数据库规范数据覆盖客户端 display name。引用已有 Task 表示继续同一个 GenerationTask，不创建新任务；引用 Character 必须真实进入任务角色快照和图片参考链路。
+- Panel 修改只为目标 Panel 创建新的 GeneratedImage 版本；恢复历史版本只切换 `is_current`，不调用图片 Provider、不扣积分。`inspect_image` 提供真实视觉证据，单个用户修改 Turn 最多自动创建一个额外版本；VL 失败、预算耗尽或需要判断时进入 `waiting_for_input`，不允许无限自动循环。
+- MLflow 只承担 Agent/Skill/Tool/Provider/Approval 的观测和 Evaluation 输入，DoodleStory 数据库仍是业务状态、恢复与权限事实来源。默认不记录用户全文、完整 Prompt、图片 URL、API key 或 Provider 原始响应。
+- Agent 漫画 V1 完成 Sprint 117 Evaluation 并得到 `GO_INTERNAL` 前，不实现用户维度 Memory、用户自定义 Skill、抠图、Remotion、文字转语音或视频解说。后续多媒体能力应新增原子 Tool，再由新 Skill 组合，不预建通用媒体 Workflow。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。
@@ -291,6 +296,7 @@
 
 ## 未决问题
 
-- OpenAI Agents SDK 在两个 OpenAI 兼容平台上的 Responses Tool Loop 是否完整通过；结果决定正式 API shape，但不得改变既定产品和状态契约。
+- MLflow 官方 OpenAI Agents 集成对当前 `openai-agents==0.18.3`、自定义火苗/LIO client 和 base URL 的字段捕获是否完整；Sprint 112 必须先做真实兼容性 spike。
+- Sprint 117 第一轮真实 Evaluation 得到 baseline 后，质量、延迟、成本和 fallback 告警阈值应设为多少。
 - 风格除了名称、描述、参考图片、prompt、状态和生图模型名外，还需要哪些元数据？
 - 批量下载支持哪些图片格式和命名规则？

@@ -1,253 +1,355 @@
-# Agent V1 全局实施路线图
+# Agent 漫画 V1 全局实施路线图
 
 ## 1. 文档职责
 
-本文档是 Agent V1 从设计、实现、迁移到发布的全局导航，负责回答：
+本文档是 Agent 漫画 V1 的全局导航，回答：
 
-- 当前处在哪个阶段。
-- 各阶段为什么按这个顺序发生。
-- 每个阶段交付什么结果，满足什么条件才能进入下一阶段。
-- 现有生成 Pipeline 如何逐步退出，而不是长期维护两套创作逻辑。
+- 当前真实基线是什么。
+- 为什么要按现在的顺序开发。
+- 每个 Sprint 交付什么用户结果。
+- 哪些数据库与旧系统共用，哪些能力必须新增。
+- 前端什么时候出现，后端什么时候接通。
+- 什么时候才可以称为内部可用。
 
-本文档不替代 Sprint 合同。路线图只规定阶段目标和退出门槛；每次实现仍以 `docs/contracts/` 下唯一激活的 Sprint 合同为边界。
+本文档不替代 Sprint 合同。每次实现必须只执行一个 Active 合同；详细字段、接口、边界、验证和新窗口提示以 `docs/contracts/` 中对应文件为准。
 
-## 2. 最终目标
+## 2. 最新产品决定
 
-最终产品只有一套创作决策系统：漫画导演 Agent。
+### 2.1 最终产品形态
+
+Agent 是独立、会话优先的创作模块，不再是旧任务工作台内容区中的一个模式。
 
 ```mermaid
 flowchart LR
-    U["Idea / 故事 / 参考漫画 / 抖音 / 历史任务"] --> C["Agent Conversation"]
-    C --> A["ComicDirectorAgent"]
-    A --> M["Agent 模型：理解、规划、Tool Loop"]
-    A --> IG["generate_image"]
-    A --> VL["inspect_image"]
-    C --> S["Runtime：权限、状态、预算、幂等、恢复"]
-    IG --> I["现有图片 Provider、资产、积分基础设施"]
-    VL --> V["VL Provider"]
+    U["Idea / 故事 / 已有任务 / Panel / 图片版本"] --> C["独立 Agent Conversation"]
+    C --> A["通用创作 Agent"]
+    A --> S["按需加载 Skill"]
+    S --> T["原子 Tools"]
+    T --> I["现有图片、资产、积分与任务基础设施"]
+    A --> H["Artifact + Human Approval"]
+    A --> E["安全事件流"]
+    A --> O["MLflow 观测与 Evaluation"]
 ```
 
-必须长期保持的边界：
+### 2.2 长期边界
 
-- Agent 决定故事、分镜、画面 Prompt、检查方向和是否请求修改。
-- Runtime 决定权限、Provider 路由、预算、幂等、状态转换、持久化和错误分类。
-- 模型只看到基础生图与 VL 检查 Tool；数据库、队列、积分和 Provider 选择不是 Tool。
-- `@风格/@角色/@任务/@Panel/@图片版本` 由 Runtime 鉴权和注入，不让模型按名字猜资源。
-- 现有图片 Provider、资产、积分、Panel 和图片版本可以复用；旧故事拆分、复杂 Prompt 拼接和硬编码重试编排不能包装成新 Tool。
-- 最终所有旧入口都转成 Conversation 的不同上下文来源，不保留长期并行的创作 Pipeline。
+- Agent 模型负责理解目标、补齐故事、检查自洽、规划画面、生成简洁 Prompt、选择 Skill 和决定是否调用 Tool。
+- Skill 负责创作方法、步骤、质量门槛和何时请求用户确认。
+- Tool 只代表原子外部能力，例如 `generate_image`、`inspect_image`；未来可以增加 TTS、Remotion、抠图和媒体提取。
+- Runtime 负责权限、状态、预算、幂等、Provider 路由、等待、恢复、暂停、取消、事件和观测。
+- `@风格/@角色/@任务/@Panel/@图片版本` 是用户显式选择的结构化上下文，由 Runtime 鉴权和注入，不由模型按名字猜。
+- MLflow 只做观测和 Evaluation 输入，数据库仍是业务事实来源。
+- Artifact 和 Approval 表达用户可见方案与确认，不把隐藏思维过程暴露给用户。
+- 不为每种创作方式写独立硬编码 Workflow；不同方法通过 Skill 组合同一组 Tools。
 
-## 3. 阶段状态
+### 2.3 与旧系统的关系
 
-| 阶段 | 目标 | 状态 | 对应合同 |
-| --- | --- | --- | --- |
-| 0 | 产品、架构、交互、平台和 Evaluation 基线 | 已完成 | Sprint 103、104 |
-| 1 | 可持久化、可恢复、可切换 Provider 的 Agent Runtime | 已完成 | Sprint 105 |
-| 2 | 对话创建两格真实漫画的纵向链路 | 已完成 | Sprint 106 |
-| 3 | 传统构建与 AI 构建正式前端整合 | 已完成 | Sprint 107 Complete |
-| 4 | 正式 Agent 内部工作区与已调试 Demo 对齐 | 已完成 | Sprint 108 Complete |
-| 5 | 指定 Panel 修改、重试、版本恢复和 VL 检查闭环 | 待评审 | Sprint 109 Draft |
-| 6 | 角色、任务、图片、参考漫画和抖音等资源入口 | 未开始 | 阶段 5 后创建合同 |
-| 7 | 旧入口迁移到 Agent 并移除重复编排 | 未开始 | 阶段 6 后创建合同 |
-| 8 | 完整 Evaluation、稳定性、成本和发布门槛 | 未开始 | 阶段 7 后创建合同 |
+Agent 和传统构建继续共享：
 
-阶段不能仅凭“代码大致完成”前进。必须运行该阶段合同的 Verification、更新 `docs/progress.md`，并在本表更新状态。
+- 用户与权限；
+- 积分账户与流水；
+- 风格与角色资源；
+- `generation_tasks`；
+- `task_panels`；
+- `generated_images` 与图片版本；
+- `file_assets`；
+- 图片 Provider 与 worker。
 
-## 4. 阶段 0：设计与能力验证
+不创建第二套 Agent Task/Panel/Image 表。Agent 新建或继续的漫画任务仍是同一个 `GenerationTask`。
+
+Agent 不长期复用：
+
+- 旧工作台 Shell；
+- 旧 Task 详情抽屉；
+- 旧故事拆分/Storyboard/复杂 Prompt 拼接编排；
+- 为模型失败而散落在业务代码中的重复重试；
+- 旧 Pipeline 的调试字段作为用户创作交互。
+
+## 3. 防止过度设计的硬规则
+
+- 单 Agent，直到真实 Eval 证明必须拆分。
+- 小型代码 Registry，不做 Workflow DSL、Skill 市场或 Tool 管理后台。
+- Runtime Skill 存在 `backend/app/agent_skills/`，与 Codex 开发 Skill `.agents/skills/` 分离。
+- 进程内队列 + 数据库状态，不引入 Redis、Celery、Temporal 或独立工作流服务。
+- 一次只新增当前 Sprint 需要的表和 Tool。
+- 正式 `/agent` 不允许 Mock、占位成功或看似可用但没有后端语义的按钮。
+- 前端不放到最后：信息架构最先修正；每个新后端能力在同一 Sprint 接入真实 UI。
+- 不为未来 TTS、Remotion、抠图提前建通用媒体平台；漫画 V1 通过后再加具体 Tool/Skill。
+- 每个 Sprint 必须产生可验证结果，不能只写抽象层。
+
+## 4. 当前真实基线
 
 ### 已完成
 
-- Agent V1 PRD 和会话优先前端 Demo。
-- 单 Agent Runtime、应用侧上下文、checkpoint 和 Tool 边界。
-- 火苗和 LIO 使用 `gpt-5.6-terra` 的真实兼容性探测。
-- 20 个版本化 Evaluation 场景。
+- Sprint 103：会话优先 Agent 前端 Demo。
+- Sprint 104：Agent PRD、Runtime/Tool 设计、火苗/LIO 能力探测和 Eval 初稿。
+- Sprint 105：可持久化 Conversation/Message/Run/Step、应用侧上下文、主备模型 Router、恢复与幂等。
+- Sprint 106：Idea + 一个真实风格 → 固定两格真实漫画。
+- Sprint 107：传统/AI 双模式正式工作台整合。
+- Sprint 108：正式 Agent 内部界面与 Demo 对齐。
+- Sprint 110：Agent 默认模型切换为 `gpt-5.5`。
 
-### 已知验证边界
+### 当前代码限制
 
-阶段 1 已进一步确认两个平台均能通过 `openai-agents==0.18.3` 执行 Responses Function Calling、Tool Output、final response 和应用侧完整输入重放；正式 Runtime 已锁定 Responses，不使用 Provider continuation ID。
+- `/agent` 仍嵌在旧工作台 Shell 中。
+- Agent 内仍显示 `传统构建 / AI 构建` 切换。
+- 任务卡跳转旧 `/tasks/{task_id}` 详情。
+- Runtime 只接受恰好一个 Style resource ref。
+- `build_agent_input()` 只传消息文本，忽略资源引用。
+- `ComicPlan` 固定两格。
+- 规划完成后立即创建任务并生图，没有方案确认。
+- 当前更新依赖有界轮询，没有用户安全 SSE 事件。
+- 没有 Runtime SkillRegistry、通用 Tool Executor、Artifact、Approval、Event、MLflow、VL、版本接受/恢复或 pause/resume。
 
-## 5. 阶段 1：Agent Runtime 基础
+### 当前 SQL 基线
 
-### 完成结论
+已有：
 
-Sprint 105 已完成并通过全部退出门槛。四张 Agent 表、最小 API、进程内队列、应用侧上下文、主备 Router、完整 Step checkpoint 与启动恢复均已落地；双平台 SDK 报告和两轮真实 Runtime smoke 报告保存在 `docs/testing/`。全量检查覆盖 190 个后端测试、空库 migration 和前端生产构建，现有生成 Pipeline 未修改。
+- `agent_conversations`
+- `agent_messages.resource_refs_json`
+- `agent_runs.task_id`
+- `agent_steps`
+- `generation_tasks`
+- `task_panels`
+- `generated_images.generation_number/is_current/source_type`
 
-### 用户可感知结果
+路线中预计新增：
 
-后端可以创建会话、发送消息、异步完成一个真实 Agent 文本 Turn，并在关闭页面或服务重启后读取和继续同一会话。火苗发生合同允许的临时错误时，Runtime 使用完整应用侧上下文切换到 LIO。
+- Sprint 114：`agent_artifacts`
+- Sprint 114：`agent_approval_requests`
+- Sprint 114：`agent_events`
+- Sprint 116：`generated_images.accepted_at/accepted_by_user_id`
 
-### 实现范围
+Sprint 111–113、115 默认不新增表。
 
-- 精确验证 OpenAI Agents SDK 在两个平台上的 Responses Tool Loop。
-- 锁定 SDK、OpenAI client 和 API 形态。
-- 新增 `agent_conversations`、`agent_messages`、`agent_runs`、`agent_steps` 四张最小表。
-- 使用进程内队列调度 `run_id`，数据库作为状态事实来源。
-- 实现 Conversation、Message 和 Run 最小 API。
-- 实现一个 ComicDirectorAgent 的文本 Turn，不接漫画 Tool。
-- 实现火苗主平台、LIO 备用平台的最小 Router。
-- 记录模型步骤、Provider、模型、attempt、延迟、usage、fallback 和脱敏错误。
+## 5. Sprint 总表
 
-### 退出门槛
+| Sprint | 目标 | 状态 | 数据库变化 | 正式前端 |
+| --- | --- | --- | --- | --- |
+| 111 | 独立 Agent Shell、紧凑任务卡、只读任务检查器 | Active | 无 | 有，完整 |
+| 112 | MLflow 可观测性基线 | Planned | 默认无 | 无新功能 |
+| 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Planned | 无 | 无新功能 |
+| 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Planned | Artifact/Approval/Event | 有，方案卡与活动流 |
+| 115 | Style/Character/Task/Panel/Image Version 引用 | Planned | 默认无 | 有，真实 `@` 菜单与引用 |
+| 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Planned | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
+| 117 | Evaluation、故障注入、内部开放门槛 | Planned | 无业务表 | 只做回归 |
 
-- 两个平台的实际 SDK Tool Loop 结论已保存。
-- 两轮对话能从应用数据库重放上下文，不依赖 Provider continuation ID。
-- 服务重启后未完成 Run 能按安全 step 恢复，已完成模型 step 不重复调用。
-- 临时错误可以切 LIO；401、schema、`model_not_found` 和能力不支持等永久错误不切换。
-- 普通用户不能读取或继续其他用户的 Conversation。
-- `./scripts/check.sh` 通过。
+旧 `Sprint 109` Draft 已标记 Superseded，不能再激活。
 
-## 6. 阶段 2：对话式真实漫画生成
+## 6. Sprint 111：先修正正式前端信息架构
 
-### 完成结论
+合同：
 
-Sprint 106 已完成并通过全部退出门槛。真实 `/agent` 页面支持 Idea + 一个 active 全局风格，Agent 结构化输出固定两格 ComicPlan，Runtime 原子保存任务与两个 Panel，并通过两个有幂等键的真实 `generate_image` job 生成资产；图片完成后写 Tool Output、恢复最终回答，并在对话任务卡片中展示。真实 HTTP、浏览器和中断恢复 smoke 均通过，证据保存在 `docs/testing/agent-comic-vertical-slice-smoke-report.json`；全量检查覆盖 196 个后端测试、空库 migration 和前端生产构建。现有旧 Pipeline 未迁移，VL、Panel 迭代、角色和抖音均未实现。
+`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
 
-### 用户可感知结果
+### 为什么最先做
 
-用户在真实 Agent 页面新建或继续对话，输入漫画 Idea 并选择一个 `@风格`，Agent 自主生成两格 `ComicPlan`、调用真实生图 Tool，并在对话中展示任务卡片和两张图片。
+- 当前产品层级已经确定不符合目标。
+- 越晚拆 Shell，后续 Artifact、Approval、事件流、资源引用和 Panel 操作越会绑在错误页面结构上。
+- 这一步只需要最小只读 API，不干扰后端 Agent Runtime 重构。
 
-### 实现范围
+### 交付
 
-- 将 Sprint 103 Demo 的会话行为接入真实 API，不照搬 Demo 数据。
-- 增加 `@风格` 的前端选择、后端鉴权和快照。
-- 定义并校验最小 `ComicPlan`。
-- 复用现有 GenerationTask、Panel、GeneratedImage、图片 Provider、资产和积分基础设施。
-- 新增真实 `generate_image` Tool；不复用旧故事拆分和 Prompt 编排。
-- Agent Run 在等待图片 job 时 checkpoint，图片完成后恢复 Tool Loop。
-- 对话中展示应用级进度和真实任务卡片，不做 Token 级流式输出。
-
-### 退出门槛
-
-- 本地 UI 可以从 Idea 和一个已授权风格生成两格真实漫画。
-- Agent 生成的最终单图 Prompt 不经过旧 Pipeline 的多层创作 Prompt 拼接。
-- 同一 Tool Call 重放不会产生第二个图片 job 或第二次扣费。
-- 图片失败、积分不足、取消和 Provider 错误均有明确状态，不返回占位图。
-- 页面刷新或后端重启后仍能恢复任务卡片和图片状态。
-- 阶段 2 的针对性测试和 `./scripts/check.sh` 通过。
-
-## 7. 阶段 3：正式前端整合
-
-### 完成结论
-
-Sprint 107 已完成并通过全部退出门槛。正式工作台只保留一套 DoodleStory 全局侧边栏、账号、积分和资源入口；`/tasks` 与 `/agent` 通过顶部 `传统构建 / AI 构建` 切换，Agent 会话历史作为 AI 模式局部导航。真实浏览器使用 active 风格完成 Conversation `e1c4bb05abe24e3ea80fc09bb3f7431f`、Run `a176d894556b471d9ef887abbeea6c8d` 和 Task `0cec81a45b1b4139bd6a43ff4c4c8135` 的两格真实图片生成，Agent 卡片、传统任务列表和 `/tasks/{task_id}` 详情确认使用同一任务记录。1440×900、1280×800、稳定 URL、草稿恢复、键盘访问与认证后控制台检查均通过，证据保存在 `docs/testing/agent-frontend-workspace-integration-browser-report.json`。
-
-### 用户可感知结果
-
-用户在同一套 DoodleStory 全局工作台中，通过顶部 `传统构建 / AI 构建` 切换两种创作方式。传统模式保留原任务体验；AI 模式使用真实会话、风格和任务卡片。Agent 创建的任务仍是同一个 GenerationTask，可以进入原任务详情。
-
-### 核心能力
-
-- 保留一套全局侧边栏、账号、积分和资源管理入口。
-- `/tasks` 与 `/agent` 使用稳定 URL 表达构建模式。
-- 正式 AI 页面吸收 Sprint 103 Demo 已确认的会话行为，不复制 Demo 外壳和假数据。
-- 会话历史、新建/恢复、真实风格、运行状态和任务卡片进入统一产品外壳。
-- Agent 任务卡片与传统任务列表、任务详情使用相同 task ID。
+- 独立 `/agent` 模块 Shell。
+- 会话主导航。
+- 紧凑真实任务卡。
+- `/agent/{conversation_id}/tasks/{task_id}` 只读检查器。
+- 共享同一 GenerationTask，不新增表。
 
 ### 退出门槛
 
-- 顶部模式切换、刷新、前进、后退和直接链接行为稳定。
-- 正式页面没有第二套全局品牌导航，也没有未接通的假角色/Panel 操作。
-- 真实 Agent 任务可以从对话卡片进入原任务详情，并能在传统任务列表找到。
-- 传统任务与其它工作台页面无回归。
-- 两个指定桌面视口的浏览器回归、前端生产构建和 `./scripts/check.sh` 通过。
+- 正式 `/agent` 没有旧后台导航和模式切换。
+- 检查器刷新、后退、关闭和草稿恢复稳定。
+- 权限、两个桌面视口和旧工作台回归通过。
 
-## 8. 阶段 4：正式 Agent 工作区与 Demo 对齐
+## 7. Sprint 112：先看得见，再重构 Runtime
 
-Sprint 108 已完成并通过全部退出门槛。正式 `/agent` 内部已对齐已调试 Demo，同时保留 Sprint 107 的统一 Shell、真实 API 和稳定路由；真实浏览器证据保存在 `docs/testing/agent-demo-alignment-browser-report.json`。
+合同：
 
-### 用户可感知结果
+`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
 
-用户在正式 AI 构建模式中获得已调试 Demo 的平面全高会话结构、空白创作入口、按需真实风格资源和固定底部输入区；会话切换不丢草稿或风格，真实任务卡继续进入同一个传统任务详情。
+### 为什么在 Skill/Tool 前
 
-### 退出门槛
+- 后续 Runtime 重构必须能比较调用次数、fallback、延迟、错误和成本。
+- 观测先接当前稳定基线，才能判断重构是否改善或退化。
+- MLflow 不参与业务状态，避免把观测和执行耦合。
 
-- 不出现 Demo 外壳、Mock 数据、角色资源或未接通 Panel 操作。
-- 三个快捷入口、`+`/`@` 真实风格、独立草稿/风格恢复和真实任务卡全部可用。
-- 1440×900、1280×800、模式往返、刷新、键盘与控制台验收通过。
-- 前端生产构建和 `./scripts/check.sh` 通过。
+### 交付
 
-## 9. 阶段 5：Panel 迭代与 VL 闭环
-
-阶段 5 已建立 `docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`，只有 Sprint 108 通过后才能评审激活。
-
-### 用户可感知结果
-
-用户可以在对话中说“把第 3 张表情改掉”“恢复上一版”或“检查人物是否一致”。Agent 只作用于目标 Panel，并能调用 VL 获取证据后决定接受、修改或询问用户。
-
-### 核心能力
-
-- 指定 Panel 修改和重试。
-- 图片版本切换和恢复，不重新生图。
-- `inspect_image` Tool。
-- Tool 预算、最大自动修改次数和 `waiting_for_input`。
-- 取消、晚到结果丢弃和积分正确释放。
+- 官方 MLflow 与当前 Agents SDK/自定义 endpoint 的兼容性结论。
+- Agent Run/model/tool/wait/final trace。
+- `agent_run_id` 关联、脱敏和真实 fallback 证据。
 
 ### 退出门槛
 
-- 修改一个 Panel 不改变其他 Panel。
-- 恢复旧版本不调用图片 Provider、不扣费。
-- VL 结果、Agent 决策和新图片版本可以从 Step trace 完整追踪。
-- 重启、重复投递和取消不会造成重复副作用。
+- 火苗成功、火苗→LIO fallback、永久错误三条路径可解释。
+- 数据库 AgentStep 与 MLflow trace 一致。
+- 不泄露敏感内容，不改变业务状态。
 
-## 10. 阶段 6：资源与参考改编
+## 8. Sprint 113：建立最小 Skill/Tool Runtime
 
-按真实用户价值逐项加入，不为所有资源预建通用框架：
+合同：
 
-1. `@固定角色`。
-2. `@任务/@Panel/@图片版本`。
-3. 最后一张真人图片。
-4. 参考优秀漫画的结构改编。
-5. 抖音内容提取结果作为 Agent 上下文。
+`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
 
-每增加一种资源都必须覆盖归属校验、快照、对话恢复和目标局部性。阶段 6 完成时，不同入口只是向同一 Agent Turn 注入不同资源，而不是启动不同 Pipeline。
+### 交付
 
-## 11. 阶段 7：旧 Pipeline 迁移与删除
+- Runtime Skill 包约定。
+- Skill catalog 和按需 `load_skill`。
+- 代码级 ToolRegistry。
+- Generic Tool Executor。
+- 现有 `generate_image` adapter。
+- Skill/Tool Step 与 MLflow trace。
 
-迁移采用“入口逐个切换、能力验收后删除旧编排”，不在一个 Sprint 全量重写：
+### 退出门槛
 
-1. 统计现有完整故事、故事方案、提取分镜、知识方案和 DY 入口的真实能力清单。
-2. 为每个入口增加 Agent 等价 Eval case。
-3. 将入口改为创建或继续 Conversation，并注入原始文本/资源。
-4. 达到功能和质量门槛后，停止该入口调用旧编排。
-5. 删除已经没有调用方的 Prompt 拼接、单次 LLM 步骤和重复重试代码。
+- Skill 版本/hash 可追踪。
+- Tool 副作用先持久化、可等待、可恢复、可幂等重放。
+- 当前真实两格行为无回归。
+- 没有引入 Workflow DSL 或新基础设施。
 
-阶段 7 的完成定义是“创作决策只有 Agent 一套”，不是“旧文件暂时没人点”。
+## 9. Sprint 114：第一条真正 Skill 驱动的创作链路
 
-## 12. 阶段 8：Evaluation 与发布
+合同：
 
-- 跑完 `evals/agent_v1/cases.jsonl` 的关键确定性断言。
-- 固定模型、Judge、风格快照和数据集版本，建立可比较基线。
-- 覆盖 Provider 故障注入、长对话、重启、取消、重复 Tool Call 和并发。
-- 统计完成率、fallback、调用次数、token、图片成本和延迟分位数。
-- 先本地开发，再内部使用，再小范围用户开放。
+`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
 
-以下任一情况阻止发布：跨用户资源访问、错误 Panel 修改、重复生图/扣费、取消后保存结果、永久错误被无限重试、无法从 Run/Step 解释失败。
+### 交付
 
-## 12. 防止过度设计的硬规则
+- 正式 `idea-to-comic` Skill。
+- 2–8 Panel 的方案 schema。
+- `agent_artifacts`、`agent_approval_requests`、`agent_events`。
+- 漫画方案卡与用户批准/修改。
+- 批准后生图门禁。
+- 持久化 SSE 活动流。
 
-- 单 Agent，直到真实 Eval 证明必须拆分。
-- 四张 Agent 表起步；资源引用先作为受控 JSON 保存，只有出现真实查询或约束需求才拆表。
-- 进程内队列起步，不引入 Redis、Celery、Temporal 或独立 worker 服务。
-- 不实现熔断器、动态 Provider 评分或多区域路由；阶段 1 只有有界重试和一次备用切换。
-- 不做 Token 流；先轮询/应用级状态事件。
-- 不建立通用 Tool 注册平台；只实现当前阶段需要的 Tool。
-- 不为阶段 6 的资源提前写抽象。
-- Agent V1 不实现用户维度 Memory、自定义 Skill、抠图、Remotion、文字转语音或视频解说；这些能力等漫画 V1 稳定后再讨论。
-- 每个阶段都必须产生一条真实可体验链路，不能只交付基础设施。
+### 退出门槛
 
-## 13. 文档和新窗口交接规则
+- 方案未批准前绝不生图或占图片积分。
+- 请求修改产生方案新版本。
+- 批准对象通过 hash 绑定。
+- SSE 断线恢复不丢事件、不重复副作用。
+- 正式链路不再依赖固定两格硬编码。
 
-每个实现窗口开始时按顺序读取：
+## 10. Sprint 115：真实资源上下文
+
+合同：
+
+`docs/contracts/sprint-115-agent-structured-resource-context.md`
+
+### 交付
+
+- 有界 Style、Character、Task、Panel、Image Version 查询。
+- Resource Resolver 与所有权/父子关系/组合校验。
+- 资源上下文进入模型重放。
+- 新任务、已有任务续作和普通讨论路由。
+- `@角色` 真实进入任务快照和生图参考。
+- 检查器到输入区的引用联动。
+
+### 退出门槛
+
+- 跨用户和错误父子引用全部拒绝。
+- 引用已有 Task 不创建新 Task。
+- 资源标签不覆盖草稿，刷新和切换可恢复。
+- UI 不提前展示 Sprint 116 写操作。
+
+## 11. Sprint 116：Panel/VL/版本闭环
+
+合同：
+
+`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
+
+### 交付
+
+- `inspect_image`。
+- 目标 Panel 新图片版本。
+- 接受和恢复版本。
+- 单 Turn 最多一次自动修订。
+- pause/resume。
+- 安全活动事件和完整任务检查器操作。
+
+### 退出门槛
+
+- 修改局部性、版本幂等和积分正确。
+- 恢复不调用 Provider、不扣积分。
+- VL、Agent 决策与版本变化可解释。
+- 暂停、继续、取消、晚到和重启行为正确。
+
+## 12. Sprint 117：Evaluation 与内部开放
+
+合同：
+
+`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
+
+### 交付
+
+- 版本化 deterministic/quality/operational Eval。
+- 故障注入矩阵。
+- 真实 Provider 和浏览器发布回归。
+- MLflow 对比。
+- `GO_INTERNAL` 或 `NO_GO` 报告。
+
+### 阻止开放
+
+以下任何一项出现都必须 NO_GO：
+
+- 跨用户资源访问。
+- 修改错误 Panel。
+- 重复生图或扣费。
+- 取消后 Run 复活。
+- 未批准方案就生图。
+- 永久错误错误 fallback。
+- 无法从数据库和 trace 解释失败。
+- 正式 UI 出现 Mock 或假操作。
+
+## 13. Mock 与真实实现规则
+
+### 允许 Mock 的地方
+
+- `docs/design/` 下的独立原型。
+- 纯组件视觉测试 fixture。
+- 自动化测试中的显式 fake Provider。
+
+这些内容必须清楚标注，不进入正式 `/agent`。
+
+### 正式 `/agent` 的规则
+
+- 所有会话、资源、任务、方案、审批、事件、图片和版本都来自真实 API/数据库。
+- 后端能力未完成时，不显示对应操作。
+- 不使用前端内存假状态冒充持久化结果。
+- 不用旧 API 作为未评审语义的隐藏兜底。
+
+## 14. 后续能力如何扩展
+
+漫画 V1 通过 Sprint 117 后，再讨论：
+
+- 用户维度 Memory：保存创作习惯和规则，不作为 Skill 文件注入。
+- 参考优秀漫画与抖音输入：作为受权限资源上下文与专门 Skill。
+- TTS：新增 `generate_voice` Tool。
+- Remotion：新增 `render_remotion` Tool。
+- 视频拼接：新增 `compose_video` Tool。
+- 抠图：新增 `remove_background` Tool。
+- 漫画转视频、解说视频：新增组合上述 Tools 的 Skill。
+
+新增能力的规则仍是：先定义一个原子 Tool，再用 Skill 组合；不把每个组合写成独立业务 Workflow。
+
+## 15. 新窗口交接规则
+
+每个实施窗口必须依次读取：
 
 1. 根目录 `AGENTS.md`。
-2. `README.md`、`docs/spec.md`、`docs/progress.md`。
-3. 本路线图。
-4. 当前唯一激活的 Sprint 合同。
-5. 合同直接引用的设计、标准和 Evaluation 文件。
+2. `README.md`。
+3. `docs/spec.md`。
+4. `docs/progress.md`。
+5. 本路线图。
+6. 当前唯一 Active Sprint 合同。
+7. 合同直接引用的标准、设计和测试文件。
 
 每个 Sprint 结束时：
 
-- 运行合同 Verification。
-- 更新本路线图阶段状态和 `docs/progress.md`。
-- 架构/API/数据契约变化时同步 `docs/spec.md` 和合同。
-- 记录未验证内容和下一阶段输入。
-- 创建符合仓库规范的中文 commit。
+- 运行合同全部 Verification。
+- 更新合同 Status、`docs/progress.md` 和本路线图。
+- 架构/API/数据库变化同步 `docs/spec.md`。
+- 记录真实浏览器/Provider/MLflow 证据。
+- 不自动开始下一个 Sprint。
+- 创建符合仓库规范的中文详细 commit。

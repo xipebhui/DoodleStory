@@ -5,13 +5,20 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 108 正式 Agent 前端与已调试 Demo 对齐完成。`/agent` 保留统一正式 Shell 与真实 API，内部改为平面全高会话工作区；真实 Conversation `3aa7454244754acda99f9475433195e5`、Run `e89097e4d0294e01b27e40dd7f2f71bb` 和 Task `c59151ece9a34b47a32042aeafcfbc04` 使用 `粗线条暖色` 成功生成两张真实图片，Agent 卡片与传统任务详情使用同一 Task。1440×900、1280×800、资源、草稿、运行/完成、模式往返、刷新、键盘和认证后控制台均通过。`./scripts/check.sh` 覆盖 196 个后端测试、空库 Alembic migration 和前端生产构建。
+- 最近验证状态：Sprint 108 的真实 Conversation、Run、两格 GenerationTask 和正式前端证据仍是当前可运行基线；Sprint 110 已把 Agent 默认模型改为 `gpt-5.5`。2026-07-23 已根据最新产品决定重新规划 Sprint 111–117：`/agent` 将拆为独立创作模块，随后依次接入 MLflow、Skill/Tool Runtime、`idea-to-comic` + HITL + SSE、结构化资源引用、Panel/VL/版本闭环和 Evaluation。当前仅更新实施文档，尚未改变运行代码。
 
 ## 当前 Sprint 合同
 
+- Active：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
+- Planned：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
+- Planned：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
+- Planned：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
+- Planned：`docs/contracts/sprint-115-agent-structured-resource-context.md`
+- Planned：`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
+- Planned：`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
 - Complete：`docs/contracts/sprint-110-agent-default-model-gpt55.md`
+- Superseded（未实施）：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-108-agent-demo-alignment.md`
-- Draft：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-107-agent-frontend-workspace-integration.md`
 - Complete：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
 - Complete：`docs/contracts/sprint-105-agent-runtime-foundation.md`
@@ -37,6 +44,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Agent 漫画 V1 最新路线与逐 Sprint 开发合同：保留 Sprint 105–108、110 的真实完成记录，但明确 Sprint 107/108 的统一旧 Shell、顶部模式切换和跳转旧 Task 详情决定已被后续产品方向替代。新路线从 Sprint 111 到 117 依次交付独立 Agent Shell/只读检查器、MLflow 观测、Skill/Tool Runtime、`idea-to-comic` Skill + Artifact/Approval/SSE、结构化 Style/Character/Task/Panel/Image Version 引用、Panel 版本/VL/pause-resume 闭环，以及 Evaluation 内部开放门槛。每个合同均写明目标、前置、API/SQL/前后端要求、Out of scope、Done means、自动化/真实浏览器/Provider 验收和新窗口启动提示词；正式 `/agent` 明确禁止 Mock、占位成功和未接通假操作。原 Sprint 109 Draft 标记为 Superseded，其目标重新拆入 Sprint 116。当前没有修改运行代码或数据库。
 
 - 完成 Sprint 110 Agent 默认模型切换：火苗主平台与 LIO 备用平台共用的 `AGENT_MODEL` 默认值由 `gpt-5.6-terra` 改为 `gpt-5.5`，同步配置示例、漫画 Panel 模型快照、SDK/Runtime 探测脚本和相关测试；历史兼容性报告保留当时真实使用的旧模型记录。后端与前端开发服务已重启，并确认运行时加载 `gpt-5.5`。
 
@@ -367,6 +376,10 @@
 
 ## 已知缺口
 
+- 当前 `/agent` 仍嵌在旧工作台 Shell 中，任务卡仍进入旧 `/tasks/{task_id}` 详情；Sprint 111 将先修正这一信息架构。
+- 当前 Agent 只接受一个 Style、固定两格 ComicPlan、方案后立即生图，并通过轮询显示状态；尚无 Runtime Skill、方案确认、持久化事件流或结构化 Task/Panel/Image Version 上下文。
+- 当前没有 MLflow trace；`RunConfig(tracing_disabled=True)` 与 MLflow 官方 Agents 集成、自定义火苗/LIO client 的实际兼容性需要 Sprint 112 真实验证。
+- 当前没有 `inspect_image`、版本接受/恢复、Agent pause/resume 或 Evaluation 发布门槛；分别由 Sprint 116、117 交付。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。
@@ -379,8 +392,6 @@
 
 ## 建议下一步
 
-1. 用真实七牛配置跑一条风格参考图上传、任务生成、缩略图访问和打包下载的端到端验证。
-2. 保持独立抖音下载服务 `127.0.0.1:8010` 可用，并用真实链接持续验证内容提取链路。
-3. 继续做组件拆分，把当前 `frontend/src/main.tsx` 拆成页面、组件和 API 模块。
-4. 补充更细的自动化测试和任务 worker 运行恢复策略。
-5. 用真实抖音视频链接验证 `内容提取` tab 的视频下载、音频分离和语音转写链路。
+1. 在新的实现窗口只执行 Sprint 111：独立 Agent Shell、紧凑真实任务卡、AI 专属只读任务检查器和最小只读 API。
+2. 完成合同全部自动化与 1440×900、1280×800 真实浏览器验收，更新合同/路线/进度并提交。
+3. 回到规划窗口确认 Sprint 111 结果后，再激活 Sprint 112；不要提前并行实现 MLflow、Skill、HITL 或 Panel/VL。
