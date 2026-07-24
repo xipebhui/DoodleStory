@@ -82,7 +82,11 @@ def sanitize_trace_value(
     field_name: str = "",
 ) -> Any:
     lowered = field_name.lower()
-    if lowered.endswith("_tokens") and isinstance(value, (int, float)):
+    if lowered.endswith("_request_id") and isinstance(value, str):
+        return _safe_text(value)
+    if (lowered.endswith("_tokens") or lowered == "requests") and isinstance(
+        value, (int, float)
+    ):
         return value
     if any(marker in lowered for marker in SENSITIVE_KEY_MARKERS):
         return REDACTED
@@ -165,6 +169,14 @@ def initialize_agent_observability(settings: Settings | None = None) -> None:
     if missing:
         raise AgentObservabilityConfigurationError(
             f"MLflow tracing 已启用但缺少配置: {', '.join(missing)}"
+        )
+    if (
+        selected.app_env != "test"
+        and not tracking_uri.startswith(("http://", "https://"))
+    ):
+        raise AgentObservabilityConfigurationError(
+            "MLFLOW_TRACKING_URI 必须使用 HTTP(S) Tracking Server，"
+            "禁止直接使用本地文件或数据库 URI，以免 MLflow 系统标签暴露内部路径"
         )
 
     try:

@@ -27,16 +27,26 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 
 默认后端启动在 `http://127.0.0.1:8000`，前端启动在 `http://127.0.0.1:3000`。日志默认写入 `/tmp/doodlestory-backend.log` 和 `/tmp/doodlestory-frontend.log`。
 
-Agent MLflow tracing 默认关闭。需要本地观测时，在 `.env` 显式配置：
+Agent MLflow tracing 默认关闭。需要本地观测时，先启动 HTTP Tracking Server：
+
+```bash
+backend/.venv/bin/mlflow server \
+  --backend-store-uri sqlite:///./mlflow.db \
+  --artifacts-destination ./mlflow-artifacts \
+  --host 127.0.0.1 \
+  --port 5000
+```
+
+然后在 `.env` 显式配置：
 
 ```text
 MLFLOW_TRACING_ENABLED=true
-MLFLOW_TRACKING_URI=sqlite:///./mlflow.db
+MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 MLFLOW_EXPERIMENT_NAME=doodlestory-agent-local
 MLFLOW_TRACE_CONTENT=false
 ```
 
-启用时 Tracking URI 与 Experiment 必须有效，否则后端启动明确失败。默认 `MLFLOW_TRACE_CONTENT=false` 只记录 Run/Step ID、Provider、模型、attempt、fallback、延迟、usage 和状态，不记录用户正文、完整 Prompt、图片 URL、密钥或 Provider 原始响应。创建受控本地 smoke 前需准备一个已有用户，然后运行：
+启用时 Tracking URI 必须指向可用的 HTTP(S) Tracking Server，Experiment 也必须有效，否则后端启动明确失败；直接使用 SQLite/file URI 会被拒绝，避免 MLflow 自身的系统标签暴露内部绝对路径。默认 `MLFLOW_TRACE_CONTENT=false` 只记录 Run/Step ID、Provider、模型、attempt、fallback、延迟、usage 和状态，不记录用户正文、完整 Prompt、图片 URL、密钥或 Provider 原始响应。创建受控本地 smoke 前需准备一个已有用户，然后运行：
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python scripts/agent-mlflow-smoke.py \
@@ -199,7 +209,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Agent V1 全局实施路线图](docs/implementation/agent-v1-implementation-roadmap.md)
 - [Agent V1 新窗口实施交接](docs/implementation/agent-v1-new-window-handoff.md)
 - [已完成：Sprint 111 独立 Agent Shell 与只读任务检查器](docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md)
-- [Planned：Sprint 112 Agent MLflow 可观测性基线](docs/contracts/sprint-112-agent-mlflow-observability-baseline.md)
+- [Complete：Sprint 112 Agent MLflow 可观测性基线](docs/contracts/sprint-112-agent-mlflow-observability-baseline.md)
 - [Planned：Sprint 113 通用 Skill / Tool Runtime 基础](docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md)
 - [Planned：Sprint 114 idea-to-comic Skill、方案确认与真实事件流](docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md)
 - [Planned：Sprint 115 结构化资源引用与同一任务续作](docs/contracts/sprint-115-agent-structured-resource-context.md)

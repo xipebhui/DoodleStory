@@ -225,6 +225,14 @@ def summarize_agent_usage(raw_responses: list[Any]) -> dict[str, int]:
     return summary
 
 
+def extract_agent_provider_request_id(raw_responses: list[Any]) -> str | None:
+    identifiers = [
+        getattr(response, "request_id", None) or getattr(response, "response_id", None)
+        for response in raw_responses
+    ]
+    return next((str(value) for value in reversed(identifiers) if value), None)
+
+
 class AgentModelRouter:
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or get_settings()
@@ -294,15 +302,10 @@ class AgentModelRouter:
         if not final_output:
             raise ValueError("Agent model returned an empty final response")
         raw_responses = list(result.raw_responses)
-        request_ids = [
-            response.request_id
-            for response in raw_responses
-            if getattr(response, "request_id", None)
-        ]
         return AgentModelResult(
             final_output=final_output,
             usage=summarize_agent_usage(raw_responses),
-            provider_request_id=request_ids[-1] if request_ids else None,
+            provider_request_id=extract_agent_provider_request_id(raw_responses),
             raw_result=result,
             route=route,
         )
@@ -347,15 +350,10 @@ class AgentModelRouter:
             await provider._client.close()
         plan = ComicPlan.model_validate(result.final_output)
         raw_responses = list(result.raw_responses)
-        request_ids = [
-            response.request_id
-            for response in raw_responses
-            if getattr(response, "request_id", None)
-        ]
         return AgentModelResult(
             final_output=plan.model_dump_json(),
             usage=summarize_agent_usage(raw_responses),
-            provider_request_id=request_ids[-1] if request_ids else None,
+            provider_request_id=extract_agent_provider_request_id(raw_responses),
             raw_result=result,
             route=route,
             structured_output=plan,
@@ -398,15 +396,10 @@ class AgentModelRouter:
         if not final_output:
             raise ValueError("Agent model returned an empty comic result response")
         raw_responses = list(result.raw_responses)
-        request_ids = [
-            response.request_id
-            for response in raw_responses
-            if getattr(response, "request_id", None)
-        ]
         return AgentModelResult(
             final_output=final_output,
             usage=summarize_agent_usage(raw_responses),
-            provider_request_id=request_ids[-1] if request_ids else None,
+            provider_request_id=extract_agent_provider_request_id(raw_responses),
             raw_result=result,
             route=route,
         )

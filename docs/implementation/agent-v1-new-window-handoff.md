@@ -1,6 +1,6 @@
 # Agent 漫画 V1 新窗口实施交接
 
-> 状态更新（2026-07-24）：Sprint 105–108、110–111 已 Complete；Sprint 109 Draft 已 Superseded。Sprint 112 已由用户激活并完成实现、自动化与两类真实 smoke，但火苗 `gpt-5.5` 直接成功 smoke 最终被上游 403 `Personal access token owner is inactive` 阻塞，合同保持 Active；Sprint 113 不得提前激活。
+> 状态更新（2026-07-24）：Sprint 105–108、110–112 已 Complete；Sprint 109 Draft 已 Superseded。火苗恢复后的 `gpt-5.5` 直接成功 smoke 已补齐，Sprint 112 全部退出门槛通过；Sprint 113 仍为 Planned，等待用户明确确认后激活。
 
 ## 1. 仓库与分支
 
@@ -75,7 +75,7 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 | 顺序 | 合同 | 激活条件 |
 | --- | --- | --- |
 | 1 | `sprint-111-agent-independent-shell-readonly-inspector.md` | Complete |
-| 2 | `sprint-112-agent-mlflow-observability-baseline.md` | 111 Complete，等待用户确认激活 |
+| 2 | `sprint-112-agent-mlflow-observability-baseline.md` | Complete |
 | 3 | `sprint-113-agent-skill-tool-runtime-foundation.md` | 112 Complete |
 | 4 | `sprint-114-idea-to-comic-skill-hitl-event-stream.md` | 113 Complete |
 | 5 | `sprint-115-agent-structured-resource-context.md` | 114 Complete |
@@ -86,7 +86,7 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 
 ## 5. 下一窗口启动条件
 
-Sprint 111 已完成，不要再次执行。先在规划窗口审阅其代码、合同与 `docs/testing/agent-independent-shell-readonly-inspector-browser-report.json`；只有用户明确确认后，才把 Sprint 112 从 Planned 改为 Active，并使用 Sprint 112 合同末尾的 `New-window start prompt` 开始新的实现窗口。
+Sprint 112 已完成，不要再次执行。先在规划窗口审阅其代码、合同、`docs/testing/agent-mlflow-compatibility-spike.md` 与 `docs/testing/agent-mlflow-smoke-report.json`；只有用户明确确认后，才把 Sprint 113 从 Planned 改为 Active，并使用 Sprint 113 合同末尾的 `New-window start prompt` 开始新的实现窗口。
 
 ## 6. 后续窗口如何开始
 

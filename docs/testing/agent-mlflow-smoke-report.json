@@ -5,33 +5,31 @@
     "openai": "2.45.0",
     "openai_agents": "0.18.3"
   },
-  "tracking_backend": "local_sqlite",
-  "experiment": "doodlestory-agent-smoke",
+  "tracking_backend": "local_http_server_with_sqlite_store",
+  "experiment": "doodlestory-agent-smoke-http-final",
   "trace_content_enabled": false,
   "cases": [
     {
       "scenario": "primary_success",
-      "agent_run_id": "2e03699d9d85438f8e140547dec98f79",
-      "trace_id": "tr-231e10f6b023658d4d552b509ea4a122",
-      "span_count": 11,
-      "providers": ["huomiao", "huomiao", "lio"],
-      "fallback": true,
-      "run_status": "succeeded",
-      "result": "blocked_as_primary_success",
-      "blocker": "huomiao returned auth_unavailable twice; LIO completed the business run"
-    },
-    {
-      "scenario": "primary_success_final_retry",
-      "agent_run_id": "71b2fe637de54c908a4e3581291ce7bb",
-      "trace_id": "tr-7f3c46e7688cdb327fe1cd4d896db6c3",
+      "agent_run_id": "c3c1dd54fa0f4d0e807786cc89ee5ac2",
+      "trace_id": "tr-7cc99632fd625cb4abe72b729fcc91be",
       "span_count": 5,
+      "trace_state": "OK",
       "providers": ["huomiao"],
+      "models": ["gpt-5.5"],
+      "attempts": [1],
       "fallback": false,
-      "run_status": "failed",
-      "trace_state": "ERROR",
-      "error_code": "AgentModelPermanentError",
-      "result": "blocked_as_primary_success",
-      "blocker": "huomiao returned HTTP 403 because the personal access token owner is inactive"
+      "run_status": "succeeded",
+      "latency_ms": 2381,
+      "provider_request_id_matches_database": true,
+      "usage": {
+        "requests": 1,
+        "input_tokens": 121,
+        "output_tokens": 31,
+        "total_tokens": 152
+      },
+      "artifact_location": "mlflow-artifacts:/2/traces/tr-7cc99632fd625cb4abe72b729fcc91be/artifacts",
+      "result": "passed"
     },
     {
       "scenario": "injected_temporary_then_real_fallback",
@@ -61,8 +59,20 @@
     "email_found": false,
     "authorization_found": false,
     "bearer_token_found": false,
-    "api_key_name_found": false
+    "api_key_name_found": false,
+    "http_url_found": false,
+    "https_url_found": false,
+    "users_path_found": false,
+    "tmp_path_found": false
+  },
+  "verification": {
+    "check_script": "./scripts/check.sh",
+    "backend_tests": 209,
+    "python_compileall": "passed",
+    "alembic_fresh_upgrade": "passed",
+    "frontend_production_build": "passed",
+    "git_diff_check": "passed"
   },
   "database_schema_changed": false,
-  "overall": "partial_blocked_by_huomiao_primary_credential_owner_status"
+  "overall": "passed"
 }

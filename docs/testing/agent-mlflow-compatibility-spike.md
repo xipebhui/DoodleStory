@@ -26,7 +26,7 @@
 | `RunConfig(tracing_disabled=True)` | 不阻断 MLflow 捕获 |
 | Tool Call / Tool Output | 当前业务 Tool 不由 Agents SDK function tool 执行，必须在现有 `AgentStep` 边界显式建 span |
 | `agent_run_id` 检索 | 通过；根 trace tag 可唯一检索，不需要新增数据库列 |
-| 火苗真实调用 | 2026-07-24 首轮被 `auth_unavailable` 阻塞；最终复测返回 403 `Personal access token owner is inactive`。失败调用和错误分类可观测 |
+| 火苗真实调用 | 通过；凭据恢复后 `gpt-5.5` 直接成功，model、usage、response ID 与数据库 AgentStep 一致 |
 
 ## 依赖选择
 
@@ -58,7 +58,7 @@ MLflow 默认关闭时 DoodleStory 不导入 MLflow，也不连接 Tracking URI�
 - API key 环境变量名；
 - 完整资源 URL。
 
-## 当前阻塞
+## 火苗恢复复验
 
 火苗 `gpt-5.5` 在 2026-07-24 首轮两次真实请求返回：
 
@@ -72,4 +72,14 @@ auth_unavailable: no auth available (providers=codex, model=gpt-5.5)
 Personal access token owner is inactive.
 ```
 
-最新证据表明阻塞是火苗侧凭据 owner 状态，而不是 MLflow 或 Agent Runtime 兼容性。未更换模型、未把 LIO 冒充火苗成功，也未引入备用观测平台。Sprint 112 在火苗凭据恢复并补齐直接成功证据前保持 Active。
+凭据恢复后，使用同一火苗 endpoint 与 `gpt-5.5` 完成真实主链路复验：
+
+- Agent Run：`c3c1dd54fa0f4d0e807786cc89ee5ac2`
+- MLflow trace：`tr-7cc99632fd625cb4abe72b729fcc91be`
+- 唯一根 trace，状态 `OK`；业务 Run 状态 `succeeded`
+- provider/model 为 `huomiao/gpt-5.5`，attempt 1，无 fallback
+- usage 为 requests/input/output/total `1/121/31/152`，延迟 `2381ms`
+- MLflow 与数据库 AgentStep 的 provider response ID 完全一致
+- trace 完整扫描未出现受控用户正文、模型回复、邮箱、Authorization/Bearer、HTTP(S) URL、`/Users/` 或 `/tmp/` 路径
+
+此前 403 已确认解除。三类真实验收证据完整，Sprint 112 可标记 Complete。

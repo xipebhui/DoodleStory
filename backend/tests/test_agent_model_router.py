@@ -10,6 +10,7 @@ from app.services.agent_model_router import (
     AgentModelRoutingError,
     AgentProviderConfig,
     classify_agent_model_error,
+    extract_agent_provider_request_id,
     redact_agent_error,
 )
 
@@ -77,6 +78,11 @@ def make_router(outcomes):
 
 
 class AgentModelRouterTests(unittest.TestCase):
+    def test_provider_request_id_uses_response_id_when_request_id_is_absent(self):
+        response = SimpleNamespace(request_id=None, response_id="response-id")
+
+        self.assertEqual("response-id", extract_agent_provider_request_id([response]))
+
     def test_runtime_error_redaction_removes_configured_and_authorization_secrets(self):
         redacted = redact_agent_error(
             "private-key Authorization: Bearer authorization-token",

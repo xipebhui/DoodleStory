@@ -298,7 +298,6 @@
 
 ## 未决问题
 
-- 火苗 `gpt-5.5` 在 2026-07-24 最终复测返回 HTTP 403 `Personal access token owner is inactive`；需要在火苗凭据 owner 恢复后补齐 Sprint 112 火苗直接成功 trace，才能将合同标记 Complete。
 - Sprint 117 第一轮真实 Evaluation 得到 baseline 后，质量、延迟、成本和 fallback 告警阈值应设为多少。
 - 风格除了名称、描述、参考图片、prompt、状态和生图模型名外，还需要哪些元数据？
 - 批量下载支持哪些图片格式和命名规则？

@@ -117,8 +117,21 @@ def query_trace(agent_run_id: str) -> dict[str, object]:
         "root_trace_found": any(span.name == "agent.run" for span in trace.data.spans),
         "trace_id": trace.info.trace_id,
         "span_count": len(trace.data.spans),
+        "trace_state": str(trace.info.state),
         "providers": providers,
         "models": models,
+        "attempts": [span.attributes.get("attempt") for span in model_spans],
+        "latency_ms": [span.attributes.get("latency_ms") for span in model_spans],
+        "provider_request_ids": [
+            span.attributes.get("provider_request_id") for span in model_spans
+        ],
+        "usage": [
+            {
+                key: span.attributes.get(key)
+                for key in ("requests", "input_tokens", "output_tokens", "total_tokens")
+            }
+            for span in model_spans
+        ],
         "fallback": any(span.attributes.get("fallback_from") for span in model_spans),
         "query": f"tags.agent_run_id = '{agent_run_id}'",
     }

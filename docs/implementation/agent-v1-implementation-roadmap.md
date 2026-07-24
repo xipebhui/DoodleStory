@@ -127,7 +127,7 @@ Sprint 111–113、115 默认不新增表。
 | Sprint | 目标 | 状态 | 数据库变化 | 正式前端 |
 | --- | --- | --- | --- | --- |
 | 111 | 独立 Agent Shell、紧凑任务卡、只读任务检查器 | Complete | 无 | 有，完整 |
-| 112 | MLflow 可观测性基线 | Active（火苗直接成功 smoke 阻塞） | 无 | 无新功能 |
+| 112 | MLflow 可观测性基线 | Complete | 无 | 无新功能 |
 | 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Planned | 无 | 无新功能 |
 | 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Planned | Artifact/Approval/Event | 有，方案卡与活动流 |
 | 115 | Style/Character/Task/Panel/Image Version 引用 | Planned | 默认无 | 有，真实 `@` 菜单与引用 |
@@ -164,7 +164,7 @@ Sprint 111–113、115 默认不新增表。
 
 ### 完成结果
 
-2026-07-24 已通过全部退出门槛。正式 `/agent` 使用独立会话 Shell；任务卡和只读检查器读取同一个真实 GenerationTask；嵌套路由、Conversation→Task→owner 鉴权、Panel/current image 选择、有界版本列表、两个桌面视口、键盘焦点和旧 `/tasks` 回归均已验证。Sprint 112 仍为 Planned，等待单独确认后激活。
+2026-07-24 已通过全部退出门槛。正式 `/agent` 使用独立会话 Shell；任务卡和只读检查器读取同一个真实 GenerationTask；嵌套路由、Conversation→Task→owner 鉴权、Panel/current image 选择、有界版本列表、两个桌面视口、键盘焦点和旧 `/tasks` 回归均已验证。Sprint 112 随后已单独激活并完成。
 
 ## 7. Sprint 112：先看得见，再重构 Runtime
 
@@ -189,6 +189,10 @@ Sprint 111–113、115 默认不新增表。
 - 火苗成功、火苗→LIO fallback、永久错误三条路径可解释。
 - 数据库 AgentStep 与 MLflow trace 一致。
 - 不泄露敏感内容，不改变业务状态。
+
+### 完成结果
+
+2026-07-24 已通过全部退出门槛。火苗恢复后的直接成功 Run `c3c1dd54fa0f4d0e807786cc89ee5ac2` 可用 `agent_run_id` 唯一找到 trace `tr-7cc99632fd625cb4abe72b729fcc91be`；真实 provider/model、attempt、延迟、token usage 和 provider request ID 与数据库 AgentStep 一致。火苗临时错误→LIO 成功及永久错误不 fallback 也已验证，默认脱敏扫描无敏感内容或内部路径命中。
 
 ## 8. Sprint 113：建立最小 Skill/Tool Runtime
 

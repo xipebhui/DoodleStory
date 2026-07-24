@@ -138,6 +138,16 @@ class AgentObservabilityTests(unittest.TestCase):
         with self.assertRaises(agent_observability.AgentObservabilityConfigurationError):
             agent_observability.initialize_agent_observability(settings)
 
+    def test_enabled_non_http_tracking_uri_is_rejected_outside_tests(self):
+        settings = make_settings(self.tracking_uri)
+        settings.app_env = "development"
+
+        with self.assertRaisesRegex(
+            agent_observability.AgentObservabilityConfigurationError,
+            r"HTTP\(S\) Tracking Server",
+        ):
+            agent_observability.initialize_agent_observability(settings)
+
     def test_enabled_unreachable_tracking_backend_fails_initialization(self):
         class BrokenMlflow:
             @staticmethod
@@ -174,6 +184,20 @@ class AgentObservabilityTests(unittest.TestCase):
         self.assertNotIn("/Users/example", serialized)
         self.assertNotIn("secret-value", serialized)
         self.assertNotIn("private prompt", serialized)
+
+    def test_redactor_preserves_usage_and_provider_request_id(self):
+        sanitized = agent_observability.sanitize_trace_value(
+            {
+                "provider_request_id": "resp_123",
+                "requests": 1,
+                "input_tokens": 8,
+            },
+            allow_content=False,
+        )
+
+        self.assertEqual("resp_123", sanitized["provider_request_id"])
+        self.assertEqual(1, sanitized["requests"])
+        self.assertEqual(8, sanitized["input_tokens"])
 
     def test_fallback_attempts_share_one_root_trace_and_match_database_steps(self):
         agent_observability.initialize_agent_observability(self.settings)

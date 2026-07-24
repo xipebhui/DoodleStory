@@ -5,12 +5,12 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 112 已于 2026-07-24 由用户激活。MLflow 3.14 官方集成兼容性 spike、生产 tracing、默认脱敏、查询 smoke 与测试已实现；受控火苗临时错误→LIO 成功和永久错误不 fallback 已通过。火苗 `gpt-5.5` 直接成功最终被上游 403 `Personal access token owner is inactive` 阻塞，合同保持 Active，Sprint 113 未激活。
+- 最近验证状态：Sprint 112 已于 2026-07-24 Complete。火苗恢复后的 `gpt-5.5` 直接成功 Run `c3c1dd54fa0f4d0e807786cc89ee5ac2` 唯一关联 MLflow trace `tr-7cc99632fd625cb4abe72b729fcc91be`，provider/model、attempt、延迟、usage、provider request ID 与数据库 AgentStep 一致；受控火苗临时错误→LIO 成功和永久错误不 fallback 也已通过。Sprint 113 未激活。
 
 ## 当前 Sprint 合同
 
 - Complete：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
-- Active（火苗直接成功 smoke 阻塞）：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
+- Complete：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
 - Planned：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
 - Planned：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
 - Planned：`docs/contracts/sprint-115-agent-structured-resource-context.md`
@@ -45,7 +45,7 @@
 
 ## 最近完成的工作
 
-- 实施 Sprint 112 Agent MLflow 可观测性基线：锁定 `mlflow==3.14.0`，官方 autolog 已验证兼容 `openai-agents==0.18.3`、`openai==2.45.0`、自定义火苗/LIO `AsyncOpenAI` client、Responses API 和现有 `RunConfig(tracing_disabled=True)`。新增默认关闭的 MLflow 配置与启动校验、客户端 span processor 脱敏、`agent.run/model_call/tool_call/tool_wait/tool_result/finalize` 层级、`agent_run_id` 唯一查询 smoke 和结构化 `observability_error` 隔离；数据库 schema、Provider 路由、恢复和用户界面均未改变。真实 LIO 成功保留 model/usage/request ID；受控临时错误→真实 LIO fallback 与永久错误不 fallback 通过，trace 完整扫描未出现用户正文、邮箱、Authorization、密钥名或完整 URL；全量 `./scripts/check.sh` 覆盖 206 项后端测试、空库 migration 和前端生产构建并通过。火苗直接成功 smoke 最终因上游 403 `Personal access token owner is inactive` 未通过，合同保持 Active；证据见 `docs/testing/agent-mlflow-compatibility-spike.md` 和 `docs/testing/agent-mlflow-smoke-report.json`。
+- 完成 Sprint 112 Agent MLflow 可观测性基线：锁定 `mlflow==3.14.0`，官方 autolog 已验证兼容 `openai-agents==0.18.3`、`openai==2.45.0`、自定义火苗/LIO `AsyncOpenAI` client、Responses API 和现有 `RunConfig(tracing_disabled=True)`。新增默认关闭的 MLflow 配置与启动校验、客户端 span processor 脱敏、`agent.run/model_call/tool_call/tool_wait/tool_result/finalize` 层级、`agent_run_id` 唯一查询 smoke 和结构化 `observability_error` 隔离；数据库 schema、Provider 路由、恢复和用户界面均未改变。火苗恢复后，真实主链路 Run `c3c1dd54fa0f4d0e807786cc89ee5ac2` 唯一对应 trace `tr-7cc99632fd625cb4abe72b729fcc91be`，`huomiao/gpt-5.5` attempt 1 无 fallback，requests/input/output/total 为 `1/121/31/152`，provider response ID 与数据库 AgentStep 一致；受控临时错误→真实 LIO fallback 与永久错误不 fallback 也通过。完整 trace 扫描未出现用户正文、模型回复、邮箱、Authorization/Bearer、HTTP(S) URL 或内部路径；开发/生产直接 SQLite/file Tracking URI 现会明确失败。`./scripts/check.sh` 覆盖 209 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。证据见 `docs/testing/agent-mlflow-compatibility-spike.md` 和 `docs/testing/agent-mlflow-smoke-report.json`。
 
 - 完成 Sprint 111 独立 Agent Shell 与只读任务检查器：正式 `/agent` 不再渲染旧工作台侧栏或“传统构建 / AI 构建”切换，改为只包含真实新建、搜索、历史会话、用户、积分、退出和低层级传统工作台入口的独立 Shell。真实 Agent Run 任务卡收敛为紧凑标题、状态、进度、Panel 当前图与 Run 状态，并新增 `/agent/{conversation_id}/tasks/{task_id}` AI 专属只读检查器；检查器支持稳定 URL、刷新/前进/后退、只读 Panel 选择、真实当前图片与最多 20 个版本摘要、明确读取错误、焦点陷阱及关闭后草稿/滚动/触发焦点恢复。后端新增 Conversation→AgentRun→GenerationTask owner 三层鉴权读取 API，普通用户、其他用户、Admin、未关联 Task 与跨 owner Task 权限均有测试，旧 `/tasks` 保持不变。Agent API 6 项、Agent 路由 3 项、前端生产构建、Python compileall、`git diff --check` 和 `./scripts/check.sh` 全部通过；全量检查覆盖 198 项后端测试和空库迁移。1440×900、1280×800 真实浏览器与有效认证 0 console error / 0 warning 通过，证据见 `docs/testing/agent-independent-shell-readonly-inspector-browser-report.json`。未实现 Mock、旧任务详情跳转、资源引用、Panel 写操作、VL、Skill、MLflow、SSE、HITL、Memory、TTS 或 Remotion。
 
@@ -381,7 +381,7 @@
 ## 已知缺口
 
 - 当前 Agent 只接受一个 Style、固定两格 ComicPlan、方案后立即生图，并通过轮询显示状态；尚无 Runtime Skill、方案确认、持久化事件流或结构化 Task/Panel/Image Version 上下文。
-- 当前没有 MLflow trace；`RunConfig(tracing_disabled=True)` 与 MLflow 官方 Agents 集成、自定义火苗/LIO client 的实际兼容性需要 Sprint 112 真实验证。
+- 当前已有 Sprint 112 MLflow trace 基线；SkillRegistry/ToolRegistry 后续新增的步骤仍需在 Sprint 113 复用同一套显式 span API。
 - 当前没有 `inspect_image`、版本接受/恢复、Agent pause/resume 或 Evaluation 发布门槛；分别由 Sprint 116、117 交付。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
@@ -395,6 +395,6 @@
 
 ## 建议下一步
 
-1. 回到规划窗口审阅 Sprint 111 完成结果与浏览器验收证据。
-2. 用户确认后再把 Sprint 112 从 Planned 激活，单独实施 MLflow 观测基线。
-3. 不要提前并行实现 Skill、HITL、SSE、结构化资源引用或 Panel/VL。
+1. 回到规划窗口审阅 Sprint 112 完成结果与 MLflow 验收证据。
+2. 用户确认后再把 Sprint 113 从 Planned 激活，单独实施 Skill/Tool Runtime 基础。
+3. 不要提前并行实现 HITL、SSE、结构化资源引用或 Panel/VL。

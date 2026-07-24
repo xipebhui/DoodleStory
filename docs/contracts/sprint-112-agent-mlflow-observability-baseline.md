@@ -2,7 +2,7 @@
 
 ## Status
 
-Active。2026-07-24 已由用户确认激活；兼容性 spike、生产 tracing、脱敏、查询 smoke 和自动化测试已实现。火苗 `gpt-5.5` 直接成功证据最终被上游 403 `Personal access token owner is inactive` 阻塞，因此尚不能标记 Complete。
+Complete。2026-07-24 已完成兼容性 spike、生产 tracing、脱敏、查询 smoke、自动化测试和三类真实验收。火苗凭据恢复后，`gpt-5.5` 直接成功 trace 已补齐，Sprint 112 全部 Done means 通过。
 
 ## Goal
 
@@ -223,6 +223,15 @@ git diff --check
 - Sprint 112 Complete 后才能激活 Sprint 113。
 - Sprint 113 新增 Skill/Tool span 时复用本 Sprint trace API，不另建第二套日志体系。
 - 完成后更新路线图、进度和 `docs/testing/` 证据。
+
+## Completion evidence
+
+- 火苗直接成功：Agent Run `c3c1dd54fa0f4d0e807786cc89ee5ac2`，MLflow trace `tr-7cc99632fd625cb4abe72b729fcc91be`；唯一根 trace，`huomiao/gpt-5.5`、attempt 1、无 fallback，Run 与 trace 均成功。
+- 模型 span 保存 `requests=1`、input/output/total tokens `121/31/152`、延迟 `2381ms`；provider request ID 与数据库 AgentStep 一致。
+- 受控临时错误后 LIO 成功、永久错误不 fallback 的证据继续通过。
+- 完整 trace 扫描未出现受控用户正文、模型回复、邮箱、Authorization/Bearer、HTTP(S) URL、`/Users/` 或 `/tmp/` 路径。
+- 开发与生产环境只接受 HTTP(S) Tracking Server；直接 SQLite/file URI 会明确失败，防止 MLflow 系统 artifact 标签暴露内部路径。
+- `./scripts/check.sh` 通过：209 项后端测试、空库 Alembic migration、Python compileall 和前端生产构建均成功。
 
 ## New-window start prompt
 
