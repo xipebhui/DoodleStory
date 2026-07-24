@@ -5,11 +5,11 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 108 的真实 Conversation、Run、两格 GenerationTask 和正式前端证据仍是当前可运行基线；Sprint 110 已把 Agent 默认模型改为 `gpt-5.5`。2026-07-23 已根据最新产品决定重新规划 Sprint 111–117：`/agent` 将拆为独立创作模块，随后依次接入 MLflow、Skill/Tool Runtime、`idea-to-comic` + HITL + SSE、结构化资源引用、Panel/VL/版本闭环和 Evaluation。当前仅更新实施文档，尚未改变运行代码。
+- 最近验证状态：Sprint 111 已于 2026-07-24 完成，正式 `/agent` 已拆为独立会话优先创作模块；真实 Conversation、Run 和两格 GenerationTask 继续作为当前可运行基线，任务卡与 AI 专属只读检查器共享同一 Task。Agent 默认模型保持 Sprint 110 的 `gpt-5.5`。Sprint 112–117 仍按 MLflow、Skill/Tool Runtime、`idea-to-comic` + HITL + SSE、结构化资源引用、Panel/VL/版本闭环和 Evaluation 顺序保持 Planned，本次未自动激活后续 Sprint。
 
 ## 当前 Sprint 合同
 
-- Active：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
+- Complete：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
 - Planned：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
 - Planned：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
 - Planned：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
@@ -44,6 +44,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 111 独立 Agent Shell 与只读任务检查器：正式 `/agent` 不再渲染旧工作台侧栏或“传统构建 / AI 构建”切换，改为只包含真实新建、搜索、历史会话、用户、积分、退出和低层级传统工作台入口的独立 Shell。真实 Agent Run 任务卡收敛为紧凑标题、状态、进度、Panel 当前图与 Run 状态，并新增 `/agent/{conversation_id}/tasks/{task_id}` AI 专属只读检查器；检查器支持稳定 URL、刷新/前进/后退、只读 Panel 选择、真实当前图片与最多 20 个版本摘要、明确读取错误、焦点陷阱及关闭后草稿/滚动/触发焦点恢复。后端新增 Conversation→AgentRun→GenerationTask owner 三层鉴权读取 API，普通用户、其他用户、Admin、未关联 Task 与跨 owner Task 权限均有测试，旧 `/tasks` 保持不变。Agent API 6 项、Agent 路由 3 项、前端生产构建、Python compileall、`git diff --check` 和 `./scripts/check.sh` 全部通过；全量检查覆盖 198 项后端测试和空库迁移。1440×900、1280×800 真实浏览器与有效认证 0 console error / 0 warning 通过，证据见 `docs/testing/agent-independent-shell-readonly-inspector-browser-report.json`。未实现 Mock、旧任务详情跳转、资源引用、Panel 写操作、VL、Skill、MLflow、SSE、HITL、Memory、TTS 或 Remotion。
 
 - 完成 Agent 漫画 V1 最新路线与逐 Sprint 开发合同：保留 Sprint 105–108、110 的真实完成记录，但明确 Sprint 107/108 的统一旧 Shell、顶部模式切换和跳转旧 Task 详情决定已被后续产品方向替代。新路线从 Sprint 111 到 117 依次交付独立 Agent Shell/只读检查器、MLflow 观测、Skill/Tool Runtime、`idea-to-comic` Skill + Artifact/Approval/SSE、结构化 Style/Character/Task/Panel/Image Version 引用、Panel 版本/VL/pause-resume 闭环，以及 Evaluation 内部开放门槛。每个合同均写明目标、前置、API/SQL/前后端要求、Out of scope、Done means、自动化/真实浏览器/Provider 验收和新窗口启动提示词；正式 `/agent` 明确禁止 Mock、占位成功和未接通假操作。原 Sprint 109 Draft 标记为 Superseded，其目标重新拆入 Sprint 116。当前没有修改运行代码或数据库。
 
@@ -376,7 +378,6 @@
 
 ## 已知缺口
 
-- 当前 `/agent` 仍嵌在旧工作台 Shell 中，任务卡仍进入旧 `/tasks/{task_id}` 详情；Sprint 111 将先修正这一信息架构。
 - 当前 Agent 只接受一个 Style、固定两格 ComicPlan、方案后立即生图，并通过轮询显示状态；尚无 Runtime Skill、方案确认、持久化事件流或结构化 Task/Panel/Image Version 上下文。
 - 当前没有 MLflow trace；`RunConfig(tracing_disabled=True)` 与 MLflow 官方 Agents 集成、自定义火苗/LIO client 的实际兼容性需要 Sprint 112 真实验证。
 - 当前没有 `inspect_image`、版本接受/恢复、Agent pause/resume 或 Evaluation 发布门槛；分别由 Sprint 116、117 交付。
@@ -392,6 +393,6 @@
 
 ## 建议下一步
 
-1. 在新的实现窗口只执行 Sprint 111：独立 Agent Shell、紧凑真实任务卡、AI 专属只读任务检查器和最小只读 API。
-2. 完成合同全部自动化与 1440×900、1280×800 真实浏览器验收，更新合同/路线/进度并提交。
-3. 回到规划窗口确认 Sprint 111 结果后，再激活 Sprint 112；不要提前并行实现 MLflow、Skill、HITL 或 Panel/VL。
+1. 回到规划窗口审阅 Sprint 111 完成结果与浏览器验收证据。
+2. 用户确认后再把 Sprint 112 从 Planned 激活，单独实施 MLflow 观测基线。
+3. 不要提前并行实现 Skill、HITL、SSE、结构化资源引用或 Panel/VL。

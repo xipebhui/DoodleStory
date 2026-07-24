@@ -43,6 +43,7 @@ import {
   type AgentConversationDetail,
   type AgentRunStatus,
   type AgentTaskCard,
+  type AgentTaskInspector,
   type AdminCreditTransaction,
   type AdminCreditUsage,
   type AdminUserCreditDetail,
@@ -71,6 +72,7 @@ import {
   type VideoTaskStatus,
   type VideoTaskSummary,
 } from "./api/client";
+import { parseAgentRoute } from "./agentRoutes";
 import "./styles/app.css";
 
 type View = "agent" | "tasks" | "videoTasks" | "audioReferences" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
@@ -103,7 +105,7 @@ function normalizedPathname(pathname: string) {
 
 function viewFromPathname(pathname: string): View | null {
   const path = normalizedPathname(pathname);
-  if (path === viewRoutes.agent || path.startsWith(`${viewRoutes.agent}/`)) return "agent";
+  if (parseAgentRoute(path)) return "agent";
   if (path === "/" || path === viewRoutes.tasks || path.startsWith(`${viewRoutes.tasks}/`)) return "tasks";
   if (path === viewRoutes.videoTasks || path.startsWith(`${viewRoutes.videoTasks}/`)) return "videoTasks";
   if (path === viewRoutes.audioReferences) return "audioReferences";
@@ -114,14 +116,6 @@ function viewFromPathname(pathname: string): View | null {
   if (path === viewRoutes.creditUsage) return "creditUsage";
   if (path === viewRoutes.settings) return "settings";
   return null;
-}
-
-function agentConversationIdFromPathname(pathname: string): string | null {
-  const path = normalizedPathname(pathname);
-  const prefix = `${viewRoutes.agent}/`;
-  if (!path.startsWith(prefix)) return null;
-  const rawId = path.slice(prefix.length).split("/")[0];
-  return rawId ? decodeURIComponent(rawId) : null;
 }
 
 function taskIdFromPathname(pathname: string): string | null {
@@ -274,7 +268,9 @@ function App() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const [loading, setLoading] = useState(true);
   const view = viewFromPathname(pathname);
-  const routeAgentConversationId = agentConversationIdFromPathname(pathname);
+  const agentRoute = parseAgentRoute(pathname);
+  const routeAgentConversationId = agentRoute?.conversationId ?? null;
+  const routeAgentTaskId = agentRoute?.taskId ?? null;
   const routeTaskId = taskIdFromPathname(pathname);
   const routeVideoTaskId = videoTaskIdFromPathname(pathname);
 
@@ -389,6 +385,26 @@ function App() {
     );
   }
 
+  if (view === "agent") {
+    return (
+      <main className="agent-module-shell">
+        <AgentView
+          user={user}
+          creditOverview={creditOverview}
+          creditError={creditError}
+          routeConversationId={routeAgentConversationId}
+          routeTaskId={routeAgentTaskId}
+          onNavigatePath={navigateToPath}
+          onCreditsChanged={refreshCredits}
+          onLogout={async () => {
+            await api.logout();
+            setUser(null);
+          }}
+        />
+      </main>
+    );
+  }
+
   return (
     <Shell
       user={user}
@@ -398,13 +414,6 @@ function App() {
       onNavigate={navigateToView}
       onLogout={() => setUser(null)}
     >
-      {view === "agent" ? (
-        <AgentView
-          routeConversationId={routeAgentConversationId}
-          onNavigatePath={navigateToPath}
-          onCreditsChanged={refreshCredits}
-        />
-      ) : null}
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "videoTasks" ? <VideoTasksView user={user} routeVideoTaskId={routeVideoTaskId} onNavigatePath={navigateToPath} /> : null}
       {view === "audioReferences" ? <AudioReferencesView user={user} /> : null}
@@ -602,7 +611,7 @@ function CreationModeSwitch({
   onNavigatePath,
 }: {
   active: "tasks" | "agent";
-  onNavigatePath: (path: string) => void;
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
 }) {
   const lastConversationId = window.sessionStorage.getItem(lastAgentConversationKey);
   const agentPath = lastConversationId ? `${viewRoutes.agent}/${encodeURIComponent(lastConversationId)}` : viewRoutes.agent;
@@ -682,11 +691,17 @@ function agentTaskStatusLabel(status: AgentTaskCard["status"]) {
 
 function AgentTaskCardView({
   card,
+  runStatus,
   onOpenTask,
 }: {
   card: AgentTaskCard;
-  onOpenTask: (taskId: string) => void;
+  runStatus: AgentRunStatus | null;
+  onOpenTask: (taskId: string, trigger: HTMLButtonElement) => void;
 }) {
+  const progressPercent =
+    card.progress_total > 0
+      ? Math.min(100, Math.round((card.progress_current / card.progress_total) * 100))
+      : 0;
   return (
     <article className="agent-task-card">
       <header>
@@ -696,32 +711,45 @@ function AgentTaskCardView({
         </div>
         <span className={`status ${card.status}`}>{agentTaskStatusLabel(card.status)}</span>
       </header>
-      <div className="agent-panel-grid">
+      <div className="agent-task-progress" aria-label={`任务进度 ${card.progress_current}/${card.progress_total}`}>
+        <span style={{ width: `${progressPercent}%` }} />
+      </div>
+      <div className="agent-task-summary">
+        <span>{card.progress_current}/{card.progress_total || card.panels.length} 已完成</span>
+        <span>{runStatus ? agentRunStatusLabel(runStatus) : agentTaskStatusLabel(card.status)}</span>
+      </div>
+      <div className="agent-panel-strip" aria-label="任务 Panel 预览">
         {card.panels.map((panel) => (
-          <section className="agent-panel" key={panel.id}>
-            <div className="agent-panel-image">
+          <section className="agent-panel-compact" key={panel.id}>
+            <div className="agent-panel-thumbnail">
               {panel.image?.status === "succeeded" && panel.image.asset_id ? (
                 <LazyAssetImage
                   assetId={panel.image.asset_id}
                   alt={`第 ${panel.panel_order} 格：${panel.story_beat}`}
                   variant="original"
-                  eager
                 />
               ) : panel.image?.status === "failed" || panel.image?.status === "cancelled" ? (
                 <div className="agent-panel-state is-error">
-                  <AlertCircle size={22} />
-                  <span>{panel.image.error_message || "图片生成失败"}</span>
+                  <AlertCircle size={16} />
                 </div>
               ) : (
                 <div className="agent-panel-state">
-                  <Loader2 className="spin" size={24} />
-                  <span>{panel.image?.status === "running" ? "图片 Provider 生成中" : "等待图片 worker"}</span>
+                  <Loader2 className="spin" size={16} />
                 </div>
               )}
             </div>
-            <div className="agent-panel-copy">
-              <strong>第 {panel.panel_order} 张</strong>
-              <p>{panel.story_beat}</p>
+            <div>
+              <strong>Panel {panel.panel_order}</strong>
+              <span>{panel.story_beat}</span>
+              <small>
+                {panel.image?.status === "succeeded"
+                  ? "当前图片"
+                  : panel.image?.status === "failed"
+                    ? "生成失败"
+                    : panel.image?.status === "running"
+                      ? "生成中"
+                      : "等待生成"}
+              </small>
             </div>
           </section>
         ))}
@@ -729,7 +757,11 @@ function AgentTaskCardView({
       {card.error_message ? <p className="error agent-card-error">{card.error_message}</p> : null}
       <footer className="agent-task-card-footer">
         <span title={card.task_id}>任务 ID · {card.task_id}</span>
-        <button type="button" className="secondary-button" onClick={() => onOpenTask(card.task_id)}>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={(event) => onOpenTask(card.task_id, event.currentTarget)}
+        >
           查看任务
           <ArrowUpRight size={16} />
         </button>
@@ -772,14 +804,259 @@ function agentConversationSummary(conversation: AgentConversation, detail: Agent
   return conversation.status === "archived" ? "已归档的历史对话" : "继续上次创作";
 }
 
+function agentImageStatusLabel(
+  status: NonNullable<AgentTaskCard["panels"][number]["image"]>["status"],
+) {
+  const labels = {
+    queued: "等待生成",
+    running: "生成中",
+    succeeded: "已完成",
+    failed: "生成失败",
+    cancelled: "已取消",
+  };
+  return labels[status];
+}
+
+function AgentTaskInspectorDialog({
+  inspector,
+  loading,
+  error,
+  selectedPanelId,
+  onSelectPanel,
+  onRetry,
+  onClose,
+}: {
+  inspector: AgentTaskInspector | null;
+  loading: boolean;
+  error: string;
+  selectedPanelId: string;
+  onSelectPanel: (panelId: string) => void;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const selectedPanel =
+    inspector?.panels.find((panel) => panel.id === selectedPanelId) ||
+    inspector?.panels[0] ||
+    null;
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="agent-inspector-backdrop">
+      <div
+        ref={dialogRef}
+        className="agent-task-inspector"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="agent-inspector-title"
+      >
+        <header className="agent-inspector-header">
+          <div>
+            <span className="agent-eyebrow">AI 任务检查器 · 只读</span>
+            <h2 id="agent-inspector-title">{inspector?.title || "任务详情"}</h2>
+            {inspector ? (
+              <p>
+                {agentTaskStatusLabel(inspector.status)} · 进度 {inspector.progress_current}/
+                {inspector.progress_total || inspector.panels.length} · {inspector.panels.length} Panels
+              </p>
+            ) : null}
+          </div>
+          <button type="button" aria-label="关闭任务检查器" onClick={onClose} autoFocus>
+            <X size={19} />
+          </button>
+        </header>
+
+        {loading ? (
+          <div className="agent-inspector-state">
+            <Loader2 className="spin" size={22} />
+            <span>正在读取真实任务数据…</span>
+          </div>
+        ) : error ? (
+          <div className="agent-inspector-state is-error">
+            <AlertCircle size={22} />
+            <strong>任务读取失败</strong>
+            <span>{error}</span>
+            <button type="button" className="secondary-button" onClick={onRetry}>
+              <RefreshCw size={15} />
+              重新读取
+            </button>
+          </div>
+        ) : inspector && inspector.panels.length === 0 ? (
+          <div className="agent-inspector-state">
+            <Images size={22} />
+            <span>这个任务还没有生成 Panel。</span>
+          </div>
+        ) : inspector && selectedPanel ? (
+          <div className="agent-inspector-body">
+            <aside className="agent-inspector-panel-list" aria-label="Panel 列表">
+              {inspector.panels.map((panel) => (
+                <button
+                  type="button"
+                  key={panel.id}
+                  className={panel.id === selectedPanel.id ? "active" : ""}
+                  aria-pressed={panel.id === selectedPanel.id}
+                  onClick={() => onSelectPanel(panel.id)}
+                >
+                  <span className="agent-inspector-panel-thumb">
+                    {panel.current_image?.status === "succeeded" && panel.current_image.asset_id ? (
+                      <LazyAssetImage
+                        assetId={panel.current_image.asset_id}
+                        alt={`Panel ${panel.panel_order}`}
+                        variant="original"
+                      />
+                    ) : panel.status === "failed" || panel.status === "cancelled" ? (
+                      <AlertCircle size={16} />
+                    ) : (
+                      <Loader2 className={panel.status === "running" ? "spin" : ""} size={16} />
+                    )}
+                  </span>
+                  <span>
+                    <strong>Panel {panel.panel_order}</strong>
+                    <small>{panel.status ? agentImageStatusLabel(panel.status) : "等待图片"}</small>
+                  </span>
+                </button>
+              ))}
+            </aside>
+
+            <section className="agent-inspector-detail">
+              <div className="agent-inspector-image">
+                {selectedPanel.current_image?.status === "succeeded" &&
+                selectedPanel.current_image.asset_id ? (
+                  <LazyAssetImage
+                    assetId={selectedPanel.current_image.asset_id}
+                    alt={`Panel ${selectedPanel.panel_order} 当前图片`}
+                    variant="original"
+                    eager
+                  />
+                ) : selectedPanel.current_image?.status === "failed" ||
+                  selectedPanel.current_image?.status === "cancelled" ? (
+                  <div className="agent-inspector-image-state is-error">
+                    <AlertCircle size={24} />
+                    <span>
+                      {selectedPanel.current_image.error_message ||
+                        selectedPanel.error_message ||
+                        "当前图片生成失败"}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="agent-inspector-image-state">
+                    <Loader2
+                      className={selectedPanel.current_image?.status === "running" ? "spin" : ""}
+                      size={24}
+                    />
+                    <span>
+                      {selectedPanel.current_image?.status === "running"
+                        ? "当前图片生成中"
+                        : "当前 Panel 暂无图片"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="agent-inspector-copy">
+                <div>
+                  <span>当前选择</span>
+                  <strong>Panel {selectedPanel.panel_order}</strong>
+                </div>
+                <div>
+                  <span>当前版本</span>
+                  <strong>
+                    {selectedPanel.current_image
+                      ? `v${selectedPanel.current_image.generation_number}`
+                      : "尚无版本"}
+                  </strong>
+                </div>
+                <section>
+                  <span>剧情目标</span>
+                  <p>{selectedPanel.story_beat}</p>
+                </section>
+                {selectedPanel.visual_goal ? (
+                  <section>
+                    <span>画面目标</span>
+                    <p>{selectedPanel.visual_goal}</p>
+                  </section>
+                ) : null}
+                {selectedPanel.error_message ? (
+                  <section className="is-error">
+                    <span>错误信息</span>
+                    <p>{selectedPanel.error_message}</p>
+                  </section>
+                ) : null}
+              </div>
+
+              <section className="agent-version-summary">
+                <header>
+                  <strong>图片版本</strong>
+                  <span>最多显示最近 20 个版本</span>
+                </header>
+                {selectedPanel.versions.length > 0 ? (
+                  <ol>
+                    {selectedPanel.versions.map((version) => (
+                      <li key={version.id}>
+                        <strong>v{version.generation_number}</strong>
+                        <span>{agentImageStatusLabel(version.status)}</span>
+                        {version.is_current ? <small>当前</small> : null}
+                        <time>{new Date(version.created_at).toLocaleString("zh-CN")}</time>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p>暂无图片版本。</p>
+                )}
+              </section>
+            </section>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AgentView({
+  user,
+  creditOverview,
+  creditError,
   routeConversationId,
+  routeTaskId,
   onNavigatePath,
   onCreditsChanged,
+  onLogout,
 }: {
+  user: User;
+  creditOverview: CreditOverview | null;
+  creditError: string;
   routeConversationId: string | null;
-  onNavigatePath: (path: string) => void;
+  routeTaskId: string | null;
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
   onCreditsChanged: () => Promise<CreditOverview | null>;
+  onLogout: () => Promise<void>;
 }) {
   const [conversations, setConversations] = useState<AgentConversation[]>([]);
   const [detail, setDetail] = useState<AgentConversationDetail | null>(null);
@@ -795,13 +1072,24 @@ function AgentView({
   const [creatingConversation, setCreatingConversation] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [inspector, setInspector] = useState<AgentTaskInspector | null>(null);
+  const [inspectorLoading, setInspectorLoading] = useState(false);
+  const [inspectorError, setInspectorError] = useState("");
+  const [selectedInspectorPanelId, setSelectedInspectorPanelId] = useState("");
   const routeConversationIdRef = useRef(routeConversationId);
+  const routeTaskIdRef = useRef(routeTaskId);
+  const previousRouteTaskIdRef = useRef<string | null>(routeTaskId);
+  const inspectorTriggerRef = useRef<HTMLButtonElement | null>(null);
   const ideaInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     routeConversationIdRef.current = routeConversationId;
     if (routeConversationId) window.sessionStorage.setItem(lastAgentConversationKey, routeConversationId);
   }, [routeConversationId]);
+
+  useEffect(() => {
+    routeTaskIdRef.current = routeTaskId;
+  }, [routeTaskId]);
 
   async function loadConversations(hydrateMetadata = false) {
     try {
@@ -858,6 +1146,41 @@ function AgentView({
     }
   }
 
+  async function loadInspector(conversationId: string, taskId: string) {
+    setInspectorLoading(true);
+    setInspectorError("");
+    try {
+      const result = await api.agentConversationTask(conversationId, taskId);
+      if (
+        routeConversationIdRef.current !== conversationId ||
+        routeTaskIdRef.current !== taskId
+      ) {
+        return;
+      }
+      setInspector(result);
+      setSelectedInspectorPanelId((current) =>
+        result.panels.some((panel) => panel.id === current)
+          ? current
+          : result.panels[0]?.id || "",
+      );
+    } catch (loadError) {
+      if (
+        routeConversationIdRef.current === conversationId &&
+        routeTaskIdRef.current === taskId
+      ) {
+        setInspector(null);
+        setInspectorError(loadError instanceof Error ? loadError.message : "任务读取失败");
+      }
+    } finally {
+      if (
+        routeConversationIdRef.current === conversationId &&
+        routeTaskIdRef.current === taskId
+      ) {
+        setInspectorLoading(false);
+      }
+    }
+  }
+
   useEffect(() => {
     void loadConversations(true);
     api
@@ -891,6 +1214,22 @@ function AgentView({
     void loadDetail(routeConversationId);
   }, [routeConversationId, styles]);
 
+  useEffect(() => {
+    const previousTaskId = previousRouteTaskIdRef.current;
+    previousRouteTaskIdRef.current = routeTaskId;
+    if (!routeConversationId || !routeTaskId) {
+      setInspector(null);
+      setInspectorError("");
+      setSelectedInspectorPanelId("");
+      if (previousTaskId && inspectorTriggerRef.current) {
+        window.setTimeout(() => inspectorTriggerRef.current?.focus(), 0);
+      }
+      return;
+    }
+    setInspector(null);
+    void loadInspector(routeConversationId, routeTaskId);
+  }, [routeConversationId, routeTaskId]);
+
   const hasActiveWork = Boolean(
     detail?.runs.some((run) => activeAgentRunStatuses.has(run.status)) ||
       detail?.task_cards.some((card) => ["queued", "running", "retrying"].includes(card.status)),
@@ -915,6 +1254,21 @@ function AgentView({
     window.sessionStorage.removeItem(lastAgentConversationKey);
     if (routeConversationId) onNavigatePath(viewRoutes.agent);
     window.setTimeout(() => ideaInputRef.current?.focus(), 0);
+  }
+
+  function openTaskInspector(taskId: string, trigger: HTMLButtonElement) {
+    if (!routeConversationId) return;
+    inspectorTriggerRef.current = trigger;
+    onNavigatePath(
+      `${viewRoutes.agent}/${encodeURIComponent(routeConversationId)}/tasks/${encodeURIComponent(taskId)}`,
+    );
+  }
+
+  function closeTaskInspector() {
+    if (!routeConversationId) return;
+    onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(routeConversationId)}`, {
+      replace: true,
+    });
   }
 
   async function sendMessage(event: React.FormEvent) {
@@ -988,11 +1342,19 @@ function AgentView({
 
   return (
     <section className="agent-creation-page">
-      <CreationModeSwitch active="agent" onNavigatePath={onNavigatePath} />
       <section className="agent-workspace">
       <aside className="agent-conversation-list">
+        <div className="agent-module-brand">
+          <span className="brand-mark">
+            <img className="brand-icon" src="/doodlestory-icon.svg" alt="" />
+          </span>
+          <div>
+            <strong>DoodleStory</strong>
+            <span>Agent 创作空间</span>
+          </div>
+        </div>
         <div className="agent-list-heading">
-          <div><span className="agent-eyebrow">AI 构建</span><h1>创作对话</h1></div>
+          <div><span className="agent-eyebrow">Conversation</span><h1>创作对话</h1></div>
           <button type="button" aria-label="新建对话" onClick={startNewConversation}>
             <Plus size={18} />
           </button>
@@ -1039,6 +1401,46 @@ function AgentView({
             </div>
           ))}
         </nav>
+        <div className="agent-account-panel">
+          <div className="agent-account-credit">
+            <Coins size={16} />
+            <span>
+              <strong>
+                {creditOverview
+                  ? `${creditOverview.account.balance} 积分`
+                  : creditError
+                    ? "积分不可用"
+                    : "积分加载中"}
+              </strong>
+              <small>
+                {creditOverview?.account.reserved_balance
+                  ? `占用 ${creditOverview.account.reserved_balance}`
+                  : creditError || "成功出图扣 1 分"}
+              </small>
+            </span>
+          </div>
+          <div className="agent-account-user">
+            <UserRound size={16} />
+            <span>
+              <strong>{user.display_name || user.email}</strong>
+              <small>{user.role === "admin" ? "管理员" : "普通用户"}</small>
+            </span>
+          </div>
+          <a
+            href={viewRoutes.tasks}
+            onClick={(event) => {
+              event.preventDefault();
+              onNavigatePath(viewRoutes.tasks);
+            }}
+          >
+            <Images size={15} />
+            返回传统工作台
+          </a>
+          <button type="button" onClick={() => void onLogout()}>
+            <LogOut size={15} />
+            退出登录
+          </button>
+        </div>
       </aside>
 
       <div className="agent-chat">
@@ -1094,7 +1496,14 @@ function AgentView({
                 </div>
               ))}
               {detail?.task_cards.map((card) => (
-                <AgentTaskCardView key={card.task_id} card={card} onOpenTask={(taskId) => onNavigatePath(`${viewRoutes.tasks}/${encodeURIComponent(taskId)}`)} />
+                <AgentTaskCardView
+                  key={card.task_id}
+                  card={card}
+                  runStatus={
+                    detail.runs.find((run) => run.id === card.run_id)?.status || null
+                  }
+                  onOpenTask={openTaskInspector}
+                />
               ))}
               {latestRun?.status === "failed" && !latestRun.task_id ? (
                 <div className="agent-run-error"><AlertCircle size={18} />{latestRun.error_message || "本轮执行失败"}</div>
@@ -1169,6 +1578,17 @@ function AgentView({
         </footer>
       </div>
       </section>
+      {routeConversationId && routeTaskId ? (
+        <AgentTaskInspectorDialog
+          inspector={inspector}
+          loading={inspectorLoading}
+          error={inspectorError}
+          selectedPanelId={selectedInspectorPanelId}
+          onSelectPanel={setSelectedInspectorPanelId}
+          onRetry={() => void loadInspector(routeConversationId, routeTaskId)}
+          onClose={closeTaskInspector}
+        />
+      ) : null}
     </section>
   );
 }

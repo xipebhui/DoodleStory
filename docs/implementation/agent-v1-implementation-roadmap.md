@@ -126,7 +126,7 @@ Sprint 111–113、115 默认不新增表。
 
 | Sprint | 目标 | 状态 | 数据库变化 | 正式前端 |
 | --- | --- | --- | --- | --- |
-| 111 | 独立 Agent Shell、紧凑任务卡、只读任务检查器 | Active | 无 | 有，完整 |
+| 111 | 独立 Agent Shell、紧凑任务卡、只读任务检查器 | Complete | 无 | 有，完整 |
 | 112 | MLflow 可观测性基线 | Planned | 默认无 | 无新功能 |
 | 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Planned | 无 | 无新功能 |
 | 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Planned | Artifact/Approval/Event | 有，方案卡与活动流 |
@@ -161,6 +161,10 @@ Sprint 111–113、115 默认不新增表。
 - 正式 `/agent` 没有旧后台导航和模式切换。
 - 检查器刷新、后退、关闭和草稿恢复稳定。
 - 权限、两个桌面视口和旧工作台回归通过。
+
+### 完成结果
+
+2026-07-24 已通过全部退出门槛。正式 `/agent` 使用独立会话 Shell；任务卡和只读检查器读取同一个真实 GenerationTask；嵌套路由、Conversation→Task→owner 鉴权、Panel/current image 选择、有界版本列表、两个桌面视口、键盘焦点和旧 `/tasks` 回归均已验证。Sprint 112 仍为 Planned，等待单独确认后激活。
 
 ## 7. Sprint 112：先看得见，再重构 Runtime
 

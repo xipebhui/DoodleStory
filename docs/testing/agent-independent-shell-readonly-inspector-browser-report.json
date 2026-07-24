@@ -1,0 +1,56 @@
+{
+  "sprint": 111,
+  "tested_at": "2026-07-24T09:54:00+08:00",
+  "environment": "local development services with authenticated Playwright and existing real Agent/GenerationTask data",
+  "scope": "independent Agent shell, compact real task card, Conversation-scoped read-only task inspector, stable nested routes, and legacy workspace regression",
+  "real_flow": {
+    "user": "Sprint108验收",
+    "conversation_id": "3aa7454244754acda99f9475433195e5",
+    "task_id": "c59151ece9a34b47a32042aeafcfbc04",
+    "task_status": "succeeded",
+    "panel_count": 2,
+    "real_image_count": 2,
+    "credit_balance": 28
+  },
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900,
+      "shell": "passed",
+      "inspector": "passed"
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "shell": "passed",
+      "inspector": "passed"
+    }
+  ],
+  "checks": [
+    "Direct /agent access rendered the independent Agent shell without the legacy workspace navigation or the 传统构建 / AI 构建 mode switch.",
+    "The Agent shell retained DoodleStory identity, current user, real credit balance, logout, and a low-level /tasks return link.",
+    "The blank new-conversation route, historical conversation search, and real conversation restoration remained functional.",
+    "The compact task card displayed the real shared GenerationTask ID, title, status, progress, two Panel thumbnails, and current Run state.",
+    "The task action opened /agent/{conversation_id}/tasks/{task_id}; no action navigated to the legacy /tasks/{task_id} detail.",
+    "The read-only inspector restored after direct navigation and reload, switched between two real Panels client-side, and showed the current real image, story beat, visual goal, and bounded version summary.",
+    "Closing the inspector and browser Back both returned to the conversation URL, preserved the draft, preserved a 10px message scroll position, and restored focus to the 查看任务 button.",
+    "The inspector close control had an accessible name and the dialog trapped keyboard focus.",
+    "An unrelated task URL rendered the real 404 read error with retry and did not fall back to legacy task detail.",
+    "The /tasks return link opened the unchanged legacy workspace and its real task list.",
+    "A fresh authenticated valid conversation page produced zero console errors and zero warnings."
+  ],
+  "screenshots": [
+    "/tmp/doodlestory-sprint111-browser/agent-shell-1440x900.png",
+    "/tmp/doodlestory-sprint111-browser/agent-inspector-1440x900.png",
+    "/tmp/doodlestory-sprint111-browser/agent-shell-1280x800.png",
+    "/tmp/doodlestory-sprint111-browser/agent-inspector-1280x800.png"
+  ],
+  "failure_path_note": "The deliberate unrelated-task request produced an expected HTTP 404 browser console entry while the UI rendered its retryable error state; console acceptance was measured on a fresh valid authenticated page.",
+  "excluded": [
+    "mock data or placeholder success",
+    "legacy task-detail navigation from Agent",
+    "Task, Panel, or image-version resource references",
+    "Panel writes, regeneration, acceptance, restoration, or task control",
+    "VL, Skill, MLflow, SSE, HITL, Memory, TTS, Remotion, or video"
+  ]
+}

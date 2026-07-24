@@ -1,6 +1,6 @@
 # Agent 漫画 V1 新窗口实施交接
 
-> 状态更新（2026-07-23）：Sprint 105–108、110 已 Complete；Sprint 109 Draft 已 Superseded。当前唯一 Active 合同是 Sprint 111。后续 Sprint 112–117 已规划，但必须逐个完成、验收并由用户确认后再激活。
+> 状态更新（2026-07-24）：Sprint 105–108、110–111 已 Complete；Sprint 109 Draft 已 Superseded。当前没有 Active 合同；Sprint 112 保持 Planned，必须由用户确认后再激活，后续 Sprint 继续逐个完成和验收。
 
 ## 1. 仓库与分支
 
@@ -74,8 +74,8 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 
 | 顺序 | 合同 | 激活条件 |
 | --- | --- | --- |
-| 1 | `sprint-111-agent-independent-shell-readonly-inspector.md` | 当前 Active |
-| 2 | `sprint-112-agent-mlflow-observability-baseline.md` | 111 Complete |
+| 1 | `sprint-111-agent-independent-shell-readonly-inspector.md` | Complete |
+| 2 | `sprint-112-agent-mlflow-observability-baseline.md` | 111 Complete，等待用户确认激活 |
 | 3 | `sprint-113-agent-skill-tool-runtime-foundation.md` | 112 Complete |
 | 4 | `sprint-114-idea-to-comic-skill-hitl-event-stream.md` | 113 Complete |
 | 5 | `sprint-115-agent-structured-resource-context.md` | 114 Complete |
@@ -84,11 +84,9 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 
 不要并行实施相邻 Sprint。后一个 Sprint 的 schema/API 假设必须建立在前一个 Sprint 的完成实现上。
 
-## 5. 当前 Sprint 111 启动提示词
+## 5. 下一窗口启动条件
 
-把下面整段复制到新的 Codex 窗口：
-
-> 请在 `/Users/pengfei.shi/workspace/tmp-project/DoodleStory` 的 `codex/agent-feature` 分支实施 Sprint 111。开始前完整阅读根目录 `AGENTS.md`、`README.md`、`docs/spec.md`、`docs/progress.md`、`docs/implementation/agent-v1-implementation-roadmap.md`、`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`、`docs/standards/frontend.md`、`docs/standards/ui-interaction.md`、`docs/standards/python.md` 和 `docs/standards/database.md`，再检查当前 `frontend/src/main.tsx`、样式、API client、Agent schema/API 和任务/Panel/图片模型。只实现 Sprint 111：把 `/agent` 拆成独立 Agent Shell；保留真实新建/搜索/恢复会话；实现紧凑真实任务卡；新增按 Conversation→Task 鉴权的最小只读 API；实现 `/agent/{conversation_id}/tasks/{task_id}` AI 专属只读检查器。不要实现或显示 Mock、旧 Task 详情跳转、资源引用、Panel 写操作、VL、Skill、MLflow、SSE、HITL、Memory、TTS 或 Remotion。不要修改用户未跟踪文件。完成合同中的自动化、1440×900 与 1280×800 真实浏览器验收，更新合同状态、`docs/progress.md` 和路线图，并创建中文详细 git commit。
+Sprint 111 已完成，不要再次执行。先在规划窗口审阅其代码、合同与 `docs/testing/agent-independent-shell-readonly-inspector-browser-report.json`；只有用户明确确认后，才把 Sprint 112 从 Planned 改为 Active，并使用 Sprint 112 合同末尾的 `New-window start prompt` 开始新的实现窗口。
 
 ## 6. 后续窗口如何开始
 

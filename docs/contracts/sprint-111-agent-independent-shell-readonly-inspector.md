@@ -2,7 +2,7 @@
 
 ## Status
 
-Active。它是最新 Agent 路线的第一步，也是当前唯一允许实施的 Sprint。
+Complete。2026-07-24 已完成独立 Agent Shell、紧凑真实任务卡、Conversation→Task 鉴权只读 API、AI 专属只读任务检查器及合同全部自动化与浏览器验收。Sprint 112 保持 Planned，未在本次自动激活。
 
 ## Goal
 
@@ -242,6 +242,15 @@ git diff --check
 - 将本合同状态改为 Complete，更新 `docs/progress.md` 和全局路线图。
 - 在 `docs/testing/` 保存浏览器验收报告。
 - 下一阶段不再继续扩展前端写操作；Sprint 112 先建立 MLflow 观测基线。
+
+## Completion evidence
+
+- `/agent` 已从旧通用 `Shell` 拆出，保留真实新建、搜索、恢复会话、用户、积分、退出与低层级传统工作台入口。
+- 任务卡继续使用 Agent Run 关联的同一 `generation_tasks.id`，仅紧凑展示真实进度、Panel、当前图片状态和 Run 状态。
+- 新增 `GET /api/v1/agent/conversations/{conversation_id}/tasks/{task_id}`；Conversation owner、Run 关联和 Task owner 三层约束均在数据库查询中校验，其他用户、Admin、未关联 Task 和跨 owner Task 均返回 404。
+- AI 专属检查器使用稳定嵌套路由，可刷新恢复、前进后退、只读选择 Panel，并保留对话草稿、滚动位置和触发按钮焦点；未复用旧任务详情，未增加任何写操作或超出 Sprint 111 的能力。
+- 自动化验证通过：Agent API 6 项测试、Agent 路由 3 项测试、前端生产构建、Python compileall、`git diff --check` 与 `./scripts/check.sh`；全量检查覆盖 198 项后端测试和空库 Alembic `upgrade head`。
+- 1440×900 与 1280×800 真实浏览器验收通过；有效认证流程为 0 console error / 0 warning。完整记录见 `docs/testing/agent-independent-shell-readonly-inspector-browser-report.json`。
 
 ## New-window start prompt
 

@@ -35,6 +35,9 @@ from app.schemas.agent import (
     AgentTaskCardImageRead,
     AgentTaskCardPanelRead,
     AgentTaskCardRead,
+    AgentTaskInspectorImageRead,
+    AgentTaskInspectorPanelRead,
+    AgentTaskInspectorRead,
     AgentTurnAcceptedRead,
 )
 from app.schemas.common import ApiData, ApiList
@@ -106,42 +109,120 @@ def run_to_read(db: Session, run: AgentRun) -> AgentRunRead:
     )
 
 
+def current_panel_image(images: list[GeneratedImage]) -> GeneratedImage | None:
+    panel_images = [image for image in images if image.panel_id is not None]
+    current_images = [image for image in panel_images if image.is_current]
+    if not current_images:
+        return None
+    return max(
+        current_images,
+        key=lambda image: (image.generation_number, image.created_at, image.id),
+    )
+
+
+def current_or_latest_panel_image(images: list[GeneratedImage]) -> GeneratedImage | None:
+    current_image = current_panel_image(images)
+    if current_image is not None:
+        return current_image
+    panel_images = [image for image in images if image.panel_id is not None]
+    if not panel_images:
+        return None
+    return max(
+        panel_images,
+        key=lambda image: (image.generation_number, image.created_at, image.id),
+    )
+
+
+def task_card_image_to_read(image: GeneratedImage) -> AgentTaskCardImageRead:
+    return AgentTaskCardImageRead(
+        id=image.id,
+        status=image.status,
+        asset_id=image.asset_id,
+        width=image.asset.width if image.asset else None,
+        height=image.asset.height if image.asset else None,
+        error_code=image.error_code,
+        error_message=image.error_message,
+    )
+
+
+def task_inspector_image_to_read(image: GeneratedImage) -> AgentTaskInspectorImageRead:
+    return AgentTaskInspectorImageRead(
+        id=image.id,
+        generation_number=image.generation_number,
+        status=image.status,
+        is_current=image.is_current,
+        source_type=image.source_type,
+        asset_id=image.asset_id,
+        width=image.asset.width if image.asset else None,
+        height=image.asset.height if image.asset else None,
+        error_code=image.error_code,
+        error_message=image.error_message,
+        created_at=image.created_at,
+    )
+
+
 def task_card_to_read(run: AgentRun) -> AgentTaskCardRead:
     task = run.task
     if task is None:
         raise RuntimeError("Agent Run 任务卡片缺少 GenerationTask")
-    images_by_panel = {
-        image.panel_id: image
-        for image in task.generated_images
-        if image.panel_id is not None
-    }
     panels: list[AgentTaskCardPanelRead] = []
     for panel in sorted(task.panels, key=lambda item: item.panel_order):
-        image = images_by_panel.get(panel.id)
+        image = current_or_latest_panel_image(panel.generated_images)
         panels.append(
             AgentTaskCardPanelRead(
                 id=panel.id,
                 panel_order=panel.panel_order,
                 story_beat=panel.original_text_segment,
                 visual_goal=panel.text_layout,
-                image=(
-                    AgentTaskCardImageRead(
-                        id=image.id,
-                        status=image.status,
-                        asset_id=image.asset_id,
-                        width=image.asset.width if image.asset else None,
-                        height=image.asset.height if image.asset else None,
-                        error_code=image.error_code,
-                        error_message=image.error_message,
-                    )
-                    if image is not None
-                    else None
-                ),
+                image=task_card_image_to_read(image) if image is not None else None,
             )
         )
     return AgentTaskCardRead(
         task_id=task.id,
         run_id=run.id,
+        title=task.display_title,
+        status=task.status,
+        progress_current=task.progress_current,
+        progress_total=task.progress_total,
+        error_code=task.error_code,
+        error_message=task.error_message,
+        panels=panels,
+    )
+
+
+def task_inspector_to_read(
+    conversation_id: str,
+    task: GenerationTask,
+) -> AgentTaskInspectorRead:
+    panels: list[AgentTaskInspectorPanelRead] = []
+    for panel in sorted(task.panels, key=lambda item: item.panel_order):
+        versions = sorted(
+            (image for image in panel.generated_images if image.panel_id is not None),
+            key=lambda image: (image.generation_number, image.created_at, image.id),
+            reverse=True,
+        )[:20]
+        current_image = current_panel_image(panel.generated_images)
+        latest_image = versions[0] if versions else None
+        panels.append(
+            AgentTaskInspectorPanelRead(
+                id=panel.id,
+                panel_order=panel.panel_order,
+                story_beat=panel.original_text_segment,
+                visual_goal=panel.text_layout,
+                status=latest_image.status if latest_image is not None else None,
+                error_code=latest_image.error_code if latest_image is not None else panel.error_code,
+                error_message=latest_image.error_message if latest_image is not None else panel.error_message,
+                current_image=(
+                    task_inspector_image_to_read(current_image)
+                    if current_image is not None
+                    else None
+                ),
+                versions=[task_inspector_image_to_read(image) for image in versions],
+            )
+        )
+    return AgentTaskInspectorRead(
+        conversation_id=conversation_id,
+        task_id=task.id,
         title=task.display_title,
         status=task.status,
         progress_current=task.progress_current,
@@ -204,9 +285,11 @@ def get_agent_conversation(
     visible = messages[:message_limit]
     task_runs = db.scalars(
         select(AgentRun)
+        .join(GenerationTask, GenerationTask.id == AgentRun.task_id)
         .where(
             AgentRun.conversation_id == conversation.id,
             AgentRun.task_id.is_not(None),
+            GenerationTask.owner_user_id == conversation.owner_user_id,
         )
         .options(
             selectinload(AgentRun.task)
@@ -235,6 +318,37 @@ def get_agent_conversation(
             runs=[AgentRunSummaryRead.model_validate(run) for run in recent_runs],
         )
     )
+
+
+@router.get(
+    "/conversations/{conversation_id}/tasks/{task_id}",
+    response_model=ApiData[AgentTaskInspectorRead],
+)
+def get_agent_conversation_task(
+    conversation_id: str,
+    task_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AgentTaskInspectorRead]:
+    conversation = load_owned_conversation(db, conversation_id, user)
+    task = db.scalar(
+        select(GenerationTask)
+        .join(AgentRun, AgentRun.task_id == GenerationTask.id)
+        .where(
+            AgentRun.conversation_id == conversation.id,
+            GenerationTask.id == task_id,
+            GenerationTask.owner_user_id == conversation.owner_user_id,
+        )
+        .options(
+            selectinload(GenerationTask.panels)
+            .selectinload(TaskPanel.generated_images)
+            .selectinload(GeneratedImage.asset)
+        )
+        .limit(1)
+    )
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent 会话任务不存在")
+    return ApiData(data=task_inspector_to_read(conversation.id, task))
 
 
 @router.post(

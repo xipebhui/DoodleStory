@@ -231,6 +231,42 @@ export type AgentConversationDetail = AgentConversation & {
   runs: AgentRunSummary[];
 };
 
+export type AgentTaskInspectorImage = {
+  id: string;
+  generation_number: number;
+  status: AgentTaskCardImage["status"];
+  is_current: boolean;
+  source_type: "initial" | "user_edit" | "retry";
+  asset_id: string | null;
+  width: number | null;
+  height: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type AgentTaskInspector = {
+  conversation_id: string;
+  task_id: string;
+  title: string;
+  status: Task["status"];
+  progress_current: number;
+  progress_total: number;
+  error_code: string | null;
+  error_message: string | null;
+  panels: Array<{
+    id: string;
+    panel_order: number;
+    story_beat: string;
+    visual_goal: string | null;
+    status: AgentTaskCardImage["status"] | null;
+    error_code: string | null;
+    error_message: string | null;
+    current_image: AgentTaskInspectorImage | null;
+    versions: AgentTaskInspectorImage[];
+  }>;
+};
+
 export type AgentRun = AgentRunSummary & {
   conversation_id: string;
   current_step_sequence: number;
@@ -768,6 +804,10 @@ export const api = {
     request<ApiData<AgentConversationDetail>>(`/agent/conversations/${conversationId}?message_limit=100`).then(
       (result) => result.data,
     ),
+  agentConversationTask: (conversationId: string, taskId: string) =>
+    request<ApiData<AgentTaskInspector>>(
+      `/agent/conversations/${encodeURIComponent(conversationId)}/tasks/${encodeURIComponent(taskId)}`,
+    ).then((result) => result.data),
   sendAgentMessage: (conversationId: string, payload: { content: string; resource_refs: AgentResourceRef[] }) =>
     request<ApiData<{ message: AgentMessage; run: AgentRun }>>(`/agent/conversations/${conversationId}/messages`, {
       method: "POST",

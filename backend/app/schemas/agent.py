@@ -10,6 +10,7 @@ from app.models.enums import (
     AgentStepStatus,
     AgentStepType,
     GeneratedImageStatus,
+    GeneratedImageSourceType,
     TaskStatus,
 )
 from app.schemas.common import OrmModel, PageInfo, TimestampFields
@@ -150,6 +151,44 @@ class AgentTaskCardRead(BaseModel):
     error_code: str | None
     error_message: str | None
     panels: list[AgentTaskCardPanelRead]
+
+
+class AgentTaskInspectorImageRead(BaseModel):
+    id: str
+    generation_number: int
+    status: GeneratedImageStatus
+    is_current: bool
+    source_type: GeneratedImageSourceType
+    asset_id: str | None
+    width: int | None
+    height: int | None
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+
+
+class AgentTaskInspectorPanelRead(BaseModel):
+    id: str
+    panel_order: int
+    story_beat: str
+    visual_goal: str | None
+    status: GeneratedImageStatus | None
+    error_code: str | None
+    error_message: str | None
+    current_image: AgentTaskInspectorImageRead | None
+    versions: list[AgentTaskInspectorImageRead] = Field(default_factory=list)
+
+
+class AgentTaskInspectorRead(BaseModel):
+    conversation_id: str
+    task_id: str
+    title: str
+    status: TaskStatus
+    progress_current: int
+    progress_total: int
+    error_code: str | None
+    error_message: str | None
+    panels: list[AgentTaskInspectorPanelRead] = Field(default_factory=list)
 
 
 class AgentRunSummaryRead(TimestampFields):
