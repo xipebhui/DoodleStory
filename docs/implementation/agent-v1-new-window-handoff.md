@@ -1,6 +1,6 @@
 # Agent 漫画 V1 新窗口实施交接
 
-> 状态更新（2026-07-24）：Sprint 105–108、110–114 已 Complete；Sprint 109 Draft 已 Superseded。正式 `idea-to-comic`、Artifact/Approval hash 门禁、2–8 Panel、持久化安全事件、SSE cursor、方案卡和批准后真实生图已通过自动化、真实 Provider 与浏览器验收；Sprint 115 仍为 Planned，等待用户明确确认后激活。
+> 状态更新（2026-07-24）：Sprint 105–108、110–115 已 Complete；Sprint 109 Draft 已 Superseded。正式 `idea-to-comic`、Artifact/Approval hash 门禁、2–8 Panel、持久化安全事件、SSE cursor、结构化 Style/Character/Task/Panel/Image Version 引用、同任务只读续作和角色真实参考链路已通过自动化、真实 Provider 与浏览器验收；Sprint 116 仍为 Planned，等待用户明确确认后激活。
 
 ## 1. 仓库与分支
 
@@ -86,7 +86,7 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 
 ## 5. 下一窗口启动条件
 
-Sprint 114 已完成，不要再次执行。先在规划窗口审阅 Artifact/Approval/Event、SSE、方案卡、门禁和测试；只有用户明确确认后，才把 Sprint 115 从 Planned 改为 Active，并使用 Sprint 115 合同末尾的 `New-window start prompt` 开始新的实现窗口。
+Sprint 115 已完成，不要再次执行。先在规划窗口审阅 Resource Resolver、安全快照重放、Character 真实参考、同 Task 只读续作和测试；只有用户明确确认后，才把 Sprint 116 从 Planned 改为 Active，并使用 Sprint 116 合同末尾的 `New-window start prompt` 开始新的实现窗口。
 
 ## 6. 后续窗口如何开始
 

@@ -146,9 +146,19 @@ export type StyleSelectOption = {
 };
 
 export type AgentResourceRef = {
-  kind: "style";
+  kind: "style" | "character" | "task" | "panel" | "image_version";
   id: string;
   display_name: string | null;
+  safe_summary?: Record<string, unknown> | null;
+};
+
+export type AgentResourceOption = {
+  kind: AgentResourceRef["kind"];
+  id: string;
+  display_name: string;
+  secondary_text: string | null;
+  parent_id: string | null;
+  status: string | null;
 };
 
 export type AgentConversation = {
@@ -849,6 +859,35 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }).then((result) => result.data),
+  agentStyleResources: (params?: { query?: string; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AgentResourceOption>>(`/agent/resources/styles${suffix}`);
+  },
+  agentCharacterResources: (params?: { query?: string; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AgentResourceOption>>(`/agent/resources/characters${suffix}`);
+  },
+  agentTaskResources: (params?: { query?: string; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AgentResourceOption>>(`/agent/resources/tasks${suffix}`);
+  },
+  agentTaskPanelResources: (taskId: string) =>
+    request<ApiList<AgentResourceOption>>(
+      `/agent/resources/tasks/${encodeURIComponent(taskId)}/panels`,
+    ),
+  agentPanelImageResources: (panelId: string, limit = 20) =>
+    request<ApiList<AgentResourceOption>>(
+      `/agent/resources/panels/${encodeURIComponent(panelId)}/image-versions?limit=${limit}`,
+    ),
   agentConversation: (conversationId: string) =>
     request<ApiData<AgentConversationDetail>>(`/agent/conversations/${conversationId}?message_limit=100`).then(
       (result) => result.data,

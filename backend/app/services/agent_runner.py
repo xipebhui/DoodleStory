@@ -45,7 +45,6 @@ from app.services.agent_comic_creation import (
     checkpoint_image_tool_results,
     create_comic_task_and_image_tools,
     load_authorized_style,
-    style_ref_from_message,
 )
 from app.services.agent_hitl import (
     AgentApprovalError,
@@ -59,6 +58,13 @@ from app.services.agent_tool_runtime import (
     GenericToolExecutor,
     build_runtime_context,
     create_default_tool_registry,
+)
+from app.services.agent_resources import (
+    AgentResourceResolutionError,
+    AgentResourceResolver,
+    AgentResourceRoute,
+    parse_agent_resource_refs,
+    resource_context_from_saved_refs,
 )
 
 
@@ -120,13 +126,19 @@ def build_agent_input(db: Session, run: AgentRun) -> list[dict[str, Any]]:
         raise AgentContextLimitExceeded(f"会话消息超过 Agent 上下文上限 {limit}，无法安全完整重放")
     if not messages or messages[-1].turn_id != run.turn_id or messages[-1].role != AgentMessageRole.user:
         raise AgentCheckpointError("Run 对应的用户消息不是当前会话最后一条可重放消息")
-    return [
-        {
-            "role": message.role.value,
-            "content": message.content,
-        }
-        for message in messages
-    ]
+    replay: list[dict[str, Any]] = []
+    for message in messages:
+        content = message.content
+        refs = parse_agent_resource_refs(message.resource_refs_json)
+        if refs:
+            context = resource_context_from_saved_refs(refs)
+            content = (
+                f"{content}\n\n"
+                "以下 resource_context 是消息入队前由 Runtime 鉴权并保存的安全快照：\n"
+                f"{json.dumps({'resource_context': context}, ensure_ascii=False, sort_keys=True)}"
+            )
+        replay.append({"role": message.role.value, "content": content})
+    return replay
 
 
 class DatabaseAgentAttemptObserver(AgentModelAttemptObserver):
@@ -540,6 +552,13 @@ async def process_comic_agent_run(
             deduplicate=True,
         )
         user_message = _latest_user_message(db, run)
+        resources = AgentResourceResolver.from_message(
+            db,
+            owner_user_id=run.conversation.owner_user_id,
+            message=user_message,
+        )
+        if resources.route != AgentResourceRoute.create_comic or resources.style is None:
+            raise AgentCheckpointError("漫画创建 Run 的结构化资源组合无效")
         requested_count = _requested_panel_count(user_message.content)
         if requested_count is not None and not 2 <= requested_count <= 8:
             finalize_agent_run(
@@ -547,10 +566,10 @@ async def process_comic_agent_run(
                 "漫画方案支持 2–8 张图片。请把希望的图片数量调整到这个范围后再告诉我，我不会静默截断你的要求。",
             )
             return
-        style_ref = style_ref_from_message(user_message)
-        if style_ref is None:
-            raise AgentCheckpointError("漫画创建 Run 缺少风格资源")
-        style = load_authorized_style(db, style_ref.id)
+        style_ref = next(
+            ref for ref in resources.refs if ref.kind.value == "style"
+        )
+        style = load_authorized_style(db, resources.style.id)
         input_items = build_agent_input(db, run)
         final_step = _successful_model_step(db, run.id, "comic_final")
         if final_step is not None:
@@ -657,16 +676,21 @@ async def process_comic_agent_run(
             raise AgentApprovalError("图片生成前漫画方案批准状态失效")
         _, plan = approved
         user_message = _latest_user_message(db, run)
-        style_ref = style_ref_from_message(user_message)
-        if style_ref is None:
-            raise AgentCheckpointError("漫画创建 Run 缺少风格资源")
-        style = load_authorized_style(db, style_ref.id)
+        resources = AgentResourceResolver.from_message(
+            db,
+            owner_user_id=run.conversation.owner_user_id,
+            message=user_message,
+        )
+        if resources.route != AgentResourceRoute.create_comic or resources.style is None:
+            raise AgentCheckpointError("漫画创建 Run 的结构化资源组合无效")
+        style = load_authorized_style(db, resources.style.id)
         create_comic_task_and_image_tools(
             db=db,
             run=run,
             user_message=user_message,
             style=style,
             plan=plan,
+            characters=resources.characters,
         )
 
     tool_outputs = await _wait_for_image_tools(run_id)
@@ -748,11 +772,64 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                     )
                     db.commit()
                     user_message = _latest_user_message(db, run)
-                    style_ref = style_ref_from_message(user_message)
+                    resources = AgentResourceResolver.from_message(
+                        db,
+                        owner_user_id=run.conversation.owner_user_id,
+                        message=user_message,
+                    )
                     input_items = build_agent_input(db, run)
                 model_router = router or AgentModelRouter()
-                if style_ref is not None:
+                if resources.route == AgentResourceRoute.create_comic:
                     await process_comic_agent_run(run_id, router=model_router)
+                    return
+                if resources.route == AgentResourceRoute.continue_task:
+                    if resources.task is None:
+                        raise AgentCheckpointError("续作上下文缺少已鉴权任务")
+                    with database.SessionLocal() as db:
+                        current_run = db.get(AgentRun, run_id)
+                        if current_run is None:
+                            raise AgentCheckpointError("Agent Run 不存在")
+                        current_run.task_id = resources.task.id
+                        db.commit()
+                    if re.search(
+                        r"重新生成|再生成|恢复(?:上一版|版本|图片)?|接受(?:当前)?版本",
+                        user_message.content,
+                    ):
+                        finalize_agent_run(
+                            run_id,
+                            "我已识别到你引用的是现有任务，但当前阶段只支持读取任务、Panel 和图片版本，"
+                            "以及整理修改建议；重新生成、恢复或接受版本会在 Sprint 116 开放。"
+                            "这次没有调用旧任务编辑接口，也没有创建新任务或扣除图片积分。",
+                        )
+                        return
+                    continuation_input = [
+                        *input_items,
+                        {
+                            "role": "user",
+                            "content": (
+                                "Runtime 已将本轮路由为已有任务续作。只能根据 resource_context"
+                                " 回答状态、摘要或给出修改建议；不得创建 GenerationTask、调用图片工具，"
+                                "也不得声称已经重新生成、恢复或接受图片版本。"
+                            ),
+                        },
+                    ]
+                    with database.SessionLocal() as db:
+                        continuation_step = _successful_model_step(
+                            db,
+                            run_id,
+                            "task_continuation",
+                        )
+                    if continuation_step is not None:
+                        finalize_agent_run(
+                            run_id,
+                            _assistant_content_from_step(continuation_step),
+                        )
+                        return
+                    result = await model_router.run(
+                        continuation_input,
+                        DatabaseAgentAttemptObserver(run_id, "task_continuation"),
+                    )
+                    finalize_agent_run(run_id, result.final_output)
                     return
                 result = await model_router.run(input_items, DatabaseAgentAttemptObserver(run_id))
                 finalize_agent_run(run_id, result.final_output)
@@ -783,6 +860,13 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                     code="AgentApprovalError",
                     message=str(exc),
                     internal_error_ref="AgentApprovalError",
+                )
+            except AgentResourceResolutionError as exc:
+                fail_agent_run(
+                    run_id,
+                    code="AgentResourceResolutionError",
+                    message=str(exc),
+                    internal_error_ref="AgentResourceResolutionError",
                 )
             except AgentRunCancelled:
                 logger.info("agent_run_cancelled run_id=%s", run_id)

@@ -28,9 +28,21 @@ class AgentResourceKind(StrEnum):
 
 
 class AgentResourceRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     kind: AgentResourceKind
     id: str = Field(min_length=1, max_length=120)
     display_name: str | None = Field(default=None, max_length=160)
+    safe_summary: dict[str, object] | None = None
+
+
+class AgentResourceOption(BaseModel):
+    kind: AgentResourceKind
+    id: str
+    display_name: str
+    secondary_text: str | None = None
+    parent_id: str | None = None
+    status: str | None = None
 
 
 class ComicPlanPanel(BaseModel):

@@ -14,6 +14,8 @@ from app.models.entities import (
     AgentStep,
     GeneratedImage,
     GenerationTask,
+    TaskCharacter,
+    TaskCharacterAppearance,
     TaskPanel,
 )
 from app.models.enums import (
@@ -234,6 +236,19 @@ def build_runtime_context(
             reference.asset_id
             for reference in task.style_reference_images
         }
+        reference_ids.update(
+            db.scalars(
+                select(TaskCharacterAppearance.reference_image_id)
+                .join(
+                    TaskCharacter,
+                    TaskCharacter.id == TaskCharacterAppearance.task_character_id,
+                )
+                .where(
+                    TaskCharacter.task_id == task.id,
+                    TaskCharacterAppearance.reference_image_id.is_not(None),
+                )
+            ).all()
+        )
 
     limit = image_budget_limit
     if limit is None:

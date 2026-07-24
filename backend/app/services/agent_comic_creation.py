@@ -16,7 +16,11 @@ from app.models.entities import (
     GenerationTask,
     Style,
     StyleReferenceImage,
+    TaskCharacter,
+    TaskCharacterAppearance,
     TaskPanel,
+    TaskPanelCharacterAppearance,
+    UserCharacter,
 )
 from app.models.enums import (
     AgentMessageRole,
@@ -30,8 +34,9 @@ from app.models.enums import (
     StoryInputMode,
     StyleStatus,
     TaskStatus,
+    WorkflowStatus,
 )
-from app.schemas.agent import AgentResourceKind, AgentResourceRef, ComicPlan
+from app.schemas.agent import ComicPlan
 from app.services.image_generation import ImageProviderConfigError
 from app.services.agent_tool_runtime import (
     GenericToolExecutor,
@@ -56,21 +61,6 @@ def _next_message_sequence(db: Session, conversation_id: str) -> int:
         select(func.max(AgentMessage.sequence)).where(AgentMessage.conversation_id == conversation_id)
     )
     return int(maximum or 0) + 1
-
-
-def style_ref_from_message(message: AgentMessage) -> AgentResourceRef | None:
-    if not message.resource_refs_json:
-        return None
-    try:
-        refs = [AgentResourceRef.model_validate(item) for item in json.loads(message.resource_refs_json)]
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise AgentComicCreationError("Agent 消息的风格资源引用无法读取") from exc
-    style_refs = [ref for ref in refs if ref.kind == AgentResourceKind.style]
-    if not style_refs:
-        return None
-    if len(style_refs) != 1 or len(refs) != 1:
-        raise AgentComicCreationError("Sprint 106 每轮只允许绑定一个风格资源")
-    return style_refs[0]
 
 
 def load_authorized_style(db: Session, style_id: str) -> Style:
@@ -108,6 +98,7 @@ def create_comic_task_and_image_tools(
     user_message: AgentMessage,
     style: Style,
     plan: ComicPlan,
+    characters: list[UserCharacter],
 ) -> GenerationTask:
     if plan.style_ref_id != style.id:
         raise AgentComicCreationError("ComicPlan style_ref_id 与已鉴权风格不一致")
@@ -128,7 +119,7 @@ def create_comic_task_and_image_tools(
             adapted_story_text=plan.story_summary,
             image_count_mode=ImageCountMode.fixed,
             requested_image_count=len(plan.panels),
-            use_character_references=False,
+            use_character_references=bool(characters),
             last_panel_real_photo=False,
             remove_image_text=False,
             style_id=style.id,
@@ -160,6 +151,7 @@ def create_comic_task_and_image_tools(
         )
         db.add(generation_step)
 
+        panels: list[TaskPanel] = []
         for order, planned_panel in enumerate(plan.panels, start=1):
             panel = TaskPanel(
                 task_id=task.id,
@@ -175,6 +167,38 @@ def create_comic_task_and_image_tools(
                 prompt_model_snapshot="agent:gpt-5.5",
             )
             db.add(panel)
+            panels.append(panel)
+        db.flush()
+        for character_order, user_character in enumerate(characters, start=1):
+            description = user_character.description or f"{user_character.name} 的固定角色参考"
+            task_character = TaskCharacter(
+                task_id=task.id,
+                character_key=f"fixed_{character_order}",
+                name=user_character.name,
+                description=description,
+                importance="primary",
+            )
+            db.add(task_character)
+            db.flush()
+            appearance = TaskCharacterAppearance(
+                task_character_id=task_character.id,
+                appearance_key=f"fixed_{character_order}_default",
+                age_stage="固定角色",
+                visual_prompt=f"{user_character.name}：{description}",
+                reference_image_id=user_character.reference_asset_id,
+                status=WorkflowStatus.succeeded,
+            )
+            db.add(appearance)
+            db.flush()
+            for panel in panels:
+                db.add(
+                    TaskPanelCharacterAppearance(
+                        panel_id=panel.id,
+                        task_character_appearance_id=appearance.id,
+                        reference_order=character_order,
+                        usage_note="Agent 用户显式引用的固定角色",
+                    )
+                )
         run.task_id = task.id
         db.commit()
         db.refresh(task)
@@ -193,6 +217,11 @@ def create_comic_task_and_image_tools(
             task.style_reference_images,
             key=lambda item: item.reference_order,
         )
+    ] + [
+        appearance.reference_image_id
+        for character in task.characters
+        for appearance in character.appearances
+        if appearance.reference_image_id is not None
     ]
     executor = GenericToolExecutor(create_default_tool_registry())
     runtime_context = build_runtime_context(

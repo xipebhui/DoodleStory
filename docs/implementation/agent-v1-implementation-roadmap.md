@@ -274,6 +274,10 @@ instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间�
 - 资源标签不覆盖草稿，刷新和切换可恢复。
 - UI 不提前展示 Sprint 116 写操作。
 
+### 完成结果
+
+2026-07-24 已通过全部退出门槛。五类资源有界 API、统一 Resolver、规范引用与安全快照重放、普通讨论/新任务/同任务只读续作路由均已落地；Character 参考真实进入 Task 快照、Panel appearance 关系和图片 Provider 输入。真实浏览器完成 `@风格 + @角色` 两格生成、检查器引用 Task/Panel/Image Version、草稿刷新恢复、同 Task 只读续聊及未开放写操作拒绝；自动化和全量项目检查通过。Sprint 116 保持 Planned，尚未实现 Panel 再生成、接受/恢复版本、VL 或 pause/resume。
+
 ## 11. Sprint 116：Panel/VL/版本闭环
 
 合同：

@@ -9,8 +9,27 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
-from app.models.entities import AgentConversation, AgentMessage, AgentRun, AgentStep, User, new_id
-from app.models.enums import AgentMessageRole, AgentRunStatus, AgentStepStatus, AgentStepType
+from app.models.entities import (
+    AgentConversation,
+    AgentMessage,
+    AgentRun,
+    AgentStep,
+    GenerationTask,
+    Style,
+    TaskPanel,
+    User,
+    new_id,
+)
+from app.models.enums import (
+    AgentMessageRole,
+    AgentRunStatus,
+    AgentStepStatus,
+    AgentStepType,
+    ImageCountMode,
+    StoryInputMode,
+    StyleStatus,
+    TaskStatus,
+)
 from app.services import agent_runner
 from app.services.agent_model_router import (
     AgentModelResult,
@@ -147,6 +166,96 @@ class AgentRunnerRecoveryTests(unittest.TestCase):
         self.assertEqual(["真实模型回答"], [message.content for message in assistant_messages])
         self.assertEqual(1, sum(step.step_type == AgentStepType.final for step in steps))
         self.assertEqual(1, sum(step.step_type == AgentStepType.model_call for step in steps))
+
+    def test_task_resource_routes_to_read_only_continuation_without_new_task(self):
+        with self.Session() as db:
+            user = User(email="continue-owner@example.com", password_hash="hash")
+            style = Style(
+                name="续作风格",
+                status=StyleStatus.active,
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+                style_prompt="风格",
+            )
+            db.add_all([user, style])
+            db.flush()
+            task = GenerationTask(
+                owner_user_id=user.id,
+                display_title="已有漫画",
+                original_text="已有故事",
+                story_input_mode=StoryInputMode.adapted,
+                image_count_mode=ImageCountMode.fixed,
+                requested_image_count=1,
+                style_id=style.id,
+                style_name_snapshot=style.name,
+                style_prompt_snapshot=style.style_prompt,
+                image_model_name_snapshot=style.image_model_name,
+                style_aspect_ratio_snapshot=style.aspect_ratio,
+                status=TaskStatus.succeeded,
+            )
+            db.add(task)
+            db.flush()
+            panel = TaskPanel(
+                task_id=task.id,
+                panel_order=1,
+                original_text_segment="主角站在雨里",
+            )
+            conversation = AgentConversation(owner=user, title="同任务续作")
+            db.add_all([panel, conversation])
+            db.flush()
+            turn_id = new_id()
+            message = AgentMessage(
+                conversation=conversation,
+                turn_id=turn_id,
+                role=AgentMessageRole.user,
+                content="分析一下这一格还能怎么加强",
+                resource_refs_json=json.dumps(
+                    [
+                        {
+                            "kind": "task",
+                            "id": task.id,
+                            "display_name": task.display_title,
+                            "safe_summary": {
+                                "id": task.id,
+                                "title": task.display_title,
+                                "status": task.status.value,
+                                "style_name": style.name,
+                                "panel_count": 1,
+                            },
+                        },
+                        {
+                            "kind": "panel",
+                            "id": panel.id,
+                            "display_name": "Panel 1",
+                            "safe_summary": {
+                                "id": panel.id,
+                                "task_id": task.id,
+                                "panel_order": 1,
+                                "story_beat": panel.original_text_segment,
+                                "visual_goal": None,
+                            },
+                        },
+                    ],
+                    ensure_ascii=False,
+                ),
+                sequence=1,
+            )
+            run = AgentRun(conversation=conversation, turn_id=turn_id)
+            db.add_all([message, run])
+            db.commit()
+            run_id = run.id
+            task_id = task.id
+
+        router = FakeSuccessfulRouter("建议加强雨伞与人物手势的冲突。")
+        self.process(run_id, router)
+
+        with self.Session() as db:
+            saved_run = db.get(AgentRun, run_id)
+            task_count = db.scalar(select(func.count(GenerationTask.id)))
+        self.assertEqual(task_id, saved_run.task_id)
+        self.assertEqual(AgentRunStatus.succeeded, saved_run.status)
+        self.assertEqual(1, task_count)
+        self.assertEqual(1, router.call_count)
 
     def test_successful_model_checkpoint_finalizes_without_model_replay(self):
         run_id, conversation_id, turn_id = self.create_run(status=AgentRunStatus.running)

@@ -5,7 +5,7 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 114 已于 2026-07-24 Complete。正式 `idea-to-comic`、2–8 Panel ComicPlan、Artifact/Approval/Event、SSE cursor、批准后生图门禁、方案卡与真实活动流已实现；真实 v1→修改→v2→批准→两张图片链路和手动 SSE 重连通过。`./scripts/check.sh` 覆盖 223 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
+- 最近验证状态：Sprint 115 已于 2026-07-24 Complete。Style/Character/Task/Panel/Image Version 有界真实查询、统一 Resolver、权限/状态/父子/组合校验、安全快照重放、普通讨论/新任务/同任务只读续作路由、角色真实任务快照与生图参考、前端分组资源菜单和检查器引用均已实现；真实 `@风格 + @角色` 两格生成、刷新恢复、同 Task 续聊和 Sprint 116 写操作拒绝通过。`./scripts/check.sh` 覆盖 230 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
 
 ## 当前 Sprint 合同
 
@@ -13,7 +13,7 @@
 - Complete：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
 - Complete：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
 - Complete：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
-- Planned：`docs/contracts/sprint-115-agent-structured-resource-context.md`
+- Complete：`docs/contracts/sprint-115-agent-structured-resource-context.md`
 - Planned：`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
 - Planned：`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
 - Complete：`docs/contracts/sprint-110-agent-default-model-gpt55.md`
@@ -44,6 +44,10 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 115 结构化资源引用与同一任务续作：新增五类有界 Resource API 和统一 `AgentResourceResolver`，消息入队前批量校验数量、状态、owner、父子关系与组合，服务端覆盖伪造 display name，并把规范引用和不含 owner/存储路径/URL/密钥的安全摘要保存到现有 `resource_refs_json`；`build_agent_input()` 按接收时快照重放历史资源。Runtime 明确区分普通讨论、新漫画和已有任务只读续作，Task 引用复用同一 GenerationTask，版本写请求明确留给 Sprint 116。Character 引用真实创建任务角色/appearance/逐 Panel 关系，并把参考资产传入图片 Provider。前端完成分组搜索、loading/empty/error、组合禁用解释、层级自动引用、任务卡/检查器引用，以及 Idea/资源按会话分离持久化；Conversation 切换同步重置 SSE cursor，避免跨会话游标导致活动流断开。真实 Conversation `4ae7adb3b5b44e9686028a5a9310901a`、Task `ca8677b7a4944f499f65f9d36b493399` 使用 `@粗线条暖色 + @林夏验收角色` 生成两张真实图片，余额 30→28；检查器引用没有覆盖草稿，刷新后五类标签恢复；只读续聊 Run `7285c1a1008845e380b036c0c84a84f1` 复用同一 Task 且 image call 为 0，显式“重新生成”也未新增 Task/Image 或扣分。针对性 37 项、Python compileall、前端构建和 `git diff --check` 通过；全量 `./scripts/check.sh` 覆盖 230 项后端测试、空库 migration 与前端生产构建并通过。未实现 Sprint 116 的 Panel/VL/版本写操作或 pause/resume。
+
+- 激活 Sprint 115 结构化资源引用与同一任务续作：已完成合同、Agent Runtime、任务/角色/风格模型以及数据库、后台任务、前端与 UI 规范评审。确认沿用 `agent_messages.resource_refs_json` 保存规范引用与受控安全摘要，不新增通用资源表；固定角色将复用现有 `TaskCharacter`、`TaskCharacterAppearance` 和 `TaskPanelCharacterAppearance` 快照/参考链路，已有任务引用只进入只读续作语义，不开放 Sprint 116 写操作。
 
 - 完成 Sprint 114 `idea-to-comic` Skill、方案确认与真实事件流：固定两格 ComicPlan 升级为版本化 2–8 Panel schema，Runtime 校验连续 key、重复剧情、数据库风格 ID/比例和图片预算；新增 `agent_artifacts`、`agent_approval_requests`、`agent_events` migration、hash 绑定、owner-only 幂等决策、修改版本保留、等待恢复和批准后重新入队。正式 Runner 显式加载 `idea-to-comic` 并记录 Skill 版本/hash，初次或修改规划只保存安全 Artifact，未批准前不创建 Task/Panel/Image Job 或占积分；`generate_image` 再次核验 approved hash、Panel、Prompt、比例、预算和 Run 状态。新增持久化 SSE cursor、受控公共事件、心跳、连接错误与手动重连，移除旧 2 秒轮询；前端增加 v1/v2 方案卡、状态区分、明确积分按钮、修改反馈、活动流和按 Panel 计算的真实进度。真实 Conversation `d62f8c260a1241de876ebe64e4d15607`、Run `3bbb19b4725c47e8a93221b78b254654` 在余额 30/占用 0 时等待确认；修改后 v1 保留为 superseded，批准 v2 后创建 Task `e429bdabef884e24b8337c717c2df78c`，两张 `gpt-image-2` 图片成功，余额 28/占用 0。后端中断时页面显示连接错误，手动重连补齐完成事件且未重复生图。针对性 30 项、全量 223 项后端测试、空库 migration、Python compileall、前端生产构建、`git diff --check` 和 `./scripts/check.sh` 全部通过。未实现 Sprint 115 资源引用、Sprint 116 VL/Panel 写操作或 pause/resume。
 
@@ -384,7 +388,7 @@
 
 ## 已知缺口
 
-- 当前 Agent 漫画创建已由 `idea-to-comic` 驱动，支持 2–8 Panel、Artifact/Approval hash 门禁和持久化 SSE；资源输入仍只接受一个 Style，尚无结构化 Character/Task/Panel/Image Version 上下文。
+- 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文和同任务只读续作；Panel 再生成、接受/恢复版本、VL 检查和 pause/resume 尚未实现。
 - 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；Evaluation 发布门槛仍待 Sprint 117。
 - 当前没有 `inspect_image`、版本接受/恢复、Agent pause/resume 或 Evaluation 发布门槛；分别由 Sprint 116、117 交付。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
@@ -399,6 +403,6 @@
 
 ## 建议下一步
 
-1. 回到规划窗口审阅 Sprint 114 的 Artifact/Approval/Event、SSE、批准门禁和真实验收结果。
-2. Sprint 114 已 Complete；等待用户明确确认后再把 Sprint 115 从 Planned 激活，单独实施结构化资源引用与同一任务续作。
-3. 不要提前并行实现 Sprint 115 结构化资源引用或 Sprint 116 Panel/VL。
+1. 回到规划窗口审阅 Sprint 115 的 Resolver、安全快照重放、Character 参考链路、同 Task 只读续作和真实验收结果。
+2. Sprint 115 已 Complete；等待用户明确确认后再把 Sprint 116 从 Planned 激活，单独实施 Panel/VL/版本闭环。
+3. 不要提前并行实现 Sprint 116 或 Sprint 117 Evaluation 门槛。

@@ -22,11 +22,18 @@ from app.models.entities import (
     AgentStep,
     GeneratedImage,
     GenerationTask,
+    Style,
     TaskPanel,
     User,
+    UserCharacter,
     new_id,
 )
-from app.models.enums import AgentConversationStatus, AgentMessageRole, AgentRunStatus
+from app.models.enums import (
+    AgentConversationStatus,
+    AgentMessageRole,
+    AgentRunStatus,
+    StyleStatus,
+)
 from app.schemas.agent import (
     AgentApprovalDecision,
     AgentApprovalRead,
@@ -37,6 +44,8 @@ from app.schemas.agent import (
     AgentMessageCreate,
     AgentMessageRead,
     AgentResourceRef,
+    AgentResourceKind,
+    AgentResourceOption,
     AgentRunRead,
     AgentRunSummaryRead,
     AgentStepRead,
@@ -50,8 +59,12 @@ from app.schemas.agent import (
 )
 from app.schemas.common import ApiData, ApiList
 from app.services.agent_runner import enqueue_agent_run
-from app.services.agent_comic_creation import AgentComicCreationError, load_authorized_style
 from app.services.agent_hitl import AgentApprovalError, decide_approval
+from app.services.agent_resources import (
+    AgentResourceResolutionError,
+    AgentResourceResolver,
+    parse_agent_resource_refs,
+)
 from app.core import database
 
 
@@ -71,12 +84,9 @@ def load_owned_conversation(db: Session, conversation_id: str, user: User) -> Ag
 
 
 def parse_resource_refs(raw: str | None) -> list[AgentResourceRef]:
-    if raw is None:
-        return []
     try:
-        value = json.loads(raw)
-        return [AgentResourceRef.model_validate(item) for item in value]
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        return parse_agent_resource_refs(raw)
+    except AgentResourceResolutionError as exc:
         raise RuntimeError("Agent 消息资源引用数据损坏") from exc
 
 
@@ -283,6 +293,198 @@ def task_inspector_to_read(
     )
 
 
+@router.get("/resources/styles", response_model=ApiList[AgentResourceOption])
+def list_agent_style_resources(
+    query: str = Query(default="", max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[AgentResourceOption]:
+    del user
+    statement = select(Style).where(
+        Style.deleted_at.is_(None),
+        Style.status == StyleStatus.active,
+    )
+    if query.strip():
+        statement = statement.where(Style.name.ilike(f"%{query.strip()}%"))
+    items = db.scalars(
+        statement.order_by(Style.updated_at.desc(), Style.id.desc()).limit(limit + 1)
+    ).all()
+    visible = items[:limit]
+    return ApiList(
+        items=[
+            AgentResourceOption(
+                kind=AgentResourceKind.style,
+                id=item.id,
+                display_name=item.name,
+                secondary_text=f"{item.aspect_ratio} · {item.image_model_name}",
+                status=item.status.value,
+            )
+            for item in visible
+        ],
+        page=build_page(limit=limit, offset=0, item_count=len(items)),
+    )
+
+
+@router.get("/resources/characters", response_model=ApiList[AgentResourceOption])
+def list_agent_character_resources(
+    query: str = Query(default="", max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[AgentResourceOption]:
+    statement = select(UserCharacter).where(
+        UserCharacter.owner_user_id == user.id,
+        UserCharacter.deleted_at.is_(None),
+    )
+    if query.strip():
+        statement = statement.where(UserCharacter.name.ilike(f"%{query.strip()}%"))
+    items = db.scalars(
+        statement.order_by(UserCharacter.updated_at.desc(), UserCharacter.id.desc())
+        .limit(limit + 1)
+    ).all()
+    visible = items[:limit]
+    return ApiList(
+        items=[
+            AgentResourceOption(
+                kind=AgentResourceKind.character,
+                id=item.id,
+                display_name=item.name,
+                secondary_text=item.description,
+            )
+            for item in visible
+        ],
+        page=build_page(limit=limit, offset=0, item_count=len(items)),
+    )
+
+
+@router.get("/resources/tasks", response_model=ApiList[AgentResourceOption])
+def list_agent_task_resources(
+    query: str = Query(default="", max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[AgentResourceOption]:
+    statement = select(GenerationTask).where(GenerationTask.owner_user_id == user.id)
+    if query.strip():
+        normalized = query.strip()
+        statement = statement.where(
+            or_(
+                GenerationTask.display_title.ilike(f"%{normalized}%"),
+                GenerationTask.id.ilike(f"%{normalized}%"),
+            )
+        )
+    items = db.scalars(
+        statement.order_by(GenerationTask.created_at.desc(), GenerationTask.id.desc())
+        .limit(limit + 1)
+    ).all()
+    visible = items[:limit]
+    return ApiList(
+        items=[
+            AgentResourceOption(
+                kind=AgentResourceKind.task,
+                id=item.id,
+                display_name=item.display_title,
+                secondary_text=item.style_name_snapshot,
+                status=item.status.value,
+            )
+            for item in visible
+        ],
+        page=build_page(limit=limit, offset=0, item_count=len(items)),
+    )
+
+
+@router.get(
+    "/resources/tasks/{task_id}/panels",
+    response_model=ApiList[AgentResourceOption],
+)
+def list_agent_task_panel_resources(
+    task_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[AgentResourceOption]:
+    task = db.scalar(
+        select(GenerationTask).where(
+            GenerationTask.id == task_id,
+            GenerationTask.owner_user_id == user.id,
+        )
+    )
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    panels = db.scalars(
+        select(TaskPanel)
+        .where(TaskPanel.task_id == task.id)
+        .order_by(TaskPanel.panel_order.asc())
+        .limit(51)
+    ).all()
+    if len(panels) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="任务包含超过 50 个 Panel，无法作为 Agent 引用菜单加载",
+        )
+    return ApiList(
+        items=[
+            AgentResourceOption(
+                kind=AgentResourceKind.panel,
+                id=panel.id,
+                display_name=f"Panel {panel.panel_order}",
+                secondary_text=panel.original_text_segment,
+                parent_id=task.id,
+            )
+            for panel in panels
+        ],
+        page=build_page(limit=50, offset=0, item_count=len(panels)),
+    )
+
+
+@router.get(
+    "/resources/panels/{panel_id}/image-versions",
+    response_model=ApiList[AgentResourceOption],
+)
+def list_agent_panel_image_resources(
+    panel_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+    limit: int = Query(default=20, ge=1, le=50),
+) -> ApiList[AgentResourceOption]:
+    panel = db.scalar(
+        select(TaskPanel)
+        .join(GenerationTask, GenerationTask.id == TaskPanel.task_id)
+        .where(
+            TaskPanel.id == panel_id,
+            GenerationTask.owner_user_id == user.id,
+        )
+    )
+    if panel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Panel 不存在")
+    images = db.scalars(
+        select(GeneratedImage)
+        .where(
+            GeneratedImage.panel_id == panel.id,
+        )
+        .order_by(
+            GeneratedImage.generation_number.desc(),
+            GeneratedImage.created_at.desc(),
+        )
+        .limit(limit + 1)
+    ).all()
+    visible = images[:limit]
+    return ApiList(
+        items=[
+            AgentResourceOption(
+                kind=AgentResourceKind.image_version,
+                id=image.id,
+                display_name=f"Panel {panel.panel_order} · v{image.generation_number}",
+                secondary_text="当前版本" if image.is_current else None,
+                parent_id=panel.id,
+                status=image.status.value,
+            )
+            for image in visible
+        ],
+        page=build_page(limit=limit, offset=0, item_count=len(images)),
+    )
+
+
 @router.post("/conversations", response_model=ApiData[AgentConversationRead], status_code=status.HTTP_201_CREATED)
 def create_agent_conversation(
     payload: AgentConversationCreate,
@@ -359,12 +561,19 @@ def get_agent_conversation(
         .order_by(AgentRun.created_at.desc())
         .limit(20)
     ).all()
+    unique_task_runs: list[AgentRun] = []
+    seen_task_ids: set[str] = set()
+    for task_run in task_runs:
+        if task_run.task_id is None or task_run.task_id in seen_task_ids:
+            continue
+        seen_task_ids.add(task_run.task_id)
+        unique_task_runs.append(task_run)
     return ApiData(
         data=AgentConversationDetailRead(
             **AgentConversationRead.model_validate(conversation).model_dump(),
             messages=[message_to_read(message) for message in visible],
             message_page=build_page(message_limit, message_cursor, len(messages)),
-            task_cards=[task_card_to_read(run) for run in task_runs],
+            task_cards=[task_card_to_read(run) for run in unique_task_runs],
             runs=[AgentRunSummaryRead.model_validate(run) for run in recent_runs],
         )
     )
@@ -434,24 +643,17 @@ async def create_agent_message(
         if pending_run is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="当前会话上一轮仍在运行")
 
-    style_refs = [item for item in payload.resource_refs if item.kind.value == "style"]
-    if payload.resource_refs:
-        if len(payload.resource_refs) != 1 or len(style_refs) != 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Sprint 106 每条漫画创建消息必须且只能选择一个风格",
-            )
-        try:
-            style = load_authorized_style(db, style_refs[0].id)
-        except AgentComicCreationError as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-        payload = payload.model_copy(
-            update={
-                "resource_refs": [
-                    style_refs[0].model_copy(update={"display_name": style.name})
-                ]
-            }
+    try:
+        resolved_resources = AgentResourceResolver().resolve(
+            db,
+            owner_user_id=user.id,
+            refs=payload.resource_refs,
         )
+    except AgentResourceResolutionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    payload = payload.model_copy(
+        update={"resource_refs": resolved_resources.refs}
+    )
 
     turn_id = new_id()
     message = AgentMessage(

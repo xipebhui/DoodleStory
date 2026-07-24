@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned。只有 Sprint 114 Complete 后才能激活。
+Complete。Sprint 114 已 Complete，用户于 2026-07-24 明确开始本 Sprint；同日完成实现、自动化、真实 Provider 与浏览器验收。
 
 ## Goal
 
@@ -255,6 +255,19 @@ git diff --check
 3. 切换 Conversation 后恢复各自草稿和标签。
 4. 尝试不合法组合并看到明确解释。
 5. 引用已有任务继续讨论，确认没有新增 Task。
+
+## Completion evidence
+
+- 新增统一 `AgentResourceResolver`，在消息保存前批量解析并校验 Style、Character、Task、Panel、Image Version 的数量、状态、owner、父子关系与组合；服务端重写显示名，并把规范引用和最小安全摘要保存到现有 `agent_messages.resource_refs_json`。
+- `build_agent_input()` 会重放消息接收时保存的安全快照；快照不包含 owner、存储路径、公开/内部资产 URL、Provider 密钥或其它任务数据。Sprint 114 历史 Style 引用只保留其当时已经持久化的最小名称快照，Sprint 115 新引用必须具备完整安全摘要。
+- 新增五组有界 Resource API。Style 只返回 active、未删除对象；Character/Task 只返回当前用户对象；Panel/Image Version 通过父资源鉴权。默认 limit 20、最大 50，前端搜索直接调用后端，不预取所有任务详情。
+- Runtime 路由已拆为普通讨论、新漫画创建和已有任务只读续作。Task 引用把 Agent Run 关联到原 GenerationTask，不创建新任务；“重新生成/恢复/接受版本”明确说明 Sprint 116 尚未开放，不调用旧编辑 API。
+- Character 引用真实创建 `TaskCharacter`、`TaskCharacterAppearance` 与逐 Panel 的 `TaskPanelCharacterAppearance` 快照，并把授权参考资产 ID 传入统一图片 Tool/Provider，而非只展示标签。
+- 正式 `/agent` 已提供分组资源菜单、搜索/loading/empty/error、组合禁用解释、可移除标签、检查器/任务卡引用，以及按新对话或 Conversation 分离持久化的 Idea 与资源选择。Panel 和图片版本引用自动携带父 Task/Panel，不覆盖已有草稿；Conversation 切换会同步重置 SSE 事件列表与 cursor，避免把上一会话的 cursor 发给新会话。
+- 针对性 37 项 Agent 测试通过，覆盖组合矩阵、owner/status、父子关系、规范显示名、安全重放、有界查询、同 Task 续作和 Character 参考链路；`./scripts/check.sh` 覆盖 230 项后端测试、空库 migration、Python compileall 和前端生产构建并通过，`git diff --check` 也通过。
+- 真实浏览器/Provider 验收使用 Conversation `4ae7adb3b5b44e9686028a5a9310901a`、Run `71be6c5f46b946858601a9849712a011`、Task `ca8677b7a4944f499f65f9d36b493399`：`@粗线条暖色 + @林夏验收角色` 生成两格真实图片成功，角色参考资产进入两个 Panel，积分从 30 降至 28。
+- 从只读检查器引用 Task、Panel 1 和图片版本 v1 后，已有草稿在关闭检查器与刷新后仍保留，五类标签均恢复。随后只读续聊 Run `7285c1a1008845e380b036c0c84a84f1` 复用同一 Task，`model_call_count=1`、`image_call_count=0`；任务仍为 2 个、图片 job 仍为 4 个、余额仍为 28、占用为 0。
+- 浏览器输入“重新生成这个版本”得到 Sprint 116 边界说明；任务数、图片 job 数和积分均未变化。切换 Conversation 验收曾发现跨会话复用 SSE cursor 会产生 400，修复为切换时重置 cursor 后往返两条会话，分别恢复五类标签与风格/角色标签、活动流均显示实时更新，控制台没有新增 error/warning；控制台历史仍保留登录前 `/auth/me` 的预期 401 和修复前的这条 400。
 
 ## Handoff
 

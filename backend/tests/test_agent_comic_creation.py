@@ -20,8 +20,12 @@ from app.models.entities import (
     GeneratedImage,
     GenerationTask,
     Style,
+    TaskCharacter,
+    TaskCharacterAppearance,
     TaskPanel,
+    TaskPanelCharacterAppearance,
     User,
+    UserCharacter,
 )
 from app.models.enums import (
     AgentMessageRole,
@@ -115,11 +119,15 @@ class AgentComicCreationTests(unittest.TestCase):
         plan["style_ref_id"] = self.style_id
         self.plan = ComicPlan.model_validate(plan)
 
-    def create_task(self) -> str:
+    def create_task(self, character_ids: list[str] | None = None) -> str:
         with self.Session() as db:
             run = db.get(AgentRun, self.run_id)
             message = db.get(AgentMessage, self.message_id)
             style = db.get(Style, self.style_id)
+            characters = [
+                db.get(UserCharacter, character_id)
+                for character_id in (character_ids or [])
+            ]
             artifact, approval = create_comic_plan_artifact(db, run=run, plan=self.plan)
             decide_approval(
                 db,
@@ -134,6 +142,7 @@ class AgentComicCreationTests(unittest.TestCase):
                 user_message=message,
                 style=style,
                 plan=self.plan,
+                characters=characters,
             )
             return task.id
 
@@ -211,6 +220,60 @@ class AgentComicCreationTests(unittest.TestCase):
         self.assertEqual(["succeeded", "failed"], [item["status"] for item in outputs])
         self.assertEqual(2, result_count)
         self.assertEqual(AgentRunStatus.running, run.status)
+
+    def test_explicit_character_is_snapshotted_and_passed_to_every_panel_image(self) -> None:
+        with self.Session() as db:
+            asset = FileAsset(
+                purpose=FileAssetPurpose.character_reference,
+                storage_backend=StorageBackend.local,
+                storage_key="agent-test/linxia-reference.png",
+                content_type="image/png",
+                byte_size=100,
+                width=768,
+                height=1024,
+            )
+            character = UserCharacter(
+                owner_user_id=self.user_id,
+                name="林夏",
+                description="29 岁，黑色短发，深绿色外套",
+                reference_asset=asset,
+            )
+            db.add(character)
+            db.commit()
+            character_id = character.id
+            asset_id = asset.id
+
+        task_id = self.create_task([character_id])
+
+        with self.Session() as db:
+            task = db.get(GenerationTask, task_id)
+            task_characters = db.scalars(
+                select(TaskCharacter).where(TaskCharacter.task_id == task_id)
+            ).all()
+            appearances = db.scalars(
+                select(TaskCharacterAppearance)
+                .join(TaskCharacter)
+                .where(TaskCharacter.task_id == task_id)
+            ).all()
+            links = db.scalars(
+                select(TaskPanelCharacterAppearance)
+                .join(TaskPanel)
+                .where(TaskPanel.task_id == task_id)
+            ).all()
+            calls = db.scalars(
+                select(AgentStep).where(
+                    AgentStep.run_id == self.run_id,
+                    AgentStep.step_type == AgentStepType.tool_call,
+                )
+            ).all()
+
+        self.assertTrue(task.use_character_references)
+        self.assertEqual(["林夏"], [item.name for item in task_characters])
+        self.assertEqual([asset_id], [item.reference_image_id for item in appearances])
+        self.assertEqual(2, len(links))
+        self.assertTrue(
+            all(asset_id in json.loads(call.input_ref)["arguments"]["reference_image_ids"] for call in calls)
+        )
 
     def test_insufficient_credit_fails_image_job_without_calling_provider(self) -> None:
         task_id = self.create_task()

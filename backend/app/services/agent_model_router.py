@@ -375,11 +375,14 @@ class AgentModelRouter:
         agent = Agent(
             name="ComicDirectorAgent",
             instructions=(
-                "你是 DoodleStory 的漫画导演。根据用户 Idea、已鉴权风格和已加载的 idea-to-comic Skill，"
+                "你是 DoodleStory 的漫画导演。根据用户 Idea、已鉴权风格、结构化角色资源上下文"
+                "和已加载的 idea-to-comic Skill，"
                 "规划一部连续漫画。用户明确指定时只允许 2–8 格；未指定时在 2–6 格内决定。"
                 "每格必须推进同一故事，补齐必要因果、人物动机和结尾，避免重复 Panel。"
                 "image_prompt 是将直接交给图片模型的最终单图指令，"
                 "必须完整但简洁，明确主体、动作、表情、场景、构图、光线、风格和需要准确绘制的文字；"
+                "若 resource_context 含 characters，必须使用其名称、描述和参考资产身份锚点，"
+                "不得按名字另行猜测或搜索角色；"
                 "schema_version 固定为 1；style_ref_id 和 aspect_ratio 必须逐字使用已鉴权风格快照；"
                 "estimated_image_credits 必须等于 panels 数量。不要解释计划，不要输出内部思维过程。"
                 "严格输出 ComicPlan schema。\n"

@@ -2302,7 +2302,22 @@ textarea {
   font-size: 10px;
 }
 
-.agent-inspector-header > button {
+.agent-inspector-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-inspector-header-actions > button {
+  min-height: 34px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: transparent;
+  padding: 0 10px;
+  color: #aab2bd;
+  font-size: 10px;
+}
+
+.agent-inspector-header-actions > button:last-child {
   display: grid;
   width: 36px;
   min-height: 36px;
@@ -2313,7 +2328,7 @@ textarea {
   color: #9099a5;
 }
 
-.agent-inspector-header > button:hover {
+.agent-inspector-header-actions > button:hover {
   background: rgba(255, 255, 255, 0.05);
   color: #f0a36c;
 }
@@ -2477,6 +2492,14 @@ textarea {
   white-space: pre-wrap;
 }
 
+.agent-inspector-copy > .secondary-button {
+  width: 100%;
+  margin-top: 20px;
+  border-color: rgba(233, 149, 90, 0.22);
+  background: rgba(233, 149, 90, 0.06);
+  color: #e4a171;
+}
+
 .agent-version-summary {
   grid-column: 1 / -1;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
@@ -2502,10 +2525,19 @@ textarea {
 
 .agent-version-summary li {
   display: grid;
-  grid-template-columns: 42px 70px 48px minmax(0, 1fr);
+  grid-template-columns: 42px 70px 48px minmax(0, 1fr) 48px;
   align-items: center;
   min-height: 28px;
   color: #818a96;
+  font-size: 9px;
+}
+
+.agent-version-summary li button {
+  min-height: 24px;
+  border-color: transparent;
+  background: transparent;
+  padding: 0 5px;
+  color: #d99665;
   font-size: 9px;
 }
 
@@ -6252,6 +6284,22 @@ textarea {
 
 .agent-resource-menu > button:hover {
   background: rgba(238, 153, 93, 0.07);
+}
+
+.agent-resource-menu > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.agent-resource-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 5px 0;
+}
+
+.agent-resource-state.is-error {
+  color: #f09a9a;
 }
 
 @media (max-width: 1100px) {

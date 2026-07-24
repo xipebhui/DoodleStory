@@ -44,6 +44,8 @@ import {
   type AgentConversationDetail,
   type AgentArtifact,
   type AgentPublicEvent,
+  type AgentResourceOption,
+  type AgentResourceRef,
   type AgentRunStatus,
   type AgentTaskCard,
   type AgentTaskInspector,
@@ -697,10 +699,12 @@ function AgentTaskCardView({
   card,
   runStatus,
   onOpenTask,
+  onReferenceTask,
 }: {
   card: AgentTaskCard;
   runStatus: AgentRunStatus | null;
   onOpenTask: (taskId: string, trigger: HTMLButtonElement) => void;
+  onReferenceTask: (card: AgentTaskCard) => void;
 }) {
   const progressPercent =
     card.progress_total > 0
@@ -763,6 +767,13 @@ function AgentTaskCardView({
         <span title={card.task_id}>任务 ID · {card.task_id}</span>
         <button
           type="button"
+          className="ghost-button"
+          onClick={() => onReferenceTask(card)}
+        >
+          在对话中引用
+        </button>
+        <button
+          type="button"
           className="secondary-button"
           onClick={(event) => onOpenTask(card.task_id, event.currentTarget)}
         >
@@ -774,11 +785,46 @@ function AgentTaskCardView({
   );
 }
 
-function agentDraftKey(conversationId: string, field: "idea" | "style") {
+function agentDraftKey(conversationId: string, field: "idea" | "resources") {
   return `doodlestory.agentDraft.${conversationId}.${field}`;
 }
 
 const newAgentDraftId = "new";
+
+const agentResourceKindLabels: Record<AgentResourceRef["kind"], string> = {
+  style: "风格",
+  character: "角色",
+  task: "任务",
+  panel: "Panel",
+  image_version: "图片版本",
+};
+
+function parseAgentDraftResources(raw: string | null): AgentResourceRef[] {
+  if (!raw) return [];
+  const value = JSON.parse(raw) as unknown;
+  if (
+    !Array.isArray(value) ||
+    value.some(
+      (item) =>
+        typeof item !== "object" ||
+        item === null ||
+        !["style", "character", "task", "panel", "image_version"].includes(
+          String((item as Record<string, unknown>).kind),
+        ) ||
+        typeof (item as Record<string, unknown>).id !== "string",
+    )
+  ) {
+    throw new Error("当前会话保存的资源草稿无法读取，请移除后重新选择");
+  }
+  return value.map((item) => {
+    const ref = item as Record<string, unknown>;
+    return {
+      kind: ref.kind as AgentResourceRef["kind"],
+      id: String(ref.id),
+      display_name: typeof ref.display_name === "string" ? ref.display_name : null,
+    };
+  });
+}
 
 function agentConversationGroupLabel(value: string) {
   const date = new Date(value);
@@ -827,6 +873,9 @@ function AgentTaskInspectorDialog({
   error,
   selectedPanelId,
   onSelectPanel,
+  onReferenceTask,
+  onReferencePanel,
+  onReferenceImage,
   onRetry,
   onClose,
 }: {
@@ -835,6 +884,16 @@ function AgentTaskInspectorDialog({
   error: string;
   selectedPanelId: string;
   onSelectPanel: (panelId: string) => void;
+  onReferenceTask: (inspector: AgentTaskInspector) => void;
+  onReferencePanel: (
+    inspector: AgentTaskInspector,
+    panel: AgentTaskInspector["panels"][number],
+  ) => void;
+  onReferenceImage: (
+    inspector: AgentTaskInspector,
+    panel: AgentTaskInspector["panels"][number],
+    image: AgentTaskInspector["panels"][number]["versions"][number],
+  ) => void;
   onRetry: () => void;
   onClose: () => void;
 }) {
@@ -892,9 +951,16 @@ function AgentTaskInspectorDialog({
               </p>
             ) : null}
           </div>
-          <button type="button" aria-label="关闭任务检查器" onClick={onClose} autoFocus>
-            <X size={19} />
-          </button>
+          <div className="agent-inspector-header-actions">
+            {inspector ? (
+              <button type="button" onClick={() => onReferenceTask(inspector)}>
+                在对话中引用任务
+              </button>
+            ) : null}
+            <button type="button" aria-label="关闭任务检查器" onClick={onClose} autoFocus>
+              <X size={19} />
+            </button>
+          </div>
         </header>
 
         {loading ? (
@@ -1013,6 +1079,13 @@ function AgentTaskInspectorDialog({
                     <p>{selectedPanel.error_message}</p>
                   </section>
                 ) : null}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => onReferencePanel(inspector, selectedPanel)}
+                >
+                  引用 Panel {selectedPanel.panel_order} 并继续对话
+                </button>
               </div>
 
               <section className="agent-version-summary">
@@ -1028,6 +1101,12 @@ function AgentTaskInspectorDialog({
                         <span>{agentImageStatusLabel(version.status)}</span>
                         {version.is_current ? <small>当前</small> : null}
                         <time>{new Date(version.created_at).toLocaleString("zh-CN")}</time>
+                        <button
+                          type="button"
+                          onClick={() => onReferenceImage(inspector, selectedPanel, version)}
+                        >
+                          引用
+                        </button>
                       </li>
                     ))}
                   </ol>
@@ -1083,8 +1162,14 @@ function AgentView({
 }) {
   const [conversations, setConversations] = useState<AgentConversation[]>([]);
   const [detail, setDetail] = useState<AgentConversationDetail | null>(null);
-  const [styles, setStyles] = useState<StyleSelectOption[]>([]);
-  const [selectedStyleId, setSelectedStyleId] = useState("");
+  const [styleResources, setStyleResources] = useState<AgentResourceOption[]>([]);
+  const [characterResources, setCharacterResources] = useState<AgentResourceOption[]>([]);
+  const [taskResources, setTaskResources] = useState<AgentResourceOption[]>([]);
+  const [panelResources, setPanelResources] = useState<AgentResourceOption[]>([]);
+  const [imageResources, setImageResources] = useState<AgentResourceOption[]>([]);
+  const [selectedResources, setSelectedResources] = useState<AgentResourceRef[]>([]);
+  const [resourceLoading, setResourceLoading] = useState(false);
+  const [resourceError, setResourceError] = useState("");
   const [artifacts, setArtifacts] = useState<AgentArtifact[]>([]);
   const [events, setEvents] = useState<AgentPublicEvent[]>([]);
   const [eventConnectionError, setEventConnectionError] = useState("");
@@ -1112,10 +1197,130 @@ function AgentView({
   const ideaInputRef = useRef<HTMLTextAreaElement | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
 
+  function persistSelectedResources(resources: AgentResourceRef[], draftId = routeConversationId || newAgentDraftId) {
+    setSelectedResources(resources);
+    if (resources.length === 0) {
+      window.sessionStorage.removeItem(agentDraftKey(draftId, "resources"));
+    } else {
+      window.sessionStorage.setItem(
+        agentDraftKey(draftId, "resources"),
+        JSON.stringify(resources),
+      );
+    }
+  }
+
+  function restoreDraftResources(draftId: string) {
+    try {
+      setSelectedResources(
+        parseAgentDraftResources(
+          window.sessionStorage.getItem(agentDraftKey(draftId, "resources")),
+        ),
+      );
+      setResourceError("");
+    } catch (draftError) {
+      setSelectedResources([]);
+      setResourceError(
+        draftError instanceof Error ? draftError.message : "资源草稿读取失败",
+      );
+    }
+  }
+
+  const selectedStyleRef = selectedResources.find((ref) => ref.kind === "style") || null;
+  const selectedTaskRef = selectedResources.find((ref) => ref.kind === "task") || null;
+  const selectedPanelRef = selectedResources.find((ref) => ref.kind === "panel") || null;
+
   useEffect(() => {
     routeConversationIdRef.current = routeConversationId;
     if (routeConversationId) window.sessionStorage.setItem(lastAgentConversationKey, routeConversationId);
   }, [routeConversationId]);
+
+  useEffect(() => {
+    if (!resourceMenuOpen) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setResourceLoading(true);
+      setResourceError("");
+      void Promise.all([
+        api.agentStyleResources({ query: resourceSearch, limit: 20 }),
+        api.agentCharacterResources({ query: resourceSearch, limit: 20 }),
+        api.agentTaskResources({ query: resourceSearch, limit: 20 }),
+      ])
+        .then(([styles, characters, tasks]) => {
+          if (cancelled) return;
+          setStyleResources(styles.items);
+          setCharacterResources(characters.items);
+          setTaskResources(tasks.items);
+        })
+        .catch((loadError) => {
+          if (!cancelled) {
+            setResourceError(
+              loadError instanceof Error ? loadError.message : "资源搜索失败",
+            );
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setResourceLoading(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [resourceMenuOpen, resourceSearch]);
+
+  useEffect(() => {
+    if (!resourceMenuOpen || !selectedTaskRef) {
+      setPanelResources([]);
+      return;
+    }
+    let cancelled = false;
+    setResourceLoading(true);
+    void api
+      .agentTaskPanelResources(selectedTaskRef.id)
+      .then((result) => {
+        if (!cancelled) setPanelResources(result.items);
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setResourceError(
+            loadError instanceof Error ? loadError.message : "Panel 加载失败",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setResourceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resourceMenuOpen, selectedTaskRef?.id]);
+
+  useEffect(() => {
+    if (!resourceMenuOpen || !selectedPanelRef) {
+      setImageResources([]);
+      return;
+    }
+    let cancelled = false;
+    setResourceLoading(true);
+    void api
+      .agentPanelImageResources(selectedPanelRef.id, 20)
+      .then((result) => {
+        if (!cancelled) setImageResources(result.items);
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setResourceError(
+            loadError instanceof Error ? loadError.message : "图片版本加载失败",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setResourceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resourceMenuOpen, selectedPanelRef?.id]);
 
   useEffect(() => {
     routeTaskIdRef.current = routeTaskId;
@@ -1217,38 +1422,30 @@ function AgentView({
   useEffect(() => {
     void loadConversations(true);
     api
-      .styleSelectOptions({ status: "active", limit: 100 })
+      .agentStyleResources({ limit: 20 })
       .then((result) => {
-        setStyles(result.items);
-        const draftId = routeConversationIdRef.current || newAgentDraftId;
-        const draftStyleId = window.sessionStorage.getItem(agentDraftKey(draftId, "style"));
-        setSelectedStyleId(
-          draftStyleId && result.items.some((style) => style.id === draftStyleId) ? draftStyleId : "",
-        );
+        setStyleResources(result.items);
       })
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : "风格加载失败"));
   }, []);
 
   useEffect(() => {
+    setEvents([]);
+    lastEventIdRef.current = null;
+    setEventConnectionError("");
     if (!routeConversationId) {
       setDetail(null);
       setArtifacts([]);
-      setEvents([]);
-      lastEventIdRef.current = null;
       setIdea(window.sessionStorage.getItem(agentDraftKey(newAgentDraftId, "idea")) || "");
-      const draftStyleId = window.sessionStorage.getItem(agentDraftKey(newAgentDraftId, "style"));
-      setSelectedStyleId(draftStyleId && styles.some((style) => style.id === draftStyleId) ? draftStyleId : "");
+      restoreDraftResources(newAgentDraftId);
       return;
     }
     setDetail(null);
     setIdea(window.sessionStorage.getItem(agentDraftKey(routeConversationId, "idea")) || "");
-    const draftStyleId = window.sessionStorage.getItem(agentDraftKey(routeConversationId, "style"));
-    setSelectedStyleId(
-      draftStyleId && styles.some((style) => style.id === draftStyleId) ? draftStyleId : "",
-    );
+    restoreDraftResources(routeConversationId);
     setResourceMenuOpen(false);
     void loadDetail(routeConversationId);
-  }, [routeConversationId, styles]);
+  }, [routeConversationId]);
 
   useEffect(() => {
     if (!routeConversationId) return;
@@ -1343,8 +1540,7 @@ function AgentView({
 
   async function sendMessage(event: React.FormEvent) {
     event.preventDefault();
-    if (!idea.trim() || (!routeConversationId && !selectedStyleId) || hasActiveWork) return;
-    const selectedStyle = styles.find((style) => style.id === selectedStyleId);
+    if (!idea.trim() || hasActiveWork) return;
     setSending(true);
     setCreatingConversation(!routeConversationId);
     setError("");
@@ -1352,22 +1548,19 @@ function AgentView({
       const conversationId = routeConversationId || (await api.createAgentConversation({ title: "新漫画创作" })).id;
       await api.sendAgentMessage(conversationId, {
         content: idea,
-        resource_refs: selectedStyleId
-          ? [
-              {
-                kind: "style",
-                id: selectedStyleId,
-                display_name: selectedStyle?.name || null,
-              },
-            ]
-          : [],
+        resource_refs: selectedResources,
       });
       setIdea("");
       const draftId = routeConversationId || newAgentDraftId;
       window.sessionStorage.removeItem(agentDraftKey(draftId, "idea"));
       if (!routeConversationId) {
-        window.sessionStorage.setItem(agentDraftKey(conversationId, "style"), selectedStyleId);
-        window.sessionStorage.removeItem(agentDraftKey(newAgentDraftId, "style"));
+        if (selectedResources.length > 0) {
+          window.sessionStorage.setItem(
+            agentDraftKey(conversationId, "resources"),
+            JSON.stringify(selectedResources),
+          );
+        }
+        window.sessionStorage.removeItem(agentDraftKey(newAgentDraftId, "resources"));
         onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(conversationId)}`);
       } else {
         await loadDetail(conversationId, true);
@@ -1406,18 +1599,117 @@ function AgentView({
     }
   }
 
-  function selectStyle(styleId: string) {
-    setSelectedStyleId(styleId);
-    const draftId = routeConversationId || newAgentDraftId;
-    window.sessionStorage.setItem(agentDraftKey(draftId, "style"), styleId);
-    setResourceMenuOpen(false);
-    setResourceSearch("");
+  function addResource(option: AgentResourceOption) {
+    const existing = selectedResources.find(
+      (ref) => ref.kind === option.kind && ref.id === option.id,
+    );
+    if (existing) return;
+    let next = [...selectedResources];
+    if (option.kind === "style") {
+      next = next.filter((ref) => ref.kind !== "style");
+    } else if (option.kind === "character") {
+      const characterCount = next.filter((ref) => ref.kind === "character").length;
+      if (characterCount >= 3) {
+        setResourceError("新任务最多引用 3 个角色");
+        return;
+      }
+    } else if (option.kind === "task") {
+      const currentTask = next.find((ref) => ref.kind === "task");
+      if (currentTask && currentTask.id !== option.id) {
+        setResourceError("每条消息只能引用一个任务，请先移除当前任务");
+        return;
+      }
+    } else if (option.kind === "panel") {
+      if (!selectedTaskRef || option.parent_id !== selectedTaskRef.id) {
+        setResourceError("Panel 必须属于当前选中的任务");
+        return;
+      }
+      next = next.filter(
+        (ref) => ref.kind !== "panel" && ref.kind !== "image_version",
+      );
+    } else if (option.kind === "image_version") {
+      if (!selectedPanelRef || option.parent_id !== selectedPanelRef.id) {
+        setResourceError("图片版本必须属于当前选中的 Panel");
+        return;
+      }
+      next = next.filter((ref) => ref.kind !== "image_version");
+    }
+    next.push({
+      kind: option.kind,
+      id: option.id,
+      display_name: option.display_name,
+    });
+    persistSelectedResources(next);
+    setResourceError("");
+    if (option.kind !== "task") {
+      window.setTimeout(() => ideaInputRef.current?.focus(), 0);
+    }
+  }
+
+  function removeSelectedResource(ref: AgentResourceRef) {
+    let next = selectedResources.filter(
+      (item) => !(item.kind === ref.kind && item.id === ref.id),
+    );
+    if (ref.kind === "task") {
+      next = next.filter(
+        (item) => item.kind !== "panel" && item.kind !== "image_version",
+      );
+    } else if (ref.kind === "panel") {
+      next = next.filter((item) => item.kind !== "image_version");
+    }
+    persistSelectedResources(next);
+  }
+
+  function referenceTask(task: { task_id: string; title: string }) {
+    const next = selectedResources.filter(
+      (ref) => !["task", "panel", "image_version"].includes(ref.kind),
+    );
+    next.push({
+      kind: "task",
+      id: task.task_id,
+      display_name: task.title,
+    });
+    persistSelectedResources(next);
+    closeTaskInspector();
     window.setTimeout(() => ideaInputRef.current?.focus(), 0);
   }
 
-  function removeSelectedStyle() {
-    setSelectedStyleId("");
-    window.sessionStorage.removeItem(agentDraftKey(routeConversationId || newAgentDraftId, "style"));
+  function referencePanel(
+    task: { task_id: string; title: string },
+    panel: { id: string; panel_order: number },
+  ) {
+    const next = selectedResources.filter(
+      (ref) => !["task", "panel", "image_version"].includes(ref.kind),
+    );
+    next.push(
+      { kind: "task", id: task.task_id, display_name: task.title },
+      { kind: "panel", id: panel.id, display_name: `Panel ${panel.panel_order}` },
+    );
+    persistSelectedResources(next);
+    closeTaskInspector();
+    window.setTimeout(() => ideaInputRef.current?.focus(), 0);
+  }
+
+  function referenceImage(
+    task: { task_id: string; title: string },
+    panel: { id: string; panel_order: number },
+    image: { id: string; generation_number: number },
+  ) {
+    const next = selectedResources.filter(
+      (ref) => !["task", "panel", "image_version"].includes(ref.kind),
+    );
+    next.push(
+      { kind: "task", id: task.task_id, display_name: task.title },
+      { kind: "panel", id: panel.id, display_name: `Panel ${panel.panel_order}` },
+      {
+        kind: "image_version",
+        id: image.id,
+        display_name: `Panel ${panel.panel_order} · v${image.generation_number}`,
+      },
+    );
+    persistSelectedResources(next);
+    closeTaskInspector();
+    window.setTimeout(() => ideaInputRef.current?.focus(), 0);
   }
 
   function fillStarter(value: string) {
@@ -1432,8 +1724,10 @@ function AgentView({
     return !query || `${conversation.title} ${summary}`.toLowerCase().includes(query);
   });
   const conversationGroups = [...new Set(filteredConversations.map((conversation) => agentConversationGroupLabel(conversation.last_message_at)))];
-  const filteredStyles = styles.filter((style) => style.name.toLowerCase().includes(resourceSearch.trim().toLowerCase()));
-  const selectedStyle = styles.find((style) => style.id === selectedStyleId) || null;
+  const selectedStyleName =
+    selectedStyleRef?.display_name ||
+    styleResources.find((style) => style.id === selectedStyleRef?.id)?.display_name ||
+    null;
   const visibleMessages = detail?.messages.filter((message) => message.role !== "task_card") || [];
   const latestRun = detail?.runs[0] || null;
 
@@ -1567,14 +1861,14 @@ function AgentView({
                 <button type="button" onClick={() => fillStarter("我有一段完整故事，帮我设计成连续漫画。")}>把故事做成漫画 <span>→</span></button>
                 <button type="button" onClick={() => fillStarter("我想重新设计一个故事的人物关系和结局。")}>重新设计人物和结局 <span>→</span></button>
               </div>
-              {styles.length > 0 ? (
+              {styleResources.length > 0 ? (
                 <div className="agent-common-resources">
                   <div><span>常用风格</span><button type="button" onClick={() => setResourceMenuOpen(true)}>查看全部</button></div>
                   <div className="agent-resource-shortcuts">
-                    {styles.slice(0, 3).map((style) => (
-                      <button type="button" key={style.id} onClick={() => selectStyle(style.id)}>
+                    {styleResources.slice(0, 3).map((style) => (
+                      <button type="button" key={style.id} onClick={() => addResource(style)}>
                         <span className="agent-resource-swatch" />
-                        <span><strong>{style.name}</strong><small>风格</small></span>
+                        <span><strong>{style.display_name}</strong><small>风格</small></span>
                       </button>
                     ))}
                   </div>
@@ -1588,14 +1882,16 @@ function AgentView({
                   <span>{message.role === "user" ? "你" : message.role === "assistant" ? "DoodleStory Agent" : "系统"}</span>
                   <p>{message.content}</p>
                   {message.resource_refs.map((ref) => (
-                    <small key={`${ref.kind}-${ref.id}`}>@{ref.display_name || "风格"}</small>
+                    <small key={`${ref.kind}-${ref.id}`}>
+                      @{agentResourceKindLabels[ref.kind]} · {ref.display_name || ref.id}
+                    </small>
                   ))}
                 </div>
               ))}
               {artifacts.map((artifact) => {
                 const plan = artifact.content;
                 const pending = artifact.approval?.status === "pending";
-                const styleName = styles.find((style) => style.id === plan.style_ref_id)?.name || "已选风格";
+                const styleName = styleResources.find((style) => style.id === plan.style_ref_id)?.display_name || "已选风格";
                 return (
                   <article className={`agent-plan-card ${artifact.status}`} key={artifact.id}>
                     <header>
@@ -1685,6 +1981,7 @@ function AgentView({
                     detail.runs.find((run) => run.id === card.run_id)?.status || null
                   }
                   onOpenTask={openTaskInspector}
+                  onReferenceTask={referenceTask}
                 />
               ))}
               {latestRun?.status === "failed" && !latestRun.task_id ? (
@@ -1695,9 +1992,20 @@ function AgentView({
         </div>
 
         <footer className="agent-composer-shell">
-          {selectedStyle ? (
+          {selectedResources.length > 0 ? (
             <div className="agent-context-row">
-              <span>@风格 · {selectedStyle.name}<button type="button" aria-label={`移除风格 ${selectedStyle.name}`} onClick={removeSelectedStyle}>×</button></span>
+              {selectedResources.map((ref) => (
+                <span key={`${ref.kind}-${ref.id}`}>
+                  @{agentResourceKindLabels[ref.kind]} · {ref.display_name || ref.id}
+                  <button
+                    type="button"
+                    aria-label={`移除${agentResourceKindLabels[ref.kind]} ${ref.display_name || ref.id}`}
+                    onClick={() => removeSelectedResource(ref)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           ) : null}
           <form className="agent-composer" onSubmit={sendMessage}>
@@ -1705,7 +2013,7 @@ function AgentView({
               <button
                 className="agent-composer-tool"
                 type="button"
-                aria-label="添加风格资源"
+                aria-label="添加创作资源"
                 aria-haspopup="menu"
                 aria-expanded={resourceMenuOpen}
                 onClick={() => setResourceMenuOpen((open) => !open)}
@@ -1714,16 +2022,95 @@ function AgentView({
               </button>
               {resourceMenuOpen ? (
                 <div className="agent-resource-menu" role="menu">
-                  <div className="agent-resource-menu-head"><strong>加入创作上下文</strong><small>当前仅支持真实风格</small></div>
-                  <label><Search size={15} /><input autoFocus type="search" value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)} placeholder="搜索风格" /></label>
-                  <span className="agent-resource-group-label">可用风格</span>
-                  {filteredStyles.map((style) => (
-                    <button type="button" role="menuitem" key={style.id} onClick={() => selectStyle(style.id)}>
+                  <div className="agent-resource-menu-head">
+                    <strong>加入创作上下文</strong>
+                    <small>风格、角色与已有任务均来自真实资源</small>
+                  </div>
+                  <label>
+                    <Search size={15} />
+                    <input
+                      autoFocus
+                      type="search"
+                      value={resourceSearch}
+                      onChange={(event) => setResourceSearch(event.target.value)}
+                      placeholder="搜索风格、角色或任务"
+                    />
+                  </label>
+                  {resourceLoading ? (
+                    <p className="agent-resource-state"><Loader2 className="spin" size={15} />正在搜索资源…</p>
+                  ) : null}
+                  {resourceError ? (
+                    <p className="agent-resource-state is-error">{resourceError}</p>
+                  ) : null}
+                  <span className="agent-resource-group-label">风格</span>
+                  {styleResources.map((style) => (
+                    <button type="button" role="menuitem" key={style.id} onClick={() => addResource(style)}>
                       <span className="agent-resource-swatch" />
-                      <span><strong>风格</strong><small>{style.name}</small></span>
+                      <span><strong>{style.display_name}</strong><small>{style.secondary_text || "可用于新漫画"}</small></span>
                     </button>
                   ))}
-                  {filteredStyles.length === 0 ? <p>没有匹配的风格</p> : null}
+                  {styleResources.length === 0 && !resourceLoading ? <p>没有匹配的风格</p> : null}
+                  <span className="agent-resource-group-label">我的角色</span>
+                  {characterResources.map((character) => {
+                    const selected = selectedResources.some((ref) => ref.kind === "character" && ref.id === character.id);
+                    const characterLimitReached = selectedResources.filter((ref) => ref.kind === "character").length >= 3;
+                    return (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        key={character.id}
+                        disabled={!selected && characterLimitReached}
+                        title={!selected && characterLimitReached ? "每条新任务最多引用 3 个角色" : undefined}
+                        onClick={() => addResource(character)}
+                      >
+                        <UserRound size={17} />
+                        <span><strong>{character.display_name}</strong><small>{character.secondary_text || "固定角色参考"}</small></span>
+                      </button>
+                    );
+                  })}
+                  {characterResources.length === 0 && !resourceLoading ? <p>没有匹配的角色</p> : null}
+                  <span className="agent-resource-group-label">我的任务</span>
+                  {taskResources.map((task) => {
+                    const disabled = Boolean(selectedTaskRef && selectedTaskRef.id !== task.id);
+                    return (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        key={task.id}
+                        disabled={disabled}
+                        title={disabled ? "每条消息只能引用一个任务" : undefined}
+                        onClick={() => addResource(task)}
+                      >
+                        <Images size={17} />
+                        <span><strong>{task.display_name}</strong><small>{task.status || task.secondary_text}</small></span>
+                      </button>
+                    );
+                  })}
+                  {taskResources.length === 0 && !resourceLoading ? <p>没有匹配的任务</p> : null}
+                  {selectedTaskRef ? (
+                    <>
+                      <span className="agent-resource-group-label">所选任务的 Panel</span>
+                      {panelResources.map((panel) => (
+                        <button type="button" role="menuitem" key={panel.id} onClick={() => addResource(panel)}>
+                          <FileText size={17} />
+                          <span><strong>{panel.display_name}</strong><small>{panel.secondary_text}</small></span>
+                        </button>
+                      ))}
+                      {panelResources.length === 0 && !resourceLoading ? <p>这个任务还没有 Panel</p> : null}
+                    </>
+                  ) : null}
+                  {selectedPanelRef ? (
+                    <>
+                      <span className="agent-resource-group-label">所选 Panel 的图片版本</span>
+                      {imageResources.map((image) => (
+                        <button type="button" role="menuitem" key={image.id} onClick={() => addResource(image)}>
+                          <Eye size={17} />
+                          <span><strong>{image.display_name}</strong><small>{image.secondary_text || image.status}</small></span>
+                        </button>
+                      ))}
+                      {imageResources.length === 0 && !resourceLoading ? <p>这个 Panel 还没有图片版本</p> : null}
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1744,17 +2131,27 @@ function AgentView({
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
-              placeholder="告诉 Agent 你想创作什么，或输入 @ 引用风格"
+              placeholder="告诉 Agent 你想创作什么，或输入 @ 引用资源"
               rows={1}
               disabled={sending}
             />
-            <button className="agent-send-button" type="submit" aria-label="发送消息" disabled={sending || hasActiveWork || !idea.trim() || (!routeConversationId && !selectedStyleId)}>
+            <button className="agent-send-button" type="submit" aria-label="发送消息" disabled={sending || hasActiveWork || !idea.trim()}>
               {sending || creatingConversation ? <Loader2 className="spin" size={18} /> : <ArrowUpRight size={18} />}
             </button>
           </form>
           <div className="agent-composer-note">
             <span>Enter 发送 · Shift + Enter 换行</span>
-            <span>{hasActiveWork ? "Agent 正在执行当前任务，你可以继续准备下一条草稿" : selectedStyle ? `已选择真实风格：${selectedStyle.name}` : routeConversationId ? "可继续与 Agent 交流；新建漫画时请重新选择风格" : "发送前请选择一个真实风格"}</span>
+            <span>
+              {hasActiveWork
+                ? "Agent 正在执行当前任务，你可以继续准备下一条草稿"
+                : selectedTaskRef
+                  ? "已进入同一任务续作上下文；本阶段只读并提供修改建议"
+                  : selectedStyleName
+                    ? `将使用真实风格：${selectedStyleName}`
+                    : selectedResources.length > 0
+                      ? "未选择风格，将只讨论已引用资源，不会生成图片"
+                      : "无资源时进行普通创作讨论，不会生成图片"}
+            </span>
           </div>
           {error ? <p className="error agent-composer-error">{error}</p> : null}
         </footer>
@@ -1767,6 +2164,9 @@ function AgentView({
           error={inspectorError}
           selectedPanelId={selectedInspectorPanelId}
           onSelectPanel={setSelectedInspectorPanelId}
+          onReferenceTask={referenceTask}
+          onReferencePanel={referencePanel}
+          onReferenceImage={referenceImage}
           onRetry={() => void loadInspector(routeConversationId, routeTaskId)}
           onClose={closeTaskInspector}
         />
