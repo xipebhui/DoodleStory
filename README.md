@@ -27,6 +27,23 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 
 默认后端启动在 `http://127.0.0.1:8000`，前端启动在 `http://127.0.0.1:3000`。日志默认写入 `/tmp/doodlestory-backend.log` 和 `/tmp/doodlestory-frontend.log`。
 
+Agent MLflow tracing 默认关闭。需要本地观测时，在 `.env` 显式配置：
+
+```text
+MLFLOW_TRACING_ENABLED=true
+MLFLOW_TRACKING_URI=sqlite:///./mlflow.db
+MLFLOW_EXPERIMENT_NAME=doodlestory-agent-local
+MLFLOW_TRACE_CONTENT=false
+```
+
+启用时 Tracking URI 与 Experiment 必须有效，否则后端启动明确失败。默认 `MLFLOW_TRACE_CONTENT=false` 只记录 Run/Step ID、Provider、模型、attempt、fallback、延迟、usage 和状态，不记录用户正文、完整 Prompt、图片 URL、密钥或 Provider 原始响应。创建受控本地 smoke 前需准备一个已有用户，然后运行：
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python scripts/agent-mlflow-smoke.py \
+  --owner-email "<existing-user@example.com>" \
+  --scenario primary_success
+```
+
 ## Docker / Coolify 部署
 
 仓库提供生产 `Dockerfile` 和 Coolify Compose 示例：

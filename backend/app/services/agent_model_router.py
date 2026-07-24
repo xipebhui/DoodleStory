@@ -14,6 +14,7 @@ from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 
 from app.core.config import Settings, get_settings
 from app.schemas.agent import ComicPlan
+from app.services.agent_observability import agent_span, set_span_result, set_span_status
 
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class AgentModelRoutingError(RuntimeError):
 
 
 class AgentModelAttemptObserver(Protocol):
-    async def attempt_started(self, route: AgentModelRoute) -> None: ...
+    async def attempt_started(self, route: AgentModelRoute) -> str | None: ...
 
     async def attempt_succeeded(
         self,
@@ -418,21 +419,13 @@ class AgentModelRouter:
         observer: AgentModelAttemptObserver,
         invoke,
     ) -> tuple[AgentModelResult | None, AgentModelFailure | None]:
-        await observer.attempt_started(route)
-        started = time.perf_counter()
-        try:
-            result = await invoke(config, route, input_items)
-        except Exception as exc:  # noqa: BLE001
-            failure = classify_agent_model_error(
-                exc,
-                secrets=(self.primary.api_key, self.fallback.api_key),
-            )
-            latency_ms = round((time.perf_counter() - started) * 1000)
-            await observer.attempt_failed(route, failure, latency_ms)
-            return None, failure
-        latency_ms = round((time.perf_counter() - started) * 1000)
-        await observer.attempt_succeeded(route, result, latency_ms)
-        return result, None
+        return await self._execute_attempt(
+            config=config,
+            route=route,
+            input_items=input_items,
+            observer=observer,
+            invoke=invoke,
+        )
 
     async def _run_specialized(
         self,
@@ -502,33 +495,85 @@ class AgentModelRouter:
         input_items: list[dict[str, Any]],
         observer: AgentModelAttemptObserver,
     ) -> tuple[AgentModelResult | None, AgentModelFailure | None]:
-        await observer.attempt_started(route)
-        started = time.perf_counter()
-        try:
-            result = await self._invoke(config, route, input_items)
-        except Exception as exc:  # noqa: BLE001
-            failure = classify_agent_model_error(
-                exc,
-                secrets=(self.primary.api_key, self.fallback.api_key),
-            )
+        return await self._execute_attempt(
+            config=config,
+            route=route,
+            input_items=input_items,
+            observer=observer,
+            invoke=self._invoke,
+        )
+
+    async def _execute_attempt(
+        self,
+        *,
+        config: AgentProviderConfig,
+        route: AgentModelRoute,
+        input_items: list[dict[str, Any]],
+        observer: AgentModelAttemptObserver,
+        invoke,
+    ) -> tuple[AgentModelResult | None, AgentModelFailure | None]:
+        run_id = getattr(observer, "run_id", None)
+        with agent_span(
+            "agent.model_call",
+            agent_run_id=run_id,
+            span_type="CHAT_MODEL",
+            attributes={
+                "provider": route.provider,
+                "model": route.model,
+                "api_shape": route.api_shape,
+                "attempt": route.attempt,
+                "fallback_from": route.fallback_from,
+                "fallback_reason": route.fallback_reason,
+            },
+        ) as span:
+            step_id = await observer.attempt_started(route)
+            set_span_result(span, {"agent_step_id": step_id})
+            started = time.perf_counter()
+            try:
+                result = await invoke(config, route, input_items)
+            except Exception as exc:  # noqa: BLE001
+                failure = classify_agent_model_error(
+                    exc,
+                    secrets=(self.primary.api_key, self.fallback.api_key),
+                )
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                await observer.attempt_failed(route, failure, latency_ms)
+                set_span_result(
+                    span,
+                    {
+                        "latency_ms": latency_ms,
+                        "result_status": "failed",
+                        "error_code": failure.code,
+                        "error_summary": failure.safe_message,
+                    },
+                )
+                set_span_status(span, "ERROR", agent_run_id=run_id)
+                logger.warning(
+                    "agent_model_attempt_failed provider=%s model=%s api_shape=%s attempt=%s "
+                    "retryable=%s status_code=%s error_code=%s internal_error_ref=%s",
+                    route.provider,
+                    route.model,
+                    route.api_shape,
+                    route.attempt,
+                    failure.retryable,
+                    failure.status_code,
+                    failure.code,
+                    failure.internal_error_ref,
+                )
+                return None, failure
             latency_ms = round((time.perf_counter() - started) * 1000)
-            await observer.attempt_failed(route, failure, latency_ms)
-            logger.warning(
-                "agent_model_attempt_failed provider=%s model=%s api_shape=%s attempt=%s "
-                "retryable=%s status_code=%s error_code=%s internal_error_ref=%s",
-                route.provider,
-                route.model,
-                route.api_shape,
-                route.attempt,
-                failure.retryable,
-                failure.status_code,
-                failure.code,
-                failure.internal_error_ref,
+            await observer.attempt_succeeded(route, result, latency_ms)
+            set_span_result(
+                span,
+                {
+                    "latency_ms": latency_ms,
+                    "result_status": "succeeded",
+                    "provider_request_id": result.provider_request_id,
+                    **result.usage,
+                },
             )
-            return None, failure
-        latency_ms = round((time.perf_counter() - started) * 1000)
-        await observer.attempt_succeeded(route, result, latency_ms)
-        return result, None
+            set_span_status(span, "OK", agent_run_id=run_id)
+            return result, None
 
     async def run(
         self,

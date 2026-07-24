@@ -1,6 +1,6 @@
 # Agent 漫画 V1 新窗口实施交接
 
-> 状态更新（2026-07-24）：Sprint 105–108、110–111 已 Complete；Sprint 109 Draft 已 Superseded。当前没有 Active 合同；Sprint 112 保持 Planned，必须由用户确认后再激活，后续 Sprint 继续逐个完成和验收。
+> 状态更新（2026-07-24）：Sprint 105–108、110–111 已 Complete；Sprint 109 Draft 已 Superseded。Sprint 112 已由用户激活并完成实现、自动化与两类真实 smoke，但火苗 `gpt-5.5` 直接成功 smoke 最终被上游 403 `Personal access token owner is inactive` 阻塞，合同保持 Active；Sprint 113 不得提前激活。
 
 ## 1. 仓库与分支
 

@@ -95,7 +95,11 @@ class AgentRunnerRecoveryTests(unittest.TestCase):
         agent_runner._active_run_ids.clear()
         agent_runner._active_run_ids_lock = None
         agent_runner._agent_queue = None
-        self.settings = SimpleNamespace(agent_context_message_limit=200)
+        self.settings = SimpleNamespace(
+            agent_context_message_limit=200,
+            agent_model="gpt-5.5",
+            app_env="test",
+        )
 
     def create_run(self, *, status: AgentRunStatus = AgentRunStatus.queued):
         with self.Session() as db:

@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     agent_retry_backoff_seconds: float = Field(default=0.5, ge=0)
     agent_worker_concurrency: int = Field(default=1, ge=1)
     agent_context_message_limit: int = Field(default=200, ge=1, le=1000)
+    mlflow_tracing_enabled: bool = False
+    mlflow_tracking_uri: str = ""
+    mlflow_experiment_name: str = "doodlestory-agent-local"
+    mlflow_trace_content: bool = False
     character_extraction_temperature: float = 0.1
     prompt_trace_log_max_chars: int = 60000
     image_provider: str = "qy"

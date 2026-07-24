@@ -1,0 +1,68 @@
+{
+  "executed_at": "2026-07-24",
+  "versions": {
+    "mlflow": "3.14.0",
+    "openai": "2.45.0",
+    "openai_agents": "0.18.3"
+  },
+  "tracking_backend": "local_sqlite",
+  "experiment": "doodlestory-agent-smoke",
+  "trace_content_enabled": false,
+  "cases": [
+    {
+      "scenario": "primary_success",
+      "agent_run_id": "2e03699d9d85438f8e140547dec98f79",
+      "trace_id": "tr-231e10f6b023658d4d552b509ea4a122",
+      "span_count": 11,
+      "providers": ["huomiao", "huomiao", "lio"],
+      "fallback": true,
+      "run_status": "succeeded",
+      "result": "blocked_as_primary_success",
+      "blocker": "huomiao returned auth_unavailable twice; LIO completed the business run"
+    },
+    {
+      "scenario": "primary_success_final_retry",
+      "agent_run_id": "71b2fe637de54c908a4e3581291ce7bb",
+      "trace_id": "tr-7f3c46e7688cdb327fe1cd4d896db6c3",
+      "span_count": 5,
+      "providers": ["huomiao"],
+      "fallback": false,
+      "run_status": "failed",
+      "trace_state": "ERROR",
+      "error_code": "AgentModelPermanentError",
+      "result": "blocked_as_primary_success",
+      "blocker": "huomiao returned HTTP 403 because the personal access token owner is inactive"
+    },
+    {
+      "scenario": "injected_temporary_then_real_fallback",
+      "agent_run_id": "41fa00d23df045ecb919d7bd8ab59fd8",
+      "trace_id": "tr-0e1035c423a917937e74b03568a257bc",
+      "span_count": 7,
+      "providers": ["huomiao", "huomiao", "lio"],
+      "fallback": true,
+      "run_status": "succeeded",
+      "result": "passed"
+    },
+    {
+      "scenario": "injected_permanent_error",
+      "agent_run_id": "d2674f03d2cf42e29870975cf88db3a8",
+      "trace_id": "tr-716284f7d9fe7137a345ff8683fca2d4",
+      "span_count": 3,
+      "providers": ["huomiao"],
+      "fallback": false,
+      "run_status": "failed",
+      "error_code": "AgentModelPermanentError",
+      "result": "passed"
+    }
+  ],
+  "redaction_scan": {
+    "controlled_user_content_found": false,
+    "controlled_model_output_found": false,
+    "email_found": false,
+    "authorization_found": false,
+    "bearer_token_found": false,
+    "api_key_name_found": false
+  },
+  "database_schema_changed": false,
+  "overall": "partial_blocked_by_huomiao_primary_credential_owner_status"
+}

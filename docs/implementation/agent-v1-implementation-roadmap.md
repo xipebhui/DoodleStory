@@ -127,7 +127,7 @@ Sprint 111–113、115 默认不新增表。
 | Sprint | 目标 | 状态 | 数据库变化 | 正式前端 |
 | --- | --- | --- | --- | --- |
 | 111 | 独立 Agent Shell、紧凑任务卡、只读任务检查器 | Complete | 无 | 有，完整 |
-| 112 | MLflow 可观测性基线 | Planned | 默认无 | 无新功能 |
+| 112 | MLflow 可观测性基线 | Active（火苗直接成功 smoke 阻塞） | 无 | 无新功能 |
 | 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Planned | 无 | 无新功能 |
 | 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Planned | Artifact/Approval/Event | 有，方案卡与活动流 |
 | 115 | Style/Character/Task/Panel/Image Version 引用 | Planned | 默认无 | 有，真实 `@` 菜单与引用 |

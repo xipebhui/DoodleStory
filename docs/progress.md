@@ -5,12 +5,12 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 111 已于 2026-07-24 完成，正式 `/agent` 已拆为独立会话优先创作模块；真实 Conversation、Run 和两格 GenerationTask 继续作为当前可运行基线，任务卡与 AI 专属只读检查器共享同一 Task。Agent 默认模型保持 Sprint 110 的 `gpt-5.5`。Sprint 112–117 仍按 MLflow、Skill/Tool Runtime、`idea-to-comic` + HITL + SSE、结构化资源引用、Panel/VL/版本闭环和 Evaluation 顺序保持 Planned，本次未自动激活后续 Sprint。
+- 最近验证状态：Sprint 112 已于 2026-07-24 由用户激活。MLflow 3.14 官方集成兼容性 spike、生产 tracing、默认脱敏、查询 smoke 与测试已实现；受控火苗临时错误→LIO 成功和永久错误不 fallback 已通过。火苗 `gpt-5.5` 直接成功最终被上游 403 `Personal access token owner is inactive` 阻塞，合同保持 Active，Sprint 113 未激活。
 
 ## 当前 Sprint 合同
 
 - Complete：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
-- Planned：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
+- Active（火苗直接成功 smoke 阻塞）：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
 - Planned：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
 - Planned：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
 - Planned：`docs/contracts/sprint-115-agent-structured-resource-context.md`
@@ -44,6 +44,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 实施 Sprint 112 Agent MLflow 可观测性基线：锁定 `mlflow==3.14.0`，官方 autolog 已验证兼容 `openai-agents==0.18.3`、`openai==2.45.0`、自定义火苗/LIO `AsyncOpenAI` client、Responses API 和现有 `RunConfig(tracing_disabled=True)`。新增默认关闭的 MLflow 配置与启动校验、客户端 span processor 脱敏、`agent.run/model_call/tool_call/tool_wait/tool_result/finalize` 层级、`agent_run_id` 唯一查询 smoke 和结构化 `observability_error` 隔离；数据库 schema、Provider 路由、恢复和用户界面均未改变。真实 LIO 成功保留 model/usage/request ID；受控临时错误→真实 LIO fallback 与永久错误不 fallback 通过，trace 完整扫描未出现用户正文、邮箱、Authorization、密钥名或完整 URL；全量 `./scripts/check.sh` 覆盖 206 项后端测试、空库 migration 和前端生产构建并通过。火苗直接成功 smoke 最终因上游 403 `Personal access token owner is inactive` 未通过，合同保持 Active；证据见 `docs/testing/agent-mlflow-compatibility-spike.md` 和 `docs/testing/agent-mlflow-smoke-report.json`。
 
 - 完成 Sprint 111 独立 Agent Shell 与只读任务检查器：正式 `/agent` 不再渲染旧工作台侧栏或“传统构建 / AI 构建”切换，改为只包含真实新建、搜索、历史会话、用户、积分、退出和低层级传统工作台入口的独立 Shell。真实 Agent Run 任务卡收敛为紧凑标题、状态、进度、Panel 当前图与 Run 状态，并新增 `/agent/{conversation_id}/tasks/{task_id}` AI 专属只读检查器；检查器支持稳定 URL、刷新/前进/后退、只读 Panel 选择、真实当前图片与最多 20 个版本摘要、明确读取错误、焦点陷阱及关闭后草稿/滚动/触发焦点恢复。后端新增 Conversation→AgentRun→GenerationTask owner 三层鉴权读取 API，普通用户、其他用户、Admin、未关联 Task 与跨 owner Task 权限均有测试，旧 `/tasks` 保持不变。Agent API 6 项、Agent 路由 3 项、前端生产构建、Python compileall、`git diff --check` 和 `./scripts/check.sh` 全部通过；全量检查覆盖 198 项后端测试和空库迁移。1440×900、1280×800 真实浏览器与有效认证 0 console error / 0 warning 通过，证据见 `docs/testing/agent-independent-shell-readonly-inspector-browser-report.json`。未实现 Mock、旧任务详情跳转、资源引用、Panel 写操作、VL、Skill、MLflow、SSE、HITL、Memory、TTS 或 Remotion。
 

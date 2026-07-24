@@ -10,6 +10,7 @@ from app.models.entities import (
     AgentMessage,
     AgentRun,
     AgentStep,
+    CreditTransaction,
     GeneratedImage,
     GenerationStep,
     GenerationTask,
@@ -37,6 +38,11 @@ from app.models.enums import (
 )
 from app.schemas.agent import AgentResourceKind, AgentResourceRef, ComicPlan
 from app.services.image_generation import ImageProviderConfigError
+from app.services.agent_observability import (
+    agent_span,
+    safe_idempotency_digest,
+    set_span_result,
+)
 from app.services.style_references import snapshot_task_style_reference_images
 
 
@@ -159,6 +165,7 @@ def create_comic_task_and_image_tools(
     )
     db.add(generation_step)
 
+    tool_trace_records: list[dict[str, object]] = []
     for order, planned_panel in enumerate(plan.panels, start=1):
         panel = TaskPanel(
             task_id=task.id,
@@ -224,6 +231,19 @@ def create_comic_task_and_image_tools(
         db.flush()
         tool_step.output_ref = _json({"status": "queued", "image_job_id": image.id})
         tool_step.finished_at = datetime.utcnow()
+        tool_trace_records.append(
+            {
+                "tool_name": "generate_image",
+                "agent_step_id": tool_step.id,
+                "idempotency_digest": safe_idempotency_digest(tool_key),
+                "task_id": task.id,
+                "panel_id": panel.id,
+                "image_job_id": image.id,
+                "tool_status": "queued",
+                "image_call_count": 1,
+                "credit_change": 0,
+            }
+        )
 
     run.task_id = task.id
     run.status = AgentRunStatus.waiting_for_tool
@@ -250,6 +270,14 @@ def create_comic_task_and_image_tools(
         )
     )
     db.commit()
+    for attributes in tool_trace_records:
+        with agent_span(
+            "agent.tool_call",
+            agent_run_id=run.id,
+            span_type="TOOL",
+            attributes=attributes,
+        ):
+            pass
     db.refresh(task)
     return task
 
@@ -277,6 +305,19 @@ def checkpoint_image_tool_results(db: Session, run: AgentRun) -> list[dict[str, 
         ).all()
     }
     outputs: list[dict[str, object]] = []
+    tool_result_trace_records: list[tuple[dict[str, object], dict[str, object]]] = []
+    credit_changes = {
+        image_id: amount
+        for image_id, amount in db.execute(
+            select(
+                CreditTransaction.generated_image_id,
+                func.coalesce(func.sum(CreditTransaction.amount), 0),
+            )
+            .where(CreditTransaction.generated_image_id.in_([image.id for image in images]))
+            .group_by(CreditTransaction.generated_image_id)
+        ).all()
+        if image_id is not None
+    }
     for index, image in enumerate(images, start=1):
         if image.status == GeneratedImageStatus.succeeded and image.asset_id:
             output: dict[str, object] = {
@@ -297,21 +338,39 @@ def checkpoint_image_tool_results(db: Session, run: AgentRun) -> list[dict[str, 
         outputs.append(output)
         result_key = f"agent:{run.id}:generate_image:panel-{index}:result"
         if result_key not in existing_results:
-            db.add(
-                AgentStep(
-                    run_id=run.id,
-                    sequence=_next_step_sequence(db, run.id),
-                    step_type=AgentStepType.tool_result,
-                    status=AgentStepStatus.succeeded,
-                    attempt=1,
-                    idempotency_key=result_key,
-                    input_ref=_json({"image_job_id": image.id}),
-                    output_ref=_json(output),
-                    started_at=datetime.utcnow(),
-                    finished_at=datetime.utcnow(),
+            result_step = AgentStep(
+                run_id=run.id,
+                sequence=_next_step_sequence(db, run.id),
+                step_type=AgentStepType.tool_result,
+                status=AgentStepStatus.succeeded,
+                attempt=1,
+                idempotency_key=result_key,
+                input_ref=_json({"image_job_id": image.id}),
+                output_ref=_json(output),
+                started_at=datetime.utcnow(),
+                finished_at=datetime.utcnow(),
+            )
+            db.add(result_step)
+            db.flush()
+            tool_result_trace_records.append(
+                (
+                    {
+                        "tool_name": "generate_image",
+                        "agent_step_id": result_step.id,
+                        "idempotency_digest": safe_idempotency_digest(result_key),
+                        "task_id": run.task_id,
+                        "panel_id": image.panel_id,
+                        "image_job_id": image.id,
+                        "tool_status": output["status"],
+                        "image_call_count": 1,
+                        "credit_change": credit_changes.get(image.id, 0),
+                    },
+                    {
+                        "provider_request_id": image.provider_request_id,
+                        "error_code": image.error_code,
+                    },
                 )
             )
-            db.flush()
 
     wait_step = db.scalar(
         select(AgentStep).where(
@@ -326,4 +385,12 @@ def checkpoint_image_tool_results(db: Session, run: AgentRun) -> list[dict[str, 
         wait_step.finished_at = datetime.utcnow()
     run.status = AgentRunStatus.running
     db.commit()
+    for attributes, result_attributes in tool_result_trace_records:
+        with agent_span(
+            "agent.tool_result",
+            agent_run_id=run.id,
+            span_type="TOOL",
+            attributes=attributes,
+        ) as span:
+            set_span_result(span, result_attributes)
     return outputs

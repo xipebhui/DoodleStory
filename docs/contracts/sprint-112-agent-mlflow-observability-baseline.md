@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned。只有 Sprint 111 Complete 后才能激活。
+Active。2026-07-24 已由用户确认激活；兼容性 spike、生产 tracing、脱敏、查询 smoke 和自动化测试已实现。火苗 `gpt-5.5` 直接成功证据最终被上游 403 `Personal access token owner is inactive` 阻塞，因此尚不能标记 Complete。
 
 ## Goal
 
@@ -34,6 +34,16 @@ Spike 至少验证：
 5. trace ID 如何稳定取得并用 `agent_run_id` 检索。
 
 如果官方集成不能可靠捕获当前 SDK 路径，必须在合同中记录结论并暂停评审；不得偷偷换成另一套 APM、假 trace 或无声手工日志兜底。
+
+### 2026-07-24 spike 结论
+
+- `mlflow==3.14.0` 官方 OpenAI autolog 可以捕获 `openai-agents==0.18.3` 经自定义 `AsyncOpenAI/base_url` 发出的 Responses 调用。
+- `RunConfig(tracing_disabled=True)` 不阻断 MLflow 捕获。
+- LIO 真实成功路径保留 model、usage 和 provider request ID。
+- 当前业务 Tool/等待不通过 Agents SDK function tool 执行，必须在既有 `AgentStep` 边界显式建 span。
+- `agent_run_id` 根 trace tag 可以稳定唯一检索，不需要新增 `mlflow_trace_id` 列。
+- 轻量 `mlflow-tracing` / `mlflow-skinny` 不能同时满足本地 SQL 查询和 OpenAI autolog，依赖锁定完整 `mlflow==3.14.0`。
+- 详细证据见 `docs/testing/agent-mlflow-compatibility-spike.md`。
 
 ## In scope
 

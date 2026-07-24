@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import contextmanager
 import json
 from types import SimpleNamespace
 import unittest
@@ -31,7 +33,7 @@ from app.models.enums import (
     StyleStatus,
 )
 from app.schemas.agent import ComicPlan
-from app.services import task_worker
+from app.services import agent_runner, task_worker
 from app.services.agent_comic_creation import (
     checkpoint_image_tool_results,
     create_comic_task_and_image_tools,
@@ -222,6 +224,51 @@ class AgentComicCreationTests(unittest.TestCase):
             image = db.get(GeneratedImage, image_id)
             self.assertEqual(GeneratedImageStatus.failed, image.status)
             self.assertEqual("InsufficientCreditsError", image.error_code)
+
+    def test_tool_call_wait_and_result_spans_keep_stable_database_ids(self) -> None:
+        recorded: list[tuple[str, dict[str, object]]] = []
+
+        class FakeSpan:
+            def __init__(self, attributes):
+                self.attributes = attributes
+
+            def set_attribute(self, key, value):
+                self.attributes[key] = value
+
+        @contextmanager
+        def record_span(name, *, attributes, **kwargs):
+            copied = dict(attributes)
+            recorded.append((name, copied))
+            yield FakeSpan(copied)
+
+        with (
+            patch("app.services.agent_comic_creation.agent_span", side_effect=record_span),
+            patch("app.services.agent_runner.agent_span", side_effect=record_span),
+            patch("app.services.agent_runner.database.SessionLocal", self.Session),
+        ):
+            task_id = self.create_task()
+            with self.Session() as db:
+                images = db.scalars(
+                    select(GeneratedImage).where(GeneratedImage.task_id == task_id)
+                ).all()
+                for image in images:
+                    image.status = GeneratedImageStatus.failed
+                    image.error_code = "InjectedImageFailure"
+                db.commit()
+            outputs = asyncio.run(agent_runner._wait_for_image_tools(self.run_id))
+
+        self.assertEqual(["failed", "failed"], [output["status"] for output in outputs])
+        names = [name for name, _ in recorded]
+        self.assertEqual(2, names.count("agent.tool_call"))
+        self.assertEqual(1, names.count("agent.tool_wait"))
+        self.assertEqual(2, names.count("agent.tool_result"))
+        for name, attributes in recorded:
+            if name in {"agent.tool_call", "agent.tool_result"}:
+                self.assertTrue(attributes["agent_step_id"])
+                self.assertTrue(attributes["task_id"])
+                self.assertTrue(attributes["panel_id"])
+                self.assertTrue(attributes["image_job_id"])
+                self.assertNotIn("agent:", str(attributes["idempotency_digest"]))
 
 
 if __name__ == "__main__":

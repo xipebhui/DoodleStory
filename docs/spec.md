@@ -225,6 +225,8 @@
 - `@风格/@角色/@任务/@Panel/@图片版本` 是用户显式选择的结构化上下文。Runtime 必须在消息入队前完成所有权、状态、父子关系与组合校验，并用数据库规范数据覆盖客户端 display name。引用已有 Task 表示继续同一个 GenerationTask，不创建新任务；引用 Character 必须真实进入任务角色快照和图片参考链路。
 - Panel 修改只为目标 Panel 创建新的 GeneratedImage 版本；恢复历史版本只切换 `is_current`，不调用图片 Provider、不扣积分。`inspect_image` 提供真实视觉证据，单个用户修改 Turn 最多自动创建一个额外版本；VL 失败、预算耗尽或需要判断时进入 `waiting_for_input`，不允许无限自动循环。
 - MLflow 只承担 Agent/Skill/Tool/Provider/Approval 的观测和 Evaluation 输入，DoodleStory 数据库仍是业务状态、恢复与权限事实来源。默认不记录用户全文、完整 Prompt、图片 URL、API key 或 Provider 原始响应。
+- Agent MLflow 基线锁定 `mlflow==3.14.0`。默认 `MLFLOW_TRACING_ENABLED=false`，关闭时不导入 MLflow、不连接 Tracking URI；启用时 URI 与 Experiment 必须在启动阶段验证。每个 Agent Run 使用 `agent_run_id` 根 trace tag 唯一检索，模型 attempt、Tool Call、图片等待、Tool Result 和 finalize 作为同一 trace 的子 span；不新增 MLflow trace 数据库列，不用 trace 驱动恢复、权限、预算或取消。
+- `MLFLOW_TRACE_CONTENT=false` 时，MLflow span processor 在客户端导出前覆盖 inputs/outputs，并拒绝 Prompt、消息正文、完整 URL、内部路径、Authorization 和已配置密钥。观测初始化或运行时上报错误必须记录明确 `observability_error`；上报错误不能回滚已经提交的图片、消息、积分或 Agent Run 业务状态。
 - Agent 漫画 V1 完成 Sprint 117 Evaluation 并得到 `GO_INTERNAL` 前，不实现用户维度 Memory、用户自定义 Skill、抠图、Remotion、文字转语音或视频解说。后续多媒体能力应新增原子 Tool，再由新 Skill 组合，不预建通用媒体 Workflow。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
@@ -296,7 +298,7 @@
 
 ## 未决问题
 
-- MLflow 官方 OpenAI Agents 集成对当前 `openai-agents==0.18.3`、自定义火苗/LIO client 和 base URL 的字段捕获是否完整；Sprint 112 必须先做真实兼容性 spike。
+- 火苗 `gpt-5.5` 在 2026-07-24 最终复测返回 HTTP 403 `Personal access token owner is inactive`；需要在火苗凭据 owner 恢复后补齐 Sprint 112 火苗直接成功 trace，才能将合同标记 Complete。
 - Sprint 117 第一轮真实 Evaluation 得到 baseline 后，质量、延迟、成本和 fallback 告警阈值应设为多少。
 - 风格除了名称、描述、参考图片、prompt、状态和生图模型名外，还需要哪些元数据？
 - 批量下载支持哪些图片格式和命名规则？
