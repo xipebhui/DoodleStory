@@ -242,7 +242,7 @@ class AgentComicCreationTests(unittest.TestCase):
             yield FakeSpan(copied)
 
         with (
-            patch("app.services.agent_comic_creation.agent_span", side_effect=record_span),
+            patch("app.services.agent_tool_runtime.agent_span", side_effect=record_span),
             patch("app.services.agent_runner.agent_span", side_effect=record_span),
             patch("app.services.agent_runner.database.SessionLocal", self.Session),
         ):

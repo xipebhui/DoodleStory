@@ -210,7 +210,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Agent V1 新窗口实施交接](docs/implementation/agent-v1-new-window-handoff.md)
 - [已完成：Sprint 111 独立 Agent Shell 与只读任务检查器](docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md)
 - [Complete：Sprint 112 Agent MLflow 可观测性基线](docs/contracts/sprint-112-agent-mlflow-observability-baseline.md)
-- [Planned：Sprint 113 通用 Skill / Tool Runtime 基础](docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md)
+- [已完成：Sprint 113 通用 Skill / Tool Runtime 基础](docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md)
 - [Planned：Sprint 114 idea-to-comic Skill、方案确认与真实事件流](docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md)
 - [Planned：Sprint 115 结构化资源引用与同一任务续作](docs/contracts/sprint-115-agent-structured-resource-context.md)
 - [Planned：Sprint 116 Panel 版本操作、VL 检查与任务控制](docs/contracts/sprint-116-agent-panel-version-vl-loop.md)

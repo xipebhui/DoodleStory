@@ -73,6 +73,10 @@ class AgentCheckpointError(RuntimeError):
     pass
 
 
+class AgentRunCancelled(RuntimeError):
+    pass
+
+
 def _next_step_sequence(db: Session, run_id: str) -> int:
     maximum = db.scalar(select(func.max(AgentStep.sequence)).where(AgentStep.run_id == run_id))
     return int(maximum or 0) + 1
@@ -361,6 +365,11 @@ def prepare_agent_run(run_id: str) -> str | None:
         run = db.get(AgentRun, run_id)
         if run is None or run.status in TERMINAL_RUN_STATUSES:
             return None
+        if run.status == AgentRunStatus.cancel_requested:
+            run.status = AgentRunStatus.cancelled
+            run.finished_at = datetime.utcnow()
+            db.commit()
+            return None
         successful_step = _successful_model_step(db, run.id, "text")
         if successful_step is not None:
             return _assistant_content_from_step(successful_step)
@@ -422,7 +431,11 @@ async def _wait_for_image_tools(run_id: str) -> list[dict[str, object]]:
                 if run is None:
                     raise AgentCheckpointError("Agent Run 不存在")
                 if run.status in {AgentRunStatus.cancel_requested, AgentRunStatus.cancelled}:
-                    raise AgentCheckpointError("Agent Run 已取消")
+                    if run.status == AgentRunStatus.cancel_requested:
+                        run.status = AgentRunStatus.cancelled
+                        run.finished_at = datetime.utcnow()
+                        db.commit()
+                    raise AgentRunCancelled("Agent Run 已取消")
                 if not wait_metadata_recorded:
                     wait_step = db.scalar(
                         select(AgentStep).where(
@@ -610,6 +623,8 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                     message=str(exc),
                     internal_error_ref="AgentComicCreationError",
                 )
+            except AgentRunCancelled:
+                logger.info("agent_run_cancelled run_id=%s", run_id)
             except AgentCheckpointError:
                 logger.error("agent_checkpoint_error run_id=%s", run_id)
                 fail_agent_run(

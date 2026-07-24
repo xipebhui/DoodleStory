@@ -13,6 +13,7 @@ from app.services.task_worker import init_task_queue, recover_queued_tasks, shut
 from app.services.video_task_worker import init_video_task_queue, recover_video_tasks, shutdown_video_task_queue
 from app.services.agent_runner import init_agent_queue, recover_agent_runs, shutdown_agent_queue
 from app.services.agent_observability import initialize_agent_observability
+from app.services.agent_skill_registry import initialize_runtime_skill_registry
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup() -> None:
+        initialize_runtime_skill_registry()
         initialize_agent_observability(settings)
         content_extractions.recover_interrupted_content_extractions()
         styles.recover_interrupted_style_tests()

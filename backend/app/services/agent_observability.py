@@ -82,6 +82,8 @@ def sanitize_trace_value(
     field_name: str = "",
 ) -> Any:
     lowered = field_name.lower()
+    if lowered == "content_hash" and isinstance(value, str):
+        return _safe_text(value)
     if lowered.endswith("_request_id") and isinstance(value, str):
         return _safe_text(value)
     if (lowered.endswith("_tokens") or lowered == "requests") and isinstance(

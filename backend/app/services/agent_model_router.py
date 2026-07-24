@@ -1,25 +1,38 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 from dataclasses import dataclass
+import hashlib
 import logging
 import re
 import time
 from typing import Any, Protocol
 
-from agents import Agent, ModelSettings, RunConfig, Runner
+from agents import Agent, ModelSettings, RunConfig, Runner, function_tool
 from agents.model_settings import ModelRetrySettings
 from agents.models.openai_provider import OpenAIProvider
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
 
+from app.core import database
 from app.core.config import Settings, get_settings
+from app.models.entities import AgentRun
 from app.schemas.agent import ComicPlan
 from app.services.agent_observability import agent_span, set_span_result, set_span_status
+from app.services.agent_skill_registry import get_runtime_skill_registry
+from app.services.agent_tool_runtime import (
+    GenericToolExecutor,
+    create_default_tool_registry,
+)
 
 
 logger = logging.getLogger(__name__)
 API_SHAPE = "responses"
 MAX_SAFE_ERROR_CHARS = 500
+_current_agent_run_id: ContextVar[str | None] = ContextVar(
+    "current_agent_run_id",
+    default=None,
+)
 
 
 @dataclass(frozen=True)
@@ -270,15 +283,57 @@ class AgentModelRouter:
         )
         return OpenAIProvider(openai_client=client, use_responses=True)
 
+    @staticmethod
+    def _skill_catalog_instructions() -> str:
+        return get_runtime_skill_registry().catalog_instructions()
+
+    @staticmethod
+    def _load_skill_tool(run_id: str):
+        @function_tool(
+            name_override="load_skill",
+            description_override=(
+                "按精确 Skill name 加载一个已注册 Runtime Skill 的完整说明。"
+                "不能传入路径、URL 或未注册名称。"
+            ),
+            use_docstring_info=False,
+            strict_mode=True,
+        )
+        async def load_skill(skill_name: str) -> dict[str, Any]:
+            with database.SessionLocal() as db:
+                run = db.get(AgentRun, run_id)
+                if run is None:
+                    raise RuntimeError("Agent Run 不存在")
+                result = GenericToolExecutor(
+                    create_default_tool_registry()
+                ).execute(
+                    db,
+                    run=run,
+                    tool_name="load_skill",
+                    arguments={"skill_name": skill_name},
+                    idempotency_key=(
+                        f"agent:{run.id}:load_skill:"
+                        f"{hashlib.sha256(skill_name.encode('utf-8')).hexdigest()[:24]}"
+                    ),
+                )
+                if result.output is None:
+                    raise RuntimeError("load_skill 没有返回完整结果")
+                return result.output
+
+        return load_skill
+
     async def _invoke(self, config: AgentProviderConfig, route: AgentModelRoute, input_items: list[dict[str, Any]]) -> AgentModelResult:
+        run_id = _current_agent_run_id.get()
         agent = Agent(
             name="ComicDirectorAgent",
             instructions=(
                 "你是 DoodleStory 的漫画导演 Agent。本阶段只理解用户意图并提供清晰的文本回答。"
-                "不要调用工具，不要声称已经生成图片、任务、分镜或其他资源；当用户要求执行这些能力时，"
-                "明确说明当前回合只能讨论和整理创作需求。不要输出内部思维过程。"
+                "只有当用户的讨论确实需要某个 catalog 方法时才调用 load_skill；不得自动选择 Skill，"
+                "也不要声称已经生成图片、任务、分镜或其他资源。当用户要求执行这些能力时，"
+                "明确说明当前回合只能讨论和整理创作需求。不要输出内部思维过程。\n"
+                f"{self._skill_catalog_instructions()}"
             ),
             model=self.model,
+            tools=[self._load_skill_tool(run_id)] if run_id is not None else [],
             model_settings=ModelSettings(
                 retry=ModelRetrySettings(max_retries=0),
                 store=False,
@@ -325,7 +380,9 @@ class AgentModelRouter:
                 "反应或结果，不能是两个互不相关的插画。image_prompt 是将直接交给图片模型的最终单图指令，"
                 "必须完整但简洁，明确主体、动作、表情、场景、构图、光线、风格和需要准确绘制的文字；"
                 "不要解释计划，不要输出内部思维过程，不要提及旧 Pipeline。严格输出 ComicPlan schema。\n"
-                f"已鉴权风格快照：{style_context}"
+                f"已鉴权风格快照：{style_context}\n"
+                f"{self._skill_catalog_instructions()}\n"
+                "Sprint 113 不自动选择或加载 idea-to-comic，继续执行当前固定两格生产行为。"
             ),
             model=self.model,
             output_type=ComicPlan,
@@ -371,6 +428,7 @@ class AgentModelRouter:
                 "你是 DoodleStory 的漫画导演。应用上下文已经包含本轮 ComicPlan 和两次 generate_image Tool Output。"
                 "只根据这些真实状态给用户一句简洁结果说明：全部成功时说明两格漫画已完成；存在失败时明确指出"
                 "失败的格数与可见原因，绝不能把失败说成成功。不要输出内部思维过程，不要声称进行了图片检查或重试。"
+                f"\n{self._skill_catalog_instructions()}"
             ),
             model=self.model,
             model_settings=ModelSettings(
@@ -523,7 +581,11 @@ class AgentModelRouter:
             set_span_result(span, {"agent_step_id": step_id})
             started = time.perf_counter()
             try:
-                result = await invoke(config, route, input_items)
+                run_token = _current_agent_run_id.set(run_id)
+                try:
+                    result = await invoke(config, route, input_items)
+                finally:
+                    _current_agent_run_id.reset(run_token)
             except Exception as exc:  # noqa: BLE001
                 failure = classify_agent_model_error(
                     exc,

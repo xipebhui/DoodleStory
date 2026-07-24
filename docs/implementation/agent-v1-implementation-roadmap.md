@@ -128,7 +128,7 @@ Sprint 111–113、115 默认不新增表。
 | --- | --- | --- | --- | --- |
 | 111 | 独立 Agent Shell、紧凑任务卡、只读任务检查器 | Complete | 无 | 有，完整 |
 | 112 | MLflow 可观测性基线 | Complete | 无 | 无新功能 |
-| 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Planned | 无 | 无新功能 |
+| 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Complete | 无 | 无新功能 |
 | 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Planned | Artifact/Approval/Event | 有，方案卡与活动流 |
 | 115 | Style/Character/Task/Panel/Image Version 引用 | Planned | 默认无 | 有，真实 `@` 菜单与引用 |
 | 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Planned | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
@@ -215,6 +215,15 @@ Sprint 111–113、115 默认不新增表。
 - Tool 副作用先持久化、可等待、可恢复、可幂等重放。
 - 当前真实两格行为无回归。
 - 没有引入 Workflow DSL 或新基础设施。
+
+### 完成结果
+
+2026-07-24 已通过全部退出门槛。服务启动扫描受控 Runtime Skill 目录，基础
+instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间进入 AgentStep
+和 MLflow。代码级 Tool Registry 与 Generic Tool Executor 统一执行严格 schema、
+权限、预算、call-before-effect、等待、结果 checkpoint、重放和取消门禁。当前固定两格
+仍使用旧规划入口，但两个真实图片 job 已通过统一 `generate_image` adapter 创建并复用
+既有图片 worker/积分链路。未新增表、Workflow DSL、外部队列或正式 Skill 流程切换。
 
 ## 9. Sprint 114：第一条真正 Skill 驱动的创作链路
 

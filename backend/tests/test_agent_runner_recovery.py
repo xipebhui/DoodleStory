@@ -231,6 +231,21 @@ class AgentRunnerRecoveryTests(unittest.TestCase):
         self.assertEqual(queued_id, queue.get_nowait())
         self.assertNotEqual(succeeded_id, queued_id)
 
+    def test_cancel_requested_run_reaches_cancelled_without_model_or_side_effect(self):
+        run_id, _, _ = self.create_run(status=AgentRunStatus.cancel_requested)
+        router = ExplodingRouter()
+
+        self.process(run_id, router)
+
+        with self.Session() as db:
+            run = db.get(AgentRun, run_id)
+            step_count = db.scalar(
+                select(func.count(AgentStep.id)).where(AgentStep.run_id == run_id)
+            )
+        self.assertEqual(AgentRunStatus.cancelled, run.status)
+        self.assertEqual(0, router.call_count)
+        self.assertEqual(0, step_count)
+
     def test_temporary_failures_checkpoint_retry_and_fallback_with_one_final_answer(self):
         run_id, conversation_id, turn_id = self.create_run()
         router = fault_injection_router(

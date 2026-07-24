@@ -2,7 +2,9 @@
 
 ## Status
 
-Planned。只有 Sprint 112 Complete 后才能激活。
+Complete（2026-07-24）。Skill Registry、渐进 `load_skill`、代码级 Tool Registry、
+Generic Tool Executor、现有两格 `generate_image` adapter、恢复/幂等/取消边界和
+MLflow Skill/Tool span 已实现；没有新增数据库表或切换正式创作流程。
 
 ## Goal
 
@@ -251,6 +253,34 @@ git diff --check
 - Sprint 113 Complete 后，Sprint 114 才能把正式 Agent 切到 `idea-to-comic` Skill。
 - 完成时明确记录哪些旧硬编码入口仍在使用，不能误报已经完成业务迁移。
 - 下一 Sprint 将新增真正的方案产物、用户确认和安全事件流。
+
+## Completion record
+
+- 新增受控 `backend/app/agent_skills/` 运行时目录、格式说明与 `idea-to-comic`
+  v1 骨架。服务启动会扫描并校验 UTF-8、64 KiB 文件上限、最多 32 个 Skill、
+  目录/name、正整数版本、重复 name、符号链接与路径边界；catalog 只包含
+  `name/description/version/content_hash`。
+- 新增 `SkillRegistry` 和只读 `load_skill`。完整 `SKILL.md` 只有精确加载后才返回；
+  `skill_name/version/content_hash/loaded_at` 与完整加载结果写入 AgentStep，
+  MLflow `agent.skill_load` 只记录安全元数据，默认脱敏 trace 不含 Skill 正文。
+- 新增严格 Pydantic schema 的 `ToolDefinition`、`ToolRegistry`、`RuntimeContext` 和
+  `GenericToolExecutor`。模型参数不能携带 Session、用户 ID、Provider、密钥、预算或
+  幂等键；未注册 Tool、额外参数、越权 Panel/参考图和预算超限均明确拒绝。
+- 有副作用 Tool 在 adapter 运行前提交 `tool_call` Step。等待型调用保存独立 wait
+  checkpoint；终态先写 `tool_result`，再允许 Runner 恢复。稳定幂等键会复用既有
+  call/wait/result，不重复副作用。
+- 现有固定两格入口继续使用原 `_invoke_comic_plan`，但创建图片 job 的真实副作用已经
+  收敛到统一 `generate_image` adapter。adapter 复用 `GenerationTask/TaskPanel/
+  GeneratedImage`、图片 worker、资产和积分链路；同一 Panel 首版本数据库唯一约束与
+  AgentStep 幂等 checkpoint 共同阻止重复 job 和重复扣费。
+- 取消请求在执行器副作用门禁前拒绝；Runner 领取 `cancel_requested` Run 时直接转为
+  `cancelled`，不会改回 running 或启动模型/图片调用。已开始等待的图片仍遵守现有
+  GenerationTask/图片 worker 晚到结果规则。
+- 未新增 migration、Workflow DSL、外部队列、多 Agent、用户 Skill、HITL、SSE、
+  VL、TTS、Remotion 或 Tool 管理后台。正式生产链路不会自动选择 v1 Skill；
+  完整 `idea-to-comic` 切换仍属于 Sprint 114。
+- 验证通过：Sprint 113 针对性 20 项；完整 `./scripts/check.sh` 覆盖 219 项后端测试、
+  空库 Alembic upgrade、Python compileall 与前端生产构建；`git diff --check` 通过。
 
 ## New-window start prompt
 

@@ -16,6 +16,8 @@ from app.core.database import Base
 from app.models.entities import AgentConversation, AgentMessage, AgentRun, AgentStep, User, new_id
 from app.models.enums import AgentMessageRole, AgentRunStatus, AgentStepType
 from app.services import agent_observability, agent_runner
+from app.services.agent_skill_registry import SkillRegistry
+from app.services.agent_tool_runtime import GenericToolExecutor, create_default_tool_registry
 from app.services.agent_model_router import (
     AgentModelResult,
     AgentModelRouter,
@@ -276,6 +278,66 @@ class AgentObservabilityTests(unittest.TestCase):
             run = db.get(AgentRun, run_id)
         self.assertEqual(AgentRunStatus.succeeded, run.status)
         self.assertTrue(any("observability_error" in message for message in logs.output))
+
+    def test_skill_load_span_matches_persisted_step_and_safe_metadata(self):
+        agent_observability.initialize_agent_observability(self.settings)
+        run_id = self.create_run()
+        skill_root = Path(self.temp_dir.name) / "skills"
+        skill_dir = skill_root / "idea-to-comic"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: idea-to-comic",
+                    "description: trace skill",
+                    "version: 1",
+                    "---",
+                    "",
+                    "private skill instructions",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        executor = GenericToolExecutor(
+            create_default_tool_registry(SkillRegistry(skill_root))
+        )
+
+        with (
+            patch("app.services.agent_runner.database.SessionLocal", self.Session),
+            self.Session() as db,
+        ):
+            run = db.get(AgentRun, run_id)
+            with agent_observability.agent_run_span(
+                agent_run_id=run.id,
+                conversation_id=run.conversation_id,
+                turn_id=run.turn_id,
+                task_id=None,
+                model="gpt-5.5",
+                app_environment="test",
+            ):
+                result = executor.execute(
+                    db,
+                    run=run,
+                    tool_name="load_skill",
+                    arguments={"skill_name": "idea-to-comic"},
+                    idempotency_key=f"agent:{run.id}:load_skill:idea-to-comic",
+                )
+        mlflow.flush_trace_async_logging()
+
+        trace = self.traces_for(run_id)[0]
+        skill_spans = [
+            span for span in trace.data.spans if span.name == "agent.skill_load"
+        ]
+        self.assertEqual(1, len(skill_spans))
+        self.assertEqual(
+            result.call_step_id,
+            skill_spans[0].attributes["agent_step_id"],
+        )
+        self.assertEqual("idea-to-comic", skill_spans[0].attributes["skill_name"])
+        self.assertEqual(1, skill_spans[0].attributes["skill_version"])
+        self.assertRegex(skill_spans[0].attributes["content_hash"], r"^sha256:")
+        self.assertNotIn("private skill instructions", json.dumps(trace.to_dict()))
 
 
 if __name__ == "__main__":
