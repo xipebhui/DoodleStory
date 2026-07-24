@@ -47,6 +47,44 @@ class AgentStepStatus(StrEnum):
     cancelled = "cancelled"
 
 
+class AgentArtifactType(StrEnum):
+    comic_plan = "comic_plan"
+
+
+class AgentArtifactStatus(StrEnum):
+    draft = "draft"
+    awaiting_approval = "awaiting_approval"
+    approved = "approved"
+    rejected = "rejected"
+    superseded = "superseded"
+
+
+class AgentApprovalType(StrEnum):
+    comic_plan = "comic_plan"
+
+
+class AgentApprovalStatus(StrEnum):
+    pending = "pending"
+    approved = "approved"
+    changes_requested = "changes_requested"
+    cancelled = "cancelled"
+
+
+class AgentEventType(StrEnum):
+    run_started = "run.started"
+    skill_loaded = "skill.loaded"
+    artifact_created = "artifact.created"
+    approval_requested = "approval.requested"
+    approval_resolved = "approval.resolved"
+    tool_started = "tool.started"
+    tool_progress = "tool.progress"
+    tool_completed = "tool.completed"
+    tool_failed = "tool.failed"
+    assistant_message = "assistant.message"
+    run_completed = "run.completed"
+    run_failed = "run.failed"
+
+
 class StyleStatus(StrEnum):
     draft = "draft"
     active = "active"

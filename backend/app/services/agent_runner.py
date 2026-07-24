@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -14,6 +15,8 @@ from app.core import database
 from app.core.config import get_settings
 from app.models.entities import AgentConversation, AgentMessage, AgentRun, AgentStep
 from app.models.enums import (
+    AgentApprovalStatus,
+    AgentEventType,
     AgentMessageRole,
     AgentRunStatus,
     AgentStepStatus,
@@ -43,6 +46,19 @@ from app.services.agent_comic_creation import (
     create_comic_task_and_image_tools,
     load_authorized_style,
     style_ref_from_message,
+)
+from app.services.agent_hitl import (
+    AgentApprovalError,
+    approved_comic_plan,
+    cancel_pending_approvals,
+    create_comic_plan_artifact,
+    emit_agent_event,
+    latest_comic_artifact,
+)
+from app.services.agent_tool_runtime import (
+    GenericToolExecutor,
+    build_runtime_context,
+    create_default_tool_registry,
 )
 
 
@@ -330,6 +346,20 @@ def finalize_agent_run(run_id: str, assistant_content: str) -> None:
             run.error_message = None
             run.internal_error_ref = None
             run.finished_at = datetime.utcnow()
+            emit_agent_event(
+                db,
+                run=run,
+                event_type=AgentEventType.assistant_message,
+                payload={"message_id": existing_message.id, "content": assistant_content},
+                deduplicate=True,
+            )
+            emit_agent_event(
+                db,
+                run=run,
+                event_type=AgentEventType.run_completed,
+                payload={"task_id": run.task_id, "status": "succeeded"},
+                deduplicate=True,
+            )
             db.commit()
             set_span_result(
                 span,
@@ -357,6 +387,13 @@ def fail_agent_run(run_id: str, *, code: str, message: str, internal_error_ref: 
             run.error_message = message
             run.internal_error_ref = internal_error_ref[:120]
             run.finished_at = datetime.utcnow()
+            emit_agent_event(
+                db,
+                run=run,
+                event_type=AgentEventType.run_failed,
+                payload={"error_code": code, "message": message},
+                deduplicate=True,
+            )
             db.commit()
 
 
@@ -366,6 +403,7 @@ def prepare_agent_run(run_id: str) -> str | None:
         if run is None or run.status in TERMINAL_RUN_STATUSES:
             return None
         if run.status == AgentRunStatus.cancel_requested:
+            cancel_pending_approvals(db, run)
             run.status = AgentRunStatus.cancelled
             run.finished_at = datetime.utcnow()
             db.commit()
@@ -409,8 +447,17 @@ def _latest_user_message(db: Session, run: AgentRun) -> AgentMessage:
     return message
 
 
-def _comic_plan_from_checkpoint(db: Session, run_id: str) -> ComicPlan | None:
-    step = _successful_model_step(db, run_id, "comic_plan")
+def _requested_panel_count(content: str) -> int | None:
+    match = re.search(r"(?<!\d)(\d{1,3})\s*(?:张|格|幅|页)(?:漫画|图片|图)?", content)
+    return int(match.group(1)) if match else None
+
+
+def _comic_plan_from_checkpoint(
+    db: Session,
+    run_id: str,
+    phase: str,
+) -> ComicPlan | None:
+    step = _successful_model_step(db, run_id, phase)
     if step is None:
         return None
     return ComicPlan.model_validate_json(_assistant_content_from_step(step))
@@ -485,31 +532,130 @@ async def process_comic_agent_run(
         run = db.get(AgentRun, run_id)
         if run is None:
             raise AgentCheckpointError("Agent Run 不存在")
+        emit_agent_event(
+            db,
+            run=run,
+            event_type=AgentEventType.run_started,
+            payload={"status": "running"},
+            deduplicate=True,
+        )
         user_message = _latest_user_message(db, run)
+        requested_count = _requested_panel_count(user_message.content)
+        if requested_count is not None and not 2 <= requested_count <= 8:
+            finalize_agent_run(
+                run.id,
+                "漫画方案支持 2–8 张图片。请把希望的图片数量调整到这个范围后再告诉我，我不会静默截断你的要求。",
+            )
+            return
         style_ref = style_ref_from_message(user_message)
         if style_ref is None:
             raise AgentCheckpointError("漫画创建 Run 缺少风格资源")
         style = load_authorized_style(db, style_ref.id)
         input_items = build_agent_input(db, run)
-        plan = _comic_plan_from_checkpoint(db, run.id)
         final_step = _successful_model_step(db, run.id, "comic_final")
         if final_step is not None:
             finalize_agent_run(run.id, _assistant_content_from_step(final_step))
             return
         style_context = build_style_context(style)
+        latest_artifact = latest_comic_artifact(db, run.id)
+        if (
+            latest_artifact is not None
+            and latest_artifact.approval_request is not None
+            and latest_artifact.approval_request.status == AgentApprovalStatus.pending
+        ):
+            run.status = AgentRunStatus.waiting_for_input
+            db.commit()
+            return
+        approved = approved_comic_plan(db, run)
+        if approved is not None:
+            _, plan = approved
+            needs_plan = False
+            next_version = latest_artifact.version
+        else:
+            plan = None
+            needs_plan = True
+            next_version = (latest_artifact.version + 1) if latest_artifact is not None else 1
+            executor = GenericToolExecutor(create_default_tool_registry())
+            skill_result = executor.execute(
+                db,
+                run=run,
+                tool_name="load_skill",
+                arguments={"skill_name": "idea-to-comic"},
+                idempotency_key=f"agent:{run.id}:load_skill:idea-to-comic",
+                context=build_runtime_context(db, run, image_budget_limit=8),
+            )
+            if skill_result.output is None:
+                raise AgentCheckpointError("idea-to-comic Skill 加载没有输出")
+            emit_agent_event(
+                db,
+                run=run,
+                event_type=AgentEventType.skill_loaded,
+                payload={
+                    "name": skill_result.output["name"],
+                    "version": skill_result.output["version"],
+                    "content_hash": skill_result.output["content_hash"],
+                },
+                deduplicate=True,
+            )
+            if latest_artifact is not None and latest_artifact.approval_request is not None:
+                feedback = latest_artifact.approval_request.feedback
+                input_items = [
+                    *input_items,
+                    {
+                        "role": "user",
+                        "content": (
+                            "用户要求修改上一版漫画方案。请保留未被否定的约束，生成完整新版本并再次输出"
+                            " ComicPlan。上一版方案与反馈如下：\n"
+                            f"PreviousPlan={latest_artifact.content_json}\n"
+                            f"Feedback={feedback}"
+                        ),
+                    },
+                ]
+            input_items = [
+                *input_items,
+                {
+                    "role": "user",
+                    "content": (
+                        "Runtime 已加载 idea-to-comic Skill。按 Skill 方法形成用户可确认的漫画方案；"
+                        "不要调用图片工具。"
+                    ),
+                },
+            ]
+        db.commit()
+
+    if needs_plan:
+        phase = f"comic_plan:v{next_version}"
+        with database.SessionLocal() as db:
+            plan = _comic_plan_from_checkpoint(db, run_id, phase)
+        if plan is None:
+            result = await router.run_comic_plan(
+                input_items,
+                style_context,
+                DatabaseAgentAttemptObserver(run_id, phase),
+            )
+            plan = ComicPlan.model_validate(
+                result.structured_output or json.loads(result.final_output)
+            )
+        if plan.style_ref_id != style_ref.id or plan.aspect_ratio != style_context["aspect_ratio"]:
+            raise AgentComicCreationError("模型返回的漫画方案与已鉴权风格快照不一致")
+        with database.SessionLocal() as db:
+            run = db.get(AgentRun, run_id)
+            if run is None:
+                raise AgentCheckpointError("Agent Run 不存在")
+            create_comic_plan_artifact(db, run=run, plan=plan)
+        return
 
     if plan is None:
-        result = await router.run_comic_plan(
-            input_items,
-            style_context,
-            DatabaseAgentAttemptObserver(run_id, "comic_plan"),
-        )
-        plan = ComicPlan.model_validate(result.structured_output or json.loads(result.final_output))
+        raise AgentCheckpointError("已批准漫画方案无法读取")
 
     with database.SessionLocal() as db:
         run = db.get(AgentRun, run_id)
         if run is None:
             raise AgentCheckpointError("Agent Run 不存在")
+        approved = approved_comic_plan(db, run)
+        if approved is None:
+            raise AgentApprovalError("图片生成前漫画方案批准状态失效")
+        _, plan = approved
         user_message = _latest_user_message(db, run)
         style_ref = style_ref_from_message(user_message)
         if style_ref is None:
@@ -526,7 +672,7 @@ async def process_comic_agent_run(
     tool_outputs = await _wait_for_image_tools(run_id)
     final_context = {
         "title": plan.title,
-        "summary": plan.summary,
+        "story_summary": plan.story_summary,
         "panels": [
             {"panel_key": panel.panel_key, "story_beat": panel.story_beat}
             for panel in plan.panels
@@ -538,7 +684,7 @@ async def process_comic_agent_run(
         {
             "role": "user",
             "content": (
-                "以下是应用数据库中已提交的 ComicPlan 与真实 generate_image Tool Output。"
+                "以下是应用数据库中已批准的 ComicPlan 与真实 generate_image Tool Output。"
                 "请只汇报结果，不要重新规划或生成：\n"
                 f"ResultContext={json.dumps(final_context, ensure_ascii=False)}"
             ),
@@ -593,6 +739,14 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                     run = db.get(AgentRun, run_id)
                     if run is None or run.status in TERMINAL_RUN_STATUSES:
                         return
+                    emit_agent_event(
+                        db,
+                        run=run,
+                        event_type=AgentEventType.run_started,
+                        payload={"status": "running"},
+                        deduplicate=True,
+                    )
+                    db.commit()
                     user_message = _latest_user_message(db, run)
                     style_ref = style_ref_from_message(user_message)
                     input_items = build_agent_input(db, run)
@@ -622,6 +776,13 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                     code="AgentComicCreationError",
                     message=str(exc),
                     internal_error_ref="AgentComicCreationError",
+                )
+            except AgentApprovalError as exc:
+                fail_agent_run(
+                    run_id,
+                    code="AgentApprovalError",
+                    message=str(exc),
+                    internal_error_ref="AgentApprovalError",
                 )
             except AgentRunCancelled:
                 logger.info("agent_run_cancelled run_id=%s", run_id)

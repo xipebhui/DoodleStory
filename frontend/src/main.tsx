@@ -36,11 +36,14 @@ import {
 } from "lucide-react";
 import {
   API_BASE_URL,
+  agentEventStreamUrl,
   api,
   type ActivationCode,
   type ActivationCodeCreated,
   type AgentConversation,
   type AgentConversationDetail,
+  type AgentArtifact,
+  type AgentPublicEvent,
   type AgentRunStatus,
   type AgentTaskCard,
   type AgentTaskInspector,
@@ -662,14 +665,15 @@ const activeAgentRunStatuses = new Set<AgentRunStatus>([
   "running",
   "waiting_for_tool",
   "retrying",
+  "waiting_for_input",
 ]);
 
 function agentRunStatusLabel(status: AgentRunStatus) {
   const labels: Record<AgentRunStatus, string> = {
     queued: "等待导演处理",
-    running: "正在整理两格分镜",
+    running: "正在整理漫画方案",
     waiting_for_tool: "正在生成真实图片",
-    waiting_for_input: "等待你的输入",
+    waiting_for_input: "等待你确认方案",
     paused: "已暂停",
     retrying: "模型线路重试中",
     succeeded: "本轮已完成",
@@ -681,7 +685,7 @@ function agentRunStatusLabel(status: AgentRunStatus) {
 }
 
 function agentTaskStatusLabel(status: AgentTaskCard["status"]) {
-  if (status === "succeeded") return "两格已完成";
+  if (status === "succeeded") return "漫画已完成";
   if (status === "partial_succeeded") return "部分图片失败";
   if (status === "failed") return "生成失败";
   if (status === "cancel_requested") return "取消中";
@@ -1039,6 +1043,25 @@ function AgentTaskInspectorDialog({
   );
 }
 
+function agentEventText(event: AgentPublicEvent) {
+  const panel = typeof event.payload.panel_key === "string" ? event.payload.panel_key.replace("panel-", "Panel ") : "";
+  const labels: Record<string, string> = {
+    "run.started": "Agent 开始整理这次创作",
+    "skill.loaded": "已加载 Idea 转漫画方法",
+    "artifact.created": `已生成漫画方案 v${String(event.payload.version || "")}`,
+    "approval.requested": "漫画方案等待你的确认",
+    "approval.resolved": event.payload.decision === "approve" ? "方案已批准，准备生成图片" : "已收到修改意见，正在生成新方案",
+    "tool.started": `开始生成 ${panel}`,
+    "tool.progress": `${panel} 已进入图片生成队列`,
+    "tool.completed": `${panel} 已生成`,
+    "tool.failed": `${panel} 生成失败`,
+    "assistant.message": "Agent 已汇总本轮结果",
+    "run.completed": "本轮创作已完成",
+    "run.failed": "本轮创作失败",
+  };
+  return labels[event.event_type] || "创作状态已更新";
+}
+
 function AgentView({
   user,
   creditOverview,
@@ -1062,6 +1085,12 @@ function AgentView({
   const [detail, setDetail] = useState<AgentConversationDetail | null>(null);
   const [styles, setStyles] = useState<StyleSelectOption[]>([]);
   const [selectedStyleId, setSelectedStyleId] = useState("");
+  const [artifacts, setArtifacts] = useState<AgentArtifact[]>([]);
+  const [events, setEvents] = useState<AgentPublicEvent[]>([]);
+  const [eventConnectionError, setEventConnectionError] = useState("");
+  const [eventReconnectToken, setEventReconnectToken] = useState(0);
+  const [approvalFeedback, setApprovalFeedback] = useState<Record<string, string>>({});
+  const [decidingApprovalId, setDecidingApprovalId] = useState("");
   const [idea, setIdea] = useState("");
   const [search, setSearch] = useState("");
   const [resourceSearch, setResourceSearch] = useState("");
@@ -1081,6 +1110,7 @@ function AgentView({
   const previousRouteTaskIdRef = useRef<string | null>(routeTaskId);
   const inspectorTriggerRef = useRef<HTMLButtonElement | null>(null);
   const ideaInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastEventIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     routeConversationIdRef.current = routeConversationId;
@@ -1128,6 +1158,9 @@ function AgentView({
       const result = await api.agentConversation(conversationId);
       if (routeConversationIdRef.current !== conversationId) return null;
       setDetail(result);
+      const artifactResult = await api.agentArtifacts(conversationId);
+      if (routeConversationIdRef.current !== conversationId) return null;
+      setArtifacts(artifactResult.items);
       const message = [...result.messages].reverse().find((item) => item.role !== "task_card");
       setConversationMetadata((current) => ({
         ...current,
@@ -1199,6 +1232,9 @@ function AgentView({
   useEffect(() => {
     if (!routeConversationId) {
       setDetail(null);
+      setArtifacts([]);
+      setEvents([]);
+      lastEventIdRef.current = null;
       setIdea(window.sessionStorage.getItem(agentDraftKey(newAgentDraftId, "idea")) || "");
       const draftStyleId = window.sessionStorage.getItem(agentDraftKey(newAgentDraftId, "style"));
       setSelectedStyleId(draftStyleId && styles.some((style) => style.id === draftStyleId) ? draftStyleId : "");
@@ -1213,6 +1249,49 @@ function AgentView({
     setResourceMenuOpen(false);
     void loadDetail(routeConversationId);
   }, [routeConversationId, styles]);
+
+  useEffect(() => {
+    if (!routeConversationId) return;
+    setEventConnectionError("");
+    const source = new EventSource(
+      agentEventStreamUrl(routeConversationId, lastEventIdRef.current),
+      { withCredentials: true },
+    );
+    const eventTypes = [
+      "run.started", "skill.loaded", "artifact.created", "approval.requested",
+      "approval.resolved", "tool.started", "tool.progress", "tool.completed",
+      "tool.failed", "assistant.message", "run.completed", "run.failed",
+    ];
+    const receive = (raw: Event) => {
+      const message = raw as MessageEvent<string>;
+      try {
+        const parsed = JSON.parse(message.data) as Omit<AgentPublicEvent, "id" | "event_type">;
+        const next: AgentPublicEvent = {
+          ...parsed,
+          id: message.lastEventId,
+          event_type: message.type,
+        };
+        lastEventIdRef.current = next.id;
+        setEvents((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
+        if (["artifact.created", "approval.resolved", "tool.completed", "tool.failed", "run.completed", "run.failed"].includes(next.event_type)) {
+          void loadDetail(routeConversationId, true);
+          void loadConversations();
+        }
+      } catch {
+        setEventConnectionError("活动流返回了无法读取的数据");
+      }
+    };
+    eventTypes.forEach((type) => source.addEventListener(type, receive));
+    source.onopen = () => setEventConnectionError("");
+    source.onerror = () => {
+      source.close();
+      setEventConnectionError("活动流连接已断开，方案和任务不会重复执行。");
+    };
+    return () => {
+      eventTypes.forEach((type) => source.removeEventListener(type, receive));
+      source.close();
+    };
+  }, [routeConversationId, eventReconnectToken]);
 
   useEffect(() => {
     const previousTaskId = previousRouteTaskIdRef.current;
@@ -1234,15 +1313,6 @@ function AgentView({
     detail?.runs.some((run) => activeAgentRunStatuses.has(run.status)) ||
       detail?.task_cards.some((card) => ["queued", "running", "retrying"].includes(card.status)),
   );
-
-  useEffect(() => {
-    if (!routeConversationId || !hasActiveWork) return;
-    const timer = window.setInterval(() => {
-      void loadDetail(routeConversationId, true);
-      void loadConversations();
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [routeConversationId, hasActiveWork]);
 
   useEffect(() => {
     if (detail?.runs[0]?.status === "succeeded" || detail?.runs[0]?.status === "failed") {
@@ -1273,7 +1343,7 @@ function AgentView({
 
   async function sendMessage(event: React.FormEvent) {
     event.preventDefault();
-    if (!idea.trim() || !selectedStyleId || hasActiveWork) return;
+    if (!idea.trim() || (!routeConversationId && !selectedStyleId) || hasActiveWork) return;
     const selectedStyle = styles.find((style) => style.id === selectedStyleId);
     setSending(true);
     setCreatingConversation(!routeConversationId);
@@ -1282,13 +1352,15 @@ function AgentView({
       const conversationId = routeConversationId || (await api.createAgentConversation({ title: "新漫画创作" })).id;
       await api.sendAgentMessage(conversationId, {
         content: idea,
-        resource_refs: [
-          {
-            kind: "style",
-            id: selectedStyleId,
-            display_name: selectedStyle?.name || null,
-          },
-        ],
+        resource_refs: selectedStyleId
+          ? [
+              {
+                kind: "style",
+                id: selectedStyleId,
+                display_name: selectedStyle?.name || null,
+              },
+            ]
+          : [],
       });
       setIdea("");
       const draftId = routeConversationId || newAgentDraftId;
@@ -1306,6 +1378,31 @@ function AgentView({
     } finally {
       setSending(false);
       setCreatingConversation(false);
+    }
+  }
+
+  async function decideApproval(
+    artifact: AgentArtifact,
+    decision: "approve" | "request_changes",
+  ) {
+    if (!artifact.approval) return;
+    const feedback = approvalFeedback[artifact.id]?.trim();
+    if (decision === "request_changes" && !feedback) {
+      setError("请先填写希望修改的内容");
+      return;
+    }
+    setDecidingApprovalId(artifact.approval.id);
+    setError("");
+    try {
+      await api.decideAgentApproval(artifact.approval.id, {
+        decision,
+        ...(feedback ? { feedback } : {}),
+      });
+      if (routeConversationId) await loadDetail(routeConversationId, true);
+    } catch (decisionError) {
+      setError(decisionError instanceof Error ? decisionError.message : "方案确认失败");
+    } finally {
+      setDecidingApprovalId("");
     }
   }
 
@@ -1447,7 +1544,7 @@ function AgentView({
         <header className="agent-chat-header">
           <div>
             <h2>{detail?.title || "新对话"}</h2>
-            <p>{detail ? "真实会话 · 两格漫画" : "从一个想法开始，资源可以稍后添加"}</p>
+            <p>{detail ? "真实会话 · 方案确认后生成" : "从一个想法开始，资源可以稍后添加"}</p>
           </div>
           {latestRun ? (
             <span className={`agent-run-state ${latestRun.status}`}>
@@ -1466,8 +1563,8 @@ function AgentView({
               <h2>今天想创作什么？</h2>
               <p>从一个 idea、一段故事，或者一个想重新设计的情节开始。</p>
               <div className="agent-starters">
-                <button type="button" onClick={() => fillStarter("我有一个很简单的 idea，帮我把它发展成两格漫画。")}>从一个 idea 开始 <span>→</span></button>
-                <button type="button" onClick={() => fillStarter("我有一段完整故事，帮我设计成连续的两格漫画。")}>把故事做成漫画 <span>→</span></button>
+                <button type="button" onClick={() => fillStarter("我有一个很简单的 idea，帮我把它发展成连续漫画。")}>从一个 idea 开始 <span>→</span></button>
+                <button type="button" onClick={() => fillStarter("我有一段完整故事，帮我设计成连续漫画。")}>把故事做成漫画 <span>→</span></button>
                 <button type="button" onClick={() => fillStarter("我想重新设计一个故事的人物关系和结局。")}>重新设计人物和结局 <span>→</span></button>
               </div>
               {styles.length > 0 ? (
@@ -1495,6 +1592,91 @@ function AgentView({
                   ))}
                 </div>
               ))}
+              {artifacts.map((artifact) => {
+                const plan = artifact.content;
+                const pending = artifact.approval?.status === "pending";
+                const styleName = styles.find((style) => style.id === plan.style_ref_id)?.name || "已选风格";
+                return (
+                  <article className={`agent-plan-card ${artifact.status}`} key={artifact.id}>
+                    <header>
+                      <div>
+                        <span className="agent-eyebrow">漫画方案 · v{artifact.version}</span>
+                        <h3>{plan.title}</h3>
+                      </div>
+                      <span>{artifact.status === "awaiting_approval" ? "等待确认" : artifact.status === "approved" ? "已批准" : artifact.status === "superseded" ? "已被新版本替代" : artifact.status === "rejected" ? "修改中" : "草稿"}</span>
+                    </header>
+                    <p className="agent-plan-summary">{plan.story_summary}</p>
+                    <div className="agent-plan-meta">
+                      <span>{styleName}</span>
+                      <span>{plan.aspect_ratio}</span>
+                      <span>{plan.panels.length} 张图片</span>
+                      <span>{plan.estimated_image_credits} 积分</span>
+                    </div>
+                    <ol>
+                      {plan.panels.map((panel) => (
+                        <li key={panel.panel_key}>
+                          <strong>{panel.panel_key.replace("panel-", "Panel ")}</strong>
+                          <span>{panel.story_beat}</span>
+                          <small>{panel.visual_goal}</small>
+                          {panel.required_text.length ? <em>图片文字：{panel.required_text.join(" / ")}</em> : null}
+                        </li>
+                      ))}
+                    </ol>
+                    {pending ? (
+                      <div className="agent-plan-actions">
+                        <button
+                          type="button"
+                          disabled={decidingApprovalId === artifact.approval?.id}
+                          onClick={() => void decideApproval(artifact, "approve")}
+                        >
+                          {decidingApprovalId === artifact.approval?.id ? <Loader2 className="spin" size={14} /> : <CheckCircle2 size={14} />}
+                          确认并生成 {plan.panels.length} 张图（{plan.estimated_image_credits} 积分）
+                        </button>
+                        <label>
+                          <span>提出修改</span>
+                          <textarea
+                            value={approvalFeedback[artifact.id] || ""}
+                            onChange={(event) => setApprovalFeedback((current) => ({ ...current, [artifact.id]: event.target.value }))}
+                            placeholder="例如：结尾不要和解，改成主角独自开始新生活。"
+                            rows={2}
+                          />
+                        </label>
+                        <button
+                          className="secondary"
+                          type="button"
+                          disabled={decidingApprovalId === artifact.approval?.id}
+                          onClick={() => void decideApproval(artifact, "request_changes")}
+                        >
+                          提交修改意见
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+              {events.length > 0 || eventConnectionError ? (
+                <section className="agent-activity">
+                  <header>
+                    <strong>创作活动</strong>
+                    <span>{eventConnectionError ? "连接中断" : "实时更新"}</span>
+                  </header>
+                  {events.slice(-12).map((event) => (
+                    <div key={event.id}>
+                      <i />
+                      <span>{agentEventText(event)}</span>
+                      <time>{new Date(event.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>
+                    </div>
+                  ))}
+                  {eventConnectionError ? (
+                    <p>
+                      {eventConnectionError}
+                      <button type="button" onClick={() => setEventReconnectToken((value) => value + 1)}>
+                        手动重连
+                      </button>
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
               {detail?.task_cards.map((card) => (
                 <AgentTaskCardView
                   key={card.task_id}
@@ -1566,13 +1748,13 @@ function AgentView({
               rows={1}
               disabled={sending}
             />
-            <button className="agent-send-button" type="submit" aria-label="发送消息" disabled={sending || hasActiveWork || !idea.trim() || !selectedStyleId}>
+            <button className="agent-send-button" type="submit" aria-label="发送消息" disabled={sending || hasActiveWork || !idea.trim() || (!routeConversationId && !selectedStyleId)}>
               {sending || creatingConversation ? <Loader2 className="spin" size={18} /> : <ArrowUpRight size={18} />}
             </button>
           </form>
           <div className="agent-composer-note">
             <span>Enter 发送 · Shift + Enter 换行</span>
-            <span>{hasActiveWork ? "Agent 正在执行当前任务，你可以继续准备下一条草稿" : selectedStyle ? `已选择真实风格：${selectedStyle.name}` : "发送前请选择一个真实风格"}</span>
+            <span>{hasActiveWork ? "Agent 正在执行当前任务，你可以继续准备下一条草稿" : selectedStyle ? `已选择真实风格：${selectedStyle.name}` : routeConversationId ? "可继续与 Agent 交流；新建漫画时请重新选择风格" : "发送前请选择一个真实风格"}</span>
           </div>
           {error ? <p className="error agent-composer-error">{error}</p> : null}
         </footer>

@@ -5,14 +5,14 @@
 - 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 113 已于 2026-07-24 Complete。Runtime Skill 启动扫描、有界 catalog、按需 `load_skill`、严格 Tool Registry、Generic Tool Executor 与现有两格 `generate_image` adapter 已实现；Skill/Tool Step、MLflow 元数据、重复投递、等待恢复与取消门禁通过。`./scripts/check.sh` 覆盖 219 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
+- 最近验证状态：Sprint 114 已于 2026-07-24 Complete。正式 `idea-to-comic`、2–8 Panel ComicPlan、Artifact/Approval/Event、SSE cursor、批准后生图门禁、方案卡与真实活动流已实现；真实 v1→修改→v2→批准→两张图片链路和手动 SSE 重连通过。`./scripts/check.sh` 覆盖 223 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
 
 ## 当前 Sprint 合同
 
 - Complete：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
 - Complete：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
 - Complete：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
-- Planned：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
+- Complete：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
 - Planned：`docs/contracts/sprint-115-agent-structured-resource-context.md`
 - Planned：`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
 - Planned：`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
@@ -44,6 +44,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 114 `idea-to-comic` Skill、方案确认与真实事件流：固定两格 ComicPlan 升级为版本化 2–8 Panel schema，Runtime 校验连续 key、重复剧情、数据库风格 ID/比例和图片预算；新增 `agent_artifacts`、`agent_approval_requests`、`agent_events` migration、hash 绑定、owner-only 幂等决策、修改版本保留、等待恢复和批准后重新入队。正式 Runner 显式加载 `idea-to-comic` 并记录 Skill 版本/hash，初次或修改规划只保存安全 Artifact，未批准前不创建 Task/Panel/Image Job 或占积分；`generate_image` 再次核验 approved hash、Panel、Prompt、比例、预算和 Run 状态。新增持久化 SSE cursor、受控公共事件、心跳、连接错误与手动重连，移除旧 2 秒轮询；前端增加 v1/v2 方案卡、状态区分、明确积分按钮、修改反馈、活动流和按 Panel 计算的真实进度。真实 Conversation `d62f8c260a1241de876ebe64e4d15607`、Run `3bbb19b4725c47e8a93221b78b254654` 在余额 30/占用 0 时等待确认；修改后 v1 保留为 superseded，批准 v2 后创建 Task `e429bdabef884e24b8337c717c2df78c`，两张 `gpt-image-2` 图片成功，余额 28/占用 0。后端中断时页面显示连接错误，手动重连补齐完成事件且未重复生图。针对性 30 项、全量 223 项后端测试、空库 migration、Python compileall、前端生产构建、`git diff --check` 和 `./scripts/check.sh` 全部通过。未实现 Sprint 115 资源引用、Sprint 116 VL/Panel 写操作或 pause/resume。
 
 - 完成 Sprint 113 通用 Skill / Tool Runtime 基础：新增独立于 `.agents/skills/` 的 `backend/app/agent_skills/`，服务启动扫描目录并校验 name/frontmatter/version/重复名/UTF-8/64 KiB 上限/32 个 catalog 上限/符号链接和路径边界；初始 `idea-to-comic` v1 只作为骨架，不自动切换正式链路。新增只读 `load_skill`、代码级 Tool Registry、严格输入/安全输出 schema、RuntimeContext 与 Generic Tool Executor；Tool 副作用前提交 call Step，等待保存 checkpoint，完成先写 result Step，稳定幂等键重放复用既有 Step/job/result。现有固定两格链路的真实 `GeneratedImage` job 创建已改走统一 `generate_image` adapter，并继续复用任务、Panel、图片 worker、资产与积分基础设施；Run 取消门禁不会启动新副作用。实际 MLflow 测试确认 `agent.skill_load` span 与 AgentStep ID、版本/hash 对齐，默认脱敏 trace 不含 Skill 正文。未新增 migration、Workflow DSL、外部队列、多 Agent、用户 Skill、HITL、SSE、VL、TTS 或 Remotion。针对性 20 项与全量 219 项后端测试、空库 migration、Python compileall、前端生产构建和 `git diff --check` 全部通过。
 
@@ -382,8 +384,8 @@
 
 ## 已知缺口
 
-- 当前 Agent 只接受一个 Style、固定两格 ComicPlan、方案后立即生图，并通过轮询显示状态；Skill/Tool Runtime 已建立，但正式链路尚未由 `idea-to-comic` Skill 驱动，仍无方案确认、持久化事件流或结构化 Task/Panel/Image Version 上下文。
-- 当前已有 Sprint 112 MLflow trace 基线与 Sprint 113 Skill/Tool 显式 span；Artifact/Approval/Event 观测仍待 Sprint 114 接入。
+- 当前 Agent 漫画创建已由 `idea-to-comic` 驱动，支持 2–8 Panel、Artifact/Approval hash 门禁和持久化 SSE；资源输入仍只接受一个 Style，尚无结构化 Character/Task/Panel/Image Version 上下文。
+- 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；Evaluation 发布门槛仍待 Sprint 117。
 - 当前没有 `inspect_image`、版本接受/恢复、Agent pause/resume 或 Evaluation 发布门槛；分别由 Sprint 116、117 交付。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
@@ -397,6 +399,6 @@
 
 ## 建议下一步
 
-1. 回到规划窗口审阅 Sprint 113 的 Skill/Tool Runtime、幂等恢复和 MLflow 验证结果。
-2. 用户确认后再把 Sprint 114 从 Planned 激活，单独实施正式 `idea-to-comic`、Artifact/Approval 和 SSE。
+1. 回到规划窗口审阅 Sprint 114 的 Artifact/Approval/Event、SSE、批准门禁和真实验收结果。
+2. Sprint 114 已 Complete；等待用户明确确认后再把 Sprint 115 从 Planned 激活，单独实施结构化资源引用与同一任务续作。
 3. 不要提前并行实现 Sprint 115 结构化资源引用或 Sprint 116 Panel/VL。

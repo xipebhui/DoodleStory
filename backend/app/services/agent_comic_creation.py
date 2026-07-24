@@ -39,6 +39,8 @@ from app.services.agent_tool_runtime import (
     create_default_tool_registry,
 )
 from app.services.style_references import snapshot_task_style_reference_images
+from app.services.agent_hitl import emit_agent_event
+from app.models.enums import AgentEventType
 
 
 class AgentComicCreationError(RuntimeError):
@@ -107,6 +109,10 @@ def create_comic_task_and_image_tools(
     style: Style,
     plan: ComicPlan,
 ) -> GenerationTask:
+    if plan.style_ref_id != style.id:
+        raise AgentComicCreationError("ComicPlan style_ref_id 与已鉴权风格不一致")
+    if plan.aspect_ratio != style.aspect_ratio:
+        raise AgentComicCreationError("ComicPlan 画面比例与数据库风格快照不一致")
     task = db.get(GenerationTask, run.task_id) if run.task_id else None
     if run.task_id and task is None:
         raise AgentComicCreationError("Agent Run 关联的漫画任务不存在")
@@ -118,10 +124,10 @@ def create_comic_task_and_image_tools(
             original_text=user_message.content,
             story_input_mode=StoryInputMode.adapted,
             adapted_story_title=plan.title,
-            adapted_story_hook=plan.summary,
-            adapted_story_text=plan.summary,
+            adapted_story_hook=plan.story_summary,
+            adapted_story_text=plan.story_summary,
             image_count_mode=ImageCountMode.fixed,
-            requested_image_count=2,
+            requested_image_count=len(plan.panels),
             use_character_references=False,
             last_panel_real_photo=False,
             remove_image_text=False,
@@ -129,7 +135,7 @@ def create_comic_task_and_image_tools(
             style_name_snapshot=style.name,
             style_prompt_snapshot=style.style_prompt,
             image_model_name_snapshot=style.image_model_name,
-            style_aspect_ratio_snapshot=style.aspect_ratio,
+            style_aspect_ratio_snapshot=plan.aspect_ratio,
             style_reference_mode_snapshot=style.style_reference_mode,
             status=TaskStatus.running,
             current_step=GenerationStepName.generate_images,
@@ -195,7 +201,7 @@ def create_comic_task_and_image_tools(
         image_budget_limit=len(plan.panels),
     )
     for planned_panel in plan.panels:
-        executor.execute(
+        execution = executor.execute(
             db,
             run=run,
             tool_name="generate_image",
@@ -203,7 +209,7 @@ def create_comic_task_and_image_tools(
                 "panel_key": planned_panel.panel_key,
                 "purpose": "panel_image",
                 "prompt": planned_panel.image_prompt,
-                "aspect_ratio": style.aspect_ratio,
+                "aspect_ratio": plan.aspect_ratio,
                 "reference_image_ids": reference_image_ids,
             },
             idempotency_key=(
@@ -211,6 +217,29 @@ def create_comic_task_and_image_tools(
             ),
             context=runtime_context,
         )
+        emit_agent_event(
+            db,
+            run=run,
+            event_type=AgentEventType.tool_started,
+            payload={
+                "tool": "generate_image",
+                "panel_key": planned_panel.panel_key,
+                "image_job_id": (execution.checkpoint or {}).get("image_job_id"),
+            },
+            deduplicate=True,
+        )
+        emit_agent_event(
+            db,
+            run=run,
+            event_type=AgentEventType.tool_progress,
+            payload={
+                "tool": "generate_image",
+                "panel_key": planned_panel.panel_key,
+                "status": "queued",
+            },
+            deduplicate=True,
+        )
+        db.commit()
 
     existing_task_card = db.scalar(
         select(AgentMessage).where(
@@ -243,8 +272,11 @@ def checkpoint_image_tool_results(db: Session, run: AgentRun) -> list[dict[str, 
         .where(GeneratedImage.task_id == run.task_id)
         .order_by(TaskPanel.panel_order.asc(), GeneratedImage.generation_number.asc())
     ).all()
-    if len(images) != 2:
-        raise AgentComicCreationError("Agent 漫画任务没有且仅有两个图片 job")
+    panel_count = db.scalar(
+        select(func.count(TaskPanel.id)).where(TaskPanel.task_id == run.task_id)
+    )
+    if not panel_count or len(images) != panel_count:
+        raise AgentComicCreationError("Agent 漫画任务的图片 job 数量与已批准方案不一致")
     if any(image.status in {GeneratedImageStatus.queued, GeneratedImageStatus.running} for image in images):
         return None
 
@@ -292,6 +324,23 @@ def checkpoint_image_tool_results(db: Session, run: AgentRun) -> list[dict[str, 
             trace_attributes={
                 "credit_change": credit_changes.get(image.id, 0),
             },
+        )
+        emit_agent_event(
+            db,
+            run=run,
+            event_type=(
+                AgentEventType.tool_completed
+                if output["status"] == "succeeded"
+                else AgentEventType.tool_failed
+            ),
+            payload={
+                "tool": "generate_image",
+                "panel_key": f"panel-{index}",
+                "status": output["status"],
+                "image_version_id": output.get("image_version_id"),
+                "error_code": output.get("error_code"),
+            },
+            deduplicate=True,
         )
     run.status = AgentRunStatus.running
     db.commit()

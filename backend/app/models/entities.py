@@ -9,7 +9,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.enums import (
+    AgentApprovalStatus,
+    AgentApprovalType,
+    AgentArtifactStatus,
+    AgentArtifactType,
     AgentConversationStatus,
+    AgentEventType,
     AgentMessageRole,
     AgentRunStatus,
     AgentStepStatus,
@@ -70,6 +75,7 @@ class User(Base, TimestampMixin):
         foreign_keys="CreditTransaction.user_id",
     )
     agent_conversations: Mapped[list["AgentConversation"]] = relationship(back_populates="owner")
+    decided_agent_approvals: Mapped[list["AgentApprovalRequest"]] = relationship()
 
 
 class Session(Base, TimestampMixin):
@@ -723,6 +729,15 @@ class AgentConversation(Base, TimestampMixin):
     runs: Mapped[list["AgentRun"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )
+    artifacts: Mapped[list["AgentArtifact"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan"
+    )
+    approval_requests: Mapped[list["AgentApprovalRequest"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan"
+    )
+    events: Mapped[list["AgentEvent"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan"
+    )
 
 
 class AgentMessage(Base):
@@ -778,6 +793,15 @@ class AgentRun(Base, TimestampMixin):
     steps: Mapped[list["AgentStep"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
+    artifacts: Mapped[list["AgentArtifact"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+    approval_requests: Mapped[list["AgentApprovalRequest"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+    events: Mapped[list["AgentEvent"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
 
 
 class AgentStep(Base, TimestampMixin):
@@ -814,3 +838,102 @@ class AgentStep(Base, TimestampMixin):
     internal_error_ref: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
     run: Mapped[AgentRun] = relationship(back_populates="steps")
+
+
+class AgentArtifact(Base, TimestampMixin):
+    __tablename__ = "agent_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "artifact_type",
+            "version",
+            name="uq_agent_artifacts_run_type_version",
+        ),
+        CheckConstraint("version > 0", name="ck_agent_artifacts_version_positive"),
+        Index("ix_agent_artifacts_run_type_version", "run_id", "artifact_type", "version"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_conversations.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    artifact_type: Mapped[AgentArtifactType] = mapped_column(Enum(AgentArtifactType))
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[AgentArtifactStatus] = mapped_column(
+        Enum(AgentArtifactStatus), default=AgentArtifactStatus.draft
+    )
+    content_json: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(80))
+
+    conversation: Mapped[AgentConversation] = relationship(back_populates="artifacts")
+    run: Mapped[AgentRun] = relationship(back_populates="artifacts")
+    approval_request: Mapped[Optional["AgentApprovalRequest"]] = relationship(
+        back_populates="artifact", uselist=False
+    )
+
+
+class AgentApprovalRequest(Base):
+    __tablename__ = "agent_approval_requests"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_conversations.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_artifacts.id", ondelete="CASCADE"), unique=True
+    )
+    artifact_hash: Mapped[str] = mapped_column(String(80))
+    approval_type: Mapped[AgentApprovalType] = mapped_column(Enum(AgentApprovalType))
+    status: Mapped[AgentApprovalStatus] = mapped_column(
+        Enum(AgentApprovalStatus), default=AgentApprovalStatus.pending, index=True
+    )
+    requested_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    decided_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    conversation: Mapped[AgentConversation] = relationship(back_populates="approval_requests")
+    run: Mapped[AgentRun] = relationship(back_populates="approval_requests")
+    artifact: Mapped[AgentArtifact] = relationship(back_populates="approval_request")
+
+
+class AgentEvent(Base):
+    __tablename__ = "agent_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_agent_events_run_sequence"),
+        CheckConstraint("sequence > 0", name="ck_agent_events_sequence_positive"),
+        Index(
+            "ix_agent_events_conversation_created_sequence",
+            "conversation_id",
+            "created_at",
+            "sequence",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_conversations.id", ondelete="CASCADE"), index=True
+    )
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    event_type: Mapped[AgentEventType] = mapped_column(
+        Enum(
+            AgentEventType,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        )
+    )
+    public_payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    conversation: Mapped[AgentConversation] = relationship(back_populates="events")
+    run: Mapped[AgentRun] = relationship(back_populates="events")

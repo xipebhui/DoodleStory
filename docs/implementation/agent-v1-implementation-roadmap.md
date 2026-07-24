@@ -129,7 +129,7 @@ Sprint 111–113、115 默认不新增表。
 | 111 | 独立 Agent Shell、紧凑任务卡、只读任务检查器 | Complete | 无 | 有，完整 |
 | 112 | MLflow 可观测性基线 | Complete | 无 | 无新功能 |
 | 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Complete | 无 | 无新功能 |
-| 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Planned | Artifact/Approval/Event | 有，方案卡与活动流 |
+| 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Complete | Artifact/Approval/Event | 有，方案卡与活动流 |
 | 115 | Style/Character/Task/Panel/Image Version 引用 | Planned | 默认无 | 有，真实 `@` 菜单与引用 |
 | 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Planned | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
 | 117 | Evaluation、故障注入、内部开放门槛 | Planned | 无业务表 | 只做回归 |
@@ -247,6 +247,10 @@ instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间�
 - 批准对象通过 hash 绑定。
 - SSE 断线恢复不丢事件、不重复副作用。
 - 正式链路不再依赖固定两格硬编码。
+
+### 完成结果
+
+2026-07-24 已通过全部退出门槛。正式 Agent 显式加载 `idea-to-comic`，2–8 Panel ComicPlan 先保存为 hash 绑定 Artifact/Approval 并等待 owner 决策；批准前不创建 GenerationTask、Panel、图片 job 或积分占用，修改会保留旧版本并再次确认。批准后继续复用同一任务、图片 worker 和积分链路，`generate_image` 在 Runtime 内再次校验 approved hash、Panel、Prompt、比例、预算和 Run 状态。持久化安全事件与 SSE cursor 已取代旧轮询，真实 v1→修改→v2→批准→两张图片、服务重启等待恢复、断线错误与手动重连均通过。
 
 ## 10. Sprint 115：真实资源上下文
 

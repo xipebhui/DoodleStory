@@ -30,6 +30,7 @@ from app.services.agent_observability import (
     safe_idempotency_digest,
     set_span_result,
 )
+from app.services.agent_hitl import AgentApprovalError, approved_comic_plan
 from app.services.agent_skill_registry import SkillRegistry, get_runtime_skill_registry
 
 
@@ -300,6 +301,25 @@ def _generate_image_adapter(
         raise ToolAuthorizationError("generate_image 任务 owner 不匹配")
     if parsed.aspect_ratio != task.style_aspect_ratio_snapshot:
         raise ToolAuthorizationError("generate_image 画面比例与任务风格快照不一致")
+    try:
+        approved = approved_comic_plan(db, call_step.run)
+    except AgentApprovalError as exc:
+        raise ToolAuthorizationError(str(exc)) from exc
+    if approved is None:
+        raise ToolAuthorizationError("generate_image 缺少已批准的 comic plan")
+    _, plan = approved
+    planned_panel = next(
+        (item for item in plan.panels if item.panel_key == parsed.panel_key),
+        None,
+    )
+    if planned_panel is None:
+        raise ToolAuthorizationError("panel_key 不属于已批准的 comic plan")
+    if len(context.authorized_panels) > plan.estimated_image_credits:
+        raise ToolBudgetExceededError("任务 Panel 数量超过已批准的图片预算")
+    if parsed.prompt != planned_panel.image_prompt:
+        raise ToolAuthorizationError("generate_image prompt 与已批准方案不一致")
+    if parsed.aspect_ratio != plan.aspect_ratio:
+        raise ToolAuthorizationError("generate_image 比例与已批准方案不一致")
 
     existing = db.scalar(
         select(GeneratedImage).where(
@@ -427,8 +447,14 @@ class GenericToolExecutor:
         context: RuntimeContext,
         arguments: BaseModel,
     ) -> None:
-        if run.status in {AgentRunStatus.cancel_requested, AgentRunStatus.cancelled}:
-            raise ToolAuthorizationError("Agent Run 已取消，不能启动新的 Tool 副作用")
+        if run.status in {
+            AgentRunStatus.cancel_requested,
+            AgentRunStatus.cancelled,
+            AgentRunStatus.failed,
+            AgentRunStatus.paused,
+            AgentRunStatus.waiting_for_input,
+        }:
+            raise ToolAuthorizationError("Agent Run 当前状态不能启动新的 Tool 副作用")
         if definition.requires_authorized_resources:
             if context.task_id is None:
                 raise ToolAuthorizationError(f"Tool {definition.name} 缺少已授权任务资源")

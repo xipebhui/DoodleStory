@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned。只有 Sprint 113 Complete 后才能激活。
+Complete。Sprint 113 已 Complete；用户于 2026-07-24 明确要求开始开发，同日完成实现、自动化、真实 Provider 与浏览器验收。
 
 ## Goal
 
@@ -348,6 +348,13 @@ git diff --check
 5. 刷新页面和重启后端，确认等待确认/生成状态恢复。
 
 ## Handoff
+
+完成证据：
+
+- Conversation `d62f8c260a1241de876ebe64e4d15607`、Run `3bbb19b4725c47e8a93221b78b254654` 先生成 v1，修改后保留 v1 并生成 v2；批准前 `task_id` 为空、`image_call_count=0`、余额 30、占用 0。
+- 批准 v2 后创建 Task `e429bdabef884e24b8337c717c2df78c` 和两个 Panel/图片 job，两张真实 `gpt-image-2` 图片成功，最终余额 28、占用 0。
+- 后端断开时页面显示活动流连接错误和手动重连；重连后从 cursor 补齐 Panel/Run 完成事件，未重复创建 Tool 副作用。
+- 针对性 30 项测试、全量 223 项后端测试、空库 Alembic、Python compileall、前端生产构建、`git diff --check` 和 `./scripts/check.sh` 通过。
 
 - Sprint 114 Complete 后才激活 Sprint 115。
 - 记录旧固定 `_invoke_comic_plan` 和相关 schema 是否已经无调用方；只有确认无调用方后才删除。

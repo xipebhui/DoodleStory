@@ -39,13 +39,17 @@ from app.services.agent_comic_creation import (
     create_comic_task_and_image_tools,
 )
 from app.services.credits import grant_initial_credits
+from app.services.agent_hitl import create_comic_plan_artifact, decide_approval
 
 
 def comic_plan() -> ComicPlan:
     return ComicPlan.model_validate(
         {
+            "schema_version": 1,
             "title": "深夜便利店的另一个我",
-            "summary": "疲惫的上班族在便利店遇见未来的自己。",
+            "story_summary": "疲惫的上班族在便利店遇见未来的自己。",
+            "aspect_ratio": "3:4",
+            "style_ref_id": "STYLE_ID",
             "panels": [
                 {
                     "panel_key": "panel-1",
@@ -62,6 +66,7 @@ def comic_plan() -> ComicPlan:
                     "required_text": ["别怕，你会走出来。"],
                 },
             ],
+            "estimated_image_credits": 2,
         }
     )
 
@@ -106,21 +111,33 @@ class AgentComicCreationTests(unittest.TestCase):
             self.message_id = message.id
             self.run_id = run.id
 
+        plan = comic_plan().model_dump()
+        plan["style_ref_id"] = self.style_id
+        self.plan = ComicPlan.model_validate(plan)
+
     def create_task(self) -> str:
         with self.Session() as db:
             run = db.get(AgentRun, self.run_id)
             message = db.get(AgentMessage, self.message_id)
             style = db.get(Style, self.style_id)
+            artifact, approval = create_comic_plan_artifact(db, run=run, plan=self.plan)
+            decide_approval(
+                db,
+                approval=approval,
+                user_id=self.user_id,
+                decision="approve",
+                feedback=None,
+            )
             task = create_comic_task_and_image_tools(
                 db=db,
                 run=run,
                 user_message=message,
                 style=style,
-                plan=comic_plan(),
+                plan=self.plan,
             )
             return task.id
 
-    def test_comic_plan_requires_exact_ordered_two_panels(self) -> None:
+    def test_comic_plan_requires_continuous_panel_keys(self) -> None:
         payload = comic_plan().model_dump()
         payload["panels"][1]["panel_key"] = "panel-1"
         with self.assertRaises(ValidationError):

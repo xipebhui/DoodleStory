@@ -171,6 +171,55 @@ export type AgentMessage = {
   created_at: string;
 };
 
+export type ComicPlan = {
+  schema_version: 1;
+  title: string;
+  story_summary: string;
+  aspect_ratio: string;
+  style_ref_id: string;
+  panels: Array<{
+    panel_key: string;
+    story_beat: string;
+    visual_goal: string;
+    required_text: string[];
+    image_prompt: string;
+  }>;
+  estimated_image_credits: number;
+};
+
+export type AgentApproval = {
+  id: string;
+  artifact_id: string;
+  status: "pending" | "approved" | "changes_requested" | "cancelled";
+  artifact_hash: string;
+  feedback: string | null;
+  requested_at: string;
+  resolved_at: string | null;
+};
+
+export type AgentArtifact = {
+  id: string;
+  conversation_id: string;
+  run_id: string;
+  artifact_type: "comic_plan";
+  version: number;
+  status: "draft" | "awaiting_approval" | "approved" | "rejected" | "superseded";
+  content_hash: string;
+  content: ComicPlan;
+  approval: AgentApproval | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentPublicEvent = {
+  id: string;
+  event_type: string;
+  run_id: string;
+  sequence: number;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
 export type AgentRunStatus =
   | "queued"
   | "running"
@@ -808,6 +857,18 @@ export const api = {
     request<ApiData<AgentTaskInspector>>(
       `/agent/conversations/${encodeURIComponent(conversationId)}/tasks/${encodeURIComponent(taskId)}`,
     ).then((result) => result.data),
+  agentArtifacts: (conversationId: string) =>
+    request<ApiList<AgentArtifact>>(
+      `/agent/conversations/${encodeURIComponent(conversationId)}/artifacts?limit=100`,
+    ),
+  decideAgentApproval: (
+    approvalId: string,
+    payload: { decision: "approve" | "request_changes"; feedback?: string },
+  ) =>
+    request<ApiData<AgentApproval>>(
+      `/agent/approvals/${encodeURIComponent(approvalId)}/decisions`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
   sendAgentMessage: (conversationId: string, payload: { content: string; resource_refs: AgentResourceRef[] }) =>
     request<ApiData<{ message: AgentMessage; run: AgentRun }>>(`/agent/conversations/${conversationId}/messages`, {
       method: "POST",
@@ -1143,3 +1204,8 @@ export const api = {
       (result) => result.data,
     ),
 };
+
+export function agentEventStreamUrl(conversationId: string, after?: string | null) {
+  const query = after ? `?after=${encodeURIComponent(after)}` : "";
+  return `${API_BASE_URL}/api/v1/agent/conversations/${encodeURIComponent(conversationId)}/events${query}`;
+}

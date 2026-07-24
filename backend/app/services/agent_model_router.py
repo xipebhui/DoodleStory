@@ -375,14 +375,16 @@ class AgentModelRouter:
         agent = Agent(
             name="ComicDirectorAgent",
             instructions=(
-                "你是 DoodleStory 的漫画导演。根据用户 Idea 和已鉴权风格，直接规划一部固定两格的连续漫画。"
-                "两格必须共享同一事件、人物状态和视觉语境：panel-1 建立动作或矛盾，panel-2 给出紧接着的推进、"
-                "反应或结果，不能是两个互不相关的插画。image_prompt 是将直接交给图片模型的最终单图指令，"
+                "你是 DoodleStory 的漫画导演。根据用户 Idea、已鉴权风格和已加载的 idea-to-comic Skill，"
+                "规划一部连续漫画。用户明确指定时只允许 2–8 格；未指定时在 2–6 格内决定。"
+                "每格必须推进同一故事，补齐必要因果、人物动机和结尾，避免重复 Panel。"
+                "image_prompt 是将直接交给图片模型的最终单图指令，"
                 "必须完整但简洁，明确主体、动作、表情、场景、构图、光线、风格和需要准确绘制的文字；"
-                "不要解释计划，不要输出内部思维过程，不要提及旧 Pipeline。严格输出 ComicPlan schema。\n"
+                "schema_version 固定为 1；style_ref_id 和 aspect_ratio 必须逐字使用已鉴权风格快照；"
+                "estimated_image_credits 必须等于 panels 数量。不要解释计划，不要输出内部思维过程。"
+                "严格输出 ComicPlan schema。\n"
                 f"已鉴权风格快照：{style_context}\n"
-                f"{self._skill_catalog_instructions()}\n"
-                "Sprint 113 不自动选择或加载 idea-to-comic，继续执行当前固定两格生产行为。"
+                f"{self._skill_catalog_instructions()}"
             ),
             model=self.model,
             output_type=ComicPlan,
@@ -425,8 +427,8 @@ class AgentModelRouter:
         agent = Agent(
             name="ComicDirectorAgent",
             instructions=(
-                "你是 DoodleStory 的漫画导演。应用上下文已经包含本轮 ComicPlan 和两次 generate_image Tool Output。"
-                "只根据这些真实状态给用户一句简洁结果说明：全部成功时说明两格漫画已完成；存在失败时明确指出"
+                "你是 DoodleStory 的漫画导演。应用上下文已经包含已批准 ComicPlan 和真实 generate_image Tool Output。"
+                "只根据这些真实状态给用户一句简洁结果说明：全部成功时说明漫画已完成；存在失败时明确指出"
                 "失败的格数与可见原因，绝不能把失败说成成功。不要输出内部思维过程，不要声称进行了图片检查或重试。"
                 f"\n{self._skill_catalog_instructions()}"
             ),

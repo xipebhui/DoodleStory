@@ -13,7 +13,9 @@ from app.api.agent_conversations import (
     get_agent_conversation,
     get_agent_conversation_task,
     get_agent_run,
+    list_agent_artifacts,
     list_agent_conversations,
+    submit_agent_approval_decision,
 )
 from app.api.pagination import Pagination
 from app.core.database import Base
@@ -42,9 +44,12 @@ from app.models.enums import (
 from app.schemas.agent import (
     AgentConversationCreate,
     AgentMessageCreate,
+    AgentApprovalDecision,
     AgentResourceKind,
     AgentResourceRef,
 )
+from app.schemas.agent import ComicPlan
+from app.services.agent_hitl import create_comic_plan_artifact
 
 
 class AgentConversationTests(unittest.TestCase):
@@ -255,6 +260,83 @@ class AgentConversationTests(unittest.TestCase):
                     )
                 )
         self.assertEqual(409, raised.exception.status_code)
+
+    def test_artifact_and_approval_decision_are_owner_scoped_and_idempotent(self):
+        conversation = self.create_conversation()
+        run = AgentRun(
+            conversation_id=conversation.id,
+            turn_id="approval-turn",
+            status=AgentRunStatus.running,
+        )
+        self.db.add(run)
+        self.db.flush()
+        plan = ComicPlan.model_validate(
+            {
+                "schema_version": 1,
+                "title": "待确认漫画",
+                "story_summary": "一个连续故事",
+                "aspect_ratio": "3:4",
+                "style_ref_id": self.style.id,
+                "panels": [
+                    {
+                        "panel_key": f"panel-{index}",
+                        "story_beat": f"剧情 {index}",
+                        "visual_goal": f"画面 {index}",
+                        "required_text": [],
+                        "image_prompt": f"指令 {index}",
+                    }
+                    for index in (1, 2)
+                ],
+                "estimated_image_credits": 2,
+            }
+        )
+        artifact, approval = create_comic_plan_artifact(self.db, run=run, plan=plan)
+        listed = list_agent_artifacts(
+            conversation.id,
+            limit=50,
+            user=self.owner,
+            db=self.db,
+        )
+        self.assertEqual([artifact.id], [item.id for item in listed.items])
+        with self.assertRaises(HTTPException) as denied:
+            list_agent_artifacts(
+                conversation.id,
+                limit=50,
+                user=self.admin,
+                db=self.db,
+            )
+        self.assertEqual(404, denied.exception.status_code)
+
+        with patch("app.api.agent_conversations.enqueue_agent_run", new=AsyncMock()) as enqueue:
+            first = asyncio.run(
+                submit_agent_approval_decision(
+                    approval.id,
+                    AgentApprovalDecision(decision="approve"),
+                    user=self.owner,
+                    db=self.db,
+                )
+            )
+            repeated = asyncio.run(
+                submit_agent_approval_decision(
+                    approval.id,
+                    AgentApprovalDecision(decision="approve"),
+                    user=self.owner,
+                    db=self.db,
+                )
+            )
+        self.assertEqual("approved", first.data.status.value)
+        self.assertEqual("approved", repeated.data.status.value)
+        enqueue.assert_awaited_once_with(run.id)
+        with self.assertRaises(HTTPException) as admin_denied:
+            asyncio.run(
+                submit_agent_approval_decision(
+                    approval.id,
+                    AgentApprovalDecision(decision="approve"),
+                    user=self.admin,
+                    db=self.db,
+                )
+            )
+        self.assertEqual(404, admin_denied.exception.status_code)
 
     def test_conversation_task_inspector_is_owner_scoped_and_requires_link(self):
         conversation = self.create_conversation()

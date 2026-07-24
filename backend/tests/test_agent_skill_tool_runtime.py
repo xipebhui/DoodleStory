@@ -37,6 +37,8 @@ from app.services.agent_skill_registry import (
     SkillRegistry,
     SkillRegistryError,
 )
+from app.schemas.agent import ComicPlan
+from app.services.agent_hitl import create_comic_plan_artifact, decide_approval
 from app.services.agent_tool_runtime import (
     GenericToolExecutor,
     StrictToolModel,
@@ -167,7 +169,7 @@ class AgentToolRuntimeTests(unittest.TestCase):
                 original_text="runtime",
                 story_input_mode=StoryInputMode.adapted,
                 image_count_mode=ImageCountMode.fixed,
-                requested_image_count=1,
+                requested_image_count=2,
                 use_character_references=False,
                 last_panel_real_photo=False,
                 remove_image_text=False,
@@ -190,7 +192,51 @@ class AgentToolRuntimeTests(unittest.TestCase):
                 generated_prompt="runtime prompt",
             )
             db.add(panel)
+            db.add(
+                TaskPanel(
+                    task_id=task.id,
+                    panel_order=2,
+                    panel_type=PanelType.scene,
+                    original_text_segment="后续场景",
+                    prompt_status=PromptStatus.generated,
+                    generated_prompt="第二格最终指令",
+                )
+            )
             run.task_id = task.id
+            plan = ComicPlan.model_validate(
+                {
+                    "schema_version": 1,
+                    "title": "Runtime task",
+                    "story_summary": "两个连续测试场景",
+                    "aspect_ratio": "3:4",
+                    "style_ref_id": style.id,
+                    "panels": [
+                        {
+                            "panel_key": "panel-1",
+                            "story_beat": "一个场景",
+                            "visual_goal": "测试第一格",
+                            "image_prompt": "单图最终指令",
+                            "required_text": [],
+                        },
+                        {
+                            "panel_key": "panel-2",
+                            "story_beat": "后续场景",
+                            "visual_goal": "测试第二格",
+                            "image_prompt": "第二格最终指令",
+                            "required_text": [],
+                        },
+                    ],
+                    "estimated_image_credits": 2,
+                }
+            )
+            _, approval = create_comic_plan_artifact(db, run=run, plan=plan)
+            decide_approval(
+                db,
+                approval=approval,
+                user_id=self.user_id,
+                decision="approve",
+                feedback=None,
+            )
             db.commit()
             return task.id, panel.id
 

@@ -1,9 +1,12 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import (
+    AgentApprovalStatus,
+    AgentArtifactStatus,
+    AgentArtifactType,
     AgentConversationStatus,
     AgentMessageRole,
     AgentRunStatus,
@@ -33,7 +36,7 @@ class AgentResourceRef(BaseModel):
 class ComicPlanPanel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    panel_key: str = Field(pattern=r"^panel-[12]$")
+    panel_key: str = Field(pattern=r"^panel-[1-8]$")
     story_beat: str = Field(min_length=1, max_length=500)
     visual_goal: str = Field(min_length=1, max_length=800)
     image_prompt: str = Field(min_length=1, max_length=3000)
@@ -59,11 +62,15 @@ class ComicPlanPanel(BaseModel):
 class ComicPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    schema_version: int = Field(default=1, ge=1, le=1)
     title: str = Field(min_length=1, max_length=120)
-    summary: str = Field(min_length=1, max_length=800)
-    panels: list[ComicPlanPanel] = Field(min_length=2, max_length=2)
+    story_summary: str = Field(min_length=1, max_length=800)
+    aspect_ratio: str = Field(min_length=1, max_length=40)
+    style_ref_id: str = Field(min_length=1, max_length=32)
+    panels: list[ComicPlanPanel] = Field(min_length=2, max_length=8)
+    estimated_image_credits: int = Field(ge=2, le=8)
 
-    @field_validator("title", "summary")
+    @field_validator("title", "story_summary", "aspect_ratio", "style_ref_id")
     @classmethod
     def strip_plan_text(cls, value: str) -> str:
         cleaned = value.strip()
@@ -74,11 +81,66 @@ class ComicPlan(BaseModel):
     @field_validator("panels")
     @classmethod
     def validate_panel_keys(cls, value: list[ComicPlanPanel]) -> list[ComicPlanPanel]:
-        if [panel.panel_key for panel in value] != ["panel-1", "panel-2"]:
-            raise ValueError("ComicPlan 必须按 panel-1、panel-2 顺序提供两格")
-        if value[0].story_beat == value[1].story_beat:
-            raise ValueError("两格漫画必须包含连续但不同的剧情推进")
+        expected = [f"panel-{index}" for index in range(1, len(value) + 1)]
+        if [panel.panel_key for panel in value] != expected:
+            raise ValueError("ComicPlan Panel key 必须从 panel-1 开始连续编号")
+        normalized_beats = [" ".join(panel.story_beat.split()).casefold() for panel in value]
+        if len(set(normalized_beats)) != len(normalized_beats):
+            raise ValueError("ComicPlan 不允许完全重复的 story beat")
         return value
+
+    @model_validator(mode="after")
+    def validate_budget(self) -> "ComicPlan":
+        if self.estimated_image_credits != len(self.panels):
+            raise ValueError("预计图片积分必须等于 Panel 数量")
+        return self
+
+
+class AgentApprovalRead(BaseModel):
+    id: str
+    artifact_id: str
+    status: AgentApprovalStatus
+    artifact_hash: str
+    feedback: str | None
+    requested_at: datetime
+    resolved_at: datetime | None
+
+
+class AgentArtifactRead(TimestampFields):
+    id: str
+    conversation_id: str
+    run_id: str
+    artifact_type: AgentArtifactType
+    version: int
+    status: AgentArtifactStatus
+    content_hash: str
+    content: ComicPlan
+    approval: AgentApprovalRead | None
+
+
+class AgentApprovalDecision(BaseModel):
+    decision: str = Field(pattern=r"^(approve|request_changes)$")
+    feedback: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_feedback(self) -> "AgentApprovalDecision":
+        if self.decision == "request_changes":
+            if self.feedback is None or not self.feedback.strip():
+                raise ValueError("提出修改时必须填写反馈")
+            self.feedback = self.feedback.strip()
+        elif self.feedback is not None:
+            self.feedback = None
+        return self
+
+
+class AgentEventRead(BaseModel):
+    id: str
+    conversation_id: str
+    run_id: str
+    sequence: int
+    event_type: str
+    payload: dict[str, object]
+    created_at: datetime
 
 
 class AgentConversationCreate(BaseModel):

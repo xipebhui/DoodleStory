@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
@@ -12,6 +14,9 @@ from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import get_db
 from app.models.entities import (
     AgentConversation,
+    AgentApprovalRequest,
+    AgentArtifact,
+    AgentEvent,
     AgentMessage,
     AgentRun,
     AgentStep,
@@ -23,6 +28,9 @@ from app.models.entities import (
 )
 from app.models.enums import AgentConversationStatus, AgentMessageRole, AgentRunStatus
 from app.schemas.agent import (
+    AgentApprovalDecision,
+    AgentApprovalRead,
+    AgentArtifactRead,
     AgentConversationCreate,
     AgentConversationDetailRead,
     AgentConversationRead,
@@ -43,6 +51,8 @@ from app.schemas.agent import (
 from app.schemas.common import ApiData, ApiList
 from app.services.agent_runner import enqueue_agent_run
 from app.services.agent_comic_creation import AgentComicCreationError, load_authorized_style
+from app.services.agent_hitl import AgentApprovalError, decide_approval
+from app.core import database
 
 
 router = APIRouter(prefix="/agent", tags=["agent"])
@@ -80,6 +90,38 @@ def message_to_read(message: AgentMessage) -> AgentMessageRead:
         resource_refs=parse_resource_refs(message.resource_refs_json),
         sequence=message.sequence,
         created_at=message.created_at,
+    )
+
+
+def approval_to_read(approval: AgentApprovalRequest) -> AgentApprovalRead:
+    return AgentApprovalRead(
+        id=approval.id,
+        artifact_id=approval.artifact_id,
+        status=approval.status,
+        artifact_hash=approval.artifact_hash,
+        feedback=approval.feedback,
+        requested_at=approval.requested_at,
+        resolved_at=approval.resolved_at,
+    )
+
+
+def artifact_to_read(artifact: AgentArtifact) -> AgentArtifactRead:
+    return AgentArtifactRead(
+        id=artifact.id,
+        conversation_id=artifact.conversation_id,
+        run_id=artifact.run_id,
+        artifact_type=artifact.artifact_type,
+        version=artifact.version,
+        status=artifact.status,
+        content_hash=artifact.content_hash,
+        content=json.loads(artifact.content_json),
+        approval=(
+            approval_to_read(artifact.approval_request)
+            if artifact.approval_request is not None
+            else None
+        ),
+        created_at=artifact.created_at,
+        updated_at=artifact.updated_at,
     )
 
 
@@ -182,8 +224,12 @@ def task_card_to_read(run: AgentRun) -> AgentTaskCardRead:
         run_id=run.id,
         title=task.display_title,
         status=task.status,
-        progress_current=task.progress_current,
-        progress_total=task.progress_total,
+        progress_current=sum(
+            panel.image is not None
+            and panel.image.status.value in {"succeeded", "failed", "cancelled"}
+            for panel in panels
+        ),
+        progress_total=len(panels),
         error_code=task.error_code,
         error_message=task.error_message,
         panels=panels,
@@ -225,8 +271,12 @@ def task_inspector_to_read(
         task_id=task.id,
         title=task.display_title,
         status=task.status,
-        progress_current=task.progress_current,
-        progress_total=task.progress_total,
+        progress_current=sum(
+            panel.status is not None
+            and panel.status.value in {"succeeded", "failed", "cancelled"}
+            for panel in panels
+        ),
+        progress_total=len(panels),
         error_code=task.error_code,
         error_message=task.error_message,
         panels=panels,
@@ -449,3 +499,153 @@ def get_agent_run(
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent Run 不存在")
     return ApiData(data=run_to_read(db, run))
+
+
+@router.get(
+    "/conversations/{conversation_id}/artifacts",
+    response_model=ApiList[AgentArtifactRead],
+)
+def list_agent_artifacts(
+    conversation_id: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[AgentArtifactRead]:
+    load_owned_conversation(db, conversation_id, user)
+    artifacts = db.scalars(
+        select(AgentArtifact)
+        .where(AgentArtifact.conversation_id == conversation_id)
+        .options(selectinload(AgentArtifact.approval_request))
+        .order_by(AgentArtifact.created_at.asc(), AgentArtifact.version.asc())
+        .limit(limit + 1)
+    ).all()
+    visible = artifacts[:limit]
+    return ApiList(
+        items=[artifact_to_read(artifact) for artifact in visible],
+        page=build_page(limit=limit, offset=0, item_count=len(artifacts)),
+    )
+
+
+@router.post(
+    "/approvals/{approval_id}/decisions",
+    response_model=ApiData[AgentApprovalRead],
+)
+async def submit_agent_approval_decision(
+    approval_id: str,
+    payload: AgentApprovalDecision,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AgentApprovalRead]:
+    approval = db.scalar(
+        select(AgentApprovalRequest)
+        .join(AgentConversation, AgentConversation.id == AgentApprovalRequest.conversation_id)
+        .where(
+            AgentApprovalRequest.id == approval_id,
+            AgentConversation.owner_user_id == user.id,
+        )
+        .options(
+            selectinload(AgentApprovalRequest.artifact),
+            selectinload(AgentApprovalRequest.run),
+        )
+    )
+    if approval is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="方案确认请求不存在")
+    was_pending = approval.status.value == "pending"
+    try:
+        decided = decide_approval(
+            db,
+            approval=approval,
+            user_id=user.id,
+            decision=payload.decision,
+            feedback=payload.feedback,
+        )
+    except AgentApprovalError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if was_pending:
+        await enqueue_agent_run(decided.run_id)
+    return ApiData(data=approval_to_read(decided))
+
+
+@router.get("/conversations/{conversation_id}/events")
+async def stream_agent_events(
+    conversation_id: str,
+    request: Request,
+    after: str | None = Query(default=None, max_length=32),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    load_owned_conversation(db, conversation_id, user)
+    cursor_id = after or last_event_id
+    if cursor_id is not None:
+        cursor = db.scalar(
+            select(AgentEvent).where(
+                AgentEvent.id == cursor_id,
+                AgentEvent.conversation_id == conversation_id,
+            )
+        )
+        if cursor is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="事件 cursor 无效")
+
+    async def event_stream():
+        current_cursor = cursor_id
+        while not await request.is_disconnected():
+            with database.SessionLocal() as event_db:
+                statement = select(AgentEvent).where(
+                    AgentEvent.conversation_id == conversation_id
+                )
+                if current_cursor is None:
+                    events = list(
+                        reversed(
+                            event_db.scalars(
+                                statement.order_by(
+                                    AgentEvent.created_at.desc(),
+                                    AgentEvent.id.desc(),
+                                ).limit(100)
+                            ).all()
+                        )
+                    )
+                else:
+                    current = event_db.get(AgentEvent, current_cursor)
+                    if current is None or current.conversation_id != conversation_id:
+                        return
+                    statement = statement.where(
+                        or_(
+                            AgentEvent.created_at > current.created_at,
+                            and_(
+                                AgentEvent.created_at == current.created_at,
+                                AgentEvent.id > current.id,
+                            ),
+                        )
+                    )
+                    events = event_db.scalars(
+                        statement.order_by(
+                            AgentEvent.created_at.asc(),
+                            AgentEvent.id.asc(),
+                        ).limit(100)
+                    ).all()
+                frames = [
+                    (
+                        f"id: {event.id}\n"
+                        f"event: {event.event_type.value}\n"
+                        f"data: {json.dumps({'run_id': event.run_id, 'sequence': event.sequence, 'payload': json.loads(event.public_payload_json), 'created_at': event.created_at.isoformat()}, ensure_ascii=False)}\n\n"
+                    )
+                    for event in events
+                ]
+                if events:
+                    current_cursor = events[-1].id
+            if frames:
+                for frame in frames:
+                    yield frame
+                continue
+            yield ": heartbeat\n\n"
+            await asyncio.sleep(10)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
