@@ -132,7 +132,7 @@ Sprint 111–113、115 默认不新增表。
 | 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Complete | Artifact/Approval/Event | 有，方案卡与活动流 |
 | 115 | Style/Character/Task/Panel/Image Version 引用 | Complete | 默认无 | 有，真实 `@` 菜单与引用 |
 | 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Complete | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
-| 117 | 可插拔 Skill 管理、版本与通用 Agent Loop | Active | Skill 与版本表 | 有，Skill 管理和 `@Skill` |
+| 117 | 可插拔 Skill 管理、版本与通用 Agent Loop | Complete | Skill 与版本表 | 有，Skill 管理和 `@Skill` |
 
 最终 Evaluation 已 Deferred，待功能路线冻结后重新编号，不属于 Sprint 117。
 
@@ -326,6 +326,15 @@ instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间�
 - 用户创建的无生图 Tool Skill 无法调用 `generate_image`。
 - 系统 `idea-to-comic` 继续完成真实方案确认和生图，且方法只维护在 Skill 发布版本。
 - Runner 新增其它纯文本 Skill 时不增加按 Skill 名称分支。
+
+2026-07-26 已通过退出门槛。用户 Skill 草稿、不可变 v1/v2、历史激活、归档、系统 clone、AI
+建议、真实 `@Skill` 和 Run version pin 均已落地；基础 Instructions 已收敛为通用内容创作规则，
+正式执行从数据库准确版本读取完整正文和白名单 Tool schemas，不再使用文件 `load_skill`、
+`process_comic_agent_run()`、漫画专用模型入口或 `AgentResourceRoute.create_comic` 业务分支。
+252 项后端测试、空库 migration、compileall 和前端构建通过。隔离真实验收中，系统 Skill 和
+UI 发布的个人 Skill 各完成 2-Panel 真实生图，共 4 张成功、余额 30→26；无图片 Tool 的故事检查
+Skill 只输出文字且未创建任务，Style-only 消息通过 catalog 自动选择系统 Skill 并停在方案确认。
+QA 报告：`docs/qa/sprint-117-pluggable-skill-management-agent-loop-report.md`。
 
 ## 最终阶段：Evaluation 与内部开放
 

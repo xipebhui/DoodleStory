@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import contextmanager
 import json
 from types import SimpleNamespace
 import unittest
@@ -14,6 +15,7 @@ from app.models.entities import (
     AgentEvent,
     AgentMessage,
     AgentRun,
+    AgentStep,
     AgentSkill,
     AgentSkillVersion,
     GenerationTask,
@@ -35,6 +37,7 @@ from app.services.agent_model_router import (
 from app.services.agent_skill_runtime import (
     BASE_AGENT_INSTRUCTIONS,
     load_pinned_runtime_skill,
+    skill_model_instructions,
 )
 
 
@@ -224,6 +227,9 @@ class AgentSkillRuntimeLoopTests(unittest.TestCase):
             loaded = load_pinned_runtime_skill(db, run=run)
             self.assertEqual(version_id, loaded.id)
             self.assertIn("指出因果断点", loaded.instructions)
+            model_instructions = skill_model_instructions(loaded)
+            self.assertNotIn('"name": "generate_image"', model_instructions)
+            self.assertNotIn('"name": "inspect_image"', model_instructions)
 
         router = RuntimeLoopRouter()
         self.process(run_id, router)
@@ -233,9 +239,16 @@ class AgentSkillRuntimeLoopTests(unittest.TestCase):
             event_types = db.scalars(
                 select(AgentEvent.event_type).where(AgentEvent.run_id == run_id)
             ).all()
+            skill_steps = db.scalars(
+                select(AgentStep).where(
+                    AgentStep.run_id == run_id,
+                    AgentStep.idempotency_key.like("agent:%:skill_%"),
+                )
+            ).all()
             self.assertEqual(AgentRunStatus.succeeded, run.status)
             self.assertEqual(version_id, run.skill_version_id)
             self.assertIn("skill.version_pinned", event_types)
+            self.assertEqual(2, len(skill_steps))
             self.assertEqual(1, router.skill_calls)
             self.assertEqual(0, router.selection_calls)
 
@@ -251,6 +264,36 @@ class AgentSkillRuntimeLoopTests(unittest.TestCase):
             self.assertEqual(AgentRunStatus.succeeded, run.status)
             self.assertEqual(1, router.selection_calls)
             self.assertEqual(1, router.skill_calls)
+
+    def test_skill_observability_attributes_are_versioned_and_content_safe(self):
+        run_id, _, _ = self.create_run(explicit=True, tools=["generate_image"])
+        captured = {}
+
+        @contextmanager
+        def capture_span(*args, **kwargs):
+            del args
+            captured.update(kwargs)
+            yield None
+
+        with self.Session() as db:
+            run = db.get(AgentRun, run_id)
+            skill = load_pinned_runtime_skill(db, run=run)
+            with patch(
+                "app.services.agent_runner.agent_span",
+                side_effect=capture_span,
+            ):
+                agent_runner._emit_skill_runtime_events(
+                    db,
+                    run=run,
+                    skill=skill,
+                    selection="explicit",
+                )
+
+        attributes = captured["attributes"]
+        self.assertEqual(skill.id, attributes["agent.skill.version_id"])
+        self.assertEqual(skill.content_hash, attributes["agent.skill.content_hash"])
+        self.assertEqual("explicit", attributes["agent.skill.selection"])
+        self.assertNotIn(skill.instructions, str(attributes))
 
     def test_skill_without_generate_image_cannot_create_task_even_with_style(self):
         run_id, _, _ = self.create_run(explicit=True, tools=[], with_style=True)

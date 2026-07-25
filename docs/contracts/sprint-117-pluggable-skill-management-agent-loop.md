@@ -2,11 +2,31 @@
 
 ## Status
 
-Active。Sprint 116 已 Complete（Closed）并通过 QA；用户于 2026-07-26 明确授权整合完成基线并让另一窗口继续开发本 Sprint。
+Complete（Closed）。Sprint 116 已 Complete（Closed）并通过 QA；用户于 2026-07-26 明确授权
+整合完成基线并开发本 Sprint。Sprint 117 实现、自动化、真实 Provider/浏览器验收和 QA 已于
+2026-07-26 闭合。
 
 原 Sprint 117 Evaluation 合同已顺延为未编号的最终发布阶段：
 `docs/contracts/deferred-agent-evaluation-internal-release-gate.md`。本 Sprint 不实施正式
 Evaluation 发布门槛。
+
+## Completion evidence
+
+- 实现提交：`d2f8f02`（Skill 数据/API）、`236ee15`（Skill 管理前端）、
+  `0c23d9f`（`@Skill`、Run pin 和数据库 Skill Loop）。
+- `./scripts/check.sh`：252 项后端测试、Python compileall、空 SQLite migration 和前端生产
+  构建通过。
+- 真实系统 `想法转漫画 v1` + 真实风格完成 2-Panel 方案确认和 2 张真实图片。
+- UI clone、修改并发布的个人 `个人两格反转漫画 v1` 无需重启完成另一个 2-Panel 方案和
+  2 张真实图片；两个任务共 4 张成功，图片积分 30→26。
+- UI 发布的无 Tool `故事因果检查 v1` 使用真实文本 Provider 输出因果检查，未创建任务或图片，
+  余额保持 26。
+- 未显式选择 Skill、只引用 Style 的漫画请求通过 catalog 自动选择系统 `想法转漫画 v1`，
+  在未批准时停在方案确认且未占用图片积分。
+- 个人 Skill 已验证发布 v2、查看 v1/v2、显式重新激活 v1；归档后的文字 Skill 不再作为新资源
+  可用，历史 Message/Run 继续保留 v1 安全快照。
+- QA：`docs/qa/sprint-117-pluggable-skill-management-agent-loop-report.md`。
+- 正式 Evaluation、生产部署和内部开放判定未执行，继续 Deferred。
 
 ## Background
 

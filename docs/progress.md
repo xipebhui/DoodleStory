@@ -8,7 +8,7 @@
 - 最近验证状态：Sprint 116 已于 2026-07-26 正式闭合，QA 报告 verdict 为 `PASS`。目标 Panel 新版本、接受/恢复、真实 VL、严格一次授权自动修订、pause/resume、安全事件和检查器写操作均已实现；闭合复核 `./scripts/check.sh` 覆盖 240 项后端测试、空库 migration、Python compileall 和前端生产构建并通过，真实 `gpt-image-2`/`gpt-5.4` 与浏览器验收证据有效。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 基线整合状态：Sprint 116 实现/闭合提交与 Sprint 117 规划/视觉基准已合并；用户已授权，Sprint 117 现为唯一 Active 合同。
+- 当前合同状态：Sprint 116 和 Sprint 117 均已 Complete（Closed）并通过 QA；正式 Evaluation 保持 Deferred，当前没有 Active Sprint。
 
 ## 当前 Sprint 合同
 
@@ -398,12 +398,13 @@
 - 开始 Sprint 117 第一阶段后端实现：新增 `agent_skills`、不可变 `agent_skill_versions` 和 `agent_runs.skill_version_id`，系统 `idea-to-comic` 从受控文件幂等种为只读数据库版本；新增受控 Tool catalog，以及个人 Skill 创建、草稿 revision 乐观锁、发布幂等、版本列表/详情、历史版本激活、归档/恢复、系统版本克隆和未发布草稿删除 API。AI 编写辅助使用现有 Agent 模型 Router 输出受约束建议，不自动保存、发布或扩大 Tool 白名单。新增 5 项集中测试覆盖 owner 隔离、发布不可变与幂等、激活/归档、克隆、系统 slug 唯一和已有 Run 版本固定；空库 migration upgrade/downgrade、245 项后端测试与 Python compileall 通过。
 - 完成 Sprint 117 Skill 管理前端切片：在独立 Agent Studio 增加 `/agent/skills`、新建、编辑和准确版本详情路由；列表实现个人/系统范围、搜索、状态筛选、分页及完整 loading/empty/error 状态，编辑器实现正文主区域、Tool 多选、编写指南、AI 建议预览后应用、草稿保存、发布确认、归档/恢复/删除和系统 Skill 克隆，版本页明确发布版本只读并支持历史版本激活。Session Storage 保留列表筛选，编辑器离开前提示未保存修改；真实浏览器已验证注册用户创建草稿、发布 v1、直接 URL 打开版本页、系统 Skill 只读列表，截图保存于未跟踪 `output/playwright/`，前端生产构建通过。
 - 完成 Sprint 117 `@Skill` 与数据库 Runtime 主链路：资源搜索只返回当前用户或系统的未归档启用版本，消息接受时由服务端覆盖伪造名称/摘要并在同一事务固定 `agent_runs.skill_version_id`；前端资源菜单接入真实 Skill 分组并在选择第二个 Skill 时明确替换。Runtime 新增通用 Base Instructions、数据库准确版本 loader、显式/自动 catalog selection、Run 一次性 pin、Tool 白名单校验和 Skill 安全活动事件；正式漫画执行不再调用文件 `load_skill`、`process_comic_agent_run()`、`run_comic_plan()` 或 `run_comic_final()`，而由任意带 `generate_image` 权限且具有已鉴权风格的发布版 Skill 进入统一方案确认/执行路径，无生图权限的 Skill 只走文本结果且不能创建任务。新增资源权限、消息事务 pin、归档后 Run 恢复、自动选择和无权限无副作用测试；`./scripts/check.sh` 通过 250 项后端测试、compileall、空库 migration 和前端生产构建。
+- Sprint 117 真实验收与 QA 闭合：隔离数据库注册真实账号并创建 `Sprint 117 清透水彩` 风格；系统 `想法转漫画 v1` 完成《雨伞的回声》2-Panel 方案确认和 2 张真实图片，UI clone 并发布的个人 `个人两格反转漫画 v1` 完成《最后一盆绿》2-Panel 方案和 2 张真实图片，四张均成功、积分 30→26。UI 新建的无 Tool `故事因果检查 v1` 使用真实文本 Provider 输出因果检查，未创建第三个任务且余额保持 26；Style-only 消息由 catalog 自动选择系统 Skill 并停在方案确认。另验证个人 Skill 发布 v2、查看历史、重新激活 v1，文字 Skill 归档后历史 Message 仍保留准确 v1 安全快照。最终 `./scripts/check.sh` 通过 252 项后端测试，QA 报告为 `docs/qa/sprint-117-pluggable-skill-management-agent-loop-report.md`；Sprint 117 标记 Complete（Closed），Evaluation 保持 Deferred。
 
 ## 已知缺口
 
 - 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume。
 - 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；正式 Evaluation 发布门槛已按用户决定推迟到功能路线冻结后的最后阶段。
-- Sprint 117 已完成 Skill 数据/API、管理前端、`@Skill`、数据库版本加载、Run pin 和通用执行主链路；仍需完成真实 Provider 的系统/个人生图与纯文本 Skill 验收、完整浏览器对话/版本切换验收，以及最终合同 QA 闭合。正式 Evaluation 继续 Deferred。
+- Sprint 117 已 Complete（Closed）：Skill 数据/API、管理前端、`@Skill`、数据库版本加载、Run pin、通用执行、真实系统/个人生图、纯文本 Skill、版本切换和 QA 均已闭合。正式 Evaluation 继续 Deferred。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。
@@ -416,6 +417,6 @@
 
 ## 建议下一步
 
-1. 完成 Sprint 117 真实 Provider 与 1440×900、1280×800 浏览器对话验收，并记录预计/实际图片积分。
-2. 对通用 Loop、版本固定、Tool 白名单、HITL 和恢复行为执行合同 QA；发现缺口先修复再关闭 Sprint。
-3. 不要提前实施 Deferred Evaluation，也不要宣告 `GO_INTERNAL`。
+1. 保持 Sprint 117 已关闭状态，不自动扩展多 Skill、脚本/MCP、Memory、TTS、Remotion 或视频能力。
+2. 等用户明确确认功能路线冻结并授权后，再重新编号并激活 Deferred Evaluation。
+3. 当前不要宣告 `GO_INTERNAL` 或 `NO_GO`。

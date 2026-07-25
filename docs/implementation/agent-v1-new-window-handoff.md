@@ -1,6 +1,6 @@
 # Agent 漫画 V1 新窗口实施交接
 
-> 状态更新（2026-07-26）：Sprint 105–108、110–116 已 Complete；Sprint 109 Draft 已 Superseded。Sprint 116 实现与 QA 闭合提交已整合到 `codex/agent-feature` 后续基线。用户已明确授权，Sprint 117 可插拔 Skill 管理、版本与通用 Agent Loop 现为 Active；Evaluation 保持 Deferred。
+> 状态更新（2026-07-26）：Sprint 105–108、110–117 已 Complete；Sprint 109 Draft 已 Superseded。Sprint 117 的 Skill 管理、不可变版本、`@Skill`、Run pin、数据库 Skill Runtime 和真实 Provider/浏览器证据已经闭合；Evaluation 保持 Deferred，未实施也未给出内部开放结论。
 
 ## 1. 仓库与分支
 
@@ -87,7 +87,7 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 
 ## 5. 下一窗口启动条件
 
-Sprint 115 和 Sprint 116 已完成，不要再次执行。用户已经确认激活 Sprint 117；下一窗口先审阅版本写操作、真实 VL、一次自动修订预算、pause/resume、图片 Worker 非阻塞通知和测试证据，然后使用 Sprint 117 合同末尾的 `New-window start prompt` 开始实施。
+Sprint 115–117 已完成，不要再次执行。下一窗口先读取 Sprint 117 QA 报告和本交接；在用户明确决定功能路线冻结并授权前，不启动 Deferred Evaluation，也不自行增加新 Sprint。
 
 ## 6. 后续窗口如何开始
 
@@ -153,6 +153,8 @@ Sprint 115 和 Sprint 116 已完成，不要再次执行。用户已经确认激
 - Agent 输入区支持准确版本的 `@Skill`。
 - 每个 Run 固定一个 Skill Version，基础 Instructions 不包含漫画专用流程。
 - Skill 正文真正驱动统一 Tool Loop；Runner 不再按 `idea-to-comic` 名称或资源路由硬编码业务编排。
+- 2026-07-26 已 Complete；真实系统/个人 Skill 各完成两格生图，无 Tool Skill 完成纯文本检查，
+  Style-only catalog 自动选择系统 Skill。正式 Evaluation 仍 Deferred。
 - 不实现 Workflow DSL、多 Skill、脚本/MCP、Memory、TTS、Remotion、视频或 Evaluation。
 
 ## 8. Mock 与失败规则

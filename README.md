@@ -214,7 +214,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 114 idea-to-comic Skill、方案确认与真实事件流](docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md)
 - [Complete：Sprint 115 结构化资源引用与同一任务续作](docs/contracts/sprint-115-agent-structured-resource-context.md)
 - [Complete：Sprint 116 Panel 版本操作、VL 检查与任务控制](docs/contracts/sprint-116-agent-panel-version-vl-loop.md)
-- [Active：Sprint 117 可插拔 Skill 管理、版本与通用 Agent Loop](docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md)
+- [Complete：Sprint 117 可插拔 Skill 管理、版本与通用 Agent Loop](docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md)
 - [Deferred：Agent Evaluation 与内部开放门槛](docs/contracts/deferred-agent-evaluation-internal-release-gate.md)
 - [已完成：Sprint 106 对话创建两格真实漫画](docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md)
 - [已完成：Sprint 107 传统构建与 AI 构建前端整合](docs/contracts/sprint-107-agent-frontend-workspace-integration.md)

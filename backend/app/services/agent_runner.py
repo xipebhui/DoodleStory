@@ -604,6 +604,41 @@ def _emit_skill_runtime_events(
         "selection": selection,
         "allowed_tools": list(skill.allowed_tool_names),
     }
+    for action, step_type in (
+        ("selection", AgentStepType.tool_call),
+        ("load", AgentStepType.tool_result),
+    ):
+        idempotency_key = f"agent:{run.id}:skill_{action}:{skill.id}"
+        existing_step = db.scalar(
+            select(AgentStep).where(
+                AgentStep.idempotency_key == idempotency_key,
+            )
+        )
+        if existing_step is None:
+            sequence = _next_step_sequence(db, run.id)
+            step = AgentStep(
+                run_id=run.id,
+                sequence=sequence,
+                step_type=step_type,
+                status=AgentStepStatus.succeeded,
+                attempt=1,
+                idempotency_key=idempotency_key,
+                input_ref=json.dumps(
+                    {
+                        "action": action,
+                        "selection": selection,
+                        "skill_version_id": skill.id,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                output_ref=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                started_at=datetime.utcnow(),
+                finished_at=datetime.utcnow(),
+            )
+            db.add(step)
+            db.flush()
+            run.current_step_sequence = sequence
     emit_agent_event(
         db,
         run=run,
@@ -615,6 +650,31 @@ def _emit_skill_runtime_events(
         },
         deduplicate=True,
     )
+    with agent_span(
+        "agent.skill",
+        agent_run_id=run.id,
+        span_type="CHAIN",
+        attributes={
+            "agent.skill.id": skill.skill_id,
+            "agent.skill.version_id": skill.id,
+            "agent.skill.name": skill.name,
+            "agent.skill.version": skill.version,
+            "agent.skill.content_hash": skill.content_hash,
+            "agent.skill.selection": selection,
+            "agent.skill.allowed_tools": json.dumps(
+                list(skill.allowed_tool_names),
+                ensure_ascii=False,
+            ),
+        },
+    ) as span:
+        set_span_result(
+            span,
+            {
+                "skill_version_id": skill.id,
+                "selection": selection,
+                "allowed_tool_count": len(skill.allowed_tool_names),
+            },
+        )
     emit_agent_event(
         db,
         run=run,

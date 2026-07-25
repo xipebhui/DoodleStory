@@ -13,3 +13,4 @@ The goal is to separate implementation from acceptance notes, so the next Codex 
 ## Reports
 
 - `sprint-116-agent-panel-version-vl-loop-report.md` — `PASS`，2026-07-26 正式闭合。
+- `sprint-117-pluggable-skill-management-agent-loop-report.md` — `PASS`，2026-07-26 正式闭合。
