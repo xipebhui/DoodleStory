@@ -14,8 +14,9 @@
 - [Agent 会话前端 Demo](agent-conversation-demo/README.md)：独立、无后端的可点击原型，用于体验新建/恢复对话、对话内任务卡片、任务详情和 Panel 上下文引用。
 - [Agent V1 Runtime 与模型路由](agent-runtime-architecture.md)：单 Agent、Skill/Tool Runtime、应用侧上下文、checkpoint、HITL、安全事件、MLflow 和火苗/LIO 路由边界。
 - [Agent V1 Tool 契约](agent-tool-contracts.md)：模型端口、`load_skill`、生图工具、VL 检查工具、Artifact/Approval 与 `@资源` 注入规则。
+- [Sprint 117 Skill 前端视觉与交互基准](sprint-117-skill-ui/README.md)：Skill 列表、编辑器、版本历史、对话 `@Skill` 和执行状态的高保真效果图与交互约束。
 - [Agent 模型平台兼容性实测](../testing/agent-model-provider-compatibility-report.md)：火苗与 LIO 的 Chat、JSON、工具、多模态和 Responses 能力结论。
-- [Agent V1 全局实施路线图](../implementation/agent-v1-implementation-roadmap.md)：Sprint 111–117 从独立 Agent Shell、MLflow、Skill/Tool Runtime、HITL/SSE、资源引用、Panel/VL 到 Evaluation 内部开放的顺序与退出门槛。
+- [Agent V1 全局实施路线图](../implementation/agent-v1-implementation-roadmap.md)：Sprint 111–117 从独立 Agent Shell、MLflow、Skill/Tool Runtime、HITL/SSE、资源引用、Panel/VL 到可插拔 Skill 管理与通用 Loop 的顺序与退出门槛；Evaluation 已顺延到最终阶段。
 - [Agent V1 新窗口实施交接](../implementation/agent-v1-new-window-handoff.md)：当前 Sprint 111 和后续每个 Sprint 的必读顺序、可直接使用的启动提示词和验证收尾流程。
 
 ## 设计原则

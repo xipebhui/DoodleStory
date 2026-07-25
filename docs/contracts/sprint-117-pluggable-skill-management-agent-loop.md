@@ -420,6 +420,30 @@ GET /api/v1/agent/resources/skills?query=&limit=
 
 ## Frontend contract
 
+### Visual source of truth
+
+实施前必须完整阅读：
+
+```text
+docs/design/sprint-117-skill-ui/README.md
+```
+
+并以其中四张效果图作为正式视觉基准：
+
+```text
+01-skill-list.png
+02-skill-editor.png
+03-version-history.png
+04-agent-skill-reference.png
+```
+
+效果图控制页面层级、信息密度、布局和与当前 Agent Studio 的视觉连续性；本合同控制数据、权限、
+版本和交互语义。图片中文字如与合同冲突，以合同为准。
+
+实现不得退化为通用后台模板、简单表格加弹窗或只有一个无指导文本框的页面，也不得引入效果图
+中不存在的 Workflow 节点编辑器、JSON/YAML 配置编辑器、数据看板、渐变或玻璃拟态。若实施需要
+明显偏离视觉基准，必须先更新设计说明和本合同。
+
 ### Routes and navigation
 
 在独立 Agent Shell 中新增：
@@ -873,7 +897,8 @@ git diff --check
 > 请实施 Sprint 117。先确认 Sprint 116 已 Complete 且提交到当前分支，然后完整阅读
 > `README.md`、`docs/spec.md`、`docs/progress.md`、
 > `docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md`、Sprint 113–116 合同、
-> Agent 架构/Tool 合同，以及 Python、数据库、后端工作流、前端和 UI 规范。严格按合同完成：
+> `docs/design/sprint-117-skill-ui/README.md` 及其中四张效果图、Agent 架构/Tool 合同，以及
+> Python、数据库、后端工作流、前端和 UI 规范。严格按合同完成：
 > 用户 Skill CRUD、草稿与不可变发布版本、Tool 白名单、系统 Skill clone、AI 编写辅助、
 > `/agent/skills` 页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base
 > Instructions 和真正由 Skill 驱动的 OpenAI Agents SDK Tool Loop。必须移除正式漫画路径中按
