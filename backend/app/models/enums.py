@@ -83,6 +83,14 @@ class AgentEventType(StrEnum):
     assistant_message = "assistant.message"
     run_completed = "run.completed"
     run_failed = "run.failed"
+    panel_revision_requested = "panel.revision_requested"
+    image_version_created = "image.version_created"
+    image_inspection_started = "image.inspection_started"
+    image_inspection_completed = "image.inspection_completed"
+    image_version_accepted = "image.version_accepted"
+    image_version_restored = "image.version_restored"
+    run_paused = "run.paused"
+    run_resumed = "run.resumed"
 
 
 class StyleStatus(StrEnum):

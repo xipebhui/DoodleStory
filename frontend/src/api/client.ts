@@ -301,6 +301,20 @@ export type AgentTaskInspectorImage = {
   height: number | null;
   error_code: string | null;
   error_message: string | null;
+  accepted_at: string | null;
+  accepted_by_current_user: boolean;
+  inspection: {
+    verdict: "accept" | "revise" | "ask_user" | "blocked";
+    scores: Record<string, number>;
+    issues: Array<{
+      code: string;
+      message: string;
+      suggested_change?: string | null;
+    }>;
+    provider: string;
+    model: string;
+    inspected_at: string;
+  } | null;
   created_at: string;
 };
 
@@ -914,6 +928,49 @@ export const api = {
       body: JSON.stringify(payload),
     }).then((result) => result.data),
   agentRun: (runId: string) => request<ApiData<AgentRun>>(`/agent/runs/${runId}`).then((result) => result.data),
+  regenerateAgentPanel: (
+    conversationId: string,
+    taskId: string,
+    panelId: string,
+    payload: {
+      instruction: string;
+      source_image_version_id: string;
+      expected_credit_cost: 1;
+      allow_auto_revision: boolean;
+    },
+  ) =>
+    request<ApiData<AgentRun>>(
+      `/agent/conversations/${encodeURIComponent(conversationId)}/tasks/${encodeURIComponent(taskId)}/panels/${encodeURIComponent(panelId)}/regenerations`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  acceptAgentImageVersion: (
+    conversationId: string,
+    taskId: string,
+    panelId: string,
+    imageId: string,
+  ) =>
+    request<ApiData<AgentTaskInspectorImage>>(
+      `/agent/conversations/${encodeURIComponent(conversationId)}/tasks/${encodeURIComponent(taskId)}/panels/${encodeURIComponent(panelId)}/versions/${encodeURIComponent(imageId)}/accept`,
+      { method: "POST" },
+    ).then((result) => result.data),
+  restoreAgentImageVersion: (
+    conversationId: string,
+    taskId: string,
+    panelId: string,
+    imageId: string,
+  ) =>
+    request<ApiData<AgentTaskInspectorImage>>(
+      `/agent/conversations/${encodeURIComponent(conversationId)}/tasks/${encodeURIComponent(taskId)}/panels/${encodeURIComponent(panelId)}/versions/${encodeURIComponent(imageId)}/restore`,
+      { method: "POST" },
+    ).then((result) => result.data),
+  pauseAgentRun: (runId: string) =>
+    request<ApiData<AgentRun>>(`/agent/runs/${encodeURIComponent(runId)}/pause`, {
+      method: "POST",
+    }).then((result) => result.data),
+  resumeAgentRun: (runId: string) =>
+    request<ApiData<AgentRun>>(`/agent/runs/${encodeURIComponent(runId)}/resume`, {
+      method: "POST",
+    }).then((result) => result.data),
   myCredits: () => request<ApiData<CreditOverview>>("/credits/me").then((result) => result.data),
   redeemCreditCode: (payload: { code: string }) =>
     request<ApiData<CreditOverview>>("/credits/redeem", {

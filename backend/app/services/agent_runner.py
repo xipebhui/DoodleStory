@@ -66,6 +66,12 @@ from app.services.agent_resources import (
     parse_agent_resource_refs,
     resource_context_from_saved_refs,
 )
+from app.services.agent_panel_versions import (
+    AgentPanelVersionError,
+    RevisionRunOutcome,
+    is_panel_revision_run,
+    process_panel_revision_run,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -85,6 +91,7 @@ _agent_queue: asyncio.Queue[str] | None = None
 _agent_worker_tasks: list[asyncio.Task[None]] = []
 _active_run_ids: set[str] = set()
 _active_run_ids_lock: asyncio.Lock | None = None
+_agent_queue_loop: asyncio.AbstractEventLoop | None = None
 
 
 class AgentContextLimitExceeded(RuntimeError):
@@ -414,6 +421,8 @@ def prepare_agent_run(run_id: str) -> str | None:
         run = db.get(AgentRun, run_id)
         if run is None or run.status in TERMINAL_RUN_STATUSES:
             return None
+        if run.status in {AgentRunStatus.paused, AgentRunStatus.waiting_for_input}:
+            return None
         if run.status == AgentRunStatus.cancel_requested:
             cancel_pending_approvals(db, run)
             run.status = AgentRunStatus.cancelled
@@ -444,6 +453,48 @@ def prepare_agent_run(run_id: str) -> str | None:
         run.internal_error_ref = None
         db.commit()
         return None
+
+
+def wait_agent_run_for_input(run_id: str, message: str) -> None:
+    with database.SessionLocal() as db:
+        run = db.get(AgentRun, run_id)
+        if run is None or run.status in TERMINAL_RUN_STATUSES:
+            return
+        existing = db.scalar(
+            select(AgentMessage).where(
+                AgentMessage.conversation_id == run.conversation_id,
+                AgentMessage.turn_id == run.turn_id,
+                AgentMessage.role == AgentMessageRole.assistant,
+                AgentMessage.content == message,
+            )
+        )
+        if existing is None:
+            db.add(
+                AgentMessage(
+                    conversation_id=run.conversation_id,
+                    turn_id=run.turn_id,
+                    role=AgentMessageRole.assistant,
+                    content=message,
+                    sequence=_next_message_sequence(db, run.conversation_id),
+                )
+            )
+        run.status = AgentRunStatus.waiting_for_input
+        emit_agent_event(
+            db,
+            run=run,
+            event_type=AgentEventType.assistant_message,
+            payload={"content": message},
+            deduplicate=True,
+        )
+        db.commit()
+
+
+def process_panel_revision_run_by_id(run_id: str) -> RevisionRunOutcome | None:
+    with database.SessionLocal() as db:
+        run = db.get(AgentRun, run_id)
+        if run is None or run.status in TERMINAL_RUN_STATUSES:
+            return None
+        return process_panel_revision_run(db, run)
 
 
 def _latest_user_message(db: Session, run: AgentRun) -> AgentMessage:
@@ -738,7 +789,11 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
     try:
         with database.SessionLocal() as db:
             run = db.get(AgentRun, run_id)
-            if run is None or run.status in TERMINAL_RUN_STATUSES:
+            if (
+                run is None
+                or run.status in TERMINAL_RUN_STATUSES
+                or run.status in {AgentRunStatus.paused, AgentRunStatus.waiting_for_input}
+            ):
                 return
             trace_context = {
                 "conversation_id": run.conversation_id,
@@ -758,6 +813,19 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                 recovered_output = prepare_agent_run(run_id)
                 if recovered_output is not None:
                     finalize_agent_run(run_id, recovered_output)
+                    return
+                with database.SessionLocal() as db:
+                    is_revision = is_panel_revision_run(db, run_id)
+                outcome = (
+                    await asyncio.to_thread(process_panel_revision_run_by_id, run_id)
+                    if is_revision
+                    else None
+                )
+                if outcome is not None:
+                    if outcome.state == "completed":
+                        finalize_agent_run(run_id, outcome.message)
+                    elif outcome.state == "waiting_input":
+                        wait_agent_run_for_input(run_id, outcome.message)
                     return
                 with database.SessionLocal() as db:
                     run = db.get(AgentRun, run_id)
@@ -797,9 +865,10 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                     ):
                         finalize_agent_run(
                             run_id,
-                            "我已识别到你引用的是现有任务，但当前阶段只支持读取任务、Panel 和图片版本，"
-                            "以及整理修改建议；重新生成、恢复或接受版本会在 Sprint 116 开放。"
-                            "这次没有调用旧任务编辑接口，也没有创建新任务或扣除图片积分。",
+                            "我已识别到你引用的是现有任务。版本写操作已在任务检查器中开放，"
+                            "请在那里选择目标 Panel 和图片版本后执行再生成、接受或恢复；"
+                            "本条自然语言消息不会冒充已完成确定性操作，也没有创建新任务、"
+                            "调用图片 Provider 或扣除图片积分。",
                         )
                         return
                     continuation_input = [
@@ -868,6 +937,13 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                     message=str(exc),
                     internal_error_ref="AgentResourceResolutionError",
                 )
+            except AgentPanelVersionError as exc:
+                fail_agent_run(
+                    run_id,
+                    code="AgentPanelVersionError",
+                    message=str(exc),
+                    internal_error_ref="AgentPanelVersionError",
+                )
             except AgentRunCancelled:
                 logger.info("agent_run_cancelled run_id=%s", run_id)
             except AgentCheckpointError:
@@ -918,10 +994,11 @@ async def _agent_worker(worker_index: int) -> None:
 
 
 def init_agent_queue() -> None:
-    global _agent_queue, _agent_worker_tasks, _active_run_ids_lock
+    global _agent_queue, _agent_worker_tasks, _active_run_ids_lock, _agent_queue_loop
     if _agent_queue is not None:
         return
     loop = asyncio.get_running_loop()
+    _agent_queue_loop = loop
     _agent_queue = asyncio.Queue()
     _active_run_ids_lock = asyncio.Lock()
     concurrency = get_settings().agent_worker_concurrency
@@ -935,6 +1012,34 @@ async def enqueue_agent_run(run_id: str) -> None:
     if _agent_queue is None:
         raise RuntimeError("Agent queue has not been initialized")
     await _agent_queue.put(run_id)
+
+
+def enqueue_agent_run_from_thread(run_id: str) -> None:
+    if _agent_queue_loop is None or _agent_queue is None:
+        raise RuntimeError("Agent 队列事件循环尚未初始化")
+    _agent_queue_loop.call_soon_threadsafe(
+        _agent_queue.put_nowait,
+        run_id,
+    )
+
+
+def notify_agent_runs_for_image_job(image_id: str) -> int:
+    if _agent_queue_loop is None:
+        return 0
+    with database.SessionLocal() as db:
+        run_ids = db.scalars(
+            select(AgentRun.id)
+            .join(AgentStep, AgentStep.run_id == AgentRun.id)
+            .where(
+                AgentRun.status == AgentRunStatus.waiting_for_tool,
+                AgentStep.step_type == AgentStepType.tool_call,
+                AgentStep.output_ref.contains(image_id),
+            )
+            .distinct()
+        ).all()
+    for run_id in run_ids:
+        enqueue_agent_run_from_thread(run_id)
+    return len(run_ids)
 
 
 async def recover_agent_runs() -> int:
@@ -952,7 +1057,7 @@ async def recover_agent_runs() -> int:
 
 
 async def shutdown_agent_queue() -> None:
-    global _agent_queue, _agent_worker_tasks, _active_run_ids_lock
+    global _agent_queue, _agent_worker_tasks, _active_run_ids_lock, _agent_queue_loop
     tasks = list(_agent_worker_tasks)
     for task in tasks:
         task.cancel()
@@ -962,3 +1067,4 @@ async def shutdown_agent_queue() -> None:
     _agent_queue = None
     _active_run_ids.clear()
     _active_run_ids_lock = None
+    _agent_queue_loop = None

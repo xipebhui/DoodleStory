@@ -701,6 +701,9 @@ def process_generated_image_job(generated_image_id: str) -> None:
             update_task_character_reference_state(db, image.task_id)
         elif image is not None and image.source_type != GeneratedImageSourceType.user_edit:
             update_task_image_generation_state(db, image.task_id)
+    from app.services.agent_runner import notify_agent_runs_for_image_job
+
+    notify_agent_runs_for_image_job(generated_image_id)
 
 
 def mark_image_job_failed_by_unhandled_error(generated_image_id: str, exc: Exception) -> None:
@@ -720,6 +723,9 @@ def mark_image_job_failed_by_unhandled_error(generated_image_id: str, exc: Excep
             update_task_character_reference_state(db, image.task_id)
         elif image.source_type != GeneratedImageSourceType.user_edit:
             update_task_image_generation_state(db, image.task_id)
+    from app.services.agent_runner import notify_agent_runs_for_image_job
+
+    notify_agent_runs_for_image_job(generated_image_id)
 
 
 def process_character_reference_image_job(generated_image_id: str) -> None:
@@ -3173,6 +3179,15 @@ def clear_image_job_lock(image: GeneratedImage) -> None:
     image.locked_by = None
 
 
+def panel_edit_requests_text_change(instruction: str) -> bool:
+    return bool(
+        re.search(
+            r"文字|文案|旁白|对白|对话|字幕|标题|台词|气泡|排版|字样|去字|删字|无字",
+            instruction,
+        )
+    )
+
+
 def process_panel_edit(generated_image_id: str) -> None:
     with SessionLocal() as db:
         image = load_generated_image(db, generated_image_id)
@@ -3197,14 +3212,24 @@ def process_panel_edit(generated_image_id: str) -> None:
         db.commit()
 
         try:
+            original_image_text_json = image.image_text_json or panel.image_text_json
+            original_text_layout = image.text_layout or panel.text_layout
+            user_instruction = image.user_instruction or ""
+            preserve_text = not panel_edit_requests_text_change(user_instruction)
             revision = revise_panel_prompt(
                 original_text=story_text_for_generation(task),
                 style_prompt=task.style_prompt_snapshot,
                 panel_text=panel.original_text_segment,
                 current_prompt=image.previous_prompt or panel.generated_prompt or "",
-                current_image_text=parse_image_text_json(image.image_text_json or panel.image_text_json),
-                current_text_layout=image.text_layout or panel.text_layout,
-                user_instruction=image.user_instruction or "",
+                current_image_text=parse_image_text_json(original_image_text_json),
+                current_text_layout=original_text_layout,
+                user_instruction=(
+                    f"{user_instruction}\n"
+                    "系统约束：用户没有要求改变图片内文字或文字布局；"
+                    "必须原样保留当前文字内容与布局，不得新增、删除或改写。"
+                    if preserve_text
+                    else user_instruction
+                ),
                 trace_context=task_trace_context(
                     task,
                     "panel_edit_rewrite_prompt",
@@ -3227,8 +3252,14 @@ def process_panel_edit(generated_image_id: str) -> None:
                 )
                 image.text_layout = None
             else:
-                image.image_text_json = image_text_to_json(revision.image_text)
-                image.text_layout = revision.text_layout
+                image.image_text_json = (
+                    original_image_text_json
+                    if preserve_text
+                    else image_text_to_json(revision.image_text)
+                )
+                image.text_layout = (
+                    original_text_layout if preserve_text else revision.text_layout
+                )
             image.prompt_change_summary = revision.change_summary
             image.llm_model_snapshot = get_settings().lio_model
             image.final_prompt = None

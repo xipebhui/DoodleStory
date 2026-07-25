@@ -89,7 +89,7 @@ Agent 不长期复用：
 - Sprint 108：正式 Agent 内部界面与 Demo 对齐。
 - Sprint 110：Agent 默认模型切换为 `gpt-5.5`。
 
-### 当前代码限制
+### 路线制定时的代码限制
 
 - `/agent` 仍嵌在旧工作台 Shell 中。
 - Agent 内仍显示 `传统构建 / AI 构建` 切换。
@@ -130,8 +130,8 @@ Sprint 111–113、115 默认不新增表。
 | 112 | MLflow 可观测性基线 | Complete | 无 | 无新功能 |
 | 113 | SkillRegistry、ToolRegistry、Generic Tool Executor | Complete | 无 | 无新功能 |
 | 114 | `idea-to-comic` Skill、方案确认、SSE 事件流 | Complete | Artifact/Approval/Event | 有，方案卡与活动流 |
-| 115 | Style/Character/Task/Panel/Image Version 引用 | Planned | 默认无 | 有，真实 `@` 菜单与引用 |
-| 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Planned | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
+| 115 | Style/Character/Task/Panel/Image Version 引用 | Complete | 默认无 | 有，真实 `@` 菜单与引用 |
+| 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Complete | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
 | 117 | Evaluation、故障注入、内部开放门槛 | Planned | 无业务表 | 只做回归 |
 
 旧 `Sprint 109` Draft 已标记 Superseded，不能再激活。
@@ -299,6 +299,8 @@ instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间�
 - 恢复不调用 Provider、不扣积分。
 - VL、Agent 决策与版本变化可解释。
 - 暂停、继续、取消、晚到和重启行为正确。
+
+2026-07-25 已通过退出门槛。目标 Panel 新版本、接受/恢复、真实 `inspect_image`、严格一次授权自动修订、pause/resume、安全事件与检查器写操作均已落地；长任务继续由现有图片队列处理，Runner 只调用原子 Tool，没有引入通用 Workflow 引擎。全量 240 项后端测试、空库 migration、Python compileall、前端生产构建和真实 Provider/浏览器验收通过。Sprint 117 保持 Planned，需单独确认后再激活。
 
 ## 12. Sprint 117：Evaluation 与内部开放
 

@@ -2,10 +2,10 @@
 
 ## 当前基线
 
-- 分支：`codex/agent-feature`
+- 分支：`codex/sprint-116-panel-vl`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 115 已于 2026-07-24 Complete。Style/Character/Task/Panel/Image Version 有界真实查询、统一 Resolver、权限/状态/父子/组合校验、安全快照重放、普通讨论/新任务/同任务只读续作路由、角色真实任务快照与生图参考、前端分组资源菜单和检查器引用均已实现；真实 `@风格 + @角色` 两格生成、刷新恢复、同 Task 续聊和 Sprint 116 写操作拒绝通过。`./scripts/check.sh` 覆盖 230 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
+- 最近验证状态：Sprint 116 已于 2026-07-25 Complete。目标 Panel 新版本、接受/恢复、真实 VL、严格一次授权自动修订、pause/resume、安全事件和检查器写操作均已实现；全量 240 项后端测试、空库 migration、Python compileall、前端生产构建、真实 `gpt-image-2`/`gpt-5.4` 与浏览器验收通过。
 
 ## 当前 Sprint 合同
 
@@ -14,7 +14,7 @@
 - Complete：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
 - Complete：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
 - Complete：`docs/contracts/sprint-115-agent-structured-resource-context.md`
-- Planned：`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
+- Complete：`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
 - Planned：`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
 - Complete：`docs/contracts/sprint-110-agent-default-model-gpt55.md`
 - Superseded（未实施）：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`
@@ -44,6 +44,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 116 Panel/VL/版本与任务控制闭环：`generate_image` 现在可在完整 Conversation → Task → Panel → Version 权限链上只为目标 Panel 创建新版本，复用任务风格、比例、角色参考和来源 Prompt；接受/恢复保存明确用户事实，均幂等，恢复不调用 Provider、不扣积分、不删除历史。新增真实多模态 `inspect_image`，严格保存 Tool、Provider/model、延迟、结果和错误，支持五类检查与四种 verdict；每版本最多检查一次，每 Turn 只有用户显式授权时才允许一次额外自动修订。Runner 仍只调用原子 Tool，图片长任务继续走既有队列；修正图片 Worker 同步等待 Agent 在慢 VL 下误标成功图片的问题，改为线程安全非阻塞入队，并确定性保护纯视觉修订不改图片文字/布局。检查器新增版本历史、VL 摘要、扣分确认、再生成、接受、恢复、引用和 Run 暂停/继续，失败保留输入；事件覆盖版本、检查和运行控制。真实本地隔离验收创建 Panel 1 v2，`gpt-5.4` VL 返回 accept（0.98/0.90/0.95/1.00/0.93），余额 28→27；接受 v2、恢复 v1、刷新和后端重启后状态仍恢复且余额保持 27。用户确认无需为修复重复等待慢生图，正式代码未加入 Mock。针对性 18 项和全量 240 项后端测试、空库 Alembic migration、Python compileall、前端生产构建及 `git diff --check` 全部通过。
 
 - 完成 Sprint 115 结构化资源引用与同一任务续作：新增五类有界 Resource API 和统一 `AgentResourceResolver`，消息入队前批量校验数量、状态、owner、父子关系与组合，服务端覆盖伪造 display name，并把规范引用和不含 owner/存储路径/URL/密钥的安全摘要保存到现有 `resource_refs_json`；`build_agent_input()` 按接收时快照重放历史资源。Runtime 明确区分普通讨论、新漫画和已有任务只读续作，Task 引用复用同一 GenerationTask，版本写请求明确留给 Sprint 116。Character 引用真实创建任务角色/appearance/逐 Panel 关系，并把参考资产传入图片 Provider。前端完成分组搜索、loading/empty/error、组合禁用解释、层级自动引用、任务卡/检查器引用，以及 Idea/资源按会话分离持久化；Conversation 切换同步重置 SSE cursor，避免跨会话游标导致活动流断开。真实 Conversation `4ae7adb3b5b44e9686028a5a9310901a`、Task `ca8677b7a4944f499f65f9d36b493399` 使用 `@粗线条暖色 + @林夏验收角色` 生成两张真实图片，余额 30→28；检查器引用没有覆盖草稿，刷新后五类标签恢复；只读续聊 Run `7285c1a1008845e380b036c0c84a84f1` 复用同一 Task 且 image call 为 0，显式“重新生成”也未新增 Task/Image 或扣分。针对性 37 项、Python compileall、前端构建和 `git diff --check` 通过；全量 `./scripts/check.sh` 覆盖 230 项后端测试、空库 migration 与前端生产构建并通过。未实现 Sprint 116 的 Panel/VL/版本写操作或 pause/resume。
 
@@ -388,9 +390,8 @@
 
 ## 已知缺口
 
-- 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文和同任务只读续作；Panel 再生成、接受/恢复版本、VL 检查和 pause/resume 尚未实现。
-- 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；Evaluation 发布门槛仍待 Sprint 117。
-- 当前没有 `inspect_image`、版本接受/恢复、Agent pause/resume 或 Evaluation 发布门槛；分别由 Sprint 116、117 交付。
+- 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume；Evaluation 发布门槛仍待 Sprint 117。
+- 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span、Sprint 114 Artifact/Approval span，以及 Sprint 116 图片检查与版本事件；尚未形成 Sprint 117 的版本化 Eval、故障注入矩阵和 `GO_INTERNAL/NO_GO` 结论。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。
@@ -403,6 +404,6 @@
 
 ## 建议下一步
 
-1. 回到规划窗口审阅 Sprint 115 的 Resolver、安全快照重放、Character 参考链路、同 Task 只读续作和真实验收结果。
-2. Sprint 115 已 Complete；等待用户明确确认后再把 Sprint 116 从 Planned 激活，单独实施 Panel/VL/版本闭环。
-3. 不要提前并行实现 Sprint 116 或 Sprint 117 Evaluation 门槛。
+1. 回到规划窗口审阅 Sprint 116 的版本归属链、真实 VL、一次自动修订预算、pause/resume、非阻塞 Worker 通知和真实验收结果。
+2. Sprint 116 已 Complete；等待用户明确确认后再把 Sprint 117 从 Planned 激活，单独实施 Evaluation、故障注入和内部开放门槛。
+3. 不要在未激活 Sprint 117 前新增创作能力或提前宣告 `GO_INTERNAL`。

@@ -449,6 +449,10 @@ class GeneratedImage(Base, TimestampMixin):
     image_text_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     text_layout: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     prompt_change_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    accepted_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     llm_model_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     final_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image_model_name_snapshot: Mapped[str] = mapped_column(String(120))

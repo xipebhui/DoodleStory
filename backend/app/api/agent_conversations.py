@@ -30,6 +30,7 @@ from app.models.entities import (
 )
 from app.models.enums import (
     AgentConversationStatus,
+    AgentEventType,
     AgentMessageRole,
     AgentRunStatus,
     StyleStatus,
@@ -43,6 +44,8 @@ from app.schemas.agent import (
     AgentConversationRead,
     AgentMessageCreate,
     AgentMessageRead,
+    AgentPanelRegenerationCreate,
+    AgentImageInspectionRead,
     AgentResourceRef,
     AgentResourceKind,
     AgentResourceOption,
@@ -59,15 +62,20 @@ from app.schemas.agent import (
 )
 from app.schemas.common import ApiData, ApiList
 from app.services.agent_runner import enqueue_agent_run
-from app.services.agent_hitl import AgentApprovalError, decide_approval
+from app.services.agent_hitl import AgentApprovalError, decide_approval, emit_agent_event
 from app.services.agent_resources import (
     AgentResourceResolutionError,
     AgentResourceResolver,
     parse_agent_resource_refs,
 )
 from app.core import database
-
-
+from app.services.agent_panel_versions import (
+    AgentPanelVersionError,
+    accept_image_version,
+    inspection_events_for_conversation,
+    restore_image_version,
+    start_panel_regeneration,
+)
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 
@@ -197,7 +205,23 @@ def task_card_image_to_read(image: GeneratedImage) -> AgentTaskCardImageRead:
     )
 
 
-def task_inspector_image_to_read(image: GeneratedImage) -> AgentTaskInspectorImageRead:
+def task_inspector_image_to_read(
+    image: GeneratedImage,
+    *,
+    current_user_id: str | None = None,
+    inspection_payload: dict[str, object] | None = None,
+) -> AgentTaskInspectorImageRead:
+    inspection = None
+    if inspection_payload and inspection_payload.get("status") == "succeeded":
+        inspected_at = inspection_payload.get("inspected_at")
+        inspection = AgentImageInspectionRead(
+            verdict=inspection_payload["verdict"],
+            scores=inspection_payload.get("scores", {}),
+            issues=inspection_payload.get("issues", []),
+            provider=str(inspection_payload.get("provider") or ""),
+            model=str(inspection_payload.get("model") or ""),
+            inspected_at=datetime.fromisoformat(str(inspected_at)),
+        )
     return AgentTaskInspectorImageRead(
         id=image.id,
         generation_number=image.generation_number,
@@ -209,6 +233,12 @@ def task_inspector_image_to_read(image: GeneratedImage) -> AgentTaskInspectorIma
         height=image.asset.height if image.asset else None,
         error_code=image.error_code,
         error_message=image.error_message,
+        accepted_at=image.accepted_at,
+        accepted_by_current_user=(
+            current_user_id is not None
+            and image.accepted_by_user_id == current_user_id
+        ),
+        inspection=inspection,
         created_at=image.created_at,
     )
 
@@ -249,7 +279,11 @@ def task_card_to_read(run: AgentRun) -> AgentTaskCardRead:
 def task_inspector_to_read(
     conversation_id: str,
     task: GenerationTask,
+    *,
+    current_user_id: str | None = None,
+    inspections: dict[str, dict[str, object]] | None = None,
 ) -> AgentTaskInspectorRead:
+    inspection_map = inspections or {}
     panels: list[AgentTaskInspectorPanelRead] = []
     for panel in sorted(task.panels, key=lambda item: item.panel_order):
         versions = sorted(
@@ -269,11 +303,22 @@ def task_inspector_to_read(
                 error_code=latest_image.error_code if latest_image is not None else panel.error_code,
                 error_message=latest_image.error_message if latest_image is not None else panel.error_message,
                 current_image=(
-                    task_inspector_image_to_read(current_image)
+                    task_inspector_image_to_read(
+                        current_image,
+                        current_user_id=current_user_id,
+                        inspection_payload=inspection_map.get(current_image.id),
+                    )
                     if current_image is not None
                     else None
                 ),
-                versions=[task_inspector_image_to_read(image) for image in versions],
+                versions=[
+                    task_inspector_image_to_read(
+                        image,
+                        current_user_id=current_user_id,
+                        inspection_payload=inspection_map.get(image.id),
+                    )
+                    for image in versions
+                ],
             )
         )
     return AgentTaskInspectorRead(
@@ -607,7 +652,97 @@ def get_agent_conversation_task(
     )
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent 会话任务不存在")
-    return ApiData(data=task_inspector_to_read(conversation.id, task))
+    return ApiData(
+        data=task_inspector_to_read(
+            conversation.id,
+            task,
+            current_user_id=user.id,
+            inspections=inspection_events_for_conversation(db, conversation.id),
+        )
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/tasks/{task_id}/panels/{panel_id}/regenerations",
+    response_model=ApiData[AgentRunRead],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def regenerate_agent_panel(
+    conversation_id: str,
+    task_id: str,
+    panel_id: str,
+    payload: AgentPanelRegenerationCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AgentRunRead]:
+    try:
+        run = start_panel_regeneration(
+            db,
+            conversation_id=conversation_id,
+            task_id=task_id,
+            panel_id=panel_id,
+            payload=payload,
+            owner_user_id=user.id,
+        )
+    except AgentPanelVersionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return ApiData(data=run_to_read(db, run))
+
+
+@router.post(
+    "/conversations/{conversation_id}/tasks/{task_id}/panels/{panel_id}/versions/{image_id}/accept",
+    response_model=ApiData[AgentTaskInspectorImageRead],
+)
+def accept_agent_image_version(
+    conversation_id: str,
+    task_id: str,
+    panel_id: str,
+    image_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AgentTaskInspectorImageRead]:
+    try:
+        image = accept_image_version(
+            db,
+            conversation_id=conversation_id,
+            task_id=task_id,
+            panel_id=panel_id,
+            image_id=image_id,
+            owner_user_id=user.id,
+        )
+    except AgentPanelVersionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return ApiData(
+        data=task_inspector_image_to_read(image, current_user_id=user.id)
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/tasks/{task_id}/panels/{panel_id}/versions/{image_id}/restore",
+    response_model=ApiData[AgentTaskInspectorImageRead],
+)
+def restore_agent_image_version(
+    conversation_id: str,
+    task_id: str,
+    panel_id: str,
+    image_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AgentTaskInspectorImageRead]:
+    try:
+        image = restore_image_version(
+            db,
+            conversation_id=conversation_id,
+            task_id=task_id,
+            panel_id=panel_id,
+            image_id=image_id,
+            owner_user_id=user.id,
+        )
+    except AgentPanelVersionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return ApiData(
+        data=task_inspector_image_to_read(image, current_user_id=user.id)
+    )
 
 
 @router.post(
@@ -700,6 +835,81 @@ def get_agent_run(
     )
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent Run 不存在")
+    return ApiData(data=run_to_read(db, run))
+
+
+def _load_owned_run(db: Session, run_id: str, user_id: str) -> AgentRun:
+    run = db.scalar(
+        select(AgentRun)
+        .join(AgentConversation, AgentConversation.id == AgentRun.conversation_id)
+        .where(
+            AgentRun.id == run_id,
+            AgentConversation.owner_user_id == user_id,
+        )
+    )
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent Run 不存在")
+    return run
+
+
+@router.post("/runs/{run_id}/pause", response_model=ApiData[AgentRunRead])
+def pause_agent_run(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AgentRunRead]:
+    run = _load_owned_run(db, run_id, user.id)
+    if run.status == AgentRunStatus.paused:
+        return ApiData(data=run_to_read(db, run))
+    if run.status in {
+        AgentRunStatus.succeeded,
+        AgentRunStatus.failed,
+        AgentRunStatus.cancelled,
+        AgentRunStatus.waiting_for_input,
+    }:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="当前 Agent Run 不能暂停")
+    run.status = AgentRunStatus.paused
+    emit_agent_event(
+        db,
+        run=run,
+        event_type=AgentEventType.run_paused,
+        payload={
+            "status": "paused",
+            "message": "已暂停后续 Agent 步骤；已提交图片 Provider 的请求仍可能完成并保存。",
+        },
+        deduplicate=True,
+    )
+    db.commit()
+    db.refresh(run)
+    return ApiData(data=run_to_read(db, run))
+
+
+@router.post("/runs/{run_id}/resume", response_model=ApiData[AgentRunRead])
+async def resume_agent_run(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[AgentRunRead]:
+    run = _load_owned_run(db, run_id, user.id)
+    if run.status in {
+        AgentRunStatus.succeeded,
+        AgentRunStatus.failed,
+        AgentRunStatus.cancelled,
+        AgentRunStatus.waiting_for_input,
+    }:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="当前 Agent Run 不能继续")
+    should_enqueue = run.status == AgentRunStatus.paused
+    if should_enqueue:
+        run.status = AgentRunStatus.queued
+        emit_agent_event(
+            db,
+            run=run,
+            event_type=AgentEventType.run_resumed,
+            payload={"status": "queued"},
+        )
+        db.commit()
+        await enqueue_agent_run(run.id)
+        db.refresh(run)
     return ApiData(data=run_to_read(db, run))
 
 

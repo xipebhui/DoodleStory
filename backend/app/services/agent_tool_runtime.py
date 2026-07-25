@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import json
+from time import monotonic
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.entities import (
     AgentRun,
     AgentStep,
@@ -34,6 +36,7 @@ from app.services.agent_observability import (
 )
 from app.services.agent_hitl import AgentApprovalError, approved_comic_plan
 from app.services.agent_skill_registry import SkillRegistry, get_runtime_skill_registry
+from app.services.agent_vision import AgentVisionError, inspect_generated_image
 
 
 class AgentToolRuntimeError(RuntimeError):
@@ -83,6 +86,8 @@ class GenerateImageInput(StrictToolModel):
     aspect_ratio: str = Field(min_length=1, max_length=40)
     reference_image_ids: list[str] = Field(default_factory=list, max_length=16)
     revision_instruction: str | None = Field(default=None, min_length=1, max_length=4_000)
+    source_image_version_id: str | None = None
+    allow_auto_revision: bool = False
 
 
 class GenerateImageOutput(StrictToolModel):
@@ -106,6 +111,54 @@ class GenerateImageOutput(StrictToolModel):
                 raise ValueError("成功图片 Tool Output 必须包含 image_version_id 和 asset_id")
         elif not self.error_code or not self.message or self.retryable is None:
             raise ValueError("失败图片 Tool Output 必须包含 error_code、message 和 retryable")
+        return self
+
+
+class InspectImageExpected(StrictToolModel):
+    story_beat: str | None = Field(default=None, max_length=4_000)
+    characters: list[str] = Field(default_factory=list, max_length=20)
+    required_text: list[str] = Field(default_factory=list, max_length=50)
+
+
+class InspectImageInput(StrictToolModel):
+    image_version_ids: list[str] = Field(min_length=1, max_length=1)
+    checks: list[
+        Literal[
+            "story_alignment",
+            "character_consistency",
+            "continuity",
+            "text_accuracy",
+            "visual_artifacts",
+        ]
+    ] = Field(min_length=1, max_length=5)
+    expected: InspectImageExpected
+
+
+class InspectImageIssueOutput(StrictToolModel):
+    code: str
+    message: str
+    suggested_change: str | None = None
+
+
+class InspectImageOutput(StrictToolModel):
+    status: Literal["succeeded", "failed"]
+    image_version_id: str
+    verdict: Literal["accept", "revise", "ask_user", "blocked"] | None = None
+    scores: dict[str, float] = Field(default_factory=dict)
+    issues: list[InspectImageIssueOutput] = Field(default_factory=list)
+    provider: str | None = None
+    model: str | None = None
+    error_code: str | None = None
+    message: str | None = None
+
+    @model_validator(mode="after")
+    def validate_terminal_shape(self) -> "InspectImageOutput":
+        if self.status == "succeeded" and (
+            self.verdict is None or self.provider is None or self.model is None
+        ):
+            raise ValueError("成功 VL Tool Output 缺少 verdict/provider/model")
+        if self.status == "failed" and (not self.error_code or not self.message):
+            raise ValueError("失败 VL Tool Output 缺少 error_code/message")
         return self
 
 
@@ -316,6 +369,61 @@ def _generate_image_adapter(
         raise ToolAuthorizationError("generate_image 任务 owner 不匹配")
     if parsed.aspect_ratio != task.style_aspect_ratio_snapshot:
         raise ToolAuthorizationError("generate_image 画面比例与任务风格快照不一致")
+    if parsed.revision_instruction is not None:
+        if not parsed.source_image_version_id:
+            raise ToolAuthorizationError("Panel 再生成必须指定来源图片版本")
+        source = db.get(GeneratedImage, parsed.source_image_version_id)
+        if (
+            source is None
+            or source.task_id != task.id
+            or source.panel_id != panel.id
+            or source.status != GeneratedImageStatus.succeeded
+            or source.asset_id is None
+        ):
+            raise ToolAuthorizationError("来源图片版本不属于目标 Panel 或尚未成功")
+        expected_prompt = source.final_prompt or source.image_prompt or panel.generated_prompt or ""
+        if parsed.prompt != expected_prompt:
+            raise ToolAuthorizationError("Panel 再生成 prompt 与来源版本不一致")
+        generation_number = int(
+            db.scalar(
+                select(func.max(GeneratedImage.generation_number)).where(
+                    GeneratedImage.panel_id == panel.id
+                )
+            )
+            or 0
+        ) + 1
+        existing = GeneratedImage(
+            task_id=task.id,
+            panel_id=panel.id,
+            owner_user_id=context.owner_user_id,
+            job_kind=GeneratedImageJobKind.panel_image,
+            status=GeneratedImageStatus.queued,
+            generation_number=generation_number,
+            is_current=False,
+            source_type=GeneratedImageSourceType.user_edit,
+            workflow_step=GeneratedImageWorkflowStep.rewrite_prompt,
+            queued_at=datetime.utcnow(),
+            queue_group=context.owner_user_id,
+            user_instruction=parsed.revision_instruction,
+            previous_prompt=source.image_prompt or panel.generated_prompt or "",
+            image_text_json=source.image_text_json or panel.image_text_json,
+            text_layout=source.text_layout or panel.text_layout,
+            image_model_name_snapshot=task.image_model_name_snapshot,
+        )
+        db.add(existing)
+        db.flush()
+        return ToolAdapterResult(
+            state="waiting",
+            checkpoint={
+                "status": existing.status.value,
+                "image_job_id": existing.id,
+                "task_id": task.id,
+                "panel_id": panel.id,
+                "source_image_version_id": source.id,
+            },
+            side_effect_created=True,
+        )
+
     try:
         approved = approved_comic_plan(db, call_step.run)
     except AgentApprovalError as exc:
@@ -387,6 +495,74 @@ def _generate_image_adapter(
     )
 
 
+def _inspect_image_adapter(
+    db: Session,
+    context: RuntimeContext,
+    arguments: BaseModel,
+    call_step: AgentStep,
+) -> ToolAdapterResult:
+    parsed = InspectImageInput.model_validate(arguments)
+    image = db.get(GeneratedImage, parsed.image_version_ids[0])
+    if (
+        image is None
+        or context.task_id is None
+        or image.task_id != context.task_id
+        or image.panel_id not in context.authorized_panels.values()
+        or image.status != GeneratedImageStatus.succeeded
+        or image.asset_id is None
+    ):
+        raise ToolAuthorizationError("inspect_image 图片版本未获当前 Run 授权或尚未成功")
+    prior_calls = db.scalars(
+        select(AgentStep).where(
+            AgentStep.run_id == call_step.run_id,
+            AgentStep.step_type == AgentStepType.tool_call,
+            AgentStep.id != call_step.id,
+            AgentStep.input_ref.contains(f'"{image.id}"'),
+            AgentStep.input_ref.contains('"tool": "inspect_image"'),
+        )
+    ).all()
+    if prior_calls:
+        raise ToolBudgetExceededError("每个新图片版本最多检查一次")
+    settings = get_settings()
+    started = monotonic()
+    call_step.provider = "text_fallback"
+    call_step.model = settings.text_fallback_model.strip() or None
+    call_step.api_shape = "chat.completions.multimodal"
+    try:
+        result, provider, model, latency_ms = inspect_generated_image(
+            image,
+            checks=list(parsed.checks),
+            expected=parsed.expected.model_dump(),
+        )
+    except AgentVisionError as exc:
+        call_step.latency_ms = round((monotonic() - started) * 1000)
+        return ToolAdapterResult(
+            state="completed",
+            output={
+                "status": "failed",
+                "image_version_id": image.id,
+                "error_code": type(exc).__name__,
+                "message": str(exc),
+            },
+        )
+    call_step.provider = provider
+    call_step.model = model
+    call_step.api_shape = "chat.completions.multimodal"
+    call_step.latency_ms = latency_ms
+    return ToolAdapterResult(
+        state="completed",
+        output={
+            "status": "succeeded",
+            "image_version_id": image.id,
+            "verdict": result.verdict,
+            "scores": result.scores,
+            "issues": [item.model_dump(exclude_none=True) for item in result.issues],
+            "provider": provider,
+            "model": model,
+        },
+    )
+
+
 def create_default_tool_registry(
     skill_registry: SkillRegistry | None = None,
 ) -> ToolRegistry:
@@ -412,6 +588,16 @@ def create_default_tool_registry(
                 may_wait=True,
                 budget_kind="image_call",
                 adapter=_generate_image_adapter,
+            ),
+            ToolDefinition(
+                name="inspect_image",
+                input_model=InspectImageInput,
+                output_model=InspectImageOutput,
+                has_side_effects=False,
+                requires_authorized_resources=True,
+                may_wait=False,
+                budget_kind="none",
+                adapter=_inspect_image_adapter,
             ),
         ]
     )

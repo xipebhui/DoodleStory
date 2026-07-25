@@ -47,6 +47,7 @@ import {
   type AgentResourceOption,
   type AgentResourceRef,
   type AgentRunStatus,
+  type AgentRunSummary,
   type AgentTaskCard,
   type AgentTaskInspector,
   type AdminCreditTransaction,
@@ -876,6 +877,12 @@ function AgentTaskInspectorDialog({
   onReferenceTask,
   onReferencePanel,
   onReferenceImage,
+  run,
+  onRegenerate,
+  onAcceptVersion,
+  onRestoreVersion,
+  onPauseRun,
+  onResumeRun,
   onRetry,
   onClose,
 }: {
@@ -894,10 +901,29 @@ function AgentTaskInspectorDialog({
     panel: AgentTaskInspector["panels"][number],
     image: AgentTaskInspector["panels"][number]["versions"][number],
   ) => void;
+  run: AgentRunSummary | null;
+  onRegenerate: (
+    panel: AgentTaskInspector["panels"][number],
+    instruction: string,
+    allowAutoRevision: boolean,
+  ) => Promise<boolean>;
+  onAcceptVersion: (
+    panel: AgentTaskInspector["panels"][number],
+    image: AgentTaskInspector["panels"][number]["versions"][number],
+  ) => Promise<void>;
+  onRestoreVersion: (
+    panel: AgentTaskInspector["panels"][number],
+    image: AgentTaskInspector["panels"][number]["versions"][number],
+  ) => Promise<void>;
+  onPauseRun: (runId: string) => Promise<void>;
+  onResumeRun: (runId: string) => Promise<void>;
   onRetry: () => void;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const [revisionInstruction, setRevisionInstruction] = useState("");
+  const [allowAutoRevision, setAllowAutoRevision] = useState(false);
+  const [busyAction, setBusyAction] = useState("");
   const selectedPanel =
     inspector?.panels.find((panel) => panel.id === selectedPanelId) ||
     inspector?.panels[0] ||
@@ -942,7 +968,7 @@ function AgentTaskInspectorDialog({
       >
         <header className="agent-inspector-header">
           <div>
-            <span className="agent-eyebrow">AI 任务检查器 · 只读</span>
+            <span className="agent-eyebrow">AI 任务检查器 · 版本操作</span>
             <h2 id="agent-inspector-title">{inspector?.title || "任务详情"}</h2>
             {inspector ? (
               <p>
@@ -952,6 +978,39 @@ function AgentTaskInspectorDialog({
             ) : null}
           </div>
           <div className="agent-inspector-header-actions">
+            {run && ["queued", "running", "retrying", "waiting_for_tool"].includes(run.status) ? (
+              <button
+                type="button"
+                disabled={Boolean(busyAction)}
+                onClick={async () => {
+                  setBusyAction("pause");
+                  try {
+                    await onPauseRun(run.id);
+                  } finally {
+                    setBusyAction("");
+                  }
+                }}
+              >
+                {busyAction === "pause" ? <Loader2 className="spin" size={15} /> : null}
+                暂停后续步骤
+              </button>
+            ) : run?.status === "paused" ? (
+              <button
+                type="button"
+                disabled={Boolean(busyAction)}
+                onClick={async () => {
+                  setBusyAction("resume");
+                  try {
+                    await onResumeRun(run.id);
+                  } finally {
+                    setBusyAction("");
+                  }
+                }}
+              >
+                {busyAction === "resume" ? <Loader2 className="spin" size={15} /> : null}
+                继续运行
+              </button>
+            ) : null}
             {inspector ? (
               <button type="button" onClick={() => onReferenceTask(inspector)}>
                 在对话中引用任务
@@ -968,7 +1027,7 @@ function AgentTaskInspectorDialog({
             <Loader2 className="spin" size={22} />
             <span>正在读取真实任务数据…</span>
           </div>
-        ) : error ? (
+        ) : error && !inspector ? (
           <div className="agent-inspector-state is-error">
             <AlertCircle size={22} />
             <strong>任务读取失败</strong>
@@ -985,6 +1044,7 @@ function AgentTaskInspectorDialog({
           </div>
         ) : inspector && selectedPanel ? (
           <div className="agent-inspector-body">
+            {error ? <div className="error agent-inspector-action-error">{error}</div> : null}
             <aside className="agent-inspector-panel-list" aria-label="Panel 列表">
               {inspector.panels.map((panel) => (
                 <button
@@ -1079,6 +1139,68 @@ function AgentTaskInspectorDialog({
                     <p>{selectedPanel.error_message}</p>
                   </section>
                 ) : null}
+                {selectedPanel.current_image?.inspection ? (
+                  <section className="agent-inspection-summary">
+                    <span>真实 VL 检查</span>
+                    <p>
+                      结论：{selectedPanel.current_image.inspection.verdict} ·{" "}
+                      {Object.entries(selectedPanel.current_image.inspection.scores)
+                        .map(([key, score]) => `${key} ${Math.round(score * 100)}`)
+                        .join(" / ")}
+                    </p>
+                    {selectedPanel.current_image.inspection.issues.map((issue) => (
+                      <p key={`${issue.code}-${issue.message}`}>
+                        {issue.message}
+                        {issue.suggested_change ? `；建议：${issue.suggested_change}` : ""}
+                      </p>
+                    ))}
+                  </section>
+                ) : null}
+                {selectedPanel.current_image?.status === "succeeded" ? (
+                  <section className="agent-panel-revision">
+                    <label htmlFor={`agent-revision-${selectedPanel.id}`}>
+                      再生成一个版本
+                    </label>
+                    <textarea
+                      id={`agent-revision-${selectedPanel.id}`}
+                      value={revisionInstruction}
+                      onChange={(event) => setRevisionInstruction(event.target.value)}
+                      placeholder="例如：表情更紧张，衣服、构图和场景不变"
+                    />
+                    <label className="agent-inline-check">
+                      <input
+                        type="checkbox"
+                        checked={allowAutoRevision}
+                        onChange={(event) => setAllowAutoRevision(event.target.checked)}
+                      />
+                      VL 建议修改时，授权本轮最多自动再生成 1 个版本
+                    </label>
+                    <button
+                      type="button"
+                      disabled={!revisionInstruction.trim() || Boolean(busyAction)}
+                      onClick={async () => {
+                        const confirmed = window.confirm(
+                          "将复用当前任务的风格、比例、角色参考与当前 Prompt，创建并保留一个新版本。成功产出预计扣 1 积分，旧版本不会删除。是否继续？",
+                        );
+                        if (!confirmed) return;
+                        setBusyAction("regenerate");
+                        try {
+                          const succeeded = await onRegenerate(
+                            selectedPanel,
+                            revisionInstruction.trim(),
+                            allowAutoRevision,
+                          );
+                          if (succeeded) setRevisionInstruction("");
+                        } finally {
+                          setBusyAction("");
+                        }
+                      }}
+                    >
+                      {busyAction === "regenerate" ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />}
+                      创建新版本（预计 1 积分）
+                    </button>
+                  </section>
+                ) : null}
                 <button
                   type="button"
                   className="secondary-button"
@@ -1100,6 +1222,7 @@ function AgentTaskInspectorDialog({
                         <strong>v{version.generation_number}</strong>
                         <span>{agentImageStatusLabel(version.status)}</span>
                         {version.is_current ? <small>当前</small> : null}
+                        {version.accepted_at ? <small>已接受</small> : null}
                         <time>{new Date(version.created_at).toLocaleString("zh-CN")}</time>
                         <button
                           type="button"
@@ -1107,6 +1230,38 @@ function AgentTaskInspectorDialog({
                         >
                           引用
                         </button>
+                        {version.status === "succeeded" && version.is_current && !version.accepted_at ? (
+                          <button
+                            type="button"
+                            disabled={Boolean(busyAction)}
+                            onClick={async () => {
+                              setBusyAction(`accept-${version.id}`);
+                              try {
+                                await onAcceptVersion(selectedPanel, version);
+                              } finally {
+                                setBusyAction("");
+                              }
+                            }}
+                          >
+                            接受当前版本
+                          </button>
+                        ) : null}
+                        {version.status === "succeeded" && !version.is_current ? (
+                          <button
+                            type="button"
+                            disabled={Boolean(busyAction)}
+                            onClick={async () => {
+                              setBusyAction(`restore-${version.id}`);
+                              try {
+                                await onRestoreVersion(selectedPanel, version);
+                              } finally {
+                                setBusyAction("");
+                              }
+                            }}
+                          >
+                            恢复此版本
+                          </button>
+                        ) : null}
                       </li>
                     ))}
                   </ol>
@@ -1137,6 +1292,14 @@ function agentEventText(event: AgentPublicEvent) {
     "assistant.message": "Agent 已汇总本轮结果",
     "run.completed": "本轮创作已完成",
     "run.failed": "本轮创作失败",
+    "panel.revision_requested": "已提交 Panel 局部修改",
+    "image.version_created": "已创建并保留新的图片版本",
+    "image.inspection_started": "正在用真实 VL 检查新版本",
+    "image.inspection_completed": `VL 检查完成：${String(event.payload.verdict || event.payload.status || "")}`,
+    "image.version_accepted": "已接受当前图片版本",
+    "image.version_restored": "已恢复历史图片版本",
+    "run.paused": "已暂停后续 Agent 步骤",
+    "run.resumed": "已继续 Agent 运行",
   };
   return labels[event.event_type] || "创作状态已更新";
 }
@@ -1458,6 +1621,9 @@ function AgentView({
       "run.started", "skill.loaded", "artifact.created", "approval.requested",
       "approval.resolved", "tool.started", "tool.progress", "tool.completed",
       "tool.failed", "assistant.message", "run.completed", "run.failed",
+      "panel.revision_requested", "image.version_created", "image.inspection_started",
+      "image.inspection_completed", "image.version_accepted", "image.version_restored",
+      "run.paused", "run.resumed",
     ];
     const receive = (raw: Event) => {
       const message = raw as MessageEvent<string>;
@@ -1473,6 +1639,16 @@ function AgentView({
         if (["artifact.created", "approval.resolved", "tool.completed", "tool.failed", "run.completed", "run.failed"].includes(next.event_type)) {
           void loadDetail(routeConversationId, true);
           void loadConversations();
+        }
+        if (
+          next.event_type.startsWith("image.") ||
+          next.event_type === "panel.revision_requested" ||
+          next.event_type === "run.paused" ||
+          next.event_type === "run.resumed"
+        ) {
+          const currentTaskId = routeTaskIdRef.current;
+          if (currentTaskId) void loadInspector(routeConversationId, currentTaskId);
+          void loadDetail(routeConversationId, true);
         }
       } catch {
         setEventConnectionError("活动流返回了无法读取的数据");
@@ -1536,6 +1712,96 @@ function AgentView({
     onNavigatePath(`${viewRoutes.agent}/${encodeURIComponent(routeConversationId)}`, {
       replace: true,
     });
+  }
+
+  async function regenerateInspectorPanel(
+    panel: AgentTaskInspector["panels"][number],
+    instruction: string,
+    allowAutoRevision: boolean,
+  ) {
+    if (!routeConversationId || !routeTaskId || !panel.current_image) return false;
+    setInspectorError("");
+    try {
+      await api.regenerateAgentPanel(
+        routeConversationId,
+        routeTaskId,
+        panel.id,
+        {
+          instruction,
+          source_image_version_id: panel.current_image.id,
+          expected_credit_cost: 1,
+          allow_auto_revision: allowAutoRevision,
+        },
+      );
+      await Promise.all([
+        loadInspector(routeConversationId, routeTaskId),
+        loadDetail(routeConversationId, true),
+      ]);
+      return true;
+    } catch (actionError) {
+      setInspectorError(
+        actionError instanceof Error ? actionError.message : "创建 Panel 新版本失败",
+      );
+      return false;
+    }
+  }
+
+  async function acceptInspectorVersion(
+    panel: AgentTaskInspector["panels"][number],
+    image: AgentTaskInspector["panels"][number]["versions"][number],
+  ) {
+    if (!routeConversationId || !routeTaskId) return;
+    setInspectorError("");
+    try {
+      await api.acceptAgentImageVersion(
+        routeConversationId,
+        routeTaskId,
+        panel.id,
+        image.id,
+      );
+      await loadInspector(routeConversationId, routeTaskId);
+    } catch (actionError) {
+      setInspectorError(actionError instanceof Error ? actionError.message : "接受版本失败");
+    }
+  }
+
+  async function restoreInspectorVersion(
+    panel: AgentTaskInspector["panels"][number],
+    image: AgentTaskInspector["panels"][number]["versions"][number],
+  ) {
+    if (!routeConversationId || !routeTaskId) return;
+    setInspectorError("");
+    try {
+      await api.restoreAgentImageVersion(
+        routeConversationId,
+        routeTaskId,
+        panel.id,
+        image.id,
+      );
+      await loadInspector(routeConversationId, routeTaskId);
+    } catch (actionError) {
+      setInspectorError(actionError instanceof Error ? actionError.message : "恢复版本失败");
+    }
+  }
+
+  async function pauseInspectorRun(runId: string) {
+    setInspectorError("");
+    try {
+      await api.pauseAgentRun(runId);
+      if (routeConversationId) await loadDetail(routeConversationId, true);
+    } catch (actionError) {
+      setInspectorError(actionError instanceof Error ? actionError.message : "暂停失败");
+    }
+  }
+
+  async function resumeInspectorRun(runId: string) {
+    setInspectorError("");
+    try {
+      await api.resumeAgentRun(runId);
+      if (routeConversationId) await loadDetail(routeConversationId, true);
+    } catch (actionError) {
+      setInspectorError(actionError instanceof Error ? actionError.message : "继续失败");
+    }
   }
 
   async function sendMessage(event: React.FormEvent) {
@@ -2167,6 +2433,14 @@ function AgentView({
           onReferenceTask={referenceTask}
           onReferencePanel={referencePanel}
           onReferenceImage={referenceImage}
+          run={
+            detail?.runs.find((run) => run.task_id === routeTaskId) || null
+          }
+          onRegenerate={regenerateInspectorPanel}
+          onAcceptVersion={acceptInspectorVersion}
+          onRestoreVersion={restoreInspectorVersion}
+          onPauseRun={pauseInspectorRun}
+          onResumeRun={resumeInspectorRun}
           onRetry={() => void loadInspector(routeConversationId, routeTaskId)}
           onClose={closeTaskInspector}
         />

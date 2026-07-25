@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned。取代未实施的 Sprint 109 Draft；只有 Sprint 115 Complete 后才能激活。
+Complete。取代未实施的 Sprint 109 Draft；Sprint 115 已 Complete，用户于 2026-07-24 明确授权从其基线继续，Sprint 116 于 2026-07-25 完成实现与验收。
 
 ## Goal
 
@@ -244,6 +244,23 @@ git diff --check
 4. 恢复旧版本并确认没有扣积分。
 5. 生成期间暂停和继续。
 6. 刷新、断开 SSE、重启后端后恢复。
+
+## Implementation result
+
+- 新增 `accepted_at/accepted_by_user_id` 最小 migration，并以 Conversation → Task → Panel → Version 完整归属链实现接受、恢复和目标 Panel 再生成；新版本成功后成为 current，旧版本保留，接受/恢复均幂等，恢复不调用 Provider 或积分服务。
+- `generate_image` 扩展为面板修订原子 Tool；沿用现有图片队列执行长任务，不新增 Workflow 引擎。纯视觉修改会确定性保留原图片文字和布局，只有指令明确涉及文字、旁白、对白、标题或排版时才允许改动文字计划。
+- 新增真实多模态 `inspect_image` adapter，严格校验 JSON schema，保存 Tool Call/Result、Provider、model、延迟和失败；每个版本最多检查一次。`accept/revise/ask_user/blocked` 四种裁决均有确定状态，VL 失败不降级、不假定通过。
+- 每轮图片预算为 2：用户版本之外只有显式勾选授权时才允许一次自动修订，且不会替用户接受版本。图片 Worker 完成后使用线程安全非阻塞通知唤醒 Agent，避免 VL 长调用反向阻塞图片任务并误改成功状态。
+- Agent 检查器提供当前/历史版本、检查摘要、成本确认、再生成、接受、恢复、引用，以及 Run 暂停/继续；失败保留修改指令。暂停只阻止后续步骤，UI 明示已提交 Provider 的请求仍可能按既有晚到规则完成。
+- 公共事件已覆盖 `panel.revision_requested`、版本创建/接受/恢复、检查开始/完成和 Run 暂停/继续；刷新、SSE 断线与服务重启后均从数据库恢复。
+
+## Verification result
+
+- 针对性：`backend.tests.test_agent_panel_versions backend.tests.test_agent_runner_recovery`，18 项通过。
+- 全量：`python -m unittest discover -s backend/tests`，240 项通过。
+- `python3.11 -m compileall backend/app`、空 SQLite `alembic upgrade head`、`npm run build --prefix frontend` 和 `git diff --check` 均通过。
+- 真实浏览器/Provider：在本地隔离数据库中创建两格漫画并生成真实 `gpt-image-2` 图片；对 Panel 1 创建 v2，余额 28→27。真实 `gpt-5.4` VL 返回 `accept`，分数为故事匹配 0.98、人物一致性 0.90、连续性 0.95、文字准确性 1.00、明显瑕疵 0.93。随后接受 v2、恢复 v1，余额保持 27；刷新和后端重启后 current/accepted/VL 摘要及事件仍存在。暂停/继续也在生成期间通过。
+- 首次真实验收暴露“同步等待 Agent 通知会在 VL 较慢时把成功图片误标失败”，已改为非阻塞线程安全入队并补回归。用户确认慢生图不是当前关键路径，因此修复后没有重复调用图片 Provider；复用了该次已经真实生成且真实检查的测试资产完成接受、恢复和刷新验收，正式产品代码未加入 Mock、占位成功或兼容兜底。
 
 ## Handoff
 

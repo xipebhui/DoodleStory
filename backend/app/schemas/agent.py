@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -238,7 +239,32 @@ class AgentTaskInspectorImageRead(BaseModel):
     height: int | None
     error_code: str | None
     error_message: str | None
+    accepted_at: datetime | None
+    accepted_by_current_user: bool
+    inspection: "AgentImageInspectionRead | None" = None
     created_at: datetime
+
+
+class AgentImageInspectionIssueRead(BaseModel):
+    code: str
+    message: str
+    suggested_change: str | None = None
+
+
+class AgentImageInspectionRead(BaseModel):
+    verdict: Literal["accept", "revise", "ask_user", "blocked"]
+    scores: dict[str, float]
+    issues: list[AgentImageInspectionIssueRead] = Field(default_factory=list)
+    provider: str
+    model: str
+    inspected_at: datetime
+
+
+class AgentPanelRegenerationCreate(BaseModel):
+    instruction: str = Field(min_length=1, max_length=4_000)
+    source_image_version_id: str
+    expected_credit_cost: Literal[1]
+    allow_auto_revision: bool = False
 
 
 class AgentTaskInspectorPanelRead(BaseModel):
