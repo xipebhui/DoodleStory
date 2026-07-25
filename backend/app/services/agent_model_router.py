@@ -18,6 +18,7 @@ from app.core import database
 from app.core.config import Settings, get_settings
 from app.models.entities import AgentRun
 from app.schemas.agent import ComicPlan
+from app.schemas.agent_skill import AgentSkillAuthoringSuggestion
 from app.services.agent_observability import agent_span, set_span_result, set_span_status
 from app.services.agent_skill_registry import get_runtime_skill_registry
 from app.services.agent_tool_runtime import (
@@ -467,6 +468,55 @@ class AgentModelRouter:
             route=route,
         )
 
+    async def _invoke_skill_authoring(
+        self,
+        config: AgentProviderConfig,
+        route: AgentModelRoute,
+        input_items: list[dict[str, Any]],
+    ) -> AgentModelResult:
+        agent = Agent(
+            name="SkillAuthoringAgent",
+            instructions=(
+                "你帮助用户把自然语言创作目标整理为 DoodleStory Skill 草稿建议。"
+                "Skill 是纯文本创作方法，不是代码、JSON、YAML、工作流 DSL 或 Provider 配置。"
+                "建议正文必须使用中文 Markdown，并清楚包含目标、输入、方法、用户确认、"
+                "质量门槛和完成条件。只能建议输入中 selected_tool_names 已明确列出的 Tool，"
+                "不得增加 Tool、脚本、MCP、Webhook、URL、模型、API key 或数据库标识。"
+                "current_instructions 存在时保留其中有效意图并进行优化。"
+                "notes 只写用户可见的简短注意事项，不展示隐藏推理。"
+            ),
+            model=self.model,
+            output_type=AgentSkillAuthoringSuggestion,
+            model_settings=ModelSettings(
+                retry=ModelRetrySettings(max_retries=0),
+                store=False,
+            ),
+        )
+        provider = self._provider(config)
+        try:
+            result = await Runner.run(
+                agent,
+                input_items,
+                run_config=RunConfig(
+                    model_provider=provider,
+                    tracing_disabled=True,
+                    workflow_name="DoodleStory Skill Authoring",
+                ),
+                max_turns=2,
+            )
+        finally:
+            await provider._client.close()
+        suggestion = AgentSkillAuthoringSuggestion.model_validate(result.final_output)
+        raw_responses = list(result.raw_responses)
+        return AgentModelResult(
+            final_output=suggestion.model_dump_json(),
+            usage=summarize_agent_usage(raw_responses),
+            provider_request_id=extract_agent_provider_request_id(raw_responses),
+            raw_result=result,
+            route=route,
+            structured_output=suggestion,
+        )
+
     async def _run_specialized_attempt(
         self,
         config: AgentProviderConfig,
@@ -543,6 +593,17 @@ class AgentModelRouter:
         observer: AgentModelAttemptObserver,
     ) -> AgentModelResult:
         return await self._run_specialized(input_items, observer, self._invoke_comic_final)
+
+    async def run_skill_authoring(
+        self,
+        input_items: list[dict[str, Any]],
+        observer: AgentModelAttemptObserver,
+    ) -> AgentModelResult:
+        return await self._run_specialized(
+            input_items,
+            observer,
+            self._invoke_skill_authoring,
+        )
 
     async def _run_attempt(
         self,

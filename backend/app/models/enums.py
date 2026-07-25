@@ -11,6 +11,12 @@ class AgentConversationStatus(StrEnum):
     archived = "archived"
 
 
+class AgentSkillStatus(StrEnum):
+    draft = "draft"
+    published = "published"
+    archived = "archived"
+
+
 class AgentMessageRole(StrEnum):
     user = "user"
     assistant = "assistant"

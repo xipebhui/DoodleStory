@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.api import agent_conversations, audio_references, assets, auth, characters, content_extractions, credits, style_tests, styles, tasks, video_tasks
+from app.api import agent_conversations, agent_skills, audio_references, assets, auth, characters, content_extractions, credits, style_tests, styles, tasks, video_tasks
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -14,6 +14,7 @@ from app.services.video_task_worker import init_video_task_queue, recover_video_
 from app.services.agent_runner import init_agent_queue, recover_agent_runs, shutdown_agent_queue
 from app.services.agent_observability import initialize_agent_observability
 from app.services.agent_skill_registry import initialize_runtime_skill_registry
+from app.services.agent_skill_management import initialize_system_agent_skills
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup() -> None:
         initialize_runtime_skill_registry()
+        initialize_system_agent_skills()
         initialize_agent_observability(settings)
         content_extractions.recover_interrupted_content_extractions()
         styles.recover_interrupted_style_tests()
@@ -79,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(assets.router, prefix="/api/v1")
     app.include_router(credits.router, prefix="/api/v1")
     app.include_router(agent_conversations.router, prefix="/api/v1")
+    app.include_router(agent_skills.router, prefix="/api/v1")
 
     @app.get("/health")
     def health() -> dict[str, str]:

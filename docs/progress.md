@@ -395,12 +395,13 @@
 - 修复内容提取分镜结构校验错误暴露内部字段：当 LLM 返回的内容提取分镜 JSON 缺少 `story_title` 等内部 schema 字段时，任务失败信息改为用户可理解的“内容提取分镜结构化失败”，不再把 `story_title Field required` 这类 Pydantic 校验细节展示到前端；详细字段错误仍保留在日志和 prompt trace 中用于排查。`PYTHONPATH=backend backend/.venv/bin/python -m unittest backend/tests/test_llm_storyboard_planning.py`、`backend/.venv/bin/python -m compileall backend/app` 和 `git diff --check` 通过。
 - 调整对象存储本地镜像策略：远程磁盘 90% 的主要来源是 `/opt/doodlestory/storage`，其中 `generated_image` 约 14G、`download_archive` 约 6.3G、`douyin_media` 约 1.5G；新写入七牛/阿里云对象存储资产上传成功后默认删除本地镜像，只有显式设置 `OBJECT_STORAGE_KEEP_LOCAL_MIRROR=true` 才保留。任务下载打包改为可从对象存储临时 materialize 图片，打包结束清理 `_cache`，并把 zip 跟随当前存储后端保存，避免继续写入本地 `download_archive`。新增 `scripts/cleanup-storage-local-files.py` dry-run 优先的历史清理脚本，可清理阿里云本地镜像、旧下载 zip 记录和缓存；线上 dry-run 显示当前可识别的阿里云镜像约 1.6G、旧下载 zip 约 6.3G，历史 qiniu 生成图约 10.4G 需先确认是否已转存或可丢弃后再清理。
 - 收紧历史本地文件清理脚本默认范围：`scripts/cleanup-storage-local-files.py` 默认只统计/清理昨天 00:00 之前创建的图片类对象存储本地镜像，避免误碰昨天和今天刚生成的图片；如需调整时间可传 `--before-date`。远程 dry-run 在 2026-07-07 运行时默认 cutoff 为 `2026-07-06 00:00:00`，命中阿里云图片镜像约 1.0G；显式包含旧下载 zip 时命中约 5.7G。
+- 开始 Sprint 117 第一阶段后端实现：新增 `agent_skills`、不可变 `agent_skill_versions` 和 `agent_runs.skill_version_id`，系统 `idea-to-comic` 从受控文件幂等种为只读数据库版本；新增受控 Tool catalog，以及个人 Skill 创建、草稿 revision 乐观锁、发布幂等、版本列表/详情、历史版本激活、归档/恢复、系统版本克隆和未发布草稿删除 API。AI 编写辅助使用现有 Agent 模型 Router 输出受约束建议，不自动保存、发布或扩大 Tool 白名单。新增 5 项集中测试覆盖 owner 隔离、发布不可变与幂等、激活/归档、克隆、系统 slug 唯一和已有 Run 版本固定；空库 migration upgrade/downgrade、245 项后端测试与 Python compileall 通过。
 
 ## 已知缺口
 
 - 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume。
 - 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；正式 Evaluation 发布门槛已按用户决定推迟到功能路线冻结后的最后阶段。
-- 当前 Skill 仍是文件目录、漫画 Runner 仍固定加载 `idea-to-comic` 且漫画专用 Instructions/资源路由承担业务编排；尚无用户 Skill CRUD、不可变发布版本、`@Skill` 或真正由 Skill 驱动的通用 Loop，由 Active Sprint 117 交付。
+- Sprint 117 已完成用户 Skill 数据模型、不可变发布版本、系统种子和管理 API 的第一阶段；前端 Skill 管理、`@Skill`、数据库版本加载、版本固定接入消息事务，以及移除漫画专用 Instructions/资源路由的通用 Loop 仍待实现。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。

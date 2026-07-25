@@ -4,7 +4,7 @@ import json
 from typing import Optional
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -17,6 +17,7 @@ from app.models.enums import (
     AgentEventType,
     AgentMessageRole,
     AgentRunStatus,
+    AgentSkillStatus,
     AgentStepStatus,
     AgentStepType,
     ContentExtractionMediaKind,
@@ -75,6 +76,7 @@ class User(Base, TimestampMixin):
         foreign_keys="CreditTransaction.user_id",
     )
     agent_conversations: Mapped[list["AgentConversation"]] = relationship(back_populates="owner")
+    agent_skills: Mapped[list["AgentSkill"]] = relationship(back_populates="owner")
     decided_agent_approvals: Mapped[list["AgentApprovalRequest"]] = relationship()
 
 
@@ -712,6 +714,128 @@ class CreditActivationCodeRedemption(Base, TimestampMixin):
     transaction: Mapped[CreditTransaction] = relationship()
 
 
+class AgentSkill(Base, TimestampMixin):
+    __tablename__ = "agent_skills"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_user_id",
+            "slug",
+            name="uq_agent_skills_owner_slug",
+        ),
+        CheckConstraint(
+            "draft_revision > 0",
+            name="ck_agent_skills_draft_revision_positive",
+        ),
+        Index(
+            "ix_agent_skills_owner_updated",
+            "owner_user_id",
+            "updated_at",
+        ),
+        Index(
+            "uq_agent_skills_system_slug",
+            "slug",
+            unique=True,
+            sqlite_where=text("owner_user_id IS NULL"),
+            postgresql_where=text("owner_user_id IS NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    slug: Mapped[str] = mapped_column(String(80))
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(String(500))
+    draft_instructions: Mapped[str] = mapped_column(Text)
+    draft_tool_names_json: Mapped[str] = mapped_column(Text)
+    draft_revision: Mapped[int] = mapped_column(Integer, default=1)
+    active_version_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey(
+            "agent_skill_versions.id",
+            name="fk_agent_skills_active_version_id",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    status: Mapped[AgentSkillStatus] = mapped_column(
+        Enum(AgentSkillStatus),
+        default=AgentSkillStatus.draft,
+        index=True,
+    )
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    owner: Mapped[Optional[User]] = relationship(back_populates="agent_skills")
+    versions: Mapped[list["AgentSkillVersion"]] = relationship(
+        back_populates="skill",
+        cascade="all, delete-orphan",
+        foreign_keys="AgentSkillVersion.skill_id",
+    )
+    active_version: Mapped[Optional["AgentSkillVersion"]] = relationship(
+        foreign_keys=[active_version_id],
+        post_update=True,
+    )
+
+    @property
+    def draft_tool_names(self) -> list[str]:
+        value = json.loads(self.draft_tool_names_json)
+        return value if isinstance(value, list) else []
+
+
+class AgentSkillVersion(Base):
+    __tablename__ = "agent_skill_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "skill_id",
+            "version",
+            name="uq_agent_skill_versions_skill_version",
+        ),
+        UniqueConstraint(
+            "skill_id",
+            "publish_idempotency_key",
+            name="uq_agent_skill_versions_publish_idempotency",
+        ),
+        CheckConstraint(
+            "version > 0",
+            name="ck_agent_skill_versions_version_positive",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    skill_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_skills.id", ondelete="CASCADE"),
+        index=True,
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    name_snapshot: Mapped[str] = mapped_column(String(120))
+    description_snapshot: Mapped[str] = mapped_column(String(500))
+    instructions: Mapped[str] = mapped_column(Text)
+    tool_names_json: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(80))
+    publish_idempotency_key: Mapped[Optional[str]] = mapped_column(
+        String(160),
+        nullable=True,
+    )
+    published_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+    )
+
+    skill: Mapped[AgentSkill] = relationship(
+        back_populates="versions",
+        foreign_keys=[skill_id],
+    )
+    published_by: Mapped[Optional[User]] = relationship()
+    runs: Mapped[list["AgentRun"]] = relationship(back_populates="skill_version")
+
+
 class AgentConversation(Base, TimestampMixin):
     __tablename__ = "agent_conversations"
     __table_args__ = (
@@ -782,6 +906,11 @@ class AgentRun(Base, TimestampMixin):
     task_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("generation_tasks.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    skill_version_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_skill_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[AgentRunStatus] = mapped_column(Enum(AgentRunStatus), default=AgentRunStatus.queued, index=True)
     current_step_sequence: Mapped[int] = mapped_column(Integer, default=0)
     model_call_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -794,6 +923,7 @@ class AgentRun(Base, TimestampMixin):
 
     conversation: Mapped[AgentConversation] = relationship(back_populates="runs")
     task: Mapped[Optional[GenerationTask]] = relationship(back_populates="agent_runs")
+    skill_version: Mapped[Optional[AgentSkillVersion]] = relationship(back_populates="runs")
     steps: Mapped[list["AgentStep"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
