@@ -146,7 +146,7 @@ export type StyleSelectOption = {
 };
 
 export type AgentResourceRef = {
-  kind: "style" | "character" | "task" | "panel" | "image_version";
+  kind: "skill" | "style" | "character" | "task" | "panel" | "image_version";
   id: string;
   display_name: string | null;
   safe_summary?: Record<string, unknown> | null;
@@ -159,6 +159,75 @@ export type AgentResourceOption = {
   secondary_text: string | null;
   parent_id: string | null;
   status: string | null;
+};
+
+export type AgentSkillStatus = "draft" | "published" | "archived";
+
+export type AgentSkillTool = {
+  name: string;
+  display_name: string;
+  description: string;
+  has_side_effects: boolean;
+  may_wait: boolean;
+};
+
+export type AgentSkillVersionSummary = {
+  id: string;
+  version: number;
+  name: string;
+  description: string;
+  tool_names: string[];
+  content_hash: string;
+  published_at: string;
+  is_active: boolean;
+};
+
+export type AgentSkillSummary = {
+  id: string;
+  scope: "mine" | "system";
+  name: string;
+  description: string;
+  status: AgentSkillStatus;
+  tool_names: string[];
+  draft_revision: number;
+  active_version: AgentSkillVersionSummary | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgentSkillDetail = AgentSkillSummary & {
+  instructions: string;
+  archived_at: string | null;
+  is_read_only: boolean;
+};
+
+export type AgentSkillVersionDetail = AgentSkillVersionSummary & {
+  skill_id: string;
+  instructions: string;
+};
+
+export type AgentSkillListPage = {
+  items: AgentSkillSummary[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_more: boolean;
+};
+
+export type AgentSkillVersionListPage = {
+  items: AgentSkillVersionSummary[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_more: boolean;
+};
+
+export type AgentSkillAuthoringSuggestion = {
+  suggested_name: string;
+  suggested_description: string;
+  suggested_instructions: string;
+  suggested_tool_names: string[];
+  notes: string[];
 };
 
 export type AgentConversation = {
@@ -868,6 +937,108 @@ export const api = {
     const suffix = search.toString() ? `?${search.toString()}` : "";
     return request<ApiList<AgentConversation>>(`/agent/conversations${suffix}`);
   },
+  agentSkills: (params?: {
+    scope?: "mine" | "system";
+    status?: AgentSkillStatus | "";
+    query?: string;
+    page?: number;
+    page_size?: number;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.scope) search.set("scope", params.scope);
+    if (params?.status) search.set("status", params.status);
+    if (params?.query) search.set("query", params.query);
+    if (params?.page) search.set("page", String(params.page));
+    if (params?.page_size) search.set("page_size", String(params.page_size));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiData<AgentSkillListPage>>(`/agent/skills${suffix}`).then(
+      (result) => result.data,
+    );
+  },
+  agentSkill: (skillId: string) =>
+    request<ApiData<AgentSkillDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}`,
+    ).then((result) => result.data),
+  agentSkillTools: () =>
+    request<ApiData<AgentSkillTool[]>>("/agent/skills/tool-catalog").then(
+      (result) => result.data,
+    ),
+  createAgentSkill: (payload: {
+    name: string;
+    description: string;
+    instructions: string;
+    tool_names: string[];
+  }) =>
+    request<ApiData<AgentSkillDetail>>("/agent/skills", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  updateAgentSkill: (
+    skillId: string,
+    payload: {
+      name: string;
+      description: string;
+      instructions: string;
+      tool_names: string[];
+      expected_draft_revision: number;
+    },
+  ) =>
+    request<ApiData<AgentSkillDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  publishAgentSkill: (
+    skillId: string,
+    payload: { expected_draft_revision: number; idempotency_key: string },
+  ) =>
+    request<ApiData<AgentSkillVersionDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}/publish`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  agentSkillVersions: (skillId: string, page = 1, pageSize = 50) =>
+    request<ApiData<AgentSkillVersionListPage>>(
+      `/agent/skills/${encodeURIComponent(skillId)}/versions?page=${page}&page_size=${pageSize}`,
+    ).then((result) => result.data),
+  agentSkillVersion: (skillId: string, versionId: string) =>
+    request<ApiData<AgentSkillVersionDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}`,
+    ).then((result) => result.data),
+  activateAgentSkillVersion: (skillId: string, versionId: string) =>
+    request<ApiData<AgentSkillDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}/activate`,
+      { method: "POST" },
+    ).then((result) => result.data),
+  archiveAgentSkill: (skillId: string) =>
+    request<ApiData<AgentSkillDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}/archive`,
+      { method: "POST" },
+    ).then((result) => result.data),
+  restoreAgentSkill: (skillId: string) =>
+    request<ApiData<AgentSkillDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}/restore`,
+      { method: "POST" },
+    ).then((result) => result.data),
+  deleteAgentSkill: (skillId: string) =>
+    request<void>(`/agent/skills/${encodeURIComponent(skillId)}`, {
+      method: "DELETE",
+    }),
+  cloneAgentSkill: (skillId: string, versionId?: string | null) =>
+    request<ApiData<AgentSkillDetail>>(
+      `/agent/skills/${encodeURIComponent(skillId)}/clone`,
+      {
+        method: "POST",
+        body: JSON.stringify({ version_id: versionId || null }),
+      },
+    ).then((result) => result.data),
+  authorAgentSkill: (payload: {
+    goal: string;
+    current_instructions: string | null;
+    selected_tool_names: string[];
+  }) =>
+    request<ApiData<AgentSkillAuthoringSuggestion>>(
+      "/agent/skills/authoring-assistance",
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
   createAgentConversation: (payload: { title: string }) =>
     request<ApiData<AgentConversation>>("/agent/conversations", {
       method: "POST",

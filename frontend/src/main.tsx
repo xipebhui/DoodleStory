@@ -2,22 +2,28 @@ import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertCircle,
+  Archive,
   ArrowUpRight,
   BarChart3,
+  BookOpen,
+  Box,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
   Coins,
+  Copy,
   Download,
   Eye,
   Film,
   FileText,
   Filter,
+  History,
   Images,
   LogOut,
   Loader2,
   MessageCircle,
+  MoreHorizontal,
   Pencil,
   Play,
   Plus,
@@ -46,6 +52,13 @@ import {
   type AgentPublicEvent,
   type AgentResourceOption,
   type AgentResourceRef,
+  type AgentSkillAuthoringSuggestion,
+  type AgentSkillDetail,
+  type AgentSkillStatus,
+  type AgentSkillSummary,
+  type AgentSkillTool,
+  type AgentSkillVersionDetail,
+  type AgentSkillVersionSummary,
   type AgentRunStatus,
   type AgentRunSummary,
   type AgentTaskCard,
@@ -277,6 +290,7 @@ function App() {
   const agentRoute = parseAgentRoute(pathname);
   const routeAgentConversationId = agentRoute?.conversationId ?? null;
   const routeAgentTaskId = agentRoute?.taskId ?? null;
+  const routeAgentSkillPage = agentRoute?.skillPage ?? null;
   const routeTaskId = taskIdFromPathname(pathname);
   const routeVideoTaskId = videoTaskIdFromPathname(pathname);
 
@@ -394,19 +408,33 @@ function App() {
   if (view === "agent") {
     return (
       <main className="agent-module-shell">
-        <AgentView
-          user={user}
-          creditOverview={creditOverview}
-          creditError={creditError}
-          routeConversationId={routeAgentConversationId}
-          routeTaskId={routeAgentTaskId}
-          onNavigatePath={navigateToPath}
-          onCreditsChanged={refreshCredits}
-          onLogout={async () => {
-            await api.logout();
-            setUser(null);
-          }}
-        />
+        {routeAgentSkillPage ? (
+          <AgentSkillManagementView
+            user={user}
+            creditOverview={creditOverview}
+            creditError={creditError}
+            route={routeAgentSkillPage}
+            onNavigatePath={navigateToPath}
+            onLogout={async () => {
+              await api.logout();
+              setUser(null);
+            }}
+          />
+        ) : (
+          <AgentView
+            user={user}
+            creditOverview={creditOverview}
+            creditError={creditError}
+            routeConversationId={routeAgentConversationId}
+            routeTaskId={routeAgentTaskId}
+            onNavigatePath={navigateToPath}
+            onCreditsChanged={refreshCredits}
+            onLogout={async () => {
+              await api.logout();
+              setUser(null);
+            }}
+          />
+        )}
       </main>
     );
   }
@@ -793,6 +821,7 @@ function agentDraftKey(conversationId: string, field: "idea" | "resources") {
 const newAgentDraftId = "new";
 
 const agentResourceKindLabels: Record<AgentResourceRef["kind"], string> = {
+  skill: "Skill",
   style: "风格",
   character: "角色",
   task: "任务",
@@ -809,7 +838,7 @@ function parseAgentDraftResources(raw: string | null): AgentResourceRef[] {
       (item) =>
         typeof item !== "object" ||
         item === null ||
-        !["style", "character", "task", "panel", "image_version"].includes(
+        !["skill", "style", "character", "task", "panel", "image_version"].includes(
           String((item as Record<string, unknown>).kind),
         ) ||
         typeof (item as Record<string, unknown>).id !== "string",
@@ -1274,6 +1303,1092 @@ function AgentTaskInspectorDialog({
         ) : null}
       </div>
     </div>
+  );
+}
+
+const agentSkillTemplate = `# 目标
+说明这个 Skill 要完成什么。
+
+# 输入
+说明需要理解哪些用户要求和资源。
+
+# 方法
+按自然语言描述推荐步骤和判断方式。
+
+# 用户确认
+说明哪些动作前需要把什么内容交给用户确认。
+
+# 质量门槛
+说明什么结果才算合格。
+
+# 完成条件
+说明何时停止并向用户汇报。`;
+
+const agentSkillStatusLabels: Record<AgentSkillStatus, string> = {
+  draft: "草稿",
+  published: "已发布",
+  archived: "已归档",
+};
+
+function skillTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function AgentStudioSidebar({
+  user,
+  creditOverview,
+  creditError,
+  activeSkills,
+  onNavigatePath,
+  onLogout,
+}: {
+  user: User;
+  creditOverview: CreditOverview | null;
+  creditError: string;
+  activeSkills: boolean;
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
+  onLogout: () => Promise<void>;
+}) {
+  const [conversations, setConversations] = useState<AgentConversation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .agentConversations({ limit: 8 })
+      .then((result) => setConversations(result.items))
+      .catch(() => setConversations([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <aside className="agent-skill-sidebar">
+      <div className="agent-module-brand">
+        <span className="brand-mark">
+          <img className="brand-icon" src="/doodlestory-icon.svg" alt="" />
+        </span>
+        <div>
+          <strong>DoodleStory</strong>
+          <span>Agent Studio</span>
+        </div>
+      </div>
+      <nav className="agent-studio-primary-nav" aria-label="Agent Studio">
+        <button type="button" onClick={() => onNavigatePath("/agent")}>
+          <Plus size={17} />
+          新对话
+        </button>
+        <button
+          type="button"
+          className={activeSkills ? "active" : ""}
+          aria-current={activeSkills ? "page" : undefined}
+          onClick={() => onNavigatePath("/agent/skills")}
+        >
+          <Box size={17} />
+          Skill 管理
+        </button>
+        <button type="button" onClick={() => onNavigatePath("/agent")}>
+          <Search size={17} />
+          搜索对话
+        </button>
+      </nav>
+      <div className="agent-studio-history">
+        <span>最近对话</span>
+        {loading ? <p>加载中…</p> : null}
+        {!loading && conversations.length === 0 ? <p>暂无历史对话</p> : null}
+        {conversations.map((conversation) => (
+          <button
+            type="button"
+            key={conversation.id}
+            onClick={() =>
+              onNavigatePath(`/agent/${encodeURIComponent(conversation.id)}`)
+            }
+          >
+            <i />
+            <span>
+              <strong>{conversation.title}</strong>
+              <small>{agentConversationTime(conversation.last_message_at)}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="agent-account-panel">
+        <div className="agent-account-credit">
+          <Coins size={16} />
+          <span>
+            <strong>
+              {creditOverview
+                ? `${creditOverview.account.balance} 积分`
+                : creditError
+                  ? "积分不可用"
+                  : "积分加载中"}
+            </strong>
+            <small>{creditError || "成功出图扣 1 分"}</small>
+          </span>
+        </div>
+        <div className="agent-account-user">
+          <span>{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
+          <div>
+            <strong>{user.display_name || user.email}</strong>
+            <small>个人工作区</small>
+          </div>
+          <button type="button" aria-label="退出登录" onClick={() => void onLogout()}>
+            <LogOut size={15} />
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function AgentSkillListView({
+  onNavigatePath,
+}: {
+  onNavigatePath: (path: string) => void;
+}) {
+  const storedScope = window.sessionStorage.getItem("doodlestory.agentSkillScope");
+  const [scope, setScope] = useState<"mine" | "system">(
+    storedScope === "system" ? "system" : "mine",
+  );
+  const [query, setQuery] = useState(
+    () => window.sessionStorage.getItem("doodlestory.agentSkillQuery") || "",
+  );
+  const [statusFilter, setStatusFilter] = useState<AgentSkillStatus | "">(
+    () =>
+      (window.sessionStorage.getItem("doodlestory.agentSkillStatus") as
+        | AgentSkillStatus
+        | "") || "",
+  );
+  const [page, setPage] = useState(
+    () => Number(window.sessionStorage.getItem("doodlestory.agentSkillPage") || "1"),
+  );
+  const [result, setResult] = useState<{
+    items: AgentSkillSummary[];
+    total: number;
+    has_more: boolean;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
+
+  useEffect(() => {
+    window.sessionStorage.setItem("doodlestory.agentSkillScope", scope);
+    window.sessionStorage.setItem("doodlestory.agentSkillQuery", query);
+    window.sessionStorage.setItem("doodlestory.agentSkillStatus", statusFilter);
+    window.sessionStorage.setItem("doodlestory.agentSkillPage", String(page));
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setError("");
+      api
+        .agentSkills({
+          scope,
+          status: statusFilter,
+          query,
+          page,
+          page_size: 10,
+        })
+        .then((data) =>
+          setResult({
+            items: data.items,
+            total: data.total,
+            has_more: data.has_more,
+          }),
+        )
+        .catch((loadError) =>
+          setError(loadError instanceof Error ? loadError.message : "Skill 加载失败"),
+        )
+        .finally(() => setLoading(false));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [scope, query, statusFilter, page, reloadToken]);
+
+  function changeScope(next: "mine" | "system") {
+    setScope(next);
+    setPage(1);
+    setStatusFilter("");
+  }
+
+  return (
+    <section className="agent-skill-list-page">
+      <header className="agent-skill-page-header">
+        <div>
+          <h1>Skill 管理</h1>
+          <p>把你的创作方法保存为可复用的 Agent 能力</p>
+        </div>
+        <button type="button" onClick={() => onNavigatePath("/agent/skills/new")}>
+          <Plus size={17} />
+          创建 Skill
+        </button>
+      </header>
+      <div className="agent-skill-list-toolbar">
+        <div className="agent-skill-scope-tabs" role="tablist" aria-label="Skill 范围">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === "mine"}
+            className={scope === "mine" ? "active" : ""}
+            onClick={() => changeScope("mine")}
+          >
+            我的 Skill
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === "system"}
+            className={scope === "system" ? "active" : ""}
+            onClick={() => changeScope("system")}
+          >
+            系统 Skill
+          </button>
+        </div>
+        <label className="agent-skill-search">
+          <Search size={17} />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(1);
+            }}
+            placeholder="搜索名称或适用场景"
+          />
+        </label>
+        {scope === "mine" ? (
+          <label className="agent-skill-status-filter">
+            <Filter size={16} />
+            <select
+              aria-label="Skill 状态"
+              value={statusFilter}
+              onChange={(event) => {
+                setStatusFilter(event.target.value as AgentSkillStatus | "");
+                setPage(1);
+              }}
+            >
+              <option value="">可用状态</option>
+              <option value="draft">草稿</option>
+              <option value="published">已发布</option>
+              <option value="archived">已归档</option>
+            </select>
+          </label>
+        ) : null}
+      </div>
+      <div className="agent-skill-table-head" aria-hidden="true">
+        <span>名称 / 描述</span>
+        <span>状态</span>
+        <span>版本</span>
+        <span>Tools</span>
+        <span>更新时间</span>
+        <span>操作</span>
+      </div>
+      <div className="agent-skill-rows" aria-live="polite">
+        {loading ? (
+          <div className="agent-skill-state">
+            <Loader2 className="spin" size={20} />
+            正在加载 Skill…
+          </div>
+        ) : null}
+        {error ? (
+          <div className="agent-skill-state is-error">
+            <AlertCircle size={20} />
+            <span>{error}</span>
+            <button type="button" onClick={() => setReloadToken((value) => value + 1)}>
+              重试
+            </button>
+          </div>
+        ) : null}
+        {!loading && !error && result?.items.length === 0 ? (
+          <div className="agent-skill-state">
+            <BookOpen size={24} />
+            <strong>{query ? "没有匹配的 Skill" : scope === "mine" ? "还没有个人 Skill" : "暂无系统 Skill"}</strong>
+            <span>{query ? "尝试更换搜索词或状态筛选。" : "从一个清楚的创作方法开始。"}</span>
+          </div>
+        ) : null}
+        {!loading &&
+          !error &&
+          result?.items.map((skill, index) => (
+            <article
+              key={skill.id}
+              className={skill.status === "archived" ? "archived" : ""}
+            >
+              <span className="agent-skill-index">{(page - 1) * 10 + index + 1}</span>
+              <div className="agent-skill-name-cell">
+                <strong>{skill.name}</strong>
+                <p>{skill.description}</p>
+              </div>
+              <span className={`agent-skill-status is-${skill.status}`}>
+                {agentSkillStatusLabels[skill.status]}
+              </span>
+              <span>
+                {skill.active_version
+                  ? `v${skill.active_version.version}${skill.active_version.is_active ? " · 当前" : ""}`
+                  : "尚未发布"}
+              </span>
+              <span className="agent-skill-tools">
+                {skill.tool_names.length
+                  ? skill.tool_names.map((tool) => <i key={tool}>{tool === "generate_image" ? "生成图片" : "检查图片"}</i>)
+                  : "无创作 Tool"}
+              </span>
+              <time>{skillTime(skill.updated_at)}</time>
+              <button
+                type="button"
+                className="agent-skill-row-action"
+                onClick={() => onNavigatePath(`/agent/skills/${encodeURIComponent(skill.id)}`)}
+              >
+                {skill.scope === "system" || skill.status === "archived" ? "查看" : "编辑"}
+              </button>
+              <MoreHorizontal size={17} aria-hidden="true" />
+            </article>
+          ))}
+      </div>
+      <footer className="agent-skill-list-footer">
+        <span>共 {result?.total || 0} 项</span>
+        <div>
+          <button
+            type="button"
+            aria-label="上一页"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+          >
+            <ChevronLeft size={17} />
+          </button>
+          <strong>{page}</strong>
+          <button
+            type="button"
+            aria-label="下一页"
+            disabled={!result?.has_more || loading}
+            onClick={() => setPage((value) => value + 1)}
+          >
+            <ChevronRight size={17} />
+          </button>
+        </div>
+      </footer>
+    </section>
+  );
+}
+
+type AgentSkillFormState = {
+  name: string;
+  description: string;
+  instructions: string;
+  toolNames: string[];
+};
+
+function AgentSkillEditorView({
+  mode,
+  skillId,
+  onNavigatePath,
+}: {
+  mode: "new" | "detail";
+  skillId?: string;
+  onNavigatePath: (path: string) => void;
+}) {
+  const [skill, setSkill] = useState<AgentSkillDetail | null>(null);
+  const [tools, setTools] = useState<AgentSkillTool[]>([]);
+  const [versions, setVersions] = useState<AgentSkillVersionSummary[]>([]);
+  const [form, setForm] = useState<AgentSkillFormState>({
+    name: "",
+    description: "",
+    instructions: agentSkillTemplate,
+    toolNames: [],
+  });
+  const [baseline, setBaseline] = useState<AgentSkillFormState | null>(
+    mode === "new"
+      ? { name: "", description: "", instructions: agentSkillTemplate, toolNames: [] }
+      : null,
+  );
+  const [loading, setLoading] = useState(mode === "detail");
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [authoring, setAuthoring] = useState(false);
+  const [error, setError] = useState("");
+  const [savedMessage, setSavedMessage] = useState("");
+  const [suggestion, setSuggestion] = useState<AgentSkillAuthoringSuggestion | null>(null);
+  const [goal, setGoal] = useState("");
+  const [confirmAction, setConfirmAction] = useState<"publish" | "archive" | "restore" | "delete" | null>(null);
+
+  const dirty = baseline !== null && JSON.stringify(form) !== JSON.stringify(baseline);
+  const readOnly = Boolean(skill?.is_read_only || skill?.status === "archived");
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [dirty]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(mode === "detail");
+    setError("");
+    const requests: Promise<unknown>[] = [
+      api.agentSkillTools().then((data) => {
+        if (!cancelled) setTools(data);
+      }),
+    ];
+    if (mode === "detail" && skillId) {
+      requests.push(
+        api.agentSkill(skillId).then((data) => {
+          if (cancelled) return;
+          const next = {
+            name: data.name,
+            description: data.description,
+            instructions: data.instructions,
+            toolNames: data.tool_names,
+          };
+          setSkill(data);
+          setForm(next);
+          setBaseline(next);
+        }),
+        api.agentSkillVersions(skillId).then((data) => {
+          if (!cancelled) setVersions(data.items);
+        }),
+      );
+    }
+    Promise.all(requests)
+      .catch((loadError) =>
+        !cancelled &&
+        setError(loadError instanceof Error ? loadError.message : "Skill 加载失败"),
+      )
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, skillId]);
+
+  function updateField<Key extends keyof AgentSkillFormState>(
+    key: Key,
+    value: AgentSkillFormState[Key],
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+    setSavedMessage("");
+  }
+
+  function navigateWithGuard(path: string) {
+    if (dirty && !window.confirm("当前有未保存修改，确定离开吗？")) return;
+    onNavigatePath(path);
+  }
+
+  async function saveDraft(navigateAfterCreate = true) {
+    if (readOnly) return skill;
+    setSaving(true);
+    setError("");
+    try {
+      const updated =
+        mode === "new"
+          ? await api.createAgentSkill({
+              name: form.name,
+              description: form.description,
+              instructions: form.instructions,
+              tool_names: form.toolNames,
+            })
+          : await api.updateAgentSkill(skillId!, {
+              name: form.name,
+              description: form.description,
+              instructions: form.instructions,
+              tool_names: form.toolNames,
+              expected_draft_revision: skill!.draft_revision,
+            });
+      const next = {
+        name: updated.name,
+        description: updated.description,
+        instructions: updated.instructions,
+        toolNames: updated.tool_names,
+      };
+      setSkill(updated);
+      setForm(next);
+      setBaseline(next);
+      setSavedMessage("草稿已保存");
+      if (mode === "new" && navigateAfterCreate) {
+        onNavigatePath(`/agent/skills/${encodeURIComponent(updated.id)}`);
+      }
+      return updated;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存草稿失败");
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function publish() {
+    setConfirmAction(null);
+    setPublishing(true);
+    setError("");
+    try {
+      const current = dirty || mode === "new" ? await saveDraft(false) : skill;
+      if (!current) return;
+      const version = await api.publishAgentSkill(current.id, {
+        expected_draft_revision: current.draft_revision,
+        idempotency_key: crypto.randomUUID(),
+      });
+      const refreshed = await api.agentSkill(current.id);
+      const history = await api.agentSkillVersions(current.id);
+      setSkill(refreshed);
+      setVersions(history.items);
+      setSavedMessage(`v${version.version} 已发布并设为当前版本`);
+      if (mode === "new") {
+        onNavigatePath(`/agent/skills/${encodeURIComponent(current.id)}`);
+      }
+    } catch (publishError) {
+      setError(publishError instanceof Error ? publishError.message : "发布失败");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function requestSuggestion() {
+    if (!goal.trim()) {
+      setError("请先填写希望 AI 帮你整理的创作目标");
+      return;
+    }
+    setAuthoring(true);
+    setError("");
+    try {
+      const data = await api.authorAgentSkill({
+        goal,
+        current_instructions: form.instructions || null,
+        selected_tool_names: form.toolNames,
+      });
+      setSuggestion(data);
+    } catch (authorError) {
+      setError(authorError instanceof Error ? authorError.message : "AI 建议生成失败");
+    } finally {
+      setAuthoring(false);
+    }
+  }
+
+  async function handleDestructiveAction() {
+    if (!skill || !confirmAction) return;
+    setError("");
+    try {
+      if (confirmAction === "archive") {
+        setSkill(await api.archiveAgentSkill(skill.id));
+      } else if (confirmAction === "restore") {
+        setSkill(await api.restoreAgentSkill(skill.id));
+      } else if (confirmAction === "delete") {
+        await api.deleteAgentSkill(skill.id);
+        onNavigatePath("/agent/skills");
+        return;
+      }
+      setConfirmAction(null);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "操作失败");
+      setConfirmAction(null);
+    }
+  }
+
+  if (loading) {
+    return <div className="agent-skill-state page"><Loader2 className="spin" size={22} />正在加载编辑器…</div>;
+  }
+  if (error && mode === "detail" && !skill) {
+    return (
+      <div className="agent-skill-state page is-error">
+        <AlertCircle size={22} />
+        <strong>{error}</strong>
+        <button type="button" onClick={() => window.location.reload()}>重试</button>
+      </div>
+    );
+  }
+
+  return (
+    <section className="agent-skill-editor-page">
+      <header>
+        <div>
+          <button type="button" onClick={() => navigateWithGuard("/agent/skills")}>
+            Skill 管理
+          </button>
+          <span>/</span>
+          <strong>{mode === "new" ? "创建 Skill" : skill?.name}</strong>
+        </div>
+        <div className="agent-skill-editor-title">
+          <h1>{mode === "new" ? "创建 Skill" : skill?.name}</h1>
+          <span className={dirty ? "unsaved" : "saved"}>
+            {dirty
+              ? "有未保存修改"
+              : savedMessage || (mode === "new" ? "尚未保存" : "草稿已保存")}
+          </span>
+        </div>
+      </header>
+      {error ? <div className="agent-skill-inline-error"><AlertCircle size={16} />{error}</div> : null}
+      <div className="agent-skill-editor-grid">
+        <div className="agent-skill-form">
+          <label>
+            <span>Skill 名称</span>
+            <input
+              value={form.name}
+              maxLength={120}
+              disabled={readOnly}
+              onChange={(event) => updateField("name", event.target.value)}
+              placeholder="例如：四格反转漫画"
+            />
+          </label>
+          <label>
+            <span>什么时候使用</span>
+            <textarea
+              value={form.description}
+              maxLength={500}
+              disabled={readOnly}
+              onChange={(event) => updateField("description", event.target.value)}
+              placeholder="说明这个 Skill 适合解决什么创作任务"
+              rows={3}
+            />
+          </label>
+          <label className="agent-skill-instructions-field">
+            <span>Skill 正文</span>
+            <textarea
+              value={form.instructions}
+              maxLength={65536}
+              disabled={readOnly}
+              onChange={(event) => updateField("instructions", event.target.value)}
+              rows={24}
+            />
+            <small>{new TextEncoder().encode(form.instructions).length.toLocaleString()} / 65,536 bytes</small>
+          </label>
+        </div>
+        <aside className="agent-skill-editor-aside">
+          <section>
+            <h2>可用 Tools</h2>
+            {tools.map((tool) => {
+              const checked = form.toolNames.includes(tool.name);
+              return (
+                <label key={tool.name} className="agent-skill-tool-option">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={readOnly}
+                    onChange={() =>
+                      updateField(
+                        "toolNames",
+                        checked
+                          ? form.toolNames.filter((name) => name !== tool.name)
+                          : [...form.toolNames, tool.name].sort(),
+                      )
+                    }
+                  />
+                  <span>
+                    <strong>{tool.display_name}</strong>
+                    <small>{tool.description}</small>
+                  </span>
+                </label>
+              );
+            })}
+            {tools.length === 0 ? <p>没有可供用户 Skill 选择的 Tool。</p> : null}
+          </section>
+          <section>
+            <h2>编写指南</h2>
+            <ul>
+              <li>先描述目标与输出预期。</li>
+              <li>清晰定义输入信息与可选内容。</li>
+              <li>把方法拆成可执行步骤，并在必要时指定 Tool。</li>
+              <li>设定质量门槛与完成条件。</li>
+            </ul>
+          </section>
+          {!readOnly ? (
+            <section className="agent-skill-ai-box">
+              <h2>AI 帮我生成 / 优化</h2>
+              <textarea
+                value={goal}
+                onChange={(event) => setGoal(event.target.value)}
+                rows={3}
+                placeholder="描述你希望这个 Skill 完成什么"
+              />
+              <button type="button" disabled={authoring} onClick={() => void requestSuggestion()}>
+                {authoring ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}
+                {authoring ? "正在生成建议" : "生成建议预览"}
+              </button>
+            </section>
+          ) : null}
+          <section className="agent-skill-version-summary">
+            <h2>版本信息</h2>
+            {skill?.active_version ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onNavigatePath(
+                    `/agent/skills/${encodeURIComponent(skill.id)}/versions/${encodeURIComponent(skill.active_version!.id)}`,
+                  )
+                }
+              >
+                <History size={17} />
+                当前启用 v{skill.active_version.version}
+                <ChevronRight size={16} />
+              </button>
+            ) : (
+              <p>尚未发布版本</p>
+            )}
+            {skill && versions.length > 0 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onNavigatePath(
+                    `/agent/skills/${encodeURIComponent(skill.id)}/versions/${encodeURIComponent(versions[0].id)}`,
+                  )
+                }
+              >
+                查看全部 {versions.length} 个版本
+              </button>
+            ) : null}
+          </section>
+          {skill?.is_read_only ? (
+            <button
+              type="button"
+              className="agent-skill-clone-button"
+              onClick={async () => {
+                setError("");
+                try {
+                  const cloned = await api.cloneAgentSkill(skill.id);
+                  onNavigatePath(`/agent/skills/${encodeURIComponent(cloned.id)}`);
+                } catch (cloneError) {
+                  setError(cloneError instanceof Error ? cloneError.message : "复制失败");
+                }
+              }}
+            >
+              <Copy size={16} />
+              复制为我的 Skill
+            </button>
+          ) : null}
+        </aside>
+      </div>
+      <footer className="agent-skill-editor-actions">
+        <div>
+          {skill && !skill.is_read_only ? (
+            skill.status === "archived" ? (
+              <button type="button" onClick={() => setConfirmAction("restore")}>
+                恢复 Skill
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={() => setConfirmAction("archive")}>
+                  <Archive size={16} />
+                  归档
+                </button>
+                {!skill.active_version ? (
+                  <button type="button" onClick={() => setConfirmAction("delete")}>
+                    <Trash2 size={16} />
+                    删除草稿
+                  </button>
+                ) : null}
+              </>
+            )
+          ) : null}
+        </div>
+        <div>
+          {!readOnly ? (
+            <>
+              <button
+                type="button"
+                className="secondary"
+                disabled={saving || publishing || !dirty}
+                onClick={() => void saveDraft()}
+              >
+                {saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
+                保存草稿
+              </button>
+              <button
+                type="button"
+                disabled={saving || publishing}
+                onClick={() => setConfirmAction("publish")}
+              >
+                {publishing ? <Loader2 className="spin" size={16} /> : <ArrowUpRight size={16} />}
+                发布 v{(skill?.active_version?.version || 0) + 1}
+              </button>
+            </>
+          ) : null}
+        </div>
+      </footer>
+      {suggestion ? (
+        <div className="agent-skill-dialog-backdrop" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="skill-suggestion-title" className="agent-skill-suggestion-dialog">
+            <header>
+              <div>
+                <h2 id="skill-suggestion-title">AI 建议预览</h2>
+                <p>只有点击“应用建议”才会修改当前表单，且不会自动保存或发布。</p>
+              </div>
+              <button type="button" aria-label="关闭建议" onClick={() => setSuggestion(null)}><X size={18} /></button>
+            </header>
+            <dl>
+              <div><dt>名称</dt><dd>{suggestion.suggested_name}</dd></div>
+              <div><dt>适用场景</dt><dd>{suggestion.suggested_description}</dd></div>
+              <div><dt>Tools</dt><dd>{suggestion.suggested_tool_names.join("、") || "无"}</dd></div>
+            </dl>
+            <pre>{suggestion.suggested_instructions}</pre>
+            {suggestion.notes.length ? <ul>{suggestion.notes.map((note) => <li key={note}>{note}</li>)}</ul> : null}
+            <footer>
+              <button type="button" className="secondary" onClick={() => setSuggestion(null)}>取消</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm({
+                    name: suggestion.suggested_name,
+                    description: suggestion.suggested_description,
+                    instructions: suggestion.suggested_instructions,
+                    toolNames: suggestion.suggested_tool_names,
+                  });
+                  setSuggestion(null);
+                }}
+              >
+                应用建议
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+      {confirmAction ? (
+        <div className="agent-skill-dialog-backdrop" role="presentation">
+          <section role="alertdialog" aria-modal="true" aria-labelledby="skill-confirm-title" className="agent-skill-confirm-dialog">
+            <AlertCircle size={24} />
+            <h2 id="skill-confirm-title">
+              {confirmAction === "publish"
+                ? `发布 v${(skill?.active_version?.version || 0) + 1}？`
+                : confirmAction === "archive"
+                  ? "归档这个 Skill？"
+                  : confirmAction === "restore"
+                    ? "恢复这个 Skill？"
+                    : "永久删除未发布草稿？"}
+            </h2>
+            <p>
+              {confirmAction === "publish"
+                ? `将创建不可修改的新版本；允许的 Tools：${form.toolNames.join("、") || "无"}。`
+                : confirmAction === "archive"
+                  ? "归档后不会出现在新的 @Skill 菜单，已经开始的任务不受影响。"
+                  : confirmAction === "restore"
+                    ? "恢复后，有启用版本的 Skill 会重新用于新对话。"
+                    : "这个操作只适用于从未发布且未被引用的草稿。"}
+            </p>
+            <footer>
+              <button type="button" className="secondary" onClick={() => setConfirmAction(null)}>取消</button>
+              <button
+                type="button"
+                onClick={() =>
+                  confirmAction === "publish"
+                    ? void publish()
+                    : void handleDestructiveAction()
+                }
+              >
+                确认
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AgentSkillVersionView({
+  skillId,
+  versionId,
+  onNavigatePath,
+}: {
+  skillId: string;
+  versionId: string;
+  onNavigatePath: (path: string) => void;
+}) {
+  const [skill, setSkill] = useState<AgentSkillDetail | null>(null);
+  const [versions, setVersions] = useState<AgentSkillVersionSummary[]>([]);
+  const [version, setVersion] = useState<AgentSkillVersionDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [activating, setActivating] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    Promise.all([
+      api.agentSkill(skillId),
+      api.agentSkillVersions(skillId),
+      api.agentSkillVersion(skillId, versionId),
+    ])
+      .then(([nextSkill, history, selected]) => {
+        if (cancelled) return;
+        setSkill(nextSkill);
+        setVersions(history.items);
+        setVersion(selected);
+      })
+      .catch((loadError) =>
+        !cancelled &&
+        setError(loadError instanceof Error ? loadError.message : "版本加载失败"),
+      )
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [skillId, versionId]);
+
+  if (loading) {
+    return <div className="agent-skill-state page"><Loader2 className="spin" size={22} />正在加载版本…</div>;
+  }
+  if (error || !skill || !version) {
+    return <div className="agent-skill-state page is-error"><AlertCircle size={22} />{error || "版本不存在"}</div>;
+  }
+
+  async function activateVersion() {
+    if (skill!.is_read_only || version!.is_active) return;
+    if (
+      !window.confirm(
+        `切换到 v${version!.version}？\n新对话将使用所选版本；正在运行和等待确认的任务仍继续使用原版本。`,
+      )
+    ) return;
+    setActivating(true);
+    setError("");
+    try {
+      const updated = await api.activateAgentSkillVersion(skill!.id, version!.id);
+      setSkill(updated);
+      setVersion((current) => (current ? { ...current, is_active: true } : current));
+      setVersions((current) =>
+        current.map((item) => ({ ...item, is_active: item.id === version!.id })),
+      );
+    } catch (activateError) {
+      setError(activateError instanceof Error ? activateError.message : "切换版本失败");
+    } finally {
+      setActivating(false);
+    }
+  }
+
+  return (
+    <section className="agent-skill-version-page">
+      <header className="agent-skill-page-header">
+        <div>
+          <span>Skill 管理 / {skill.name}</span>
+          <h1>版本历史</h1>
+          <p>已发布版本不可修改，运行中的任务始终使用创建时版本</p>
+        </div>
+        <button type="button" className="secondary" onClick={() => onNavigatePath(`/agent/skills/${encodeURIComponent(skill.id)}`)}>
+          <ChevronLeft size={16} />
+          返回编辑
+        </button>
+      </header>
+      {error ? <div className="agent-skill-inline-error">{error}</div> : null}
+      <div className="agent-skill-version-layout">
+        <aside>
+          <h2>版本</h2>
+          <div className="agent-skill-version-draft">
+            <i />
+            <span><strong>当前草稿</strong><small>revision {skill.draft_revision}</small></span>
+            <em>草稿</em>
+          </div>
+          {versions.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              className={item.id === version.id ? "active" : ""}
+              onClick={() =>
+                onNavigatePath(
+                  `/agent/skills/${encodeURIComponent(skill.id)}/versions/${encodeURIComponent(item.id)}`,
+                )
+              }
+            >
+              <i />
+              <span>
+                <strong>v{item.version}{item.is_active ? " · 当前启用" : ""}</strong>
+                <small>{skillTime(item.published_at)}</small>
+                <small>{item.tool_names.join("、") || "无 Tool"}</small>
+              </span>
+              <em>{item.is_active ? "当前" : "已发布"}</em>
+            </button>
+          ))}
+        </aside>
+        <article>
+          <header>
+            <div>
+              <h2>v{version.version}</h2>
+              <span>{version.is_active ? "当前启用" : "已发布"}</span>
+              <p>
+                发布于 {skillTime(version.published_at)} · {version.tool_names.join("、") || "无 Tool"} · {version.content_hash.slice(0, 18)}…
+              </p>
+            </div>
+            <div>
+              {!skill.is_read_only ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={async () => {
+                    try {
+                      const cloned = await api.cloneAgentSkill(skill.id, version.id);
+                      onNavigatePath(`/agent/skills/${encodeURIComponent(cloned.id)}`);
+                    } catch (cloneError) {
+                      setError(cloneError instanceof Error ? cloneError.message : "复制失败");
+                    }
+                  }}
+                >
+                  <Copy size={16} />
+                  复制到新草稿
+                </button>
+              ) : null}
+              {!skill.is_read_only ? (
+                <button type="button" disabled={version.is_active || activating} onClick={() => void activateVersion()}>
+                  {activating ? <Loader2 className="spin" size={16} /> : null}
+                  {version.is_active ? "当前启用" : "设为当前版本"}
+                </button>
+              ) : null}
+            </div>
+          </header>
+          <section>
+            <h3>名称与适用场景</h3>
+            <strong>{version.name}</strong>
+            <p>{version.description}</p>
+          </section>
+          <section>
+            <h3>Skill 正文（只读）</h3>
+            <pre>{version.instructions}</pre>
+          </section>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function AgentSkillManagementView({
+  user,
+  creditOverview,
+  creditError,
+  route,
+  onNavigatePath,
+  onLogout,
+}: {
+  user: User;
+  creditOverview: CreditOverview | null;
+  creditError: string;
+  route:
+    | { mode: "list" }
+    | { mode: "new" }
+    | { mode: "detail"; skillId: string }
+    | { mode: "version"; skillId: string; versionId: string };
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
+  onLogout: () => Promise<void>;
+}) {
+  return (
+    <section className="agent-skill-workspace">
+      <AgentStudioSidebar
+        user={user}
+        creditOverview={creditOverview}
+        creditError={creditError}
+        activeSkills
+        onNavigatePath={onNavigatePath}
+        onLogout={onLogout}
+      />
+      <main>
+        {route.mode === "list" ? <AgentSkillListView onNavigatePath={onNavigatePath} /> : null}
+        {route.mode === "new" ? <AgentSkillEditorView mode="new" onNavigatePath={onNavigatePath} /> : null}
+        {route.mode === "detail" ? (
+          <AgentSkillEditorView mode="detail" skillId={route.skillId} onNavigatePath={onNavigatePath} />
+        ) : null}
+        {route.mode === "version" ? (
+          <AgentSkillVersionView
+            skillId={route.skillId}
+            versionId={route.versionId}
+            onNavigatePath={onNavigatePath}
+          />
+        ) : null}
+      </main>
+    </section>
   );
 }
 
