@@ -397,12 +397,13 @@
 - 收紧历史本地文件清理脚本默认范围：`scripts/cleanup-storage-local-files.py` 默认只统计/清理昨天 00:00 之前创建的图片类对象存储本地镜像，避免误碰昨天和今天刚生成的图片；如需调整时间可传 `--before-date`。远程 dry-run 在 2026-07-07 运行时默认 cutoff 为 `2026-07-06 00:00:00`，命中阿里云图片镜像约 1.0G；显式包含旧下载 zip 时命中约 5.7G。
 - 开始 Sprint 117 第一阶段后端实现：新增 `agent_skills`、不可变 `agent_skill_versions` 和 `agent_runs.skill_version_id`，系统 `idea-to-comic` 从受控文件幂等种为只读数据库版本；新增受控 Tool catalog，以及个人 Skill 创建、草稿 revision 乐观锁、发布幂等、版本列表/详情、历史版本激活、归档/恢复、系统版本克隆和未发布草稿删除 API。AI 编写辅助使用现有 Agent 模型 Router 输出受约束建议，不自动保存、发布或扩大 Tool 白名单。新增 5 项集中测试覆盖 owner 隔离、发布不可变与幂等、激活/归档、克隆、系统 slug 唯一和已有 Run 版本固定；空库 migration upgrade/downgrade、245 项后端测试与 Python compileall 通过。
 - 完成 Sprint 117 Skill 管理前端切片：在独立 Agent Studio 增加 `/agent/skills`、新建、编辑和准确版本详情路由；列表实现个人/系统范围、搜索、状态筛选、分页及完整 loading/empty/error 状态，编辑器实现正文主区域、Tool 多选、编写指南、AI 建议预览后应用、草稿保存、发布确认、归档/恢复/删除和系统 Skill 克隆，版本页明确发布版本只读并支持历史版本激活。Session Storage 保留列表筛选，编辑器离开前提示未保存修改；真实浏览器已验证注册用户创建草稿、发布 v1、直接 URL 打开版本页、系统 Skill 只读列表，截图保存于未跟踪 `output/playwright/`，前端生产构建通过。
+- 完成 Sprint 117 `@Skill` 与数据库 Runtime 主链路：资源搜索只返回当前用户或系统的未归档启用版本，消息接受时由服务端覆盖伪造名称/摘要并在同一事务固定 `agent_runs.skill_version_id`；前端资源菜单接入真实 Skill 分组并在选择第二个 Skill 时明确替换。Runtime 新增通用 Base Instructions、数据库准确版本 loader、显式/自动 catalog selection、Run 一次性 pin、Tool 白名单校验和 Skill 安全活动事件；正式漫画执行不再调用文件 `load_skill`、`process_comic_agent_run()`、`run_comic_plan()` 或 `run_comic_final()`，而由任意带 `generate_image` 权限且具有已鉴权风格的发布版 Skill 进入统一方案确认/执行路径，无生图权限的 Skill 只走文本结果且不能创建任务。新增资源权限、消息事务 pin、归档后 Run 恢复、自动选择和无权限无副作用测试；`./scripts/check.sh` 通过 250 项后端测试、compileall、空库 migration 和前端生产构建。
 
 ## 已知缺口
 
 - 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume。
 - 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；正式 Evaluation 发布门槛已按用户决定推迟到功能路线冻结后的最后阶段。
-- Sprint 117 已完成用户 Skill 数据模型、不可变发布版本、系统种子和管理 API 的第一阶段；前端 Skill 管理、`@Skill`、数据库版本加载、版本固定接入消息事务，以及移除漫画专用 Instructions/资源路由的通用 Loop 仍待实现。
+- Sprint 117 已完成 Skill 数据/API、管理前端、`@Skill`、数据库版本加载、Run pin 和通用执行主链路；仍需完成真实 Provider 的系统/个人生图与纯文本 Skill 验收、完整浏览器对话/版本切换验收，以及最终合同 QA 闭合。正式 Evaluation 继续 Deferred。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。
@@ -415,6 +416,6 @@
 
 ## 建议下一步
 
-1. 在 `codex/agent-feature` 已整合基线上实施 Active Sprint 117，先完整阅读合同和 `docs/design/sprint-117-skill-ui/README.md`。
-2. 保留 Sprint 116 版本/VL/pause-resume 行为，不得用旧路径 fallback 掩盖通用 Loop 缺口。
+1. 完成 Sprint 117 真实 Provider 与 1440×900、1280×800 浏览器对话验收，并记录预计/实际图片积分。
+2. 对通用 Loop、版本固定、Tool 白名单、HITL 和恢复行为执行合同 QA；发现缺口先修复再关闭 Sprint。
 3. 不要提前实施 Deferred Evaluation，也不要宣告 `GO_INTERNAL`。

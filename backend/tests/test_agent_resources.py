@@ -1,13 +1,17 @@
 import json
+import asyncio
 import unittest
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.agent_conversations import (
+    create_agent_message,
     list_agent_character_resources,
     list_agent_panel_image_resources,
+    list_agent_skill_resources,
     list_agent_style_resources,
     list_agent_task_panel_resources,
     list_agent_task_resources,
@@ -17,6 +21,8 @@ from app.models.entities import (
     AgentConversation,
     AgentMessage,
     AgentRun,
+    AgentSkill,
+    AgentSkillVersion,
     FileAsset,
     GeneratedImage,
     GenerationTask,
@@ -27,6 +33,7 @@ from app.models.entities import (
 )
 from app.models.enums import (
     AgentMessageRole,
+    AgentSkillStatus,
     FileAssetPurpose,
     GeneratedImageStatus,
     ImageCountMode,
@@ -35,7 +42,7 @@ from app.models.enums import (
     StyleStatus,
     TaskStatus,
 )
-from app.schemas.agent import AgentResourceKind, AgentResourceRef
+from app.schemas.agent import AgentMessageCreate, AgentResourceKind, AgentResourceRef
 from app.services.agent_resources import (
     AgentResourceResolutionError,
     AgentResourceResolver,
@@ -109,6 +116,52 @@ class AgentResourceTests(unittest.TestCase):
             image_model_name_snapshot="gpt-image-2",
         )
         self.db.add_all([self.image, self.other_image])
+        self.skill = AgentSkill(
+            owner_user_id=self.owner.id,
+            slug="story-review",
+            name="故事检查",
+            description="检查故事结构时使用",
+            draft_instructions="# 目标\n检查故事。\n# 方法\n给出明确问题。",
+            draft_tool_names_json="[]",
+            draft_revision=1,
+            status=AgentSkillStatus.published,
+        )
+        self.other_skill = AgentSkill(
+            owner_user_id=self.other.id,
+            slug="private-skill",
+            name="越权 Skill",
+            description="不应可见",
+            draft_instructions="不可见",
+            draft_tool_names_json="[]",
+            draft_revision=1,
+            status=AgentSkillStatus.published,
+        )
+        self.db.add_all([self.skill, self.other_skill])
+        self.db.flush()
+        self.skill_version = AgentSkillVersion(
+            skill_id=self.skill.id,
+            version=1,
+            name_snapshot=self.skill.name,
+            description_snapshot=self.skill.description,
+            instructions=self.skill.draft_instructions,
+            tool_names_json="[]",
+            content_hash="sha256:story-review",
+            published_by_user_id=self.owner.id,
+        )
+        self.other_skill_version = AgentSkillVersion(
+            skill_id=self.other_skill.id,
+            version=1,
+            name_snapshot=self.other_skill.name,
+            description_snapshot=self.other_skill.description,
+            instructions=self.other_skill.draft_instructions,
+            tool_names_json="[]",
+            content_hash="sha256:private-skill",
+            published_by_user_id=self.other.id,
+        )
+        self.db.add_all([self.skill_version, self.other_skill_version])
+        self.db.flush()
+        self.skill.active_version_id = self.skill_version.id
+        self.other_skill.active_version_id = self.other_skill_version.id
         self.db.commit()
 
     def tearDown(self) -> None:
@@ -237,6 +290,93 @@ class AgentResourceTests(unittest.TestCase):
                     AgentResourceRef(kind=AgentResourceKind.task, id=self.other_task.id),
                 ],
             )
+        with self.assertRaises(AgentResourceResolutionError):
+            AgentResourceResolver().resolve(
+                self.db,
+                owner_user_id=self.owner.id,
+                refs=[
+                    AgentResourceRef(kind=AgentResourceKind.skill, id=self.skill_version.id),
+                    AgentResourceRef(kind=AgentResourceKind.skill, id=self.skill_version.id),
+                ],
+            )
+
+    def test_skill_ref_uses_exact_active_version_and_server_safe_snapshot(self) -> None:
+        resolved = AgentResourceResolver().resolve(
+            self.db,
+            owner_user_id=self.owner.id,
+            refs=[
+                AgentResourceRef(
+                    kind=AgentResourceKind.skill,
+                    id=self.skill_version.id,
+                    display_name="伪造名称",
+                    safe_summary={"instructions": "伪造正文"},
+                ),
+                AgentResourceRef(kind=AgentResourceKind.style, id=self.style.id),
+            ],
+        )
+
+        self.assertEqual(self.skill_version.id, resolved.skill_version.id)
+        self.assertEqual("故事检查 · v1", resolved.refs[0].display_name)
+        self.assertEqual(self.skill.id, resolved.refs[0].safe_summary["skill_id"])
+        self.assertEqual([], resolved.refs[0].safe_summary["tool_names"])
+        self.assertNotIn("instructions", resolved.refs[0].safe_summary)
+        with self.assertRaises(AgentResourceResolutionError):
+            AgentResourceResolver().resolve(
+                self.db,
+                owner_user_id=self.owner.id,
+                refs=[
+                    AgentResourceRef(
+                        kind=AgentResourceKind.skill,
+                        id=self.other_skill_version.id,
+                    )
+                ],
+            )
+
+    def test_message_acceptance_canonicalizes_skill_and_pins_same_version_on_run(self) -> None:
+        conversation = AgentConversation(owner_user_id=self.owner.id, title="Skill 引用")
+        self.db.add(conversation)
+        self.db.commit()
+        with patch(
+            "app.api.agent_conversations.enqueue_agent_run",
+            new=AsyncMock(),
+        ):
+            accepted = asyncio.run(
+                create_agent_message(
+                    conversation.id,
+                    AgentMessageCreate(
+                        content="请检查这个故事",
+                        resource_refs=[
+                            AgentResourceRef(
+                                kind=AgentResourceKind.skill,
+                                id=self.skill_version.id,
+                                display_name="伪造名称",
+                            )
+                        ],
+                    ),
+                    user=self.owner,
+                    db=self.db,
+                )
+            )
+
+        run = self.db.get(AgentRun, accepted.data.run.id)
+        saved_ref = accepted.data.message.resource_refs[0]
+        self.assertEqual(self.skill_version.id, run.skill_version_id)
+        self.assertEqual("故事检查 · v1", saved_ref.display_name)
+        self.assertEqual("sha256:story-review", saved_ref.safe_summary["content_hash"])
+
+        self.skill.status = AgentSkillStatus.archived
+        self.db.commit()
+        with self.assertRaises(AgentResourceResolutionError):
+            AgentResourceResolver().resolve(
+                self.db,
+                owner_user_id=self.owner.id,
+                refs=[
+                    AgentResourceRef(
+                        kind=AgentResourceKind.skill,
+                        id=self.skill_version.id,
+                    )
+                ],
+            )
 
     def test_resource_queries_are_owner_scoped_searchable_bounded_summaries(self) -> None:
         styles = list_agent_style_resources(
@@ -257,6 +397,12 @@ class AgentResourceTests(unittest.TestCase):
             user=self.owner,
             db=self.db,
         )
+        skills = list_agent_skill_resources(
+            query="故事",
+            limit=20,
+            user=self.owner,
+            db=self.db,
+        )
         panels = list_agent_task_panel_resources(
             self.task.id,
             user=self.owner,
@@ -272,6 +418,8 @@ class AgentResourceTests(unittest.TestCase):
         self.assertEqual(["真实水彩"], [item.display_name for item in styles.items])
         self.assertEqual(["林夏"], [item.display_name for item in characters.items])
         self.assertEqual(["街角画画"], [item.display_name for item in tasks.items])
+        self.assertEqual(self.skill_version.id, skills.items[0].id)
+        self.assertEqual(self.skill.id, skills.items[0].parent_id)
         self.assertEqual(self.task.id, panels.items[0].parent_id)
         self.assertEqual(self.panel.id, images.items[0].parent_id)
         self.assertFalse(hasattr(tasks.items[0], "original_text"))

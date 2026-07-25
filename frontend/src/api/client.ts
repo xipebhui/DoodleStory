@@ -22,6 +22,9 @@ export type CreditTransaction = {
   reserved_balance_after: number;
   admin_user_id: string | null;
   task_id: string | null;
+  skill_version_id: string | null;
+  skill_name: string | null;
+  skill_version_number: number | null;
   panel_id: string | null;
   generated_image_id: string | null;
   style_test_id: string | null;
@@ -1050,6 +1053,13 @@ export const api = {
     if (params?.limit) search.set("limit", String(params.limit));
     const suffix = search.toString() ? `?${search.toString()}` : "";
     return request<ApiList<AgentResourceOption>>(`/agent/resources/styles${suffix}`);
+  },
+  agentSkillResources: (params?: { query?: string; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.query) search.set("query", params.query);
+    if (params?.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString() ? `?${search.toString()}` : "";
+    return request<ApiList<AgentResourceOption>>(`/agent/resources/skills${suffix}`);
   },
   agentCharacterResources: (params?: { query?: string; limit?: number }) => {
     const search = new URLSearchParams();

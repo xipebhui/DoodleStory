@@ -29,6 +29,7 @@ from app.services.agent_model_router import (
     AgentModelRoute,
     AgentModelRouter,
     AgentModelRoutingError,
+    AgentSkillSelection,
 )
 from app.services.agent_observability import (
     agent_run_span,
@@ -54,17 +55,19 @@ from app.services.agent_hitl import (
     emit_agent_event,
     latest_comic_artifact,
 )
-from app.services.agent_tool_runtime import (
-    GenericToolExecutor,
-    build_runtime_context,
-    create_default_tool_registry,
-)
 from app.services.agent_resources import (
     AgentResourceResolutionError,
     AgentResourceResolver,
-    AgentResourceRoute,
     parse_agent_resource_refs,
     resource_context_from_saved_refs,
+)
+from app.services.agent_skill_management import validate_tool_names
+from app.services.agent_skill_runtime import (
+    AgentSkillRuntimeError,
+    RuntimeSkill,
+    available_skill_catalog,
+    load_pinned_runtime_skill,
+    pin_automatic_skill_version,
 )
 from app.services.agent_panel_versions import (
     AgentPanelVersionError,
@@ -586,11 +589,129 @@ async def _wait_for_image_tools(run_id: str) -> list[dict[str, object]]:
             await asyncio.sleep(1)
 
 
-async def process_comic_agent_run(
+def _emit_skill_runtime_events(
+    db: Session,
+    *,
+    run: AgentRun,
+    skill: RuntimeSkill,
+    selection: str,
+) -> None:
+    payload = {
+        "skill_version_id": skill.id,
+        "name": skill.name,
+        "version": skill.version,
+        "content_hash": skill.content_hash,
+        "selection": selection,
+        "allowed_tools": list(skill.allowed_tool_names),
+    }
+    emit_agent_event(
+        db,
+        run=run,
+        event_type=AgentEventType.skill_selected,
+        payload={
+            "name": skill.name,
+            "version": skill.version,
+            "selection": selection,
+        },
+        deduplicate=True,
+    )
+    emit_agent_event(
+        db,
+        run=run,
+        event_type=AgentEventType.skill_version_pinned,
+        payload={
+            "skill_version_id": skill.id,
+            "name": skill.name,
+            "version": skill.version,
+        },
+        deduplicate=True,
+    )
+    emit_agent_event(
+        db,
+        run=run,
+        event_type=AgentEventType.skill_loaded,
+        payload=payload,
+        deduplicate=True,
+    )
+
+
+async def _select_and_load_runtime_skill(
     run_id: str,
     *,
     router: AgentModelRouter,
+) -> tuple[RuntimeSkill | None, bool]:
+    with database.SessionLocal() as db:
+        run = db.get(AgentRun, run_id)
+        if run is None:
+            raise AgentCheckpointError("Agent Run 不存在")
+        pinned = load_pinned_runtime_skill(db, run=run)
+        if pinned is not None:
+            user_message = _latest_user_message(db, run)
+            explicit = any(
+                ref.kind.value == "skill"
+                for ref in parse_agent_resource_refs(user_message.resource_refs_json)
+            )
+            _emit_skill_runtime_events(
+                db,
+                run=run,
+                skill=pinned,
+                selection="explicit" if explicit else "automatic",
+            )
+            db.commit()
+            return pinned, False
+        catalog = available_skill_catalog(
+            db,
+            owner_user_id=run.conversation.owner_user_id,
+        )
+        if not catalog:
+            return None, False
+        input_items = build_agent_input(db, run)
+
+    result = await router.run_skill_selection(
+        input_items,
+        catalog,
+        DatabaseAgentAttemptObserver(run_id, "skill_selection"),
+    )
+    selection = AgentSkillSelection.model_validate(
+        result.structured_output or json.loads(result.final_output)
+    )
+    if selection.outcome == "none":
+        return None, False
+    if selection.outcome == "ask_user":
+        wait_agent_run_for_input(
+            run_id,
+            selection.user_message or "请选择一个 Skill 后继续。",
+        )
+        return None, True
+    catalog_ids = {str(item["skill_version_id"]) for item in catalog}
+    if selection.skill_version_id not in catalog_ids:
+        raise AgentSkillRuntimeError("模型选择了 catalog 之外的 Skill Version")
+    with database.SessionLocal() as db:
+        run = db.get(AgentRun, run_id)
+        if run is None:
+            raise AgentCheckpointError("Agent Run 不存在")
+        skill = pin_automatic_skill_version(
+            db,
+            run=run,
+            skill_version_id=selection.skill_version_id,
+        )
+        _emit_skill_runtime_events(
+            db,
+            run=run,
+            skill=skill,
+            selection="automatic",
+        )
+        db.commit()
+        return skill, False
+
+
+async def process_skill_agent_run(
+    run_id: str,
+    *,
+    router: AgentModelRouter,
+    skill: RuntimeSkill,
 ) -> None:
+    allowed_tools = set(validate_tool_names(list(skill.allowed_tool_names)))
     with database.SessionLocal() as db:
         run = db.get(AgentRun, run_id)
         if run is None:
@@ -607,9 +728,24 @@ async def process_comic_agent_run(
             db,
             owner_user_id=run.conversation.owner_user_id,
             message=user_message,
+            pinned_skill_version_id=run.skill_version_id,
         )
-        if resources.route != AgentResourceRoute.create_comic or resources.style is None:
-            raise AgentCheckpointError("漫画创建 Run 的结构化资源组合无效")
+        if resources.style is None:
+            result = await router.run_with_skill(
+                build_agent_input(db, run),
+                skill,
+                DatabaseAgentAttemptObserver(run_id, "skill_text"),
+            )
+            finalize_agent_run(run_id, result.final_output)
+            return
+        if "generate_image" not in allowed_tools:
+            result = await router.run_with_skill(
+                build_agent_input(db, run),
+                skill,
+                DatabaseAgentAttemptObserver(run_id, "skill_text"),
+            )
+            finalize_agent_run(run_id, result.final_output)
+            return
         requested_count = _requested_panel_count(user_message.content)
         if requested_count is not None and not 2 <= requested_count <= 8:
             finalize_agent_run(
@@ -645,28 +781,6 @@ async def process_comic_agent_run(
             plan = None
             needs_plan = True
             next_version = (latest_artifact.version + 1) if latest_artifact is not None else 1
-            executor = GenericToolExecutor(create_default_tool_registry())
-            skill_result = executor.execute(
-                db,
-                run=run,
-                tool_name="load_skill",
-                arguments={"skill_name": "idea-to-comic"},
-                idempotency_key=f"agent:{run.id}:load_skill:idea-to-comic",
-                context=build_runtime_context(db, run, image_budget_limit=8),
-            )
-            if skill_result.output is None:
-                raise AgentCheckpointError("idea-to-comic Skill 加载没有输出")
-            emit_agent_event(
-                db,
-                run=run,
-                event_type=AgentEventType.skill_loaded,
-                payload={
-                    "name": skill_result.output["name"],
-                    "version": skill_result.output["version"],
-                    "content_hash": skill_result.output["content_hash"],
-                },
-                deduplicate=True,
-            )
             if latest_artifact is not None and latest_artifact.approval_request is not None:
                 feedback = latest_artifact.approval_request.feedback
                 input_items = [
@@ -686,7 +800,8 @@ async def process_comic_agent_run(
                 {
                     "role": "user",
                     "content": (
-                        "Runtime 已加载 idea-to-comic Skill。按 Skill 方法形成用户可确认的漫画方案；"
+                        f"Runtime 已加载 {skill.name} v{skill.version}。按该发布版 Skill 方法形成"
+                        "用户可确认的漫画方案；"
                         "不要调用图片工具。"
                     ),
                 },
@@ -698,9 +813,10 @@ async def process_comic_agent_run(
         with database.SessionLocal() as db:
             plan = _comic_plan_from_checkpoint(db, run_id, phase)
         if plan is None:
-            result = await router.run_comic_plan(
+            result = await router.run_skill_plan(
                 input_items,
                 style_context,
+                skill,
                 DatabaseAgentAttemptObserver(run_id, phase),
             )
             plan = ComicPlan.model_validate(
@@ -713,6 +829,14 @@ async def process_comic_agent_run(
             if run is None:
                 raise AgentCheckpointError("Agent Run 不存在")
             create_comic_plan_artifact(db, run=run, plan=plan)
+            emit_agent_event(
+                db,
+                run=run,
+                event_type=AgentEventType.skill_waiting_for_confirmation,
+                payload={"name": skill.name, "version": skill.version},
+                deduplicate=True,
+            )
+            db.commit()
         return
 
     if plan is None:
@@ -731,9 +855,12 @@ async def process_comic_agent_run(
             db,
             owner_user_id=run.conversation.owner_user_id,
             message=user_message,
+            pinned_skill_version_id=run.skill_version_id,
         )
-        if resources.route != AgentResourceRoute.create_comic or resources.style is None:
-            raise AgentCheckpointError("漫画创建 Run 的结构化资源组合无效")
+        if resources.style is None:
+            raise AgentCheckpointError("已批准方案缺少已鉴权风格")
+        if "generate_image" not in allowed_tools:
+            raise AgentSkillRuntimeError("当前 Skill Version 未授权 generate_image")
         style = load_authorized_style(db, resources.style.id)
         create_comic_task_and_image_tools(
             db=db,
@@ -765,8 +892,9 @@ async def process_comic_agent_run(
             ),
         },
     ]
-    result = await router.run_comic_final(
+    result = await router.run_skill_final(
         final_input,
+        skill,
         DatabaseAgentAttemptObserver(run_id, "comic_final"),
     )
     finalize_agent_run(run_id, result.final_output)
@@ -844,13 +972,24 @@ async def process_agent_run(run_id: str, router: AgentModelRouter | None = None)
                         db,
                         owner_user_id=run.conversation.owner_user_id,
                         message=user_message,
+                        pinned_skill_version_id=run.skill_version_id,
                     )
                     input_items = build_agent_input(db, run)
                 model_router = router or AgentModelRouter()
-                if resources.route == AgentResourceRoute.create_comic:
-                    await process_comic_agent_run(run_id, router=model_router)
+                skill, waiting_for_skill = await _select_and_load_runtime_skill(
+                    run_id,
+                    router=model_router,
+                )
+                if waiting_for_skill:
                     return
-                if resources.route == AgentResourceRoute.continue_task:
+                if skill is not None:
+                    await process_skill_agent_run(
+                        run_id,
+                        router=model_router,
+                        skill=skill,
+                    )
+                    return
+                if resources.task is not None:
                     if resources.task is None:
                         raise AgentCheckpointError("续作上下文缺少已鉴权任务")
                     with database.SessionLocal() as db:

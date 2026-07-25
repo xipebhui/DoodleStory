@@ -21,6 +21,7 @@ from app.schemas.common import OrmModel, PageInfo, TimestampFields
 
 
 class AgentResourceKind(StrEnum):
+    skill = "skill"
     style = "style"
     character = "character"
     task = "task"
@@ -295,6 +296,9 @@ class AgentRunSummaryRead(TimestampFields):
     id: str
     turn_id: str
     task_id: str | None
+    skill_version_id: str | None = None
+    skill_name: str | None = None
+    skill_version_number: int | None = None
     status: AgentRunStatus
     model_call_count: int
     image_call_count: int
@@ -335,6 +339,9 @@ class AgentRunRead(TimestampFields):
     conversation_id: str
     turn_id: str
     task_id: str | None
+    skill_version_id: str | None
+    skill_name: str | None
+    skill_version_number: int | None
     status: AgentRunStatus
     current_step_sequence: int
     model_call_count: int

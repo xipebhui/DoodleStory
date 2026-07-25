@@ -78,7 +78,10 @@ class AgentApprovalStatus(StrEnum):
 
 class AgentEventType(StrEnum):
     run_started = "run.started"
+    skill_selected = "skill.selected"
     skill_loaded = "skill.loaded"
+    skill_version_pinned = "skill.version_pinned"
+    skill_waiting_for_confirmation = "skill.waiting_for_confirmation"
     artifact_created = "artifact.created"
     approval_requested = "approval.requested"
     approval_resolved = "approval.resolved"

@@ -10,13 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import (
     AgentMessage,
+    AgentSkill,
+    AgentSkillVersion,
     GeneratedImage,
     GenerationTask,
     Style,
     TaskPanel,
     UserCharacter,
 )
-from app.models.enums import StyleStatus
+from app.models.enums import AgentSkillStatus, StyleStatus
+from app.services.agent_skill_management import parse_tool_names, validate_tool_names
 from app.schemas.agent import AgentResourceKind, AgentResourceRef
 
 
@@ -42,6 +45,7 @@ class ResolvedAgentResources:
     task: GenerationTask | None
     panel: TaskPanel | None
     image_version: GeneratedImage | None
+    skill_version: AgentSkillVersion | None
 
 
 def parse_agent_resource_refs(raw: str | None) -> list[AgentResourceRef]:
@@ -96,6 +100,8 @@ class AgentResourceResolver:
         }
         if len(grouped[AgentResourceKind.style]) > 1:
             raise AgentResourceResolutionError("每条消息最多引用一个风格")
+        if len(grouped[AgentResourceKind.skill]) > 1:
+            raise AgentResourceResolutionError("每条消息最多引用一个 Skill")
         if len(grouped[AgentResourceKind.character]) > AgentResourceResolver.MAX_CHARACTERS:
             raise AgentResourceResolutionError("每条消息最多引用 3 个角色")
         if len(grouped[AgentResourceKind.task]) > 1:
@@ -118,6 +124,7 @@ class AgentResourceResolver:
         *,
         owner_user_id: str,
         refs: list[AgentResourceRef],
+        pinned_skill_version_id: str | None = None,
     ) -> ResolvedAgentResources:
         self._validate_combination(refs)
         ids_by_kind = {
@@ -162,6 +169,28 @@ class AgentResourceResolver:
                 GeneratedImage.panel_id.is_not(None),
             )
         ).all() if ids_by_kind[AgentResourceKind.image_version] else []
+        skill_versions = []
+        if ids_by_kind[AgentResourceKind.skill]:
+            skill_filter = (
+                (AgentSkillVersion.id == pinned_skill_version_id)
+                if pinned_skill_version_id is not None
+                else (
+                    (AgentSkill.active_version_id == AgentSkillVersion.id)
+                    & (AgentSkill.status == AgentSkillStatus.published)
+                )
+            )
+            skill_versions = db.scalars(
+                select(AgentSkillVersion)
+                .join(AgentSkill, AgentSkill.id == AgentSkillVersion.skill_id)
+                .where(
+                    AgentSkillVersion.id.in_(ids_by_kind[AgentResourceKind.skill]),
+                    skill_filter,
+                    (
+                        (AgentSkill.owner_user_id == owner_user_id)
+                        | AgentSkill.owner_user_id.is_(None)
+                    ),
+                )
+            ).all()
 
         found = {
             AgentResourceKind.style: {item.id: item for item in styles},
@@ -169,6 +198,7 @@ class AgentResourceResolver:
             AgentResourceKind.task: {item.id: item for item in tasks},
             AgentResourceKind.panel: {item.id: item for item in panels},
             AgentResourceKind.image_version: {item.id: item for item in images},
+            AgentResourceKind.skill: {item.id: item for item in skill_versions},
         }
         for ref in refs:
             if ref.id not in found[ref.kind]:
@@ -181,6 +211,15 @@ class AgentResourceResolver:
         task = tasks[0] if tasks else None
         panel = panels[0] if panels else None
         image_version = images[0] if images else None
+        skill_version = skill_versions[0] if skill_versions else None
+        if skill_version is not None:
+            try:
+                validate_tool_names(parse_tool_names(skill_version.tool_names_json))
+            except RuntimeError as exc:
+                raise AgentResourceResolutionError(
+                    "引用的 Skill 包含 Runtime 不再允许的 Tool",
+                    status_code=409,
+                ) from exc
         if style is not None and task is None and not style.image_model_name.strip():
             raise AgentResourceResolutionError(
                 "所选风格尚未绑定生图模型，不能用于创建新任务"
@@ -259,6 +298,20 @@ class AgentResourceResolver:
                     "asset_id": item.asset_id,
                 },
             )
+        for item in skill_versions:
+            tool_names = parse_tool_names(item.tool_names_json)
+            summaries[(AgentResourceKind.skill, item.id)] = (
+                f"{item.name_snapshot} · v{item.version}",
+                {
+                    "id": item.id,
+                    "skill_id": item.skill_id,
+                    "name": item.name_snapshot,
+                    "version": item.version,
+                    "description": item.description_snapshot,
+                    "content_hash": item.content_hash,
+                    "tool_names": tool_names,
+                },
+            )
 
         canonical_refs = [
             ref.model_copy(
@@ -289,6 +342,7 @@ class AgentResourceResolver:
             task=task,
             panel=panel,
             image_version=image_version,
+            skill_version=skill_version,
         )
 
     @staticmethod
@@ -297,11 +351,13 @@ class AgentResourceResolver:
         *,
         owner_user_id: str,
         message: AgentMessage,
+        pinned_skill_version_id: str | None = None,
     ) -> ResolvedAgentResources:
         return AgentResourceResolver().resolve(
             db,
             owner_user_id=owner_user_id,
             refs=parse_agent_resource_refs(message.resource_refs_json),
+            pinned_skill_version_id=pinned_skill_version_id,
         )
 
     @staticmethod
@@ -312,4 +368,5 @@ class AgentResourceResolver:
             AgentResourceKind.task: "任务",
             AgentResourceKind.panel: "Panel",
             AgentResourceKind.image_version: "图片版本",
+            AgentResourceKind.skill: "Skill",
         }[kind]

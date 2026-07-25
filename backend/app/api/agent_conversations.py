@@ -19,6 +19,8 @@ from app.models.entities import (
     AgentEvent,
     AgentMessage,
     AgentRun,
+    AgentSkill,
+    AgentSkillVersion,
     AgentStep,
     GeneratedImage,
     GenerationTask,
@@ -33,6 +35,7 @@ from app.models.enums import (
     AgentEventType,
     AgentMessageRole,
     AgentRunStatus,
+    AgentSkillStatus,
     StyleStatus,
 )
 from app.schemas.agent import (
@@ -155,6 +158,9 @@ def run_to_read(db: Session, run: AgentRun) -> AgentRunRead:
         conversation_id=run.conversation_id,
         turn_id=run.turn_id,
         task_id=run.task_id,
+        skill_version_id=run.skill_version_id,
+        skill_name=run.skill_version.name_snapshot if run.skill_version else None,
+        skill_version_number=run.skill_version.version if run.skill_version else None,
         status=run.status,
         current_step_sequence=run.current_step_sequence,
         model_call_count=run.model_call_count,
@@ -368,6 +374,56 @@ def list_agent_style_resources(
             for item in visible
         ],
         page=build_page(limit=limit, offset=0, item_count=len(items)),
+    )
+
+
+@router.get("/resources/skills", response_model=ApiList[AgentResourceOption])
+def list_agent_skill_resources(
+    query: str = Query(default="", max_length=120),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[AgentResourceOption]:
+    statement = (
+        select(AgentSkill, AgentSkillVersion)
+        .join(
+            AgentSkillVersion,
+            AgentSkillVersion.id == AgentSkill.active_version_id,
+        )
+        .where(
+            AgentSkill.status == AgentSkillStatus.published,
+            or_(
+                AgentSkill.owner_user_id == user.id,
+                AgentSkill.owner_user_id.is_(None),
+            ),
+        )
+    )
+    if query.strip():
+        normalized = query.strip()
+        statement = statement.where(
+            or_(
+                AgentSkill.name.ilike(f"%{normalized}%"),
+                AgentSkill.description.ilike(f"%{normalized}%"),
+            )
+        )
+    rows = db.execute(
+        statement.order_by(AgentSkill.updated_at.desc(), AgentSkill.id.desc())
+        .limit(limit + 1)
+    ).all()
+    visible = rows[:limit]
+    return ApiList(
+        items=[
+            AgentResourceOption(
+                kind=AgentResourceKind.skill,
+                id=version.id,
+                parent_id=skill.id,
+                display_name=f"{version.name_snapshot} · v{version.version}",
+                secondary_text=version.description_snapshot,
+                status=skill.status.value,
+            )
+            for skill, version in visible
+        ],
+        page=build_page(limit=limit, offset=0, item_count=len(rows)),
     )
 
 
@@ -807,6 +863,11 @@ async def create_agent_message(
         conversation_id=conversation.id,
         turn_id=turn_id,
         status=AgentRunStatus.queued,
+        skill_version_id=(
+            resolved_resources.skill_version.id
+            if resolved_resources.skill_version is not None
+            else None
+        ),
     )
     conversation.last_message_at = datetime.utcnow()
     db.add_all([message, run])

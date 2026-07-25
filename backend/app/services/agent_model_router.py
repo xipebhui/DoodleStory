@@ -3,28 +3,22 @@ from __future__ import annotations
 import asyncio
 from contextvars import ContextVar
 from dataclasses import dataclass
-import hashlib
 import logging
 import re
 import time
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
-from agents import Agent, ModelSettings, RunConfig, Runner, function_tool
+from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.model_settings import ModelRetrySettings
 from agents.models.openai_provider import OpenAIProvider
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.core import database
 from app.core.config import Settings, get_settings
-from app.models.entities import AgentRun
 from app.schemas.agent import ComicPlan
 from app.schemas.agent_skill import AgentSkillAuthoringSuggestion
 from app.services.agent_observability import agent_span, set_span_result, set_span_status
-from app.services.agent_skill_registry import get_runtime_skill_registry
-from app.services.agent_tool_runtime import (
-    GenericToolExecutor,
-    create_default_tool_registry,
-)
+from app.services.agent_skill_runtime import BASE_AGENT_INSTRUCTIONS, RuntimeSkill, skill_model_instructions
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +28,24 @@ _current_agent_run_id: ContextVar[str | None] = ContextVar(
     "current_agent_run_id",
     default=None,
 )
+
+
+class AgentSkillSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["selected", "none", "ask_user"]
+    skill_version_id: str | None = None
+    user_message: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> "AgentSkillSelection":
+        if self.outcome == "selected" and not self.skill_version_id:
+            raise ValueError("selected 必须包含 skill_version_id")
+        if self.outcome != "selected":
+            self.skill_version_id = None
+        if self.outcome == "ask_user" and not (self.user_message or "").strip():
+            raise ValueError("ask_user 必须包含用户可见问题")
+        return self
 
 
 @dataclass(frozen=True)
@@ -284,57 +296,11 @@ class AgentModelRouter:
         )
         return OpenAIProvider(openai_client=client, use_responses=True)
 
-    @staticmethod
-    def _skill_catalog_instructions() -> str:
-        return get_runtime_skill_registry().catalog_instructions()
-
-    @staticmethod
-    def _load_skill_tool(run_id: str):
-        @function_tool(
-            name_override="load_skill",
-            description_override=(
-                "按精确 Skill name 加载一个已注册 Runtime Skill 的完整说明。"
-                "不能传入路径、URL 或未注册名称。"
-            ),
-            use_docstring_info=False,
-            strict_mode=True,
-        )
-        async def load_skill(skill_name: str) -> dict[str, Any]:
-            with database.SessionLocal() as db:
-                run = db.get(AgentRun, run_id)
-                if run is None:
-                    raise RuntimeError("Agent Run 不存在")
-                result = GenericToolExecutor(
-                    create_default_tool_registry()
-                ).execute(
-                    db,
-                    run=run,
-                    tool_name="load_skill",
-                    arguments={"skill_name": skill_name},
-                    idempotency_key=(
-                        f"agent:{run.id}:load_skill:"
-                        f"{hashlib.sha256(skill_name.encode('utf-8')).hexdigest()[:24]}"
-                    ),
-                )
-                if result.output is None:
-                    raise RuntimeError("load_skill 没有返回完整结果")
-                return result.output
-
-        return load_skill
-
     async def _invoke(self, config: AgentProviderConfig, route: AgentModelRoute, input_items: list[dict[str, Any]]) -> AgentModelResult:
-        run_id = _current_agent_run_id.get()
         agent = Agent(
-            name="ComicDirectorAgent",
-            instructions=(
-                "你是 DoodleStory 的漫画导演 Agent。本阶段只理解用户意图并提供清晰的文本回答。"
-                "只有当用户的讨论确实需要某个 catalog 方法时才调用 load_skill；不得自动选择 Skill，"
-                "也不要声称已经生成图片、任务、分镜或其他资源。当用户要求执行这些能力时，"
-                "明确说明当前回合只能讨论和整理创作需求。不要输出内部思维过程。\n"
-                f"{self._skill_catalog_instructions()}"
-            ),
+            name="DoodleStoryContentAgent",
+            instructions=BASE_AGENT_INSTRUCTIONS,
             model=self.model,
-            tools=[self._load_skill_tool(run_id)] if run_id is not None else [],
             model_settings=ModelSettings(
                 retry=ModelRetrySettings(max_retries=0),
                 store=False,
@@ -366,29 +332,23 @@ class AgentModelRouter:
             route=route,
         )
 
-    async def _invoke_comic_plan(
+    async def _invoke_skill_plan(
         self,
         config: AgentProviderConfig,
         route: AgentModelRoute,
         input_items: list[dict[str, Any]],
         style_context: dict[str, object],
+        skill: RuntimeSkill,
     ) -> AgentModelResult:
         agent = Agent(
-            name="ComicDirectorAgent",
+            name="DoodleStoryContentAgent",
             instructions=(
-                "你是 DoodleStory 的漫画导演。根据用户 Idea、已鉴权风格、结构化角色资源上下文"
-                "和已加载的 idea-to-comic Skill，"
-                "规划一部连续漫画。用户明确指定时只允许 2–8 格；未指定时在 2–6 格内决定。"
-                "每格必须推进同一故事，补齐必要因果、人物动机和结尾，避免重复 Panel。"
-                "image_prompt 是将直接交给图片模型的最终单图指令，"
-                "必须完整但简洁，明确主体、动作、表情、场景、构图、光线、风格和需要准确绘制的文字；"
-                "若 resource_context 含 characters，必须使用其名称、描述和参考资产身份锚点，"
-                "不得按名字另行猜测或搜索角色；"
+                f"{skill_model_instructions(skill)}\n\n"
+                "Runtime 当前要求输出一个等待用户确认的 ComicPlan control action。"
                 "schema_version 固定为 1；style_ref_id 和 aspect_ratio 必须逐字使用已鉴权风格快照；"
-                "estimated_image_credits 必须等于 panels 数量。不要解释计划，不要输出内部思维过程。"
-                "严格输出 ComicPlan schema。\n"
-                f"已鉴权风格快照：{style_context}\n"
-                f"{self._skill_catalog_instructions()}"
+                "estimated_image_credits 必须等于 panels 数量；未获确认前不得声称图片已经生成。"
+                "严格输出 ComicPlan schema，不输出解释或隐藏推理。\n"
+                f"已鉴权风格快照：{style_context}"
             ),
             model=self.model,
             output_type=ComicPlan,
@@ -405,7 +365,7 @@ class AgentModelRouter:
                 run_config=RunConfig(
                     model_provider=provider,
                     tracing_disabled=True,
-                    workflow_name="DoodleStory ComicPlan",
+                    workflow_name="DoodleStory Skill Control Action",
                 ),
                 max_turns=2,
             )
@@ -422,19 +382,21 @@ class AgentModelRouter:
             structured_output=plan,
         )
 
-    async def _invoke_comic_final(
+    async def _invoke_skill_final(
         self,
         config: AgentProviderConfig,
         route: AgentModelRoute,
         input_items: list[dict[str, Any]],
+        skill: RuntimeSkill,
     ) -> AgentModelResult:
         agent = Agent(
-            name="ComicDirectorAgent",
+            name="DoodleStoryContentAgent",
             instructions=(
-                "你是 DoodleStory 的漫画导演。应用上下文已经包含已批准 ComicPlan 和真实 generate_image Tool Output。"
+                f"{skill_model_instructions(skill)}\n\n"
+                "应用上下文已经包含已批准方案和真实 Tool Output。"
                 "只根据这些真实状态给用户一句简洁结果说明：全部成功时说明漫画已完成；存在失败时明确指出"
-                "失败的格数与可见原因，绝不能把失败说成成功。不要输出内部思维过程，不要声称进行了图片检查或重试。"
-                f"\n{self._skill_catalog_instructions()}"
+                "失败的格数与可见原因，绝不能把失败说成成功。不要输出内部思维过程，"
+                "不要声称进行了没有真实 Tool Output 的检查或重试。"
             ),
             model=self.model,
             model_settings=ModelSettings(
@@ -450,7 +412,7 @@ class AgentModelRouter:
                 run_config=RunConfig(
                     model_provider=provider,
                     tracing_disabled=True,
-                    workflow_name="DoodleStory Comic Result",
+                    workflow_name="DoodleStory Skill Result",
                 ),
                 max_turns=2,
             )
@@ -466,6 +428,97 @@ class AgentModelRouter:
             provider_request_id=extract_agent_provider_request_id(raw_responses),
             raw_result=result,
             route=route,
+        )
+
+    async def _invoke_skill_text(
+        self,
+        config: AgentProviderConfig,
+        route: AgentModelRoute,
+        input_items: list[dict[str, Any]],
+        skill: RuntimeSkill,
+    ) -> AgentModelResult:
+        agent = Agent(
+            name="DoodleStoryContentAgent",
+            instructions=skill_model_instructions(skill),
+            model=self.model,
+            model_settings=ModelSettings(
+                retry=ModelRetrySettings(max_retries=0),
+                store=False,
+            ),
+        )
+        provider = self._provider(config)
+        try:
+            result = await Runner.run(
+                agent,
+                input_items,
+                run_config=RunConfig(
+                    model_provider=provider,
+                    tracing_disabled=True,
+                    workflow_name="DoodleStory Skill Text",
+                ),
+                max_turns=2,
+            )
+        finally:
+            await provider._client.close()
+        final_output = str(result.final_output or "").strip()
+        if not final_output:
+            raise ValueError("Agent model returned an empty Skill response")
+        raw_responses = list(result.raw_responses)
+        return AgentModelResult(
+            final_output=final_output,
+            usage=summarize_agent_usage(raw_responses),
+            provider_request_id=extract_agent_provider_request_id(raw_responses),
+            raw_result=result,
+            route=route,
+        )
+
+    async def _invoke_skill_selection(
+        self,
+        config: AgentProviderConfig,
+        route: AgentModelRoute,
+        input_items: list[dict[str, Any]],
+        catalog: list[dict[str, object]],
+    ) -> AgentModelResult:
+        agent = Agent(
+            name="DoodleStorySkillSelector",
+            instructions=(
+                f"{BASE_AGENT_INSTRUCTIONS}\n\n"
+                "只根据用户目标、已鉴权资源摘要和以下可用 Skill catalog 决定是否需要一个 Skill。"
+                "只可返回 catalog 中原样的 skill_version_id。明确匹配一个时 selected；"
+                "普通讨论或无需专业方法时 none；多个候选无法可靠区分时 ask_user，并给出简短问题。"
+                "不得加载正文、调用 Tool 或随机选择。\n"
+                f"Catalog={catalog}"
+            ),
+            model=self.model,
+            output_type=AgentSkillSelection,
+            model_settings=ModelSettings(
+                retry=ModelRetrySettings(max_retries=0),
+                store=False,
+            ),
+        )
+        provider = self._provider(config)
+        try:
+            result = await Runner.run(
+                agent,
+                input_items,
+                run_config=RunConfig(
+                    model_provider=provider,
+                    tracing_disabled=True,
+                    workflow_name="DoodleStory Skill Selection",
+                ),
+                max_turns=1,
+            )
+        finally:
+            await provider._client.close()
+        selection = AgentSkillSelection.model_validate(result.final_output)
+        raw_responses = list(result.raw_responses)
+        return AgentModelResult(
+            final_output=selection.model_dump_json(),
+            usage=summarize_agent_usage(raw_responses),
+            provider_request_id=extract_agent_provider_request_id(raw_responses),
+            raw_result=result,
+            route=route,
+            structured_output=selection,
         )
 
     async def _invoke_skill_authoring(
@@ -576,23 +629,50 @@ class AgentModelRouter:
         assert failure is not None
         raise AgentModelRoutingError(failure)
 
-    async def run_comic_plan(
+    async def run_skill_plan(
         self,
         input_items: list[dict[str, Any]],
         style_context: dict[str, object],
+        skill: RuntimeSkill,
         observer: AgentModelAttemptObserver,
     ) -> AgentModelResult:
         async def invoke(config, route, items):
-            return await self._invoke_comic_plan(config, route, items, style_context)
+            return await self._invoke_skill_plan(config, route, items, style_context, skill)
 
         return await self._run_specialized(input_items, observer, invoke)
 
-    async def run_comic_final(
+    async def run_skill_final(
         self,
         input_items: list[dict[str, Any]],
+        skill: RuntimeSkill,
         observer: AgentModelAttemptObserver,
     ) -> AgentModelResult:
-        return await self._run_specialized(input_items, observer, self._invoke_comic_final)
+        async def invoke(config, route, items):
+            return await self._invoke_skill_final(config, route, items, skill)
+
+        return await self._run_specialized(input_items, observer, invoke)
+
+    async def run_with_skill(
+        self,
+        input_items: list[dict[str, Any]],
+        skill: RuntimeSkill,
+        observer: AgentModelAttemptObserver,
+    ) -> AgentModelResult:
+        async def invoke(config, route, items):
+            return await self._invoke_skill_text(config, route, items, skill)
+
+        return await self._run_specialized(input_items, observer, invoke)
+
+    async def run_skill_selection(
+        self,
+        input_items: list[dict[str, Any]],
+        catalog: list[dict[str, object]],
+        observer: AgentModelAttemptObserver,
+    ) -> AgentModelResult:
+        async def invoke(config, route, items):
+            return await self._invoke_skill_selection(config, route, items, catalog)
+
+        return await self._run_specialized(input_items, observer, invoke)
 
     async def run_skill_authoring(
         self,

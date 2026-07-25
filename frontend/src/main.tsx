@@ -2396,7 +2396,10 @@ function agentEventText(event: AgentPublicEvent) {
   const panel = typeof event.payload.panel_key === "string" ? event.payload.panel_key.replace("panel-", "Panel ") : "";
   const labels: Record<string, string> = {
     "run.started": "Agent 开始整理这次创作",
-    "skill.loaded": "已加载 Idea 转漫画方法",
+    "skill.selected": `已选择 ${String(event.payload.name || "Skill")} v${String(event.payload.version || "")}`,
+    "skill.version_pinned": `本轮已固定 ${String(event.payload.name || "Skill")} v${String(event.payload.version || "")}`,
+    "skill.loaded": `已加载 ${String(event.payload.name || "Skill")} v${String(event.payload.version || "")}`,
+    "skill.waiting_for_confirmation": `${String(event.payload.name || "Skill")} 的方案等待确认`,
     "artifact.created": `已生成漫画方案 v${String(event.payload.version || "")}`,
     "approval.requested": "漫画方案等待你的确认",
     "approval.resolved": event.payload.decision === "approve" ? "方案已批准，准备生成图片" : "已收到修改意见，正在生成新方案",
@@ -2441,6 +2444,7 @@ function AgentView({
   const [conversations, setConversations] = useState<AgentConversation[]>([]);
   const [detail, setDetail] = useState<AgentConversationDetail | null>(null);
   const [styleResources, setStyleResources] = useState<AgentResourceOption[]>([]);
+  const [skillResources, setSkillResources] = useState<AgentResourceOption[]>([]);
   const [characterResources, setCharacterResources] = useState<AgentResourceOption[]>([]);
   const [taskResources, setTaskResources] = useState<AgentResourceOption[]>([]);
   const [panelResources, setPanelResources] = useState<AgentResourceOption[]>([]);
@@ -2519,12 +2523,14 @@ function AgentView({
       setResourceLoading(true);
       setResourceError("");
       void Promise.all([
+        api.agentSkillResources({ query: resourceSearch, limit: 20 }),
         api.agentStyleResources({ query: resourceSearch, limit: 20 }),
         api.agentCharacterResources({ query: resourceSearch, limit: 20 }),
         api.agentTaskResources({ query: resourceSearch, limit: 20 }),
       ])
-        .then(([styles, characters, tasks]) => {
+        .then(([skills, styles, characters, tasks]) => {
           if (cancelled) return;
+          setSkillResources(skills.items);
           setStyleResources(styles.items);
           setCharacterResources(characters.items);
           setTaskResources(tasks.items);
@@ -2733,7 +2739,8 @@ function AgentView({
       { withCredentials: true },
     );
     const eventTypes = [
-      "run.started", "skill.loaded", "artifact.created", "approval.requested",
+      "run.started", "skill.selected", "skill.version_pinned", "skill.loaded",
+      "skill.waiting_for_confirmation", "artifact.created", "approval.requested",
       "approval.resolved", "tool.started", "tool.progress", "tool.completed",
       "tool.failed", "assistant.message", "run.completed", "run.failed",
       "panel.revision_requested", "image.version_created", "image.inspection_started",
@@ -2986,7 +2993,12 @@ function AgentView({
     );
     if (existing) return;
     let next = [...selectedResources];
-    if (option.kind === "style") {
+    if (option.kind === "skill") {
+      if (next.some((ref) => ref.kind === "skill")) {
+        setResourceError("每次运行只能使用一个 Skill，已替换原 Skill");
+      }
+      next = next.filter((ref) => ref.kind !== "skill");
+    } else if (option.kind === "style") {
       next = next.filter((ref) => ref.kind !== "style");
     } else if (option.kind === "character") {
       const characterCount = next.filter((ref) => ref.kind === "character").length;
@@ -3414,7 +3426,7 @@ function AgentView({
                       type="search"
                       value={resourceSearch}
                       onChange={(event) => setResourceSearch(event.target.value)}
-                      placeholder="搜索风格、角色或任务"
+                      placeholder="搜索 Skill、风格、角色或任务"
                     />
                   </label>
                   {resourceLoading ? (
@@ -3423,6 +3435,14 @@ function AgentView({
                   {resourceError ? (
                     <p className="agent-resource-state is-error">{resourceError}</p>
                   ) : null}
+                  <span className="agent-resource-group-label">Skill</span>
+                  {skillResources.map((skill) => (
+                    <button type="button" role="menuitem" key={skill.id} onClick={() => addResource(skill)}>
+                      <Sparkles size={17} />
+                      <span><strong>{skill.display_name}</strong><small>{skill.secondary_text || "已发布创作方法"}</small></span>
+                    </button>
+                  ))}
+                  {skillResources.length === 0 && !resourceLoading ? <p>没有匹配的 Skill</p> : null}
                   <span className="agent-resource-group-label">风格</span>
                   {styleResources.map((style) => (
                     <button type="button" role="menuitem" key={style.id} onClick={() => addResource(style)}>
