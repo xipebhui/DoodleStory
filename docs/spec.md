@@ -219,7 +219,7 @@
 - Agent 当前真实基线由 Sprint 105–115 完成：除 Conversation/Message/Run/Step 外，已有版本化 `agent_artifacts`、hash 绑定 `agent_approval_requests` 和用户安全 `agent_events`；`agent_runs.task_id` 继续关联同一 `generation_tasks`。正式漫画创建加载 `idea-to-comic`，生成 2–8 Panel 方案并停在 `waiting_for_input`，owner 批准后才创建 Task/Panel/Image Job；页面通过 SSE cursor 读取持久化事件，不再轮询 Agent 进度。资源输入支持显式 Style、Character、Task、Panel 与 Image Version，并在入队前完成权限、状态、父子关系和组合校验；消息保存规范引用与安全快照，模型重放不接触 owner、存储路径、密钥或无关任务。Character 会真实进入任务角色快照和图片参考，Task 引用进入同一 GenerationTask 的只读续作，不开放版本写操作。
 - Sprint 107/108 已完成的统一 Shell 和旧 Task 详情跳转保留为历史实现记录，但其产品方向已被 2026-07-23 的最新决定替代。Sprint 111 已把 `/agent` 拆为独立 Agent 模块；Agent Task 仍与传统列表共享同一个 GenerationTask，但使用 `/agent/{conversation_id}/tasks/{task_id}` AI 专属只读检查器。检查器数据只允许通过 `GET /api/v1/agent/conversations/{conversation_id}/tasks/{task_id}` 读取，并同时校验当前用户拥有 Conversation、Task 经 Agent Run 关联到该 Conversation、Task owner 与 Conversation owner 一致；Admin 也不能越权读取他人的 Agent 会话任务。
 - Agent 漫画 V1 的目标架构是“通用创作 Agent + 按需加载 Skill + 原子 Tool + 通用 Runtime”。Skill 定义创作方法、步骤、质量门槛和确认点；Tool 只代表真实基础能力，V1 使用 `generate_image` 与 `inspect_image`；Runtime 负责权限、状态、预算、幂等、Provider 路由、等待、恢复、暂停、取消、安全事件和 MLflow 观测。不为每种创作方式增加硬编码 Workflow，不把旧故事拆分、复杂 Prompt 拼接或重试编排包装成 Tool。
-- 产品运行时 Skill 保存在 `backend/app/agent_skills/<skill-id>/SKILL.md`，与服务 Codex 开发的 `.agents/skills/` 分离。基础 Agent 只读取 Skill catalog；调用 `load_skill` 后才获得完整 Skill 正文。选中 Skill 的 name、version 和内容 hash 必须写入 AgentStep 与 MLflow trace。
+- Sprint 113–116 的产品运行时 Skill 暂时保存在 `backend/app/agent_skills/<skill-id>/SKILL.md`，与服务 Codex 开发的 `.agents/skills/` 分离。Sprint 117 将正式运行时事实来源迁移为数据库中的用户 Skill 与不可变发布版本：用户只通过表单编辑名称、适用场景、正文和允许的 Tools，不编写 JSON/YAML/代码；系统 `idea-to-comic` 作为只读种子版本。基础 Agent 只读取可用 Skill catalog，选定后加载准确发布版本；选中的 skill_version_id、name、version 和内容 hash 必须固定到 Agent Run 并写入 AgentStep 与 MLflow trace。
 - Sprint 113 已实现最小 Skill/Tool Runtime：服务启动扫描受控 Skill 根目录，校验目录/name、frontmatter、正整数版本、重复 name、文件大小和路径边界，并自动计算完整文件 SHA-256；catalog 不包含正文。代码级 Tool Registry 当前只注册 `load_skill` 与 `generate_image`，所有 schema 拒绝额外字段，模型不能提供数据库 Session、用户 ID、Provider、API key、预算或幂等键。Generic Tool Executor 在副作用前提交 `tool_call` AgentStep，按 Run/Conversation/已授权 Task/Panel 构造 RuntimeContext，保存 wait checkpoint，并在恢复模型前提交 `tool_result`；稳定幂等键重放只复用既有 Step/job/result。当前固定两格正式链路仍使用旧 ComicPlan 规划入口，但真实图片 job 创建已经通过统一 Executor/adapter 执行；没有新增数据库表或 Workflow DSL。
 - 首个生产 Skill 为 `idea-to-comic`：用户提交 Idea 与一个真实风格后，Agent 补齐并检查故事、规划 2–8 个连续 Panel、生成简洁的最终单图 Prompt，先保存用户可见 ComicPlan Artifact 并进入 `waiting_for_input`；只有 Conversation owner 批准与当前 Artifact hash 一致的方案后，Runtime 才能创建 GenerationTask、Panel 和图片 job。请求修改会创建方案新版本，不能覆盖历史或提前占用图片积分。
 - Agent 用户安全进度使用数据库持久化 Event 和 SSE 展示，包括 Skill 加载、Artifact、Approval、Tool 开始/进度/完成/失败和最终消息；不得展示 chain-of-thought、完整系统 Prompt、Provider 原始响应或敏感 URL。断线重连从事件 cursor 补发，不得重复副作用；未经明确授权不增加隐藏轮询兜底。
@@ -228,7 +228,7 @@
 - MLflow 只承担 Agent/Skill/Tool/Provider/Approval 的观测和 Evaluation 输入，DoodleStory 数据库仍是业务状态、恢复与权限事实来源。默认不记录用户全文、完整 Prompt、图片 URL、API key 或 Provider 原始响应。
 - Agent MLflow 基线锁定 `mlflow==3.14.0`。默认 `MLFLOW_TRACING_ENABLED=false`，关闭时不导入 MLflow、不连接 Tracking URI；启用时 URI 与 Experiment 必须在启动阶段验证。每个 Agent Run 使用 `agent_run_id` 根 trace tag 唯一检索，模型 attempt、Tool Call、图片等待、Tool Result 和 finalize 作为同一 trace 的子 span；不新增 MLflow trace 数据库列，不用 trace 驱动恢复、权限、预算或取消。
 - `MLFLOW_TRACE_CONTENT=false` 时，MLflow span processor 在客户端导出前覆盖 inputs/outputs，并拒绝 Prompt、消息正文、完整 URL、内部路径、Authorization 和已配置密钥。观测初始化或运行时上报错误必须记录明确 `observability_error`；上报错误不能回滚已经提交的图片、消息、积分或 Agent Run 业务状态。
-- Agent 漫画 V1 完成 Sprint 117 Evaluation 并得到 `GO_INTERNAL` 前，不实现用户维度 Memory、用户自定义 Skill、抠图、Remotion、文字转语音或视频解说。后续多媒体能力应新增原子 Tool，再由新 Skill 组合，不预建通用媒体 Workflow。
+- Sprint 117 实现用户 Skill CRUD、不可变发布版本、`@Skill` 与真正由 Skill 驱动的通用内容创作 Agent Loop；每个 Run 第一版最多使用一个纯文本 Skill，只能组合 Runtime 已注册的 Tools，不支持脚本、MCP、多 Skill、Workflow DSL 或用户自定义 Tool。用户 Memory、抠图、Remotion、文字转语音和视频解说继续顺延；后续多媒体能力应先新增原子 Tool，再由 Skill 组合，不预建通用媒体 Workflow。正式 Evaluation 推迟到用户确认功能路线冻结后的最后阶段，届时重新编号并确定 `GO_INTERNAL/NO_GO` 门槛。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。
@@ -299,6 +299,6 @@
 
 ## 未决问题
 
-- Sprint 117 第一轮真实 Evaluation 得到 baseline 后，质量、延迟、成本和 fallback 告警阈值应设为多少。
+- 最终 Evaluation 第一轮真实 baseline 后，质量、延迟、成本和 fallback 告警阈值应设为多少。
 - 风格除了名称、描述、参考图片、prompt、状态和生图模型名外，还需要哪些元数据？
 - 批量下载支持哪些图片格式和命名规则？

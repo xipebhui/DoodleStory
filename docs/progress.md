@@ -6,6 +6,7 @@
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
 - 最近验证状态：Sprint 115 已于 2026-07-24 Complete。Style/Character/Task/Panel/Image Version 有界真实查询、统一 Resolver、权限/状态/父子/组合校验、安全快照重放、普通讨论/新任务/同任务只读续作路由、角色真实任务快照与生图参考、前端分组资源菜单和检查器引用均已实现；真实 `@风格 + @角色` 两格生成、刷新恢复、同 Task 续聊和 Sprint 116 写操作拒绝通过。`./scripts/check.sh` 覆盖 230 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
+- 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 
 ## 当前 Sprint 合同
 
@@ -15,7 +16,8 @@
 - Complete：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
 - Complete：`docs/contracts/sprint-115-agent-structured-resource-context.md`
 - Planned：`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
-- Planned：`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
+- Planned：`docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md`
+- Deferred（最终阶段，暂不编号）：`docs/contracts/deferred-agent-evaluation-internal-release-gate.md`
 - Complete：`docs/contracts/sprint-110-agent-default-model-gpt55.md`
 - Superseded（未实施）：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-108-agent-demo-alignment.md`
@@ -389,8 +391,8 @@
 ## 已知缺口
 
 - 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文和同任务只读续作；Panel 再生成、接受/恢复版本、VL 检查和 pause/resume 尚未实现。
-- 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；Evaluation 发布门槛仍待 Sprint 117。
-- 当前没有 `inspect_image`、版本接受/恢复、Agent pause/resume 或 Evaluation 发布门槛；分别由 Sprint 116、117 交付。
+- 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；正式 Evaluation 发布门槛已按用户决定推迟到功能路线冻结后的最后阶段。
+- 当前没有 `inspect_image`、版本接受/恢复或 Agent pause/resume，由 Sprint 116 交付；当前 Skill 仍是文件目录、漫画 Runner 仍固定加载 `idea-to-comic` 且漫画专用 Instructions/资源路由承担业务编排，尚无用户 Skill CRUD、不可变发布版本、`@Skill` 或真正由 Skill 驱动的通用 Loop，由 Sprint 117 交付。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。
@@ -405,4 +407,4 @@
 
 1. 回到规划窗口审阅 Sprint 115 的 Resolver、安全快照重放、Character 参考链路、同 Task 只读续作和真实验收结果。
 2. Sprint 115 已 Complete；等待用户明确确认后再把 Sprint 116 从 Planned 激活，单独实施 Panel/VL/版本闭环。
-3. 不要提前并行实现 Sprint 116 或 Sprint 117 Evaluation 门槛。
+3. Sprint 116 Complete 并提交到当前分支后，按 `sprint-117-pluggable-skill-management-agent-loop.md` 实施 Skill 管理、版本、`@Skill` 和通用 Loop；不要提前实施 Deferred Evaluation。

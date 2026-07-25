@@ -80,7 +80,8 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 | 4 | `sprint-114-idea-to-comic-skill-hitl-event-stream.md` | 113 Complete |
 | 5 | `sprint-115-agent-structured-resource-context.md` | 114 Complete |
 | 6 | `sprint-116-agent-panel-version-vl-loop.md` | 115 Complete |
-| 7 | `sprint-117-agent-evaluation-internal-release-gate.md` | 116 Complete |
+| 7 | `sprint-117-pluggable-skill-management-agent-loop.md` | 116 Complete |
+| 最终阶段 | `deferred-agent-evaluation-internal-release-gate.md` | 用户确认功能路线冻结后重新编号 |
 
 不要并行实施相邻 Sprint。后一个 Sprint 的 schema/API 假设必须建立在前一个 Sprint 的完成实现上。
 
@@ -148,10 +149,11 @@ Sprint 115 已完成，不要再次执行。先在规划窗口审阅 Resource Re
 
 ### Sprint 117
 
-- 功能冻结。
-- deterministic 100%。
-- 任何越权、错误 Panel、重复扣费、取消复活或未批准生图都 NO_GO。
-- 最终必须给出明确 `GO_INTERNAL` 或 `NO_GO`。
+- 用户 Skill CRUD、草稿、发布版本、激活、归档和系统 Skill clone。
+- Agent 输入区支持准确版本的 `@Skill`。
+- 每个 Run 固定一个 Skill Version，基础 Instructions 不包含漫画专用流程。
+- Skill 正文真正驱动统一 Tool Loop；Runner 不再按 `idea-to-comic` 名称或资源路由硬编码业务编排。
+- 不实现 Workflow DSL、多 Skill、脚本/MCP、Memory、TTS、Remotion、视频或 Evaluation。
 
 ## 8. Mock 与失败规则
 

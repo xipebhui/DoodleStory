@@ -300,32 +300,37 @@ instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间�
 - VL、Agent 决策与版本变化可解释。
 - 暂停、继续、取消、晚到和重启行为正确。
 
-## 12. Sprint 117：Evaluation 与内部开放
+## 12. Sprint 117：可插拔 Skill 管理、版本与通用 Agent Loop
 
 合同：
 
-`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
+`docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md`
 
 ### 交付
 
-- 版本化 deterministic/quality/operational Eval。
-- 故障注入矩阵。
-- 真实 Provider 和浏览器发布回归。
-- MLflow 对比。
-- `GO_INTERNAL` 或 `NO_GO` 报告。
+- 用户 Skill CRUD、草稿、不可变发布版本、激活、归档和系统 Skill clone。
+- Skill 编写指南、AI 草稿建议与受控 Tool 白名单。
+- `/agent/skills` 管理界面和对话 `@Skill`。
+- 每个 Run 固定准确 Skill Version。
+- 通用内容创作 Base Instructions 和真正由 Skill 驱动的 OpenAI Agents SDK Tool Loop。
+- 移除正式漫画路径按 Skill name 或资源路由硬编码的编排，不保留旧路径 fallback。
 
-### 阻止开放
+### 退出门槛
 
-以下任何一项出现都必须 NO_GO：
+- UI 新建 Skill 后无需改代码或重启即可在对话中引用并运行。
+- 发布 v2、激活 v1 或归档不改变已经开始的 Run。
+- 用户创建的无生图 Tool Skill 无法调用 `generate_image`。
+- 系统 `idea-to-comic` 继续完成真实方案确认和生图，且方法只维护在 Skill 发布版本。
+- Runner 新增其它纯文本 Skill 时不增加按 Skill 名称分支。
 
-- 跨用户资源访问。
-- 修改错误 Panel。
-- 重复生图或扣费。
-- 取消后 Run 复活。
-- 未批准方案就生图。
-- 永久错误错误 fallback。
-- 无法从数据库和 trace 解释失败。
-- 正式 UI 出现 Mock 或假操作。
+## 最终阶段：Evaluation 与内部开放
+
+合同：
+
+`docs/contracts/deferred-agent-evaluation-internal-release-gate.md`
+
+Evaluation 已按用户决定推迟到全部计划功能完成后。当前不分配 Sprint 编号；功能路线冻结后再更新
+候选范围、阈值、数据集和启动提示，并输出明确 `GO_INTERNAL` 或 `NO_GO`。
 
 ## 13. Mock 与真实实现规则
 
@@ -346,7 +351,7 @@ instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间�
 
 ## 14. 后续能力如何扩展
 
-漫画 V1 通过 Sprint 117 后，再讨论：
+Sprint 117 完成后，再按用户优先级讨论：
 
 - 用户维度 Memory：保存创作习惯和规则，不作为 Skill 文件注入。
 - 参考优秀漫画与抖音输入：作为受权限资源上下文与专门 Skill。
