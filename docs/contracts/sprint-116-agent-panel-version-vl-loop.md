@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete。取代未实施的 Sprint 109 Draft；Sprint 115 已 Complete，用户于 2026-07-24 明确授权从其基线继续，Sprint 116 于 2026-07-25 完成实现与验收。
+Complete（Closed）。取代未实施的 Sprint 109 Draft；Sprint 115 已 Complete，用户于 2026-07-24 明确授权从其基线继续，Sprint 116 于 2026-07-25 完成实现与验收，并于 2026-07-26 通过独立 QA 复核正式闭合。
 
 ## Goal
 
@@ -267,6 +267,15 @@ git diff --check
 - Sprint 116 Complete 后才能激活 Sprint 117。
 - 原 `sprint-109-agent-panel-iteration-vl-draft.md` 标记 Superseded，不再实施。
 - 下一阶段只做 Evaluation、故障注入和内部开放门槛，不新增创作能力。
+
+## Contract closure
+
+- QA 报告：`docs/qa/sprint-116-agent-panel-version-vl-loop-report.md`
+- QA verdict：`PASS`
+- 复核命令：`SESSION_SECRET=... ./scripts/check.sh`
+- 复核结果：240 项后端测试、Python compileall、空库 migration 和前端生产构建全部通过。
+- 阻塞项：无。
+- 未纳入本合同：生产部署与 `GO_INTERNAL/NO_GO`，由尚未激活的 Sprint 117 负责。
 
 ## New-window start prompt
 

@@ -9,3 +9,7 @@ Suggested naming:
 - `release-01-report.md`
 
 The goal is to separate implementation from acceptance notes, so the next Codex run can see both what was built and what was actually verified.
+
+## Reports
+
+- `sprint-116-agent-panel-version-vl-loop-report.md` — `PASS`，2026-07-26 正式闭合。

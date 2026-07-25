@@ -5,7 +5,7 @@
 - 分支：`codex/sprint-116-panel-vl`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 116 已于 2026-07-25 Complete。目标 Panel 新版本、接受/恢复、真实 VL、严格一次授权自动修订、pause/resume、安全事件和检查器写操作均已实现；全量 240 项后端测试、空库 migration、Python compileall、前端生产构建、真实 `gpt-image-2`/`gpt-5.4` 与浏览器验收通过。
+- 最近验证状态：Sprint 116 已于 2026-07-26 正式闭合，QA 报告 verdict 为 `PASS`。目标 Panel 新版本、接受/恢复、真实 VL、严格一次授权自动修订、pause/resume、安全事件和检查器写操作均已实现；闭合复核 `./scripts/check.sh` 覆盖 240 项后端测试、空库 migration、Python compileall 和前端生产构建并通过，真实 `gpt-image-2`/`gpt-5.4` 与浏览器验收证据有效。
 
 ## 当前 Sprint 合同
 
@@ -44,6 +44,8 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 正式闭合 Sprint 116 合同：按 `qa-sprint-review` 对 9 项 Done means、合同要求的自动化、真实 Provider/浏览器证据、已知缺口和下一阶段边界逐项复核，形成 `docs/qa/sprint-116-agent-panel-version-vl-loop-report.md`，结论为 `PASS`，无阻塞项。2026-07-26 再次运行统一 `./scripts/check.sh`，240 项后端测试、Python compileall、空 SQLite Alembic migration 和前端生产构建全部通过。本次闭合未重复调用慢图片 Provider，沿用同一实现分支 2026-07-25 的真实验收证据；没有新增产品 Mock、兜底或兼容逻辑。Sprint 117 仍为 Planned，不因合同闭合自动激活。
 
 - 完成 Sprint 116 Panel/VL/版本与任务控制闭环：`generate_image` 现在可在完整 Conversation → Task → Panel → Version 权限链上只为目标 Panel 创建新版本，复用任务风格、比例、角色参考和来源 Prompt；接受/恢复保存明确用户事实，均幂等，恢复不调用 Provider、不扣积分、不删除历史。新增真实多模态 `inspect_image`，严格保存 Tool、Provider/model、延迟、结果和错误，支持五类检查与四种 verdict；每版本最多检查一次，每 Turn 只有用户显式授权时才允许一次额外自动修订。Runner 仍只调用原子 Tool，图片长任务继续走既有队列；修正图片 Worker 同步等待 Agent 在慢 VL 下误标成功图片的问题，改为线程安全非阻塞入队，并确定性保护纯视觉修订不改图片文字/布局。检查器新增版本历史、VL 摘要、扣分确认、再生成、接受、恢复、引用和 Run 暂停/继续，失败保留输入；事件覆盖版本、检查和运行控制。真实本地隔离验收创建 Panel 1 v2，`gpt-5.4` VL 返回 accept（0.98/0.90/0.95/1.00/0.93），余额 28→27；接受 v2、恢复 v1、刷新和后端重启后状态仍恢复且余额保持 27。用户确认无需为修复重复等待慢生图，正式代码未加入 Mock。针对性 18 项和全量 240 项后端测试、空库 Alembic migration、Python compileall、前端生产构建及 `git diff --check` 全部通过。
 
