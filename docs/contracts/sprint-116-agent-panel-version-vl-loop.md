@@ -266,7 +266,9 @@ git diff --check
 
 - Sprint 116 Complete 后才能激活 Sprint 117。
 - 原 `sprint-109-agent-panel-iteration-vl-draft.md` 标记 Superseded，不再实施。
-- 下一阶段只做 Evaluation、故障注入和内部开放门槛，不新增创作能力。
+- 下一阶段按 `sprint-117-pluggable-skill-management-agent-loop.md` 实现 Skill CRUD、发布版本、
+  `@Skill` 和通用内容创作 Agent Loop。
+- Evaluation 已顺延到全部计划功能完成后的最终阶段，不在 Sprint 117 实施。
 
 ## Contract closure
 
@@ -275,7 +277,7 @@ git diff --check
 - 复核命令：`SESSION_SECRET=... ./scripts/check.sh`
 - 复核结果：240 项后端测试、Python compileall、空库 migration 和前端生产构建全部通过。
 - 阻塞项：无。
-- 未纳入本合同：生产部署与 `GO_INTERNAL/NO_GO`，由尚未激活的 Sprint 117 负责。
+- 未纳入本合同：生产部署与 `GO_INTERNAL/NO_GO`，由 Deferred 的最终 Evaluation 阶段负责。
 
 ## New-window start prompt
 

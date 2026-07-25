@@ -1,8 +1,9 @@
-# Sprint 117：Agent Evaluation、稳定性与内部开放门槛
+# Deferred：Agent Evaluation、稳定性与内部开放门槛
 
 ## Status
 
-Planned。只有 Sprint 116 Complete 后才能激活。
+Deferred。用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最后阶段。
+本合同暂不分配 Sprint 编号；只有用户明确冻结功能路线并要求进入最终发布验证后才能重新编号和激活。
 
 ## Goal
 
@@ -23,7 +24,8 @@ Planned。只有 Sprint 116 Complete 后才能激活。
 - 火苗主平台、LIO 备用平台。
 - MLflow 观测。
 
-明确不把 TTS、Remotion、抠图、视频、用户自定义 Skill 或旧 Pipeline 迁移纳入 V1 发布条件。
+具体 Release candidate scope 需要在重新激活时按照届时已完成能力更新；当前列表只保留为历史
+Evaluation 设计输入，不能直接视为冻结范围。
 
 ## In scope
 
@@ -189,7 +191,7 @@ docs/testing/agent-v1-eval-report.json
 
 ## Thresholds
 
-激活 Sprint 117 时必须填写具体数值，至少包括：
+重新编号并激活本合同时必须填写具体数值，至少包括：
 
 - deterministic pass rate：固定为 100%。
 - quality 平均分和单项最低分。
@@ -203,11 +205,11 @@ docs/testing/agent-v1-eval-report.json
 
 ## Out of scope
 
-- 新 Skill、新 Tool 或新资源类型。
+- 激活后新增 Skill、新 Tool 或新资源类型。
 - 旧 Pipeline 迁移/删除。
 - 外部用户发布、计费策略改造。
 - 全量性能压测或多实例部署。
-- 用户 Memory、自定义 Skill。
+- 激活后新增用户 Memory 或自定义 Skill 能力。
 - TTS、Remotion、视频。
 - Evaluation Web UI。
 
@@ -266,4 +268,5 @@ Eval 和 fault injection 的正式命令由本 Sprint 实现后写入此处及 `
 
 ## New-window start prompt
 
-> 请实施 Sprint 117。先完整阅读项目基线、路线图、`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`、现有 Eval 数据、MLflow、Skill/Tool/Artifact/Approval/Event/资源/版本实现和所有相关规范。此 Sprint 功能冻结，只做版本化 Evaluation、故障注入、真实 Provider/浏览器回归和 GO/NO-GO 报告。Deterministic 必须 100%；任何越权、错误 Panel、重复扣费、取消复活、未批准生图或不可解释失败都必须 NO_GO。不要顺手添加新 Skill、Tool、Memory、TTS 或 Remotion。完成报告、文档和中文详细 commit。
+本合同当前 Deferred，不提供可执行的新窗口启动提示词。重新编号和激活时必须根据最终功能范围更新
+数据集、阈值、命令和交接提示，不能直接执行本历史草案。

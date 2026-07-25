@@ -1,6 +1,6 @@
 # Agent 漫画 V1 新窗口实施交接
 
-> 状态更新（2026-07-25）：Sprint 105–108、110–116 已 Complete；Sprint 109 Draft 已 Superseded。正式 `idea-to-comic`、Artifact/Approval hash 门禁、2–8 Panel、持久化安全事件、SSE cursor、结构化资源引用、目标 Panel 版本、接受/恢复、真实 VL、严格一次自动修订和 pause/resume 已通过自动化、真实 Provider 与浏览器验收。Sprint 117 仍为 Planned，需单独确认后才能激活。
+> 状态更新（2026-07-26）：Sprint 105–108、110–116 已 Complete；Sprint 109 Draft 已 Superseded。Sprint 116 实现与 QA 闭合提交已整合到 `codex/agent-feature` 后续基线。用户已明确授权，Sprint 117 可插拔 Skill 管理、版本与通用 Agent Loop 现为 Active；Evaluation 保持 Deferred。
 
 ## 1. 仓库与分支
 
@@ -80,13 +80,14 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 | 4 | `sprint-114-idea-to-comic-skill-hitl-event-stream.md` | 113 Complete |
 | 5 | `sprint-115-agent-structured-resource-context.md` | 114 Complete |
 | 6 | `sprint-116-agent-panel-version-vl-loop.md` | 115 Complete |
-| 7 | `sprint-117-agent-evaluation-internal-release-gate.md` | 116 Complete |
+| 7 | `sprint-117-pluggable-skill-management-agent-loop.md` | 116 Complete |
+| 最终阶段 | `deferred-agent-evaluation-internal-release-gate.md` | 用户确认功能路线冻结后重新编号 |
 
 不要并行实施相邻 Sprint。后一个 Sprint 的 schema/API 假设必须建立在前一个 Sprint 的完成实现上。
 
 ## 5. 下一窗口启动条件
 
-Sprint 115 和 Sprint 116 已完成，不要再次执行。下一窗口先审阅版本写操作、真实 VL、一次自动修订预算、pause/resume、图片 Worker 非阻塞通知和测试证据；只有用户明确确认后，才把 Sprint 117 从 Planned 改为 Active，并使用 Sprint 117 合同末尾的 `New-window start prompt` 开始新的实施窗口。
+Sprint 115 和 Sprint 116 已完成，不要再次执行。用户已经确认激活 Sprint 117；下一窗口先审阅版本写操作、真实 VL、一次自动修订预算、pause/resume、图片 Worker 非阻塞通知和测试证据，然后使用 Sprint 117 合同末尾的 `New-window start prompt` 开始实施。
 
 ## 6. 后续窗口如何开始
 
@@ -148,10 +149,11 @@ Sprint 115 和 Sprint 116 已完成，不要再次执行。下一窗口先审阅
 
 ### Sprint 117
 
-- 功能冻结。
-- deterministic 100%。
-- 任何越权、错误 Panel、重复扣费、取消复活或未批准生图都 NO_GO。
-- 最终必须给出明确 `GO_INTERNAL` 或 `NO_GO`。
+- 用户 Skill CRUD、草稿、发布版本、激活、归档和系统 Skill clone。
+- Agent 输入区支持准确版本的 `@Skill`。
+- 每个 Run 固定一个 Skill Version，基础 Instructions 不包含漫画专用流程。
+- Skill 正文真正驱动统一 Tool Loop；Runner 不再按 `idea-to-comic` 名称或资源路由硬编码业务编排。
+- 不实现 Workflow DSL、多 Skill、脚本/MCP、Memory、TTS、Remotion、视频或 Evaluation。
 
 ## 8. Mock 与失败规则
 

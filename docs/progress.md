@@ -2,10 +2,13 @@
 
 ## 当前基线
 
-- 分支：`codex/sprint-116-panel-vl`
+- 分支：`codex/agent-feature`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
 - 最近验证状态：Sprint 116 已于 2026-07-26 正式闭合，QA 报告 verdict 为 `PASS`。目标 Panel 新版本、接受/恢复、真实 VL、严格一次授权自动修订、pause/resume、安全事件和检查器写操作均已实现；闭合复核 `./scripts/check.sh` 覆盖 240 项后端测试、空库 migration、Python compileall 和前端生产构建并通过，真实 `gpt-image-2`/`gpt-5.4` 与浏览器验收证据有效。
+- 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
+- Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
+- 基线整合状态：Sprint 116 实现/闭合提交与 Sprint 117 规划/视觉基准已合并；用户已授权，Sprint 117 现为唯一 Active 合同。
 
 ## 当前 Sprint 合同
 
@@ -15,7 +18,8 @@
 - Complete：`docs/contracts/sprint-114-idea-to-comic-skill-hitl-event-stream.md`
 - Complete：`docs/contracts/sprint-115-agent-structured-resource-context.md`
 - Complete：`docs/contracts/sprint-116-agent-panel-version-vl-loop.md`
-- Planned：`docs/contracts/sprint-117-agent-evaluation-internal-release-gate.md`
+- Active：`docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md`
+- Deferred（最终阶段，暂不编号）：`docs/contracts/deferred-agent-evaluation-internal-release-gate.md`
 - Complete：`docs/contracts/sprint-110-agent-default-model-gpt55.md`
 - Superseded（未实施）：`docs/contracts/sprint-109-agent-panel-iteration-vl-draft.md`
 - Complete：`docs/contracts/sprint-108-agent-demo-alignment.md`
@@ -45,7 +49,9 @@
 
 ## 最近完成的工作
 
-- 正式闭合 Sprint 116 合同：按 `qa-sprint-review` 对 9 项 Done means、合同要求的自动化、真实 Provider/浏览器证据、已知缺口和下一阶段边界逐项复核，形成 `docs/qa/sprint-116-agent-panel-version-vl-loop-report.md`，结论为 `PASS`，无阻塞项。2026-07-26 再次运行统一 `./scripts/check.sh`，240 项后端测试、Python compileall、空 SQLite Alembic migration 和前端生产构建全部通过。本次闭合未重复调用慢图片 Provider，沿用同一实现分支 2026-07-25 的真实验收证据；没有新增产品 Mock、兜底或兼容逻辑。Sprint 117 仍为 Planned，不因合同闭合自动激活。
+- 整合 Sprint 116 完成基线与 Sprint 117 新规划：确认两个窗口从 Sprint 115 tip 分叉后，在独立工作树合并 Sprint 116 实现/QA 闭合提交与 Sprint 117 Skill 管理/通用 Agent Loop 合同、规格和四张高保真视觉基准；冲突按最新产品决定解决为 Sprint 116 `Complete（Closed）`、Sprint 117 `Active`、正式 Evaluation `Deferred`。用户明确授权让另一窗口继续开发 Sprint 117。整合树重新运行 `./scripts/check.sh`，240 项后端测试、Python compileall、空 SQLite migration 和前端生产构建全部通过；未覆盖共享工作树的未跟踪用户文件。
+
+- 正式闭合 Sprint 116 合同：按 `qa-sprint-review` 对 9 项 Done means、合同要求的自动化、真实 Provider/浏览器证据、已知缺口和下一阶段边界逐项复核，形成 `docs/qa/sprint-116-agent-panel-version-vl-loop-report.md`，结论为 `PASS`，无阻塞项。2026-07-26 再次运行统一 `./scripts/check.sh`，240 项后端测试、Python compileall、空 SQLite Alembic migration 和前端生产构建全部通过。本次闭合未重复调用慢图片 Provider，沿用同一实现分支 2026-07-25 的真实验收证据；没有新增产品 Mock、兜底或兼容逻辑。合同闭合本身没有自动激活下一 Sprint；用户随后已明确授权激活新的 Skill 管理与通用 Agent Loop Sprint 117。
 
 - 完成 Sprint 116 Panel/VL/版本与任务控制闭环：`generate_image` 现在可在完整 Conversation → Task → Panel → Version 权限链上只为目标 Panel 创建新版本，复用任务风格、比例、角色参考和来源 Prompt；接受/恢复保存明确用户事实，均幂等，恢复不调用 Provider、不扣积分、不删除历史。新增真实多模态 `inspect_image`，严格保存 Tool、Provider/model、延迟、结果和错误，支持五类检查与四种 verdict；每版本最多检查一次，每 Turn 只有用户显式授权时才允许一次额外自动修订。Runner 仍只调用原子 Tool，图片长任务继续走既有队列；修正图片 Worker 同步等待 Agent 在慢 VL 下误标成功图片的问题，改为线程安全非阻塞入队，并确定性保护纯视觉修订不改图片文字/布局。检查器新增版本历史、VL 摘要、扣分确认、再生成、接受、恢复、引用和 Run 暂停/继续，失败保留输入；事件覆盖版本、检查和运行控制。真实本地隔离验收创建 Panel 1 v2，`gpt-5.4` VL 返回 accept（0.98/0.90/0.95/1.00/0.93），余额 28→27；接受 v2、恢复 v1、刷新和后端重启后状态仍恢复且余额保持 27。用户确认无需为修复重复等待慢生图，正式代码未加入 Mock。针对性 18 项和全量 240 项后端测试、空库 Alembic migration、Python compileall、前端生产构建及 `git diff --check` 全部通过。
 
@@ -392,8 +398,9 @@
 
 ## 已知缺口
 
-- 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume；Evaluation 发布门槛仍待 Sprint 117。
-- 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span、Sprint 114 Artifact/Approval span，以及 Sprint 116 图片检查与版本事件；尚未形成 Sprint 117 的版本化 Eval、故障注入矩阵和 `GO_INTERNAL/NO_GO` 结论。
+- 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume。
+- 当前已有 Sprint 112 MLflow trace、Sprint 113 Skill/Tool span，以及 Sprint 114 Artifact/Approval span；正式 Evaluation 发布门槛已按用户决定推迟到功能路线冻结后的最后阶段。
+- 当前 Skill 仍是文件目录、漫画 Runner 仍固定加载 `idea-to-comic` 且漫画专用 Instructions/资源路由承担业务编排；尚无用户 Skill CRUD、不可变发布版本、`@Skill` 或真正由 Skill 驱动的通用 Loop，由 Active Sprint 117 交付。
 - 当前 React/FastAPI 代码仍是骨架，尚未达到产品设计完整要求。
 - 任务创建、任务详情、取消、下载、完整 worker 流程尚未实现。
 - 风格测试已接入真实生图 Provider；参考图模式要求参考图具备公网 HTTP(S) URL，仍建议用真实七牛风格参考图跑一次端到端验证。
@@ -406,6 +413,6 @@
 
 ## 建议下一步
 
-1. 回到规划窗口审阅 Sprint 116 的版本归属链、真实 VL、一次自动修订预算、pause/resume、非阻塞 Worker 通知和真实验收结果。
-2. Sprint 116 已 Complete；等待用户明确确认后再把 Sprint 117 从 Planned 激活，单独实施 Evaluation、故障注入和内部开放门槛。
-3. 不要在未激活 Sprint 117 前新增创作能力或提前宣告 `GO_INTERNAL`。
+1. 在 `codex/agent-feature` 已整合基线上实施 Active Sprint 117，先完整阅读合同和 `docs/design/sprint-117-skill-ui/README.md`。
+2. 保留 Sprint 116 版本/VL/pause-resume 行为，不得用旧路径 fallback 掩盖通用 Loop 缺口。
+3. 不要提前实施 Deferred Evaluation，也不要宣告 `GO_INTERNAL`。

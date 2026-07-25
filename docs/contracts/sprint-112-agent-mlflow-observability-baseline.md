@@ -150,7 +150,7 @@ Tool/等待 span 至少包含：
 - 新 Skill、HITL、SSE、资源引用和 Panel/VL。
 - 计算精确人民币成本；Provider 未返回定价信息时只记录 token/图片调用数量。
 - OpenTelemetry、LangSmith 或其它观测平台并行接入。
-- 自动质量 Judge 和完整 Evaluation 排行；Sprint 117 完成。
+- 自动质量 Judge 和完整 Evaluation 排行；已按后续规划顺延到 Deferred 的最终发布阶段。
 
 ## Deliverables
 
