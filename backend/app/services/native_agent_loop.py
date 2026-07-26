@@ -5,6 +5,7 @@ import base64
 from dataclasses import dataclass
 from datetime import datetime
 import json
+import time
 from typing import Awaitable, Callable
 
 from agents import (
@@ -39,6 +40,15 @@ from app.models.enums import (
     StorageBackend,
 )
 from app.services.agent_skill_management import parse_tool_names
+from app.services.agent_observability import (
+    agent_span,
+    native_agent_run_span,
+    set_native_agent_run_trace_status,
+    set_span_inputs,
+    set_span_outputs,
+    set_span_result,
+    set_span_status,
+)
 from app.services.image_generation import GeneratedImageFile, ImageReference, generate_xg_image
 from app.services.storage import resolve_storage_key
 
@@ -103,53 +113,149 @@ def build_generate_image_tool(
         cleaned_prompt = prompt.strip()
         if not cleaned_prompt:
             raise NativeAgentLoopError("generate_image prompt 不能为空")
-        await record_item(
-            NativeAgentItemType.tool_call,
-            {"tool": "generate_image", "prompt": cleaned_prompt},
-        )
-        try:
-            generated = await asyncio.to_thread(
-                image_generator,
-                prompt=cleaned_prompt,
-                references=[ImageReference(url=url) for url in context.reference_urls],
-                image_model_name=context.image_model,
-                aspect_ratio=context.aspect_ratio,
+        with agent_span(
+            "native_agent.generate_image",
+            agent_run_id=context.run_id,
+            span_type="TOOL",
+            attributes={
+                "tool_name": "generate_image",
+                "image_model": context.image_model,
+                "aspect_ratio": context.aspect_ratio,
+                "reference_count": len(context.reference_urls),
+            },
+        ) as tool_span:
+            set_span_inputs(
+                tool_span,
+                {
+                    "prompt": cleaned_prompt,
+                    "reference_count": len(context.reference_urls),
+                },
             )
-            model_image_url = await record_image(cleaned_prompt, generated)
-        except Exception as exc:
+            await record_item(
+                NativeAgentItemType.tool_call,
+                {"tool": "generate_image", "prompt": cleaned_prompt},
+            )
+            started = time.perf_counter()
+            try:
+                with agent_span(
+                    "native_agent.image_provider",
+                    agent_run_id=context.run_id,
+                    span_type="TOOL",
+                    attributes={
+                        "image_model": context.image_model,
+                        "aspect_ratio": context.aspect_ratio,
+                        "reference_count": len(context.reference_urls),
+                    },
+                ) as provider_span:
+                    set_span_inputs(
+                        provider_span,
+                        {
+                            "prompt": cleaned_prompt,
+                            "reference_urls": list(context.reference_urls),
+                        },
+                    )
+                    try:
+                        generated = await asyncio.to_thread(
+                            image_generator,
+                            prompt=cleaned_prompt,
+                            references=[
+                                ImageReference(url=url)
+                                for url in context.reference_urls
+                            ],
+                            image_model_name=context.image_model,
+                            aspect_ratio=context.aspect_ratio,
+                        )
+                    except Exception:
+                        set_span_status(
+                            provider_span,
+                            "ERROR",
+                            agent_run_id=context.run_id,
+                        )
+                        raise
+                    set_span_result(
+                        provider_span,
+                        {
+                            "width": generated.width,
+                            "height": generated.height,
+                            "provider_request_id": generated.provider_request_id,
+                        },
+                    )
+                    set_span_outputs(
+                        provider_span,
+                        {
+                            "width": generated.width,
+                            "height": generated.height,
+                            "provider_request_id": generated.provider_request_id,
+                        },
+                    )
+                model_image_url = await record_image(cleaned_prompt, generated)
+            except Exception as exc:
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                await record_item(
+                    NativeAgentItemType.tool_result,
+                    {
+                        "tool": "generate_image",
+                        "status": "failed",
+                        "error_code": type(exc).__name__,
+                        "error_message": str(exc)[:500],
+                    },
+                )
+                set_span_result(
+                    tool_span,
+                    {
+                        "result_status": "failed",
+                        "latency_ms": latency_ms,
+                        "error_code": type(exc).__name__,
+                    },
+                )
+                set_span_status(
+                    tool_span,
+                    "ERROR",
+                    agent_run_id=context.run_id,
+                )
+                raise
+            latency_ms = round((time.perf_counter() - started) * 1000)
             await record_item(
                 NativeAgentItemType.tool_result,
                 {
                     "tool": "generate_image",
-                    "status": "failed",
-                    "error_code": type(exc).__name__,
-                    "error_message": str(exc)[:500],
+                    "status": "succeeded",
+                    "width": generated.width,
+                    "height": generated.height,
+                    "provider_request_id": generated.provider_request_id,
                 },
             )
-            raise
-        await record_item(
-            NativeAgentItemType.tool_result,
-            {
-                "tool": "generate_image",
-                "status": "succeeded",
-                "width": generated.width,
-                "height": generated.height,
-                "provider_request_id": generated.provider_request_id,
-            },
-        )
-        return [
-            ToolOutputText(
-                text=json.dumps(
-                    {
-                        "status": "succeeded",
-                        "width": generated.width,
-                        "height": generated.height,
-                    },
-                    ensure_ascii=False,
-                )
-            ),
-            ToolOutputImage(image_url=model_image_url, detail="high"),
-        ]
+            set_span_result(
+                tool_span,
+                {
+                    "result_status": "succeeded",
+                    "latency_ms": latency_ms,
+                    "width": generated.width,
+                    "height": generated.height,
+                    "provider_request_id": generated.provider_request_id,
+                },
+            )
+            set_span_outputs(
+                tool_span,
+                {
+                    "status": "succeeded",
+                    "width": generated.width,
+                    "height": generated.height,
+                },
+            )
+            return [
+                ToolOutputText(
+                    text=json.dumps(
+                        {
+                            "status": "succeeded",
+                            "width": generated.width,
+                            "height": generated.height,
+                        },
+                        ensure_ascii=False,
+                    )
+                ),
+                ToolOutputImage(image_url=model_image_url, detail="high"),
+            ]
 
     return function_tool(
         generate_image,
@@ -291,6 +397,11 @@ async def execute_native_agent_run(
             reference_urls=reference_urls,
         )
         instructions = native_agent_instructions(run)
+        trace_context = {
+            "conversation_id": run.conversation_id,
+            "skill_version_id": run.skill_version_id,
+            "style_id": run.style_id,
+        }
         run.status = AgentRunStatus.running
         run.started_at = datetime.utcnow()
         db.commit()
@@ -317,63 +428,143 @@ async def execute_native_agent_run(
         timeout=resolved_settings.agent_request_timeout_seconds,
     )
     provider = OpenAIProvider(openai_client=client, use_responses=True)
-    try:
-        agent = Agent(
-            name="DoodleStoryNativeImageAgent",
-            instructions=instructions,
-            model=resolved_settings.agent_model.strip(),
-            tools=[tool],
-            model_settings=ModelSettings(
-                retry=ModelRetrySettings(max_retries=0),
-                store=False,
-            ),
-        )
-        result = await Runner.run(
-            agent,
-            user_content,
-            run_config=RunConfig(
-                model_provider=provider,
-                tracing_disabled=True,
-                workflow_name="DoodleStory Native Agent Loop",
-                tool_execution=ToolExecutionConfig(
-                    max_function_tool_concurrency=1,
+    with native_agent_run_span(
+        native_agent_run_id=run_id,
+        conversation_id=trace_context["conversation_id"],
+        skill_version_id=trace_context["skill_version_id"],
+        style_id=trace_context["style_id"],
+        model=resolved_settings.agent_model.strip(),
+        app_environment=resolved_settings.app_env,
+    ) as root_span:
+        try:
+            agent = Agent(
+                name="DoodleStoryNativeImageAgent",
+                instructions=instructions,
+                model=resolved_settings.agent_model.strip(),
+                tools=[tool],
+                model_settings=ModelSettings(
+                    retry=ModelRetrySettings(max_retries=0),
+                    store=False,
                 ),
-            ),
-            max_turns=MAX_NATIVE_AGENT_TURNS,
-        )
-        final_output = str(result.final_output or "").strip()
-        if not final_output:
-            raise NativeAgentLoopError("模型没有返回 final output")
-        await record_native_agent_item(
-            run_id,
-            NativeAgentItemType.assistant_output,
-            {"content": final_output},
-        )
-        with SessionLocal() as db:
-            run = db.scalar(select(NativeAgentRun).where(NativeAgentRun.id == run_id))
-            if run is None:
-                raise NativeAgentLoopError("Native Agent Run 不存在")
-            run.status = AgentRunStatus.succeeded
-            run.final_output = final_output
-            run.model_call_count = len(result.raw_responses)
-            run.finished_at = datetime.utcnow()
-            db.commit()
-    except Exception as exc:
-        await record_native_agent_item(
-            run_id,
-            NativeAgentItemType.error,
-            {
-                "error_code": type(exc).__name__,
-                "error_message": str(exc)[:500],
-            },
-        )
-        with SessionLocal() as db:
-            run = db.scalar(select(NativeAgentRun).where(NativeAgentRun.id == run_id))
-            if run is not None:
-                run.status = AgentRunStatus.failed
-                run.error_code = type(exc).__name__
-                run.error_message = str(exc)[:500]
+            )
+            with agent_span(
+                "native_agent.model_loop",
+                agent_run_id=run_id,
+                span_type="CHAT_MODEL",
+                attributes={
+                    "model": resolved_settings.agent_model.strip(),
+                    "max_turns": MAX_NATIVE_AGENT_TURNS,
+                    "tool_count": 1,
+                    "max_function_tool_concurrency": 1,
+                },
+            ) as model_span:
+                set_span_inputs(
+                    model_span,
+                    {
+                        "user_content": user_content,
+                        "instructions": instructions,
+                        "tools": ["generate_image"],
+                    },
+                )
+                try:
+                    result = await Runner.run(
+                        agent,
+                        user_content,
+                        run_config=RunConfig(
+                            model_provider=provider,
+                            tracing_disabled=True,
+                            workflow_name="DoodleStory Native Agent Loop",
+                            tool_execution=ToolExecutionConfig(
+                                max_function_tool_concurrency=1,
+                            ),
+                        ),
+                        max_turns=MAX_NATIVE_AGENT_TURNS,
+                    )
+                except Exception:
+                    set_span_status(
+                        model_span,
+                        "ERROR",
+                        agent_run_id=run_id,
+                    )
+                    raise
+                set_span_result(
+                    model_span,
+                    {
+                        "model_call_count": len(result.raw_responses),
+                    },
+                )
+                final_output = str(result.final_output or "").strip()
+                if not final_output:
+                    set_span_status(
+                        model_span,
+                        "ERROR",
+                        agent_run_id=run_id,
+                    )
+                    raise NativeAgentLoopError("模型没有返回 final output")
+                set_span_outputs(
+                    model_span,
+                    {
+                        "final_output": final_output,
+                        "model_call_count": len(result.raw_responses),
+                    },
+                )
+            await record_native_agent_item(
+                run_id,
+                NativeAgentItemType.assistant_output,
+                {"content": final_output},
+            )
+            with SessionLocal() as db:
+                run = db.scalar(
+                    select(NativeAgentRun).where(NativeAgentRun.id == run_id)
+                )
+                if run is None:
+                    raise NativeAgentLoopError("Native Agent Run 不存在")
+                run.status = AgentRunStatus.succeeded
+                run.final_output = final_output
+                run.model_call_count = len(result.raw_responses)
                 run.finished_at = datetime.utcnow()
                 db.commit()
-    finally:
-        await client.close()
+                model_call_count = run.model_call_count
+                image_call_count = run.image_call_count
+            set_native_agent_run_trace_status(
+                root_span,
+                native_agent_run_id=run_id,
+                run_status=AgentRunStatus.succeeded.value,
+                model_call_count=model_call_count,
+                image_call_count=image_call_count,
+                error_code=None,
+            )
+        except Exception as exc:
+            await record_native_agent_item(
+                run_id,
+                NativeAgentItemType.error,
+                {
+                    "error_code": type(exc).__name__,
+                    "error_message": str(exc)[:500],
+                },
+            )
+            with SessionLocal() as db:
+                run = db.scalar(
+                    select(NativeAgentRun).where(NativeAgentRun.id == run_id)
+                )
+                if run is not None:
+                    run.status = AgentRunStatus.failed
+                    run.error_code = type(exc).__name__
+                    run.error_message = str(exc)[:500]
+                    run.finished_at = datetime.utcnow()
+                    db.commit()
+                    model_call_count = run.model_call_count
+                    image_call_count = run.image_call_count
+                else:
+                    model_call_count = 0
+                    image_call_count = 0
+            set_native_agent_run_trace_status(
+                root_span,
+                native_agent_run_id=run_id,
+                run_status=AgentRunStatus.failed.value,
+                model_call_count=model_call_count,
+                image_call_count=image_call_count,
+                error_code=type(exc).__name__,
+            )
+        finally:
+            await client.close()

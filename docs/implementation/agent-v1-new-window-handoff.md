@@ -86,13 +86,15 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 | 7 | `sprint-117-pluggable-skill-management-agent-loop.md` | 116 Complete |
 | 8 | `sprint-118-skill-management-navigation-discoverability.md` | 用户确认修正入口，Complete |
 | 9 | `sprint-119-minimal-native-agent-loop.md` | Complete（Closed） |
+| 10 | `sprint-120-native-loop-mlflow-and-agent-ui.md` | Complete（Closed） |
 | 最终阶段 | `deferred-agent-evaluation-internal-release-gate.md` | 用户确认功能路线冻结后重新编号 |
 
 不要并行实施相邻 Sprint。后一个 Sprint 的 schema/API 假设必须建立在前一个 Sprint 的完成实现上。
 
 ## 5. 下一窗口启动条件
 
-Sprint 115–119 已完成，不要再次执行。Sprint 119 已把正常入口切到最小原生 Loop；不得把旧
+Sprint 115–120 已完成，不要再次执行。Sprint 119 已把正常入口切到最小原生 Loop，Sprint 120
+已接入本地 MLflow Trace 并统一 Agent Studio 视觉；不得把旧
 ComicPlan、Artifact/Approval、GenerationTask/Panel、Generic Tool Executor 或 Agent queue
 接回新路径。下一阶段必须先由用户确认并建立新合同；在用户明确决定功能路线冻结并授权前，
 不启动 Deferred Evaluation。

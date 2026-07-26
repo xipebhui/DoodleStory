@@ -238,6 +238,17 @@
   `native_agent_conversations/runs/items/images`，不写旧 Agent Step、ComicPlan、Artifact、
   Approval、GenerationTask、Panel 或 GeneratedImage。第一版 Tool 串行执行，积分、后台队列、
   中断恢复、审批和正式 Evaluation 明确留待后续独立合同。
+- Sprint 120 已把 Native Loop 接入现有 MLflow 3.14.0 脱敏观测层：每个 Run 以
+  `native_agent_run_id` 创建唯一 `native_agent.run` 根 Trace，模型 SDK Loop、
+  `generate_image` Tool 和图片 Provider 分别作为子 Span，记录模型、状态、调用次数、延迟、
+  图片尺寸和 Provider request ID。仓库提供只监听 localhost、SQLite metadata、artifact
+  named volume、健康检查和单 worker 的 `docker-compose.mlflow.yml`；开发环境显式启用时后端
+  启动必须连接成功。本机为了查看模型调用与后续内容评估可显式设置
+  `MLFLOW_TRACE_CONTENT=true`，生产与示例默认 `false`；两种模式都必须清除密钥、
+  Authorization、URL 和内部路径。正式 Evaluation 规则仍为 Deferred。
+- Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
+  textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
+  深色背景与局部深色文字。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。

@@ -27,17 +27,27 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 
 默认后端启动在 `http://127.0.0.1:8000`，前端启动在 `http://127.0.0.1:3000`。日志默认写入 `/tmp/doodlestory-backend.log` 和 `/tmp/doodlestory-frontend.log`。
 
-Agent MLflow tracing 默认关闭。需要本地观测时，先启动 HTTP Tracking Server：
+Agent MLflow tracing 默认关闭。项目提供固定 `3.14.0` 版本的本地 Docker Tracking Server：
 
 ```bash
-backend/.venv/bin/mlflow server \
-  --backend-store-uri sqlite:///./mlflow.db \
-  --artifacts-destination ./mlflow-artifacts \
-  --host 127.0.0.1 \
-  --port 5000
+docker compose -f docker-compose.mlflow.yml up -d
 ```
 
-然后在 `.env` 显式配置：
+MLflow metadata 和 artifacts 保存到 Docker named volume `doodlestory_mlflow_data`，UI 与
+健康检查地址分别为：
+
+```text
+http://127.0.0.1:5000
+http://127.0.0.1:5000/health
+```
+
+停止服务但保留数据：
+
+```bash
+docker compose -f docker-compose.mlflow.yml down
+```
+
+然后在本地 `.env` 显式配置：
 
 ```text
 MLFLOW_TRACING_ENABLED=true
@@ -47,6 +57,10 @@ MLFLOW_TRACE_CONTENT=false
 ```
 
 启用时 Tracking URI 必须指向可用的 HTTP(S) Tracking Server，Experiment 也必须有效，否则后端启动明确失败；直接使用 SQLite/file URI 会被拒绝，避免 MLflow 自身的系统标签暴露内部绝对路径。默认 `MLFLOW_TRACE_CONTENT=false` 只记录 Run/Step ID、Provider、模型、attempt、fallback、延迟、usage 和状态，不记录用户正文、完整 Prompt、图片 URL、密钥或 Provider 原始响应。创建受控本地 smoke 前需准备一个已有用户，然后运行：
+
+如果本机需要在 MLflow UI 查看完整模型输入/输出并做内容质量评估，可只在本地 `.env` 将
+`MLFLOW_TRACE_CONTENT=true`。该模式会记录用户输入、Skill、Prompt 和模型输出；密钥、
+Authorization、URL 与本地绝对路径仍会强制脱敏，不应在共享或生产环境默认开启。
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python scripts/agent-mlflow-smoke.py \
@@ -216,6 +230,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 116 Panel 版本操作、VL 检查与任务控制](docs/contracts/sprint-116-agent-panel-version-vl-loop.md)
 - [Complete：Sprint 117 可插拔 Skill 管理、版本与通用 Agent Loop](docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md)
 - [Complete：Sprint 119 最小原生 Agent Loop](docs/contracts/sprint-119-minimal-native-agent-loop.md)
+- [Complete：Sprint 120 Native Loop MLflow 与 Agent UI 一致性](docs/contracts/sprint-120-native-loop-mlflow-and-agent-ui.md)
 - [Deferred：Agent Evaluation 与内部开放门槛](docs/contracts/deferred-agent-evaluation-internal-release-gate.md)
 - [已完成：Sprint 106 对话创建两格真实漫画](docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md)
 - [已完成：Sprint 107 传统构建与 AI 构建前端整合](docs/contracts/sprint-107-agent-frontend-workspace-integration.md)

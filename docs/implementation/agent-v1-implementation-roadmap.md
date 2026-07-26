@@ -140,6 +140,7 @@ Sprint 111–113、115 默认不新增表。
 | 117 | 可插拔 Skill 管理、版本与通用 Agent Loop | Complete | Skill 与版本表 | 有，Skill 管理和 `@Skill` |
 | 118 | Skill 管理正常入口与导航闭环 | Complete | 无 | 有，主侧栏入口与返回工作台 |
 | 119 | 最小原生 Agent Loop | Complete（Closed） | 独立 Native Conversation/Run/Item/Image | 有，正常 `/agent` |
+| 120 | Native Loop MLflow 与 Agent UI 一致性 | Complete（Closed） | 无 | 有，统一 Agent Studio |
 
 最终 Evaluation 已 Deferred，待功能路线冻结后重新编号，不属于 Sprint 117。
 

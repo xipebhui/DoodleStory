@@ -8,11 +8,11 @@
 - 最近验证状态：Sprint 118 已于 2026-07-26 完成 Skill 管理正常入口与导航闭环；真实浏览器验证 `/tasks → /agent/skills → /tasks` 及后退/前进恢复通过，`./scripts/check.sh` 覆盖 252 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116、117、导航修正 Sprint 118 与 Sprint 119
-  `最小原生 Agent Loop` 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 116–120 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-120-native-loop-mlflow-and-agent-ui.md`
 - Complete：`docs/contracts/sprint-119-minimal-native-agent-loop.md`
 - Complete：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
 - Complete：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
@@ -51,6 +51,17 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 120 Native Loop MLflow 与 Agent UI 一致性：新增固定官方 3.14.0 镜像、localhost
+  映射、SQLite/artifact named volume、健康检查和单 worker 的本地 Compose；默认 4 worker 在
+  2GB Colima 中 OOM 后未静默忽略，固定单 worker 后容器持续 healthy。开发 `.env` 已启用
+  `doodlestory-agent-local` 与内容记录，仓库示例仍默认关闭；Native Run 新增可按
+  `native_agent_run_id` 唯一检索的根 Trace，包含模型 Loop、generate_image 与图片 Provider
+  子 Span，模型输入/输出可供本地评估，URL、Authorization、密钥和路径继续强制脱敏。真实本地
+  Trace `tr-feb7cf66a2b0fff48f93f7879baedaff` 写入成功。前端把浅色 Native 主区统一为既有深色
+  Agent Studio，textarea 显式使用浅色文字、深色背景、橙色 caret/focus；全新认证浏览器验证
+  `/agent` 与 `/agent/skills` 0 console error。`./scripts/check.sh` 覆盖 257 项后端测试、空库
+  migration、Python compileall 和前端构建并通过；正式 Evaluation 未实施。
 
 - 完成 Sprint 119 最小原生 Agent Loop：在隔离分支 `codex/simple-agent-loop` 新增完全独立于旧
   Agent Workflow 的 Conversation/Run/Item/Image 表和 `/api/v1/agent-loop/*` API；正常

@@ -340,6 +340,46 @@ def agent_run_span(
         yield span
 
 
+@contextmanager
+def native_agent_run_span(
+    *,
+    native_agent_run_id: str,
+    conversation_id: str,
+    skill_version_id: str,
+    style_id: str | None,
+    model: str,
+    app_environment: str,
+) -> Iterator[Any | None]:
+    attributes = {
+        "native_agent_run_id": native_agent_run_id,
+        "conversation_id": conversation_id,
+        "skill_version_id": skill_version_id,
+        "style_id": style_id,
+        "agent_model": model,
+        "app_environment": app_environment,
+        "runtime": "agents_sdk_native_loop",
+        "git_commit": _runtime_git_commit(),
+    }
+    with agent_span(
+        "native_agent.run",
+        agent_run_id=native_agent_run_id,
+        span_type="AGENT",
+        attributes=attributes,
+    ) as span:
+        if span is not None:
+            try:
+                _mlflow().update_current_trace(
+                    tags={
+                        key: str(value)
+                        for key, value in attributes.items()
+                        if value is not None
+                    }
+                )
+            except Exception as exc:
+                record_observability_error(native_agent_run_id, exc)
+        yield span
+
+
 def set_agent_run_trace_status(
     span,
     *,
@@ -371,9 +411,70 @@ def set_agent_run_trace_status(
         record_observability_error(agent_run_id, exc)
 
 
+def set_native_agent_run_trace_status(
+    span,
+    *,
+    native_agent_run_id: str,
+    run_status: str,
+    model_call_count: int,
+    image_call_count: int,
+    error_code: str | None,
+) -> None:
+    try:
+        _set_span_attributes(
+            span,
+            {
+                "run_status": run_status,
+                "model_call_count": model_call_count,
+                "image_call_count": image_call_count,
+                "error_code": error_code,
+            },
+        )
+        if span is not None:
+            span.set_status("ERROR" if run_status == "failed" else "OK")
+        if _enabled and span is not None:
+            _mlflow().update_current_trace(
+                tags={
+                    "native_agent_run_id": native_agent_run_id,
+                    "run_status": run_status,
+                },
+                state="ERROR" if run_status == "failed" else "OK",
+            )
+    except Exception as exc:
+        record_observability_error(native_agent_run_id, exc)
+
+
 def set_span_result(span, attributes: dict[str, Any]) -> None:
     try:
         _set_span_attributes(span, attributes)
+    except Exception as exc:
+        record_observability_error(None, exc)
+
+
+def set_span_inputs(span, inputs: dict[str, Any]) -> None:
+    if span is None:
+        return
+    try:
+        span.set_inputs(
+            sanitize_trace_value(
+                inputs,
+                allow_content=_trace_content,
+            )
+        )
+    except Exception as exc:
+        record_observability_error(None, exc)
+
+
+def set_span_outputs(span, outputs: dict[str, Any]) -> None:
+    if span is None:
+        return
+    try:
+        span.set_outputs(
+            sanitize_trace_value(
+                outputs,
+                allow_content=_trace_content,
+            )
+        )
     except Exception as exc:
         record_observability_error(None, exc)
 
