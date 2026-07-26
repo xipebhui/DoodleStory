@@ -5,13 +5,14 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 118 已于 2026-07-26 完成 Skill 管理正常入口与导航闭环；真实浏览器验证 `/tasks → /agent/skills → /tasks` 及后退/前进恢复通过，`./scripts/check.sh` 覆盖 252 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
+- 最近验证状态：Sprint 121 已于 2026-07-26 完成 Skill 详情与编辑闭环；真实浏览器验证系统 Skill 只读详情、复制个人草稿、个人详情进入编辑、保存回详情、刷新及后退/前进恢复通过，控制台 0 error / 0 warning；`./scripts/check.sh` 覆盖 257 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116–120 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 116–121 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-121-skill-detail-and-edit.md`
 - Complete：`docs/contracts/sprint-120-native-loop-mlflow-and-agent-ui.md`
 - Complete：`docs/contracts/sprint-119-minimal-native-agent-loop.md`
 - Complete：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
@@ -52,6 +53,7 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 121 Skill 详情与编辑闭环：新增稳定的 `/agent/skills/{skill_id}` 只读详情页和 `/agent/skills/{skill_id}/edit` 编辑页；详情完整展示正文、状态、权限、Tools、revision、更新时间与版本入口。列表对所有 Skill 提供“查看详情”，个人未归档 Skill 同时提供“编辑”；系统 Skill 保持只读复制，已归档个人 Skill 保持只读并可先恢复。真实浏览器使用系统 `简单图片故事` 验证只读详情与复制，并用个人副本完成描述编辑保存、revision 1→2、保存回详情、刷新、后退和前进，控制台 0 error / 0 warning。路由测试、前端构建、`git diff --check` 和 `./scripts/check.sh` 全部通过；全量检查覆盖 257 项后端测试和空库 migration。正式 Evaluation 继续 Deferred。
 - 完成 Sprint 120 Native Loop MLflow 与 Agent UI 一致性：新增固定官方 3.14.0 镜像、localhost
   映射、SQLite/artifact named volume、健康检查和单 worker 的本地 Compose；默认 4 worker 在
   2GB Colima 中 OOM 后未静默忽略，固定单 worker 后容器持续 healthy。开发 `.env` 已启用

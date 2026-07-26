@@ -1638,13 +1638,28 @@ function AgentSkillListView({
                   : "无创作 Tool"}
               </span>
               <time>{skillTime(skill.updated_at)}</time>
-              <button
-                type="button"
-                className="agent-skill-row-action"
-                onClick={() => onNavigatePath(`/agent/skills/${encodeURIComponent(skill.id)}`)}
-              >
-                {skill.scope === "system" || skill.status === "archived" ? "查看" : "编辑"}
-              </button>
+              <div className="agent-skill-row-actions">
+                <button
+                  type="button"
+                  className="agent-skill-row-action"
+                  onClick={() => onNavigatePath(`/agent/skills/${encodeURIComponent(skill.id)}`)}
+                >
+                  <Eye size={15} />
+                  查看详情
+                </button>
+                {skill.scope === "mine" && skill.status !== "archived" ? (
+                  <button
+                    type="button"
+                    className="agent-skill-row-action"
+                    onClick={() =>
+                      onNavigatePath(`/agent/skills/${encodeURIComponent(skill.id)}/edit`)
+                    }
+                  >
+                    <Pencil size={15} />
+                    编辑
+                  </button>
+                ) : null}
+              </div>
               <MoreHorizontal size={17} aria-hidden="true" />
             </article>
           ))}
@@ -1682,12 +1697,251 @@ type AgentSkillFormState = {
   toolNames: string[];
 };
 
+function AgentSkillDetailView({
+  skillId,
+  onNavigatePath,
+}: {
+  skillId: string;
+  onNavigatePath: (path: string) => void;
+}) {
+  const [skill, setSkill] = useState<AgentSkillDetail | null>(null);
+  const [tools, setTools] = useState<AgentSkillTool[]>([]);
+  const [versions, setVersions] = useState<AgentSkillVersionSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cloning, setCloning] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    Promise.all([
+      api.agentSkill(skillId),
+      api.agentSkillTools(),
+      api.agentSkillVersions(skillId),
+    ])
+      .then(([detail, toolCatalog, versionPage]) => {
+        if (cancelled) return;
+        setSkill(detail);
+        setTools(toolCatalog);
+        setVersions(versionPage.items);
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Skill 详情加载失败");
+        }
+      })
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [skillId]);
+
+  if (loading) {
+    return (
+      <div className="agent-skill-state page">
+        <Loader2 className="spin" size={22} />
+        正在加载 Skill 详情…
+      </div>
+    );
+  }
+  if (!skill) {
+    return (
+      <div className="agent-skill-state page is-error">
+        <AlertCircle size={22} />
+        <strong>{error || "Skill 不存在"}</strong>
+        <button type="button" onClick={() => onNavigatePath("/agent/skills")}>
+          返回 Skill 管理
+        </button>
+      </div>
+    );
+  }
+
+  const toolLabels = new Map(tools.map((tool) => [tool.name, tool.display_name]));
+  const canEdit = !skill.is_read_only && skill.status !== "archived";
+
+  return (
+    <section className="agent-skill-detail-page">
+      <header className="agent-skill-page-header">
+        <div>
+          <span>Skill 管理 / 详情</span>
+          <h1>{skill.name}</h1>
+          <p>{skill.description}</p>
+        </div>
+        <div className="agent-skill-detail-header-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => onNavigatePath("/agent/skills")}
+          >
+            <ChevronLeft size={16} />
+            返回列表
+          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() =>
+                onNavigatePath(`/agent/skills/${encodeURIComponent(skill.id)}/edit`)
+              }
+            >
+              <Pencil size={16} />
+              编辑 Skill
+            </button>
+          ) : null}
+          {!skill.is_read_only && skill.status === "archived" ? (
+            <button
+              type="button"
+              disabled={restoring}
+              onClick={async () => {
+                if (!window.confirm(`恢复“${skill.name}”？恢复后可以继续编辑。`)) return;
+                setRestoring(true);
+                setError("");
+                try {
+                  setSkill(await api.restoreAgentSkill(skill.id));
+                } catch (restoreError) {
+                  setError(
+                    restoreError instanceof Error ? restoreError.message : "恢复 Skill 失败",
+                  );
+                } finally {
+                  setRestoring(false);
+                }
+              }}
+            >
+              {restoring ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+              恢复 Skill
+            </button>
+          ) : null}
+          {skill.is_read_only ? (
+            <button
+              type="button"
+              disabled={cloning}
+              onClick={async () => {
+                setCloning(true);
+                setError("");
+                try {
+                  const cloned = await api.cloneAgentSkill(skill.id);
+                  onNavigatePath(`/agent/skills/${encodeURIComponent(cloned.id)}`);
+                } catch (cloneError) {
+                  setError(cloneError instanceof Error ? cloneError.message : "复制失败");
+                } finally {
+                  setCloning(false);
+                }
+              }}
+            >
+              {cloning ? <Loader2 className="spin" size={16} /> : <Copy size={16} />}
+              复制为我的 Skill
+            </button>
+          ) : null}
+        </div>
+      </header>
+      {error ? (
+        <div className="agent-skill-inline-error">
+          <AlertCircle size={16} />
+          {error}
+        </div>
+      ) : null}
+      <div className="agent-skill-detail-layout">
+        <article>
+          <section>
+            <h2>Skill 正文</h2>
+            <p>Agent 在选中这个 Skill 后会读取以下完整指导。</p>
+            <pre>{skill.instructions}</pre>
+          </section>
+        </article>
+        <aside>
+          <section>
+            <h2>状态与权限</h2>
+            <dl>
+              <div>
+                <dt>状态</dt>
+                <dd>
+                  <span className={`agent-skill-status is-${skill.status}`}>
+                    {agentSkillStatusLabels[skill.status]}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>范围</dt>
+                <dd>{skill.scope === "system" ? "系统 Skill · 只读" : "我的 Skill"}</dd>
+              </div>
+              <div>
+                <dt>草稿 revision</dt>
+                <dd>{skill.draft_revision}</dd>
+              </div>
+              <div>
+                <dt>更新时间</dt>
+                <dd>{skillTime(skill.updated_at)}</dd>
+              </div>
+            </dl>
+          </section>
+          <section>
+            <h2>允许使用的 Tools</h2>
+            {skill.tool_names.length ? (
+              <ul className="agent-skill-detail-tools">
+                {skill.tool_names.map((toolName) => (
+                  <li key={toolName}>
+                    <Box size={15} />
+                    <span>
+                      <strong>{toolLabels.get(toolName) || toolName}</strong>
+                      <small>{toolName}</small>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>此 Skill 不调用创作 Tool。</p>
+            )}
+          </section>
+          <section className="agent-skill-version-summary">
+            <h2>版本信息</h2>
+            {skill.active_version ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onNavigatePath(
+                    `/agent/skills/${encodeURIComponent(skill.id)}/versions/${encodeURIComponent(skill.active_version!.id)}`,
+                  )
+                }
+              >
+                <History size={17} />
+                当前启用 v{skill.active_version.version}
+                <ChevronRight size={16} />
+              </button>
+            ) : (
+              <p>尚未发布版本</p>
+            )}
+            {versions.length > 0 ? (
+              <button
+                type="button"
+                onClick={() =>
+                  onNavigatePath(
+                    `/agent/skills/${encodeURIComponent(skill.id)}/versions/${encodeURIComponent(versions[0].id)}`,
+                  )
+                }
+              >
+                查看全部 {versions.length} 个版本
+                <ChevronRight size={16} />
+              </button>
+            ) : null}
+          </section>
+          {skill.status === "archived" && !skill.is_read_only ? (
+            <p className="agent-skill-detail-note">
+              已归档 Skill 只能查看。恢复后才可继续编辑或发布。
+            </p>
+          ) : null}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function AgentSkillEditorView({
   mode,
   skillId,
   onNavigatePath,
 }: {
-  mode: "new" | "detail";
+  mode: "new" | "edit";
   skillId?: string;
   onNavigatePath: (path: string) => void;
 }) {
@@ -1705,7 +1959,7 @@ function AgentSkillEditorView({
       ? { name: "", description: "", instructions: agentSkillTemplate, toolNames: [] }
       : null,
   );
-  const [loading, setLoading] = useState(mode === "detail");
+  const [loading, setLoading] = useState(mode === "edit");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [authoring, setAuthoring] = useState(false);
@@ -1730,14 +1984,14 @@ function AgentSkillEditorView({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(mode === "detail");
+    setLoading(mode === "edit");
     setError("");
     const requests: Promise<unknown>[] = [
       api.agentSkillTools().then((data) => {
         if (!cancelled) setTools(data);
       }),
     ];
-    if (mode === "detail" && skillId) {
+    if (mode === "edit" && skillId) {
       requests.push(
         api.agentSkill(skillId).then((data) => {
           if (cancelled) return;
@@ -1810,7 +2064,7 @@ function AgentSkillEditorView({
       setForm(next);
       setBaseline(next);
       setSavedMessage("草稿已保存");
-      if (mode === "new" && navigateAfterCreate) {
+      if (navigateAfterCreate) {
         onNavigatePath(`/agent/skills/${encodeURIComponent(updated.id)}`);
       }
       return updated;
@@ -1838,9 +2092,7 @@ function AgentSkillEditorView({
       setSkill(refreshed);
       setVersions(history.items);
       setSavedMessage(`v${version.version} 已发布并设为当前版本`);
-      if (mode === "new") {
-        onNavigatePath(`/agent/skills/${encodeURIComponent(current.id)}`);
-      }
+      onNavigatePath(`/agent/skills/${encodeURIComponent(current.id)}`);
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : "发布失败");
     } finally {
@@ -1892,7 +2144,7 @@ function AgentSkillEditorView({
   if (loading) {
     return <div className="agent-skill-state page"><Loader2 className="spin" size={22} />正在加载编辑器…</div>;
   }
-  if (error && mode === "detail" && !skill) {
+  if (error && mode === "edit" && !skill) {
     return (
       <div className="agent-skill-state page is-error">
         <AlertCircle size={22} />
@@ -1906,14 +2158,21 @@ function AgentSkillEditorView({
     <section className="agent-skill-editor-page">
       <header>
         <div>
-          <button type="button" onClick={() => navigateWithGuard("/agent/skills")}>
-            Skill 管理
+          <button
+            type="button"
+            onClick={() =>
+              navigateWithGuard(
+                skill ? `/agent/skills/${encodeURIComponent(skill.id)}` : "/agent/skills",
+              )
+            }
+          >
+            {skill ? "Skill 详情" : "Skill 管理"}
           </button>
           <span>/</span>
-          <strong>{mode === "new" ? "创建 Skill" : skill?.name}</strong>
+          <strong>{mode === "new" ? "创建 Skill" : `编辑 ${skill?.name || ""}`}</strong>
         </div>
         <div className="agent-skill-editor-title">
-          <h1>{mode === "new" ? "创建 Skill" : skill?.name}</h1>
+          <h1>{mode === "new" ? "创建 Skill" : `编辑 ${skill?.name || ""}`}</h1>
           <span className={dirty ? "unsaved" : "saved"}>
             {dirty
               ? "有未保存修改"
@@ -2094,7 +2353,7 @@ function AgentSkillEditorView({
                 onClick={() => void saveDraft()}
               >
                 {saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
-                保存草稿
+                {mode === "new" ? "保存草稿" : "保存修改"}
               </button>
               <button
                 type="button"
@@ -2268,7 +2527,7 @@ function AgentSkillVersionView({
         </div>
         <button type="button" className="secondary" onClick={() => onNavigatePath(`/agent/skills/${encodeURIComponent(skill.id)}`)}>
           <ChevronLeft size={16} />
-          返回编辑
+          返回详情
         </button>
       </header>
       {error ? <div className="agent-skill-inline-error">{error}</div> : null}
@@ -2366,6 +2625,7 @@ function AgentSkillManagementView({
     | { mode: "list" }
     | { mode: "new" }
     | { mode: "detail"; skillId: string }
+    | { mode: "edit"; skillId: string }
     | { mode: "version"; skillId: string; versionId: string };
   onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
   onLogout: () => Promise<void>;
@@ -2384,7 +2644,10 @@ function AgentSkillManagementView({
         {route.mode === "list" ? <AgentSkillListView onNavigatePath={onNavigatePath} /> : null}
         {route.mode === "new" ? <AgentSkillEditorView mode="new" onNavigatePath={onNavigatePath} /> : null}
         {route.mode === "detail" ? (
-          <AgentSkillEditorView mode="detail" skillId={route.skillId} onNavigatePath={onNavigatePath} />
+          <AgentSkillDetailView skillId={route.skillId} onNavigatePath={onNavigatePath} />
+        ) : null}
+        {route.mode === "edit" ? (
+          <AgentSkillEditorView mode="edit" skillId={route.skillId} onNavigatePath={onNavigatePath} />
         ) : null}
         {route.mode === "version" ? (
           <AgentSkillVersionView

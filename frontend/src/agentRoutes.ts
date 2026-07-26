@@ -5,6 +5,7 @@ export type AgentRoute = {
     | { mode: "list" }
     | { mode: "new" }
     | { mode: "detail"; skillId: string }
+    | { mode: "edit"; skillId: string }
     | { mode: "version"; skillId: string; versionId: string }
     | null;
 };
@@ -34,6 +35,17 @@ export function parseAgentRoute(pathname: string): AgentRoute | null {
     const skillId = decodeRoutePart(parts[2]);
     return skillId
       ? { conversationId: null, taskId: null, skillPage: { mode: "detail", skillId } }
+      : null;
+  }
+  if (
+    parts.length === 4 &&
+    parts[0] === "agent" &&
+    parts[1] === "skills" &&
+    parts[3] === "edit"
+  ) {
+    const skillId = decodeRoutePart(parts[2]);
+    return skillId
+      ? { conversationId: null, taskId: null, skillPage: { mode: "edit", skillId } }
       : null;
   }
   if (
