@@ -10,6 +10,8 @@ from app.models.entities import (
     ContentExtractionMedia,
     FileAsset,
     GeneratedImage,
+    NativeAgentImage,
+    NativeAgentRun,
     StyleReferenceImage,
     TaskCharacter,
     TaskCharacterAppearance,
@@ -89,7 +91,20 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
             .join(GeneratedImage.task)
             .where(GeneratedImage.asset_id == asset.id, GeneratedImage.task.has(owner_user_id=user.id))
         )
-        return image is not None
+        if image is not None:
+            return True
+        native_image = db.scalar(
+            select(NativeAgentImage)
+            .join(NativeAgentRun, NativeAgentRun.id == NativeAgentImage.run_id)
+            .join(
+                NativeAgentRun.conversation,
+            )
+            .where(
+                NativeAgentImage.asset_id == asset.id,
+                NativeAgentRun.conversation.has(owner_user_id=user.id),
+            )
+        )
+        return native_image is not None
     if asset.purpose == FileAssetPurpose.download_archive:
         download = db.scalar(
             select(TaskDownload)

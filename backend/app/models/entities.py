@@ -20,6 +20,7 @@ from app.models.enums import (
     AgentSkillStatus,
     AgentStepStatus,
     AgentStepType,
+    NativeAgentItemType,
     ContentExtractionMediaKind,
     CreditTransactionType,
     DownloadStatus,
@@ -77,6 +78,9 @@ class User(Base, TimestampMixin):
     )
     agent_conversations: Mapped[list["AgentConversation"]] = relationship(back_populates="owner")
     agent_skills: Mapped[list["AgentSkill"]] = relationship(back_populates="owner")
+    native_agent_conversations: Mapped[list["NativeAgentConversation"]] = relationship(
+        back_populates="owner"
+    )
     decided_agent_approvals: Mapped[list["AgentApprovalRequest"]] = relationship()
 
 
@@ -834,6 +838,160 @@ class AgentSkillVersion(Base):
     )
     published_by: Mapped[Optional[User]] = relationship()
     runs: Mapped[list["AgentRun"]] = relationship(back_populates="skill_version")
+
+
+class NativeAgentConversation(Base, TimestampMixin):
+    __tablename__ = "native_agent_conversations"
+    __table_args__ = (
+        Index(
+            "ix_native_agent_conversations_owner_last_message",
+            "owner_user_id",
+            "last_message_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(160))
+    last_message_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        index=True,
+    )
+
+    owner: Mapped[User] = relationship(back_populates="native_agent_conversations")
+    runs: Mapped[list["NativeAgentRun"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+
+
+class NativeAgentRun(Base, TimestampMixin):
+    __tablename__ = "native_agent_runs"
+    __table_args__ = (
+        Index(
+            "ix_native_agent_runs_conversation_created",
+            "conversation_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_conversations.id", ondelete="CASCADE"),
+        index=True,
+    )
+    skill_version_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_skill_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    style_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("styles.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[AgentRunStatus] = mapped_column(
+        Enum(AgentRunStatus),
+        default=AgentRunStatus.queued,
+        index=True,
+    )
+    model_snapshot: Mapped[str] = mapped_column(String(160))
+    skill_name_snapshot: Mapped[str] = mapped_column(String(120))
+    skill_version_snapshot: Mapped[int] = mapped_column(Integer)
+    skill_content_hash_snapshot: Mapped[str] = mapped_column(String(80))
+    style_name_snapshot: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    style_prompt_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_model_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    aspect_ratio_snapshot: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    style_reference_urls_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    model_call_count: Mapped[int] = mapped_column(Integer, default=0)
+    image_call_count: Mapped[int] = mapped_column(Integer, default=0)
+    final_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    conversation: Mapped[NativeAgentConversation] = relationship(back_populates="runs")
+    skill_version: Mapped[AgentSkillVersion] = relationship()
+    style: Mapped[Optional[Style]] = relationship()
+    items: Mapped[list["NativeAgentItem"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    images: Mapped[list["NativeAgentImage"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class NativeAgentItem(Base):
+    __tablename__ = "native_agent_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "sequence",
+            name="uq_native_agent_items_run_sequence",
+        ),
+        CheckConstraint(
+            "sequence > 0",
+            name="ck_native_agent_items_sequence_positive",
+        ),
+        Index(
+            "ix_native_agent_items_run_sequence",
+            "run_id",
+            "sequence",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    item_type: Mapped[NativeAgentItemType] = mapped_column(
+        Enum(NativeAgentItemType),
+        index=True,
+    )
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="items")
+
+
+class NativeAgentImage(Base, TimestampMixin):
+    __tablename__ = "native_agent_images"
+    __table_args__ = (
+        Index(
+            "ix_native_agent_images_run_created",
+            "run_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    asset_id: Mapped[str] = mapped_column(
+        ForeignKey("file_assets.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+    prompt: Mapped[str] = mapped_column(Text)
+    image_model_snapshot: Mapped[str] = mapped_column(String(120))
+    aspect_ratio_snapshot: Mapped[str] = mapped_column(String(20))
+    provider_request_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="images")
+    asset: Mapped[FileAsset] = relationship()
 
 
 class AgentConversation(Base, TimestampMixin):

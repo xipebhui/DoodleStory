@@ -428,6 +428,60 @@ export type AgentRun = AgentRunSummary & {
   }>;
 };
 
+export type NativeAgentItem = {
+  id: string;
+  sequence: number;
+  item_type: "user_input" | "tool_call" | "tool_result" | "assistant_output" | "error";
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type NativeAgentImage = {
+  id: string;
+  asset_id: string;
+  prompt: string;
+  image_model: string;
+  aspect_ratio: string;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+};
+
+export type NativeAgentRun = {
+  id: string;
+  conversation_id: string;
+  skill_version_id: string;
+  skill_name: string;
+  skill_version: number;
+  style_id: string | null;
+  style_name: string | null;
+  status: AgentRunStatus;
+  model: string;
+  model_call_count: number;
+  image_call_count: number;
+  final_output: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  items: NativeAgentItem[];
+  images: NativeAgentImage[];
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NativeAgentConversation = {
+  id: string;
+  title: string;
+  last_message_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NativeAgentConversationDetail = NativeAgentConversation & {
+  runs: NativeAgentRun[];
+};
+
 export type FileAsset = {
   id: string;
   purpose: string;
@@ -940,6 +994,35 @@ export const api = {
     const suffix = search.toString() ? `?${search.toString()}` : "";
     return request<ApiList<AgentConversation>>(`/agent/conversations${suffix}`);
   },
+  nativeAgentConversations: (limit = 30) =>
+    request<ApiList<NativeAgentConversation>>(
+      `/agent-loop/conversations?limit=${limit}`,
+    ),
+  createNativeAgentConversation: (payload: { title: string }) =>
+    request<ApiData<NativeAgentConversation>>("/agent-loop/conversations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  nativeAgentConversation: (conversationId: string) =>
+    request<ApiData<NativeAgentConversationDetail>>(
+      `/agent-loop/conversations/${encodeURIComponent(conversationId)}`,
+    ).then((result) => result.data),
+  nativeAgentSkills: () =>
+    request<ApiList<AgentResourceOption>>("/agent-loop/skills"),
+  nativeAgentStyles: () =>
+    request<ApiList<AgentResourceOption>>("/agent-loop/styles"),
+  createNativeAgentRun: (
+    conversationId: string,
+    payload: {
+      content: string;
+      skill_version_id: string;
+      style_id: string | null;
+    },
+  ) =>
+    request<ApiData<NativeAgentRun>>(
+      `/agent-loop/conversations/${encodeURIComponent(conversationId)}/runs`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
   agentSkills: (params?: {
     scope?: "mine" | "system";
     status?: AgentSkillStatus | "";

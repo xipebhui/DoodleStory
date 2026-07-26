@@ -53,6 +53,14 @@ class AgentStepStatus(StrEnum):
     cancelled = "cancelled"
 
 
+class NativeAgentItemType(StrEnum):
+    user_input = "user_input"
+    tool_call = "tool_call"
+    tool_result = "tool_result"
+    assistant_output = "assistant_output"
+    error = "error"
+
+
 class AgentArtifactType(StrEnum):
     comic_plan = "comic_plan"
 

@@ -17,6 +17,7 @@ from app.services.agent_tool_runtime import create_default_tool_registry
 
 
 SYSTEM_SKILL_SLUG = "idea-to-comic"
+NATIVE_LOOP_SKILL_SLUG = "simple-image-story"
 MAX_SKILL_INSTRUCTIONS_BYTES = 64 * 1024
 TOOL_PRESENTATION = {
     "generate_image": (
@@ -573,6 +574,58 @@ def seed_system_skills(db: Session, *, skill_root: Path = DEFAULT_SKILL_ROOT) ->
     return skill
 
 
+def seed_native_loop_system_skill(
+    db: Session,
+    *,
+    skill_root: Path = DEFAULT_SKILL_ROOT,
+) -> AgentSkill:
+    existing = db.scalar(
+        select(AgentSkill).where(
+            AgentSkill.owner_user_id.is_(None),
+            AgentSkill.slug == NATIVE_LOOP_SKILL_SLUG,
+        )
+    )
+    if existing is not None:
+        return existing
+    package = SkillRegistry(skill_root).load(NATIVE_LOOP_SKILL_SLUG)
+    instructions = _runtime_skill_body(package.instructions)
+    tool_names = validate_tool_names(["generate_image"])
+    skill = AgentSkill(
+        owner_user_id=None,
+        slug=NATIVE_LOOP_SKILL_SLUG,
+        name="简单图片故事",
+        description=package.description,
+        draft_instructions=instructions,
+        draft_tool_names_json=_json_array(tool_names),
+        draft_revision=1,
+        status=AgentSkillStatus.published,
+    )
+    db.add(skill)
+    db.flush()
+    version = AgentSkillVersion(
+        skill_id=skill.id,
+        version=1,
+        name_snapshot=skill.name,
+        description_snapshot=skill.description,
+        instructions=instructions,
+        tool_names_json=_json_array(tool_names),
+        content_hash=compute_skill_content_hash(
+            name=skill.name,
+            description=skill.description,
+            instructions=instructions,
+            tool_names=tool_names,
+        ),
+        published_by_user_id=None,
+    )
+    db.add(version)
+    db.flush()
+    skill.active_version_id = version.id
+    db.commit()
+    db.refresh(skill)
+    return skill
+
+
 def initialize_system_agent_skills() -> None:
     with database.SessionLocal() as db:
         seed_system_skills(db)
+        seed_native_loop_system_skill(db)

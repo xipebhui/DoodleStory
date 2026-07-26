@@ -1,6 +1,9 @@
 # Agent 漫画 V1 新窗口实施交接
 
-> 状态更新（2026-07-26）：Sprint 105–108、110–118 已 Complete；Sprint 109 Draft 已 Superseded。Sprint 117 的 Skill 管理、不可变版本、`@Skill`、Run pin、数据库 Skill Runtime 和真实 Provider/浏览器证据已经闭合；Sprint 118 已补齐传统工作台直达 Skill 管理和返回工作台的导航闭环。Evaluation 保持 Deferred，未实施也未给出内部开放结论。
+> 状态更新（2026-07-26）：Sprint 105–108、110–118 已 Complete；Sprint 109 Draft 已
+> Superseded。用户确认旧 Agent Runtime 过度编排，Sprint 119 已在
+> `codex/simple-agent-loop` 激活，按“Agents SDK 原生 Loop + 唯一 generate_image Tool +
+> 发布版 Skill”重建正常 `/agent`。Evaluation 保持 Deferred。
 
 ## 1. 仓库与分支
 
@@ -13,7 +16,7 @@ git status --short
 预期分支：
 
 ```text
-codex/agent-feature
+codex/simple-agent-loop
 ```
 
 以下未跟踪内容属于用户或其它工作，不得删除、覆盖或加入 Agent Sprint 提交：
@@ -82,13 +85,17 @@ Sprint 107/108 的实现记录仍然真实，但以下产品决策已被最新�
 | 6 | `sprint-116-agent-panel-version-vl-loop.md` | 115 Complete |
 | 7 | `sprint-117-pluggable-skill-management-agent-loop.md` | 116 Complete |
 | 8 | `sprint-118-skill-management-navigation-discoverability.md` | 用户确认修正入口，Complete |
+| 9 | `sprint-119-minimal-native-agent-loop.md` | Complete（Closed） |
 | 最终阶段 | `deferred-agent-evaluation-internal-release-gate.md` | 用户确认功能路线冻结后重新编号 |
 
 不要并行实施相邻 Sprint。后一个 Sprint 的 schema/API 假设必须建立在前一个 Sprint 的完成实现上。
 
 ## 5. 下一窗口启动条件
 
-Sprint 115–118 已完成，不要再次执行。下一窗口先读取 Sprint 117 QA 报告、Sprint 118 导航修正合同和本交接；在用户明确决定功能路线冻结并授权前，不启动 Deferred Evaluation，也不自行增加新 Sprint。
+Sprint 115–119 已完成，不要再次执行。Sprint 119 已把正常入口切到最小原生 Loop；不得把旧
+ComicPlan、Artifact/Approval、GenerationTask/Panel、Generic Tool Executor 或 Agent queue
+接回新路径。下一阶段必须先由用户确认并建立新合同；在用户明确决定功能路线冻结并授权前，
+不启动 Deferred Evaluation。
 
 ## 6. 后续窗口如何开始
 

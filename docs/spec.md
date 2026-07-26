@@ -230,6 +230,14 @@
 - `MLFLOW_TRACE_CONTENT=false` 时，MLflow span processor 在客户端导出前覆盖 inputs/outputs，并拒绝 Prompt、消息正文、完整 URL、内部路径、Authorization 和已配置密钥。观测初始化或运行时上报错误必须记录明确 `observability_error`；上报错误不能回滚已经提交的图片、消息、积分或 Agent Run 业务状态。
 - Sprint 117 已实现用户 Skill CRUD、不可变发布版本、`@Skill` 与由数据库发布版本驱动的通用内容创作 Agent Loop；每个 Run 第一版最多使用一个纯文本 Skill，只能组合 Runtime 已注册的 Tools，不支持脚本、MCP、多 Skill、Workflow DSL 或用户自定义 Tool。漫画方案继续使用最小 ComicPlan control action 和既有 Artifact/Approval adapter，但正式路径不再按 Skill 名称或 `style → create_comic` 资源路由编排。用户 Memory、抠图、Remotion、文字转语音和视频解说继续顺延；后续多媒体能力应先新增原子 Tool，再由 Skill 组合，不预建通用媒体 Workflow。正式 Evaluation 推迟到用户确认功能路线冻结后的最后阶段，届时重新编号并确定 `GO_INTERNAL/NO_GO` 门槛。
 - Sprint 118 已补齐 Skill 管理的产品导航闭环：传统工作台主侧栏直接提供 `/agent/skills` 入口，独立 Agent Studio 的 Skill 管理侧栏提供返回 `/tasks` 的入口；两端继续使用稳定 URL，不复制 Skill 编辑器，也不重新合并两套 Shell。
+- Sprint 119 已完成用独立数据模型重建正常 `/agent` 执行入口：当前最小 Runtime 直接使用 Agents SDK
+  `Agent(tools=[generate_image])` 和 SDK 自带 Loop，Skill 负责故事改写、分镜、完整图片 Prompt、
+  真实图片 Review 与是否重画。`generate_image` 返回 `ToolOutputImage` 给同一个多模态模型；
+  Runtime 不再按 Style、Skill 名称、Panel 数量或漫画阶段编写 Python 业务分支，也不启动旧
+  Agent 队列。新路径只复用用户、发布版 Skill、Style、文件存储和图片 Provider，运行状态写入
+  `native_agent_conversations/runs/items/images`，不写旧 Agent Step、ComicPlan、Artifact、
+  Approval、GenerationTask、Panel 或 GeneratedImage。第一版 Tool 串行执行，积分、后台队列、
+  中断恢复、审批和正式 Evaluation 明确留待后续独立合同。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。

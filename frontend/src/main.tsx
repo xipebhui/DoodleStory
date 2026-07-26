@@ -63,6 +63,8 @@ import {
   type AgentRunSummary,
   type AgentTaskCard,
   type AgentTaskInspector,
+  type NativeAgentConversation,
+  type NativeAgentConversationDetail,
   type AdminCreditTransaction,
   type AdminCreditUsage,
   type AdminUserCreditDetail,
@@ -289,7 +291,6 @@ function App() {
   const view = viewFromPathname(pathname);
   const agentRoute = parseAgentRoute(pathname);
   const routeAgentConversationId = agentRoute?.conversationId ?? null;
-  const routeAgentTaskId = agentRoute?.taskId ?? null;
   const routeAgentSkillPage = agentRoute?.skillPage ?? null;
   const routeTaskId = taskIdFromPathname(pathname);
   const routeVideoTaskId = videoTaskIdFromPathname(pathname);
@@ -417,14 +418,12 @@ function App() {
             }}
           />
         ) : (
-          <AgentView
+          <NativeAgentView
             user={user}
             creditOverview={creditOverview}
             creditError={creditError}
             routeConversationId={routeAgentConversationId}
-            routeTaskId={routeAgentTaskId}
             onNavigatePath={navigateToPath}
-            onCreditsChanged={refreshCredits}
             onLogout={async () => {
               await api.logout();
               setUser(null);
@@ -1351,12 +1350,12 @@ function AgentStudioSidebar({
   onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
   onLogout: () => Promise<void>;
 }) {
-  const [conversations, setConversations] = useState<AgentConversation[]>([]);
+  const [conversations, setConversations] = useState<NativeAgentConversation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api
-      .agentConversations({ limit: 8 })
+      .nativeAgentConversations(8)
       .then((result) => setConversations(result.items))
       .catch(() => setConversations([]))
       .finally(() => setLoading(false));
@@ -2394,6 +2393,328 @@ function AgentSkillManagementView({
             onNavigatePath={onNavigatePath}
           />
         ) : null}
+      </main>
+    </section>
+  );
+}
+
+function NativeAgentSidebar({
+  user,
+  conversations,
+  creditOverview,
+  creditError,
+  onNavigatePath,
+  onLogout,
+}: {
+  user: User;
+  conversations: NativeAgentConversation[];
+  creditOverview: CreditOverview | null;
+  creditError: string;
+  onNavigatePath: (path: string) => void;
+  onLogout: () => Promise<void>;
+}) {
+  return (
+    <aside className="agent-skill-sidebar">
+      <div className="agent-module-brand">
+        <span className="brand-mark">
+          <img className="brand-icon" src="/doodlestory-icon.svg" alt="" />
+        </span>
+        <div>
+          <strong>DoodleStory</strong>
+          <span>Simple Agent Loop</span>
+        </div>
+      </div>
+      <nav className="agent-studio-primary-nav" aria-label="Simple Agent Loop">
+        <button type="button" className="active" onClick={() => onNavigatePath("/agent")}>
+          <Plus size={17} />
+          新对话
+        </button>
+        <button type="button" onClick={() => onNavigatePath("/agent/skills")}>
+          <Box size={17} />
+          Skill 管理
+        </button>
+        <a
+          href={viewRoutes.tasks}
+          onClick={(event) => {
+            event.preventDefault();
+            onNavigatePath(viewRoutes.tasks);
+          }}
+        >
+          <Images size={17} />
+          返回传统工作台
+        </a>
+      </nav>
+      <div className="agent-studio-history">
+        <span>最小 Loop 对话</span>
+        {conversations.length === 0 ? <p>暂无对话</p> : null}
+        {conversations.map((conversation) => (
+          <button
+            type="button"
+            key={conversation.id}
+            onClick={() => onNavigatePath(`/agent/${encodeURIComponent(conversation.id)}`)}
+          >
+            <i />
+            <span>
+              <strong>{conversation.title}</strong>
+              <small>{agentConversationTime(conversation.last_message_at)}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="agent-account-panel">
+        <div className="agent-account-credit">
+          <Sparkles size={16} />
+          <span>
+            <strong>1 个真实 Tool</strong>
+            <small>generate_image · 模型原生看图</small>
+          </span>
+        </div>
+        <div className="agent-account-credit">
+          <Coins size={16} />
+          <span>
+            <strong>
+              {creditOverview
+                ? `${creditOverview.account.balance} 积分`
+                : creditError || "积分加载中"}
+            </strong>
+            <small>本 Sprint 暂未接入新 Loop 结算</small>
+          </span>
+        </div>
+        <div className="agent-account-user">
+          <span>{(user.display_name || user.email).slice(0, 1).toUpperCase()}</span>
+          <div>
+            <strong>{user.display_name || user.email}</strong>
+            <small>个人工作区</small>
+          </div>
+          <button type="button" aria-label="退出登录" onClick={() => void onLogout()}>
+            <LogOut size={15} />
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function NativeAgentView({
+  user,
+  creditOverview,
+  creditError,
+  routeConversationId,
+  onNavigatePath,
+  onLogout,
+}: {
+  user: User;
+  creditOverview: CreditOverview | null;
+  creditError: string;
+  routeConversationId: string | null;
+  onNavigatePath: (path: string) => void;
+  onLogout: () => Promise<void>;
+}) {
+  const [conversations, setConversations] = useState<NativeAgentConversation[]>([]);
+  const [detail, setDetail] = useState<NativeAgentConversationDetail | null>(null);
+  const [skills, setSkills] = useState<AgentResourceOption[]>([]);
+  const [styles, setStyles] = useState<AgentResourceOption[]>([]);
+  const [skillVersionId, setSkillVersionId] = useState("");
+  const [styleId, setStyleId] = useState("");
+  const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadConversations() {
+    const result = await api.nativeAgentConversations(50);
+    setConversations(result.items);
+  }
+
+  async function loadDetail(conversationId: string) {
+    setLoading(true);
+    try {
+      setDetail(await api.nativeAgentConversation(conversationId));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.nativeAgentConversations(50),
+      api.nativeAgentSkills(),
+      api.nativeAgentStyles(),
+    ])
+      .then(([conversationResult, skillResult, styleResult]) => {
+        setConversations(conversationResult.items);
+        setSkills(skillResult.items);
+        setStyles(styleResult.items);
+        setError("");
+      })
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : "最小 Agent 加载失败");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!routeConversationId) {
+      setDetail(null);
+      return;
+    }
+    void loadDetail(routeConversationId).catch((loadError) => {
+      setError(loadError instanceof Error ? loadError.message : "会话加载失败");
+    });
+  }, [routeConversationId]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!content.trim() || !skillVersionId || !styleId || sending) return;
+    setSending(true);
+    setError("");
+    try {
+      const conversation =
+        detail ||
+        (await api.createNativeAgentConversation({
+          title: content.trim().slice(0, 40),
+        }));
+      await api.createNativeAgentRun(conversation.id, {
+        content,
+        skill_version_id: skillVersionId,
+        style_id: styleId,
+      });
+      setContent("");
+      await loadConversations();
+      if (routeConversationId !== conversation.id) {
+        onNavigatePath(`/agent/${encodeURIComponent(conversation.id)}`);
+      } else {
+        await loadDetail(conversation.id);
+      }
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Agent Loop 执行失败");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="native-agent-layout">
+      <NativeAgentSidebar
+        user={user}
+        conversations={conversations}
+        creditOverview={creditOverview}
+        creditError={creditError}
+        onNavigatePath={onNavigatePath}
+        onLogout={onLogout}
+      />
+      <main className="native-agent-workspace">
+        <header className="native-agent-header">
+          <div>
+            <span>Agents SDK 原生 Loop</span>
+            <h1>{detail?.title || "从一个简单 Loop 开始"}</h1>
+          </div>
+          <code>model → generate_image → image review → model</code>
+        </header>
+
+        <section className="native-agent-thread" aria-live="polite">
+          {loading ? (
+            <div className="native-agent-empty"><Loader2 className="spin" size={24} />正在加载…</div>
+          ) : null}
+          {!loading && !detail ? (
+            <div className="native-agent-empty">
+              <Sparkles size={30} />
+              <h2>Skill 决定创作流程，Runtime 不写漫画分支</h2>
+              <p>故事改写、分镜、Prompt 和生图 Review 都在同一个模型 Loop 内完成。</p>
+            </div>
+          ) : null}
+          {detail?.runs.map((run) => {
+            const userItem = run.items.find((item) => item.item_type === "user_input");
+            return (
+              <article className="native-agent-run" key={run.id}>
+                <div className="native-agent-user-message">
+                  {String(userItem?.payload.content || "")}
+                </div>
+                <div className="native-agent-run-meta">
+                  <span>{run.skill_name} · v{run.skill_version}</span>
+                  <span>{run.style_name}</span>
+                  <span>{run.model_call_count} 次模型调用</span>
+                  <span>{run.image_call_count} 次生图</span>
+                </div>
+                {run.images.length > 0 ? (
+                  <div className="native-agent-image-grid">
+                    {run.images.map((image) => (
+                      <figure key={image.id}>
+                        <LazyAssetImage
+                          assetId={image.asset_id}
+                          alt="Agent 生成结果"
+                          eager
+                          variant="original"
+                        />
+                        <figcaption>{image.image_model} · {image.aspect_ratio}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : null}
+                {run.final_output ? (
+                  <div className="native-agent-assistant-message">{run.final_output}</div>
+                ) : null}
+                {run.error_message ? (
+                  <div className="native-agent-run-error">
+                    <AlertCircle size={16} />
+                    {run.error_message}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </section>
+
+        <form className="native-agent-composer" onSubmit={submit}>
+          <div className="native-agent-context-controls">
+            <label>
+              <span>Skill</span>
+              <select
+                value={skillVersionId}
+                onChange={(event) => setSkillVersionId(event.target.value)}
+                disabled={sending}
+                required
+              >
+                <option value="">选择只使用 generate_image 的 Skill</option>
+                {skills.map((skill) => (
+                  <option value={skill.id} key={skill.id}>{skill.display_name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Style</span>
+              <select
+                value={styleId}
+                onChange={(event) => setStyleId(event.target.value)}
+                disabled={sending}
+                required
+              >
+                <option value="">选择生图模型与视觉风格</option>
+                {styles.map((style) => (
+                  <option value={style.id} key={style.id}>{style.display_name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <textarea
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="输入故事或图片创作目标…"
+            disabled={sending}
+          />
+          <div className="native-agent-composer-footer">
+            <span>唯一 Tool：generate_image；生成结果会直接回到模型视觉上下文。</span>
+            <button
+              type="submit"
+              disabled={!content.trim() || !skillVersionId || !styleId || sending}
+            >
+              {sending ? <Loader2 className="spin" size={17} /> : <Sparkles size={17} />}
+              {sending ? "Loop 执行中…" : "运行 Agent"}
+            </button>
+          </div>
+          {error ? <div className="native-agent-run-error"><AlertCircle size={16} />{error}</div> : null}
+        </form>
       </main>
     </section>
   );

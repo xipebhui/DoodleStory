@@ -15,6 +15,11 @@
 
 ## 2. 最新产品决定
 
+> 2026-07-26 更新：用户审核后确认 Sprint 117 的正式执行仍是旧漫画 Workflow 外包一层 Skill，
+> 复杂度不符合目标。Sprint 119 起以 `通用 Agents SDK Loop + 唯一 generate_image Tool +
+> 发布版 Skill` 重建正常 `/agent`。本文件后续关于共享 GenerationTask、Artifact/Approval、
+> Generic Tool Executor 和旧 Agent 队列的内容只保留为历史路线，不再约束 Sprint 119 新路径。
+
 ### 2.1 最终产品形态
 
 Agent 是独立、会话优先的创作模块，不再是旧任务工作台内容区中的一个模式。
@@ -134,6 +139,7 @@ Sprint 111–113、115 默认不新增表。
 | 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Complete | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
 | 117 | 可插拔 Skill 管理、版本与通用 Agent Loop | Complete | Skill 与版本表 | 有，Skill 管理和 `@Skill` |
 | 118 | Skill 管理正常入口与导航闭环 | Complete | 无 | 有，主侧栏入口与返回工作台 |
+| 119 | 最小原生 Agent Loop | Complete（Closed） | 独立 Native Conversation/Run/Item/Image | 有，正常 `/agent` |
 
 最终 Evaluation 已 Deferred，待功能路线冻结后重新编号，不属于 Sprint 117。
 

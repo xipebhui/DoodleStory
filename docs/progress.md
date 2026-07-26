@@ -2,16 +2,18 @@
 
 ## 当前基线
 
-- 分支：`codex/agent-feature`
+- 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
 - 最近验证状态：Sprint 118 已于 2026-07-26 完成 Skill 管理正常入口与导航闭环；真实浏览器验证 `/tasks → /agent/skills → /tasks` 及后退/前进恢复通过，`./scripts/check.sh` 覆盖 252 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116、117 和导航修正 Sprint 118 均已 Complete（Closed）；正式 Evaluation 保持 Deferred，当前没有 Active Sprint。
+- 当前合同状态：Sprint 116、117、导航修正 Sprint 118 与 Sprint 119
+  `最小原生 Agent Loop` 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-119-minimal-native-agent-loop.md`
 - Complete：`docs/contracts/sprint-111-agent-independent-shell-readonly-inspector.md`
 - Complete：`docs/contracts/sprint-112-agent-mlflow-observability-baseline.md`
 - Complete：`docs/contracts/sprint-113-agent-skill-tool-runtime-foundation.md`
@@ -49,6 +51,18 @@
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
 
 ## 最近完成的工作
+
+- 完成 Sprint 119 最小原生 Agent Loop：在隔离分支 `codex/simple-agent-loop` 新增完全独立于旧
+  Agent Workflow 的 Conversation/Run/Item/Image 表和 `/api/v1/agent-loop/*` API；正常
+  `/agent` 前端入口已切到新链路，只选择一个发布版 Skill 和一个 Style。Runtime 通过真实
+  `Agent(tools=[generate_image])` 运行 Agents SDK Loop，`generate_image` 返回
+  `ToolOutputImage` 让同一个模型原生看图并决定是否重画；Python 不做故事、分镜、Prompt 或
+  Review 阶段路由。新增系统 `简单图片故事` Skill，旧 Agent API 与 Agent queue 不再在应用正常
+  启动时挂载。自动化覆盖真实 Function Tool、图片回填、唯一 Tool/串行限制、新旧数据隔离；
+  `./scripts/check.sh` 覆盖 256 项后端测试、空库 migration、Python compileall 和前端生产构建
+  并通过。真实浏览器确认正常入口、Skill 管理、配置表单、会话侧栏与详情入口可用且控制台无错误。
+  本次未点击“运行 Agent”，没有产生外部模型或图片 Provider 费用；真实 Provider 实跑明确留作
+  成本验收，不以 Mock 或占位结果冒充。积分、异步队列、恢复、审批和 Evaluation 未实施。
 
 - 整合 Sprint 116 完成基线与 Sprint 117 新规划：确认两个窗口从 Sprint 115 tip 分叉后，在独立工作树合并 Sprint 116 实现/QA 闭合提交与 Sprint 117 Skill 管理/通用 Agent Loop 合同、规格和四张高保真视觉基准；冲突按最新产品决定解决为 Sprint 116 `Complete（Closed）`、Sprint 117 `Active`、正式 Evaluation `Deferred`。用户明确授权让另一窗口继续开发 Sprint 117。整合树重新运行 `./scripts/check.sh`，240 项后端测试、Python compileall、空 SQLite migration 和前端生产构建全部通过；未覆盖共享工作树的未跟踪用户文件。
 
