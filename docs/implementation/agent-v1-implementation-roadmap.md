@@ -133,6 +133,7 @@ Sprint 111–113、115 默认不新增表。
 | 115 | Style/Character/Task/Panel/Image Version 引用 | Complete | 默认无 | 有，真实 `@` 菜单与引用 |
 | 116 | Panel 新版本、接受/恢复、VL、暂停/继续 | Complete | GeneratedImage accepted 字段 | 有，任务检查器写操作 |
 | 117 | 可插拔 Skill 管理、版本与通用 Agent Loop | Complete | Skill 与版本表 | 有，Skill 管理和 `@Skill` |
+| 118 | Skill 管理正常入口与导航闭环 | Complete | 无 | 有，主侧栏入口与返回工作台 |
 
 最终 Evaluation 已 Deferred，待功能路线冻结后重新编号，不属于 Sprint 117。
 
@@ -335,6 +336,17 @@ instructions 只包含有界 catalog；`load_skill` 的版本/hash/加载时间�
 UI 发布的个人 Skill 各完成 2-Panel 真实生图，共 4 张成功、余额 30→26；无图片 Tool 的故事检查
 Skill 只输出文字且未创建任务，Style-only 消息通过 catalog 自动选择系统 Skill 并停在方案确认。
 QA 报告：`docs/qa/sprint-117-pluggable-skill-management-agent-loop-report.md`。
+
+## 12.1 Sprint 118：Skill 管理正常入口与导航闭环
+
+合同：
+
+`docs/contracts/sprint-118-skill-management-navigation-discoverability.md`
+
+2026-07-26 用户反馈 `/agent/skills` 虽可直接访问，但默认传统工作台没有正常入口。现已在主侧栏
+增加 `Skill 管理`，并在 Skill 管理的 Agent Studio 侧栏增加 `返回传统工作台`。真实浏览器完成
+双向点击与后退/前进恢复；完整检查通过 252 项后端测试、compileall、空库 migration 和前端构建。
+本次只修正信息架构可达性，没有改变 Skill API、Runtime 或 Deferred Evaluation。
 
 ## 最终阶段：Evaluation 与内部开放
 

@@ -5053,7 +5053,8 @@ textarea {
   gap: 8px;
 }
 
-.agent-studio-primary-nav button {
+.agent-studio-primary-nav button,
+.agent-studio-primary-nav a {
   width: 100%;
   min-height: 44px;
   display: flex;
@@ -5065,17 +5066,26 @@ textarea {
   border-radius: 9px;
   background: transparent;
   text-align: left;
+  text-decoration: none;
 }
 
 .agent-studio-primary-nav button:hover,
-.agent-studio-primary-nav button.active {
+.agent-studio-primary-nav button.active,
+.agent-studio-primary-nav a:hover {
   color: #fff8ee;
   border-color: #69452e;
   background: #1c1f23;
 }
 
-.agent-studio-primary-nav button.active svg {
+.agent-studio-primary-nav button.active svg,
+.agent-studio-primary-nav a:hover svg {
   color: #ff9948;
+}
+
+.agent-studio-primary-nav button:focus-visible,
+.agent-studio-primary-nav a:focus-visible {
+  outline: 2px solid #ff9948;
+  outline-offset: 2px;
 }
 
 .agent-studio-history {
@@ -5946,7 +5956,8 @@ textarea {
     display: flex;
   }
 
-  .agent-studio-primary-nav button {
+  .agent-studio-primary-nav button,
+  .agent-studio-primary-nav a {
     width: auto;
   }
 

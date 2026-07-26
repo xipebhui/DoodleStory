@@ -354,10 +354,6 @@ function App() {
     setPathname(nextPath);
   }
 
-  function navigateToView(nextView: View) {
-    navigateToPath(viewRoutes[nextView]);
-  }
-
   if (loading) {
     return <div className="center">加载中</div>;
   }
@@ -382,7 +378,7 @@ function App() {
         view={null}
         creditOverview={creditOverview}
         creditError={creditError}
-        onNavigate={navigateToView}
+        onNavigatePath={navigateToPath}
         onLogout={() => setUser(null)}
       >
         <NotFoundView />
@@ -397,7 +393,7 @@ function App() {
         view={null}
         creditOverview={creditOverview}
         creditError={creditError}
-        onNavigate={navigateToView}
+        onNavigatePath={navigateToPath}
         onLogout={() => setUser(null)}
       >
         <NotFoundView />
@@ -445,7 +441,7 @@ function App() {
       view={view}
       creditOverview={creditOverview}
       creditError={creditError}
-      onNavigate={navigateToView}
+      onNavigatePath={navigateToPath}
       onLogout={() => setUser(null)}
     >
       {view === "tasks" ? <TasksView user={user} routeTaskId={routeTaskId} onNavigatePath={navigateToPath} /> : null}
@@ -544,7 +540,7 @@ function Shell({
   view,
   creditOverview,
   creditError,
-  onNavigate,
+  onNavigatePath,
   onLogout,
   children,
 }: {
@@ -552,12 +548,13 @@ function Shell({
   view: View | null;
   creditOverview: CreditOverview | null;
   creditError: string;
-  onNavigate: (view: View) => void;
+  onNavigatePath: (path: string) => void;
   onLogout: () => void;
   children: React.ReactNode;
 }) {
   const items = [
     { key: "tasks" as const, label: "图文任务", icon: Images, path: viewRoutes.tasks },
+    { key: "agent" as const, label: "Skill 管理", icon: Box, path: `${viewRoutes.agent}/skills` },
     ...(user.role === "admin" ? [{ key: "videoTasks" as const, label: "视频任务", icon: Film, path: viewRoutes.videoTasks }] : []),
     ...(user.role === "admin"
       ? [{ key: "audioReferences" as const, label: "音频管理", icon: Volume2, path: viewRoutes.audioReferences }]
@@ -595,7 +592,7 @@ function Shell({
               href={item.path}
               onClick={(event) => {
                 event.preventDefault();
-                onNavigate(item.key);
+                onNavigatePath(item.path);
               }}
             >
               <item.icon size={18} />
@@ -1394,6 +1391,16 @@ function AgentStudioSidebar({
           <Search size={17} />
           搜索对话
         </button>
+        <a
+          href={viewRoutes.tasks}
+          onClick={(event) => {
+            event.preventDefault();
+            onNavigatePath(viewRoutes.tasks);
+          }}
+        >
+          <Images size={17} />
+          返回传统工作台
+        </a>
       </nav>
       <div className="agent-studio-history">
         <span>最近对话</span>
