@@ -5017,9 +5017,11 @@ textarea {
 
 /* Sprint 117: Agent Skill management */
 .agent-skill-workspace {
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   display: grid;
   grid-template-columns: 286px minmax(0, 1fr);
+  overflow: hidden;
   color: #f4f0e8;
   background:
     radial-gradient(circle at 65% 0%, rgba(255, 153, 68, 0.035), transparent 36%),
@@ -5028,7 +5030,10 @@ textarea {
 
 .agent-skill-workspace > main {
   min-width: 0;
-  min-height: 100vh;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .agent-skill-sidebar {
@@ -6080,6 +6085,13 @@ textarea {
 @media (max-width: 900px) {
   .agent-skill-workspace {
     display: block;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .agent-skill-workspace > main {
+    overflow: visible;
   }
 
   .agent-skill-sidebar {

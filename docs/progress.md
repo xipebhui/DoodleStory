@@ -57,6 +57,13 @@
 
 ## 最近完成的工作
 
+- 修复 Skill 详情与编辑页长正文被裁切：根因是 Agent 模块外壳固定为 `100dvh` 且隐藏溢出，
+  Skill 管理工作区此前没有自己的纵向滚动容器。现将桌面端滚动职责放到 Skill 主内容区，详情
+  正文可随页面滚到完整末尾，编辑页可滚到表单底部且正文 textarea 保持独立内部滚动；移动端
+  继续使用自然页面滚动。真实浏览器验证指定 Skill 详情主区 `scrollHeight=1992`、可滚至
+  `scrollTop=1272` 并显示最后一条完成条件；编辑正文可滚至内部最大 `scrollTop=1017`，末尾
+  文本完整可见，控制台无 error/warning。前端 TypeScript/Vite 生产构建与
+  `git diff --check` 通过，未执行完整 Sprint 验收。
 - 修正 Native Agent 图片 Provider 失败边界：`generate_image` 遇到 Provider 已明确拒绝的
   HTTP 400（包括本次安全政策拦截）时，仍先持久化失败 Tool Step 和
   `tool.failed` 事件，但不再由 Agents SDK 提升为终止整个 Run 的 `UserError`；现在会生成
