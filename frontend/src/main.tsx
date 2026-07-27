@@ -2762,6 +2762,125 @@ function NativeAgentSidebar({
   );
 }
 
+type NativeFunctionCallProjection = {
+  itemId: string;
+  toolCallId: string;
+  name: string;
+  argumentsText: string;
+  argumentsComplete: boolean;
+  toolStatus: "pending" | "prepared" | "running" | "completed" | "failed" | "unknown" | "reused";
+  toolResult: Record<string, unknown> | null;
+};
+
+type NativeResponseProjection = {
+  responseId: string;
+  modelCallCount: number;
+  status: "running" | "completed";
+  text: string;
+  functionCalls: NativeFunctionCallProjection[];
+};
+
+function nativeAgentResponseProjection(events: NativeAgentEvent[]): NativeResponseProjection[] {
+  const responses: NativeResponseProjection[] = [];
+  const responseById = new Map<string, NativeResponseProjection>();
+  const callById = new Map<string, NativeFunctionCallProjection>();
+  let currentResponse: NativeResponseProjection | null = null;
+
+  const ensureResponse = (responseId: string, modelCallCount = 0) => {
+    const existing = responseById.get(responseId);
+    if (existing) return existing;
+    const response: NativeResponseProjection = {
+      responseId,
+      modelCallCount: modelCallCount || responses.length + 1,
+      status: "running",
+      text: "",
+      functionCalls: [],
+    };
+    responses.push(response);
+    responseById.set(responseId, response);
+    return response;
+  };
+
+  for (const event of [...events].sort((left, right) => left.sequence - right.sequence)) {
+    const payload = event.payload;
+    const responseId = String(payload.response_id || "");
+    if (event.event_type === "response.started") {
+      currentResponse = ensureResponse(
+        responseId,
+        Number(payload.model_call_count || 0),
+      );
+      continue;
+    }
+    if (event.event_type === "response.output_text.delta") {
+      currentResponse = ensureResponse(responseId || currentResponse?.responseId || `response-${event.sequence}`);
+      currentResponse.text += String(payload.delta || "");
+      continue;
+    }
+    if (event.event_type === "response.function_call.started") {
+      currentResponse = ensureResponse(responseId || currentResponse?.responseId || `response-${event.sequence}`);
+      const call: NativeFunctionCallProjection = {
+        itemId: String(payload.item_id || ""),
+        toolCallId: String(payload.tool_call_id || ""),
+        name: String(payload.name || "function"),
+        argumentsText: "",
+        argumentsComplete: false,
+        toolStatus: "pending",
+        toolResult: null,
+      };
+      currentResponse.functionCalls.push(call);
+      if (call.itemId) callById.set(call.itemId, call);
+      if (call.toolCallId) callById.set(call.toolCallId, call);
+      continue;
+    }
+    if (
+      event.event_type === "response.function_call.arguments.delta"
+      || event.event_type === "response.function_call.arguments.done"
+    ) {
+      const call = callById.get(String(payload.item_id || ""))
+        || callById.get(String(payload.tool_call_id || ""));
+      if (call) {
+        if (event.event_type.endsWith(".delta")) {
+          call.argumentsText += String(payload.delta || "");
+        } else {
+          call.argumentsText = String(payload.arguments || call.argumentsText);
+          call.argumentsComplete = true;
+        }
+      }
+      continue;
+    }
+    if (event.event_type.startsWith("tool.")) {
+      const call = callById.get(String(payload.tool_call_id || ""));
+      if (!call) continue;
+      const statusByEvent: Record<string, NativeFunctionCallProjection["toolStatus"]> = {
+        "tool.prepared": "prepared",
+        "tool.started": "running",
+        "tool.completed": "completed",
+        "tool.failed": "failed",
+        "tool.unknown": "unknown",
+        "tool.reused": "reused",
+      };
+      call.toolStatus = statusByEvent[event.event_type] || call.toolStatus;
+      call.toolResult = payload;
+      continue;
+    }
+    if (event.event_type === "response.completed") {
+      currentResponse = responseById.get(responseId) || currentResponse;
+      if (currentResponse) currentResponse.status = "completed";
+    }
+  }
+
+  return responses;
+}
+
+function formattedFunctionArguments(value: string) {
+  if (!value) return "";
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
 function NativeAgentView({
   user,
   creditOverview,
@@ -3008,16 +3127,14 @@ function NativeAgentView({
           ) : null}
           {detail?.runs.map((run) => {
             const userItem = run.items.find((item) => item.item_type === "user_input");
-            const streamedText = run.events
-              .filter((event) => event.event_type === "assistant.delta")
-              .map((event) => String(event.payload.delta || ""))
-              .join("");
-            const activityEvents = run.events.filter(
-              (event) =>
-                event.event_type !== "assistant.delta"
-                && event.event_type !== "run.created",
-            );
+            const responses = nativeAgentResponseProjection(run.events);
             const runActive = activeAgentRunStatuses.has(run.status);
+            const finalOutputAlreadyShown = Boolean(
+              run.final_output
+              && responses.some(
+                (response) => response.text.trim() === run.final_output?.trim(),
+              ),
+            );
             return (
               <article className="native-agent-run" key={run.id}>
                 <div className="native-agent-user-message">
@@ -3033,95 +3150,68 @@ function NativeAgentView({
                   </span>
                   <span>{run.image_call_count} 次生图</span>
                 </div>
-                {streamedText && !run.final_output ? (
-                  <div className="native-agent-assistant-message is-streaming">
-                    <strong>创作思考</strong>
-                    {streamedText}
-                  </div>
-                ) : null}
-                <div className="native-agent-activity" aria-label="Agent 实时执行进度">
-                  {activityEvents.map((event) => {
-                    const failed = event.event_type === "tool.failed"
-                      || event.event_type === "tool.unknown"
-                      || event.event_type === "run.failed";
-                    const stepSequence = event.payload.step_sequence;
-                    const laterEvents = activityEvents.filter(
-                      (candidate) => candidate.sequence > event.sequence,
-                    );
-                    const stepSettled = stepSequence !== undefined
-                      && laterEvents.some(
-                        (candidate) =>
-                          candidate.payload.step_sequence === stepSequence
-                          && (
-                            candidate.event_type === "model.completed"
-                            || candidate.event_type === "tool.started"
-                            || candidate.event_type === "tool.completed"
-                            || candidate.event_type === "tool.failed"
-                            || candidate.event_type === "tool.unknown"
-                          ),
-                      );
-                    const runAdvanced = laterEvents.length > 0;
-                    const imagePlanNumber = activityEvents.filter(
-                      (candidate) =>
-                        candidate.sequence <= event.sequence
-                        && candidate.event_type === "tool.prepared",
-                    ).length;
-                    const imagePrompt = event.event_type === "tool.prepared"
-                      ? String(event.payload.prompt || "")
-                      : "";
-                    const running = (event.event_type === "run.started"
-                      || event.event_type === "run.resumed"
-                      || event.event_type === "model.started"
-                      || event.event_type === "tool.prepared"
-                      || event.event_type === "tool.started")
-                      && !stepSettled
-                      && !(event.event_type.startsWith("run.") && runAdvanced);
-                    const modelCount = Number(event.payload.model_call_count || 0);
-                    const eventLabel: Record<string, string> = {
-                      "run.started": `Agent 已读取用户目标与 ${run.skill_name} v${run.skill_version}`,
-                      "run.resumed": "Agent 已从持久化 checkpoint 恢复",
-                      "run.recovery_queued": "服务重启后已进入安全恢复队列",
-                      "model.started": `第 ${modelCount || "下一"} 次模型调用开始`,
-                      "model.completed": "模型响应已完成并保存",
-                      "checkpoint.saved": "执行 checkpoint 已保存",
-                      "tool.prepared": `第 ${imagePlanNumber} 张画面规划已提交`,
-                      "tool.started": "generate_image 正在生成图片",
-                      "tool.completed": "图片生成完成，已返回模型视觉上下文",
-                      "tool.reused": "已复用同一 Tool 调用的成功图片",
-                      "tool.failed": "generate_image 执行失败",
-                      "tool.unknown": "生图结果无法确认，已停止自动重放",
-                      "run.completed": "本轮 Agent Loop 已完成",
-                      "run.failed": "本轮 Agent Loop 执行失败",
-                    };
-                    return (
-                      <div className="native-agent-activity-item" key={event.id}>
-                        <div
-                          className={`native-agent-activity-row ${
-                            failed ? "is-error" : running ? "is-running" : "is-complete"
-                          }`}
-                        >
-                          {failed ? (
-                            <AlertCircle size={15} />
-                          ) : running ? (
-                            <Loader2 className="spin" size={15} />
-                          ) : (
-                            <CheckCircle2 size={15} />
-                          )}
-                          <span>{eventLabel[event.event_type] || event.event_type}</span>
-                        </div>
-                        {imagePrompt ? (
-                          <section className="native-agent-image-plan">
-                            <strong>模型实际提交的画面 Prompt</strong>
-                            <p>{imagePrompt}</p>
+                <div className="native-agent-responses" aria-label="Agent Response 与工具调用">
+                  {responses.map((response, responseIndex) => (
+                    <section className="native-agent-response" key={response.responseId}>
+                      <header>
+                        <span>Response {response.modelCallCount || responseIndex + 1}</span>
+                        {response.status === "running" ? (
+                          <Loader2 className="spin" size={14} />
+                        ) : (
+                          <CheckCircle2 size={14} />
+                        )}
+                      </header>
+                      {response.text ? (
+                        <div className="native-agent-response-text">{response.text}</div>
+                      ) : null}
+                      {response.functionCalls.map((call) => {
+                        const failed = call.toolStatus === "failed" || call.toolStatus === "unknown";
+                        const active = call.toolStatus === "pending"
+                          || call.toolStatus === "prepared"
+                          || call.toolStatus === "running";
+                        const toolStatusLabel: Record<NativeFunctionCallProjection["toolStatus"], string> = {
+                          pending: "等待执行",
+                          prepared: "已准备",
+                          running: "执行中",
+                          completed: "已完成",
+                          failed: "执行失败",
+                          unknown: "结果不确定",
+                          reused: "复用已有结果",
+                        };
+                        return (
+                          <section className="native-agent-function-call" key={call.itemId || call.toolCallId}>
+                            <header>
+                              <span>Function Call · <code>{call.name}</code></span>
+                              <span className={failed ? "is-error" : active ? "is-running" : "is-complete"}>
+                                {active ? <Loader2 className="spin" size={13} /> : failed ? <AlertCircle size={13} /> : <CheckCircle2 size={13} />}
+                                {toolStatusLabel[call.toolStatus]}
+                              </span>
+                            </header>
+                            {call.argumentsText ? (
+                              <div>
+                                <strong>Arguments{call.argumentsComplete ? "" : "（接收中）"}</strong>
+                                <pre>{formattedFunctionArguments(call.argumentsText)}</pre>
+                              </div>
+                            ) : null}
+                            {call.toolResult ? (
+                              <div>
+                                <strong>
+                                  {call.toolStatus === "completed" || call.toolStatus === "reused"
+                                    ? "Tool Result"
+                                    : "Tool Execution"}
+                                </strong>
+                                <pre>{JSON.stringify(call.toolResult, null, 2)}</pre>
+                              </div>
+                            ) : null}
                           </section>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                  {runActive && activityEvents.length === 0 ? (
-                    <div className="native-agent-activity-row is-running">
+                        );
+                      })}
+                    </section>
+                  ))}
+                  {runActive && responses.length === 0 ? (
+                    <div className="native-agent-response-waiting">
                       <Loader2 className="spin" size={15} />
-                      <span>Agent 正在启动</span>
+                      <span>等待第一个 Response</span>
                     </div>
                   ) : null}
                 </div>
@@ -3151,7 +3241,7 @@ function NativeAgentView({
                     ))}
                   </div>
                 ) : null}
-                {run.final_output ? (
+                {run.final_output && !finalOutputAlreadyShown ? (
                   <div className="native-agent-assistant-message">{run.final_output}</div>
                 ) : null}
                 {run.error_message ? (

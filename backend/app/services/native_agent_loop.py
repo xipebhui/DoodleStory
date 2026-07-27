@@ -57,12 +57,6 @@ NATIVE_AGENT_BASE_INSTRUCTIONS = """
 严格按照本次 Run 固定的 Skill 工作。Runtime 只负责 Agent Loop 和真实 Tool 执行；故事改写、
 分镜切割、图片 Prompt、图片 Review、是否修改重画都由你依据 Skill 和用户目标决定。
 
-像 Codex 一样主动向用户提供简短、可核查的创作进展，不要沉默执行：
-1. 开始创作时，说明故事切分思路、旁白/对白取舍和整体画面节奏。
-2. 每次调用 `generate_image` 前，先说明当前画面要表达的剧情、情绪、构图和文字安排。
-3. 查看工具返回的真实图片后，说明 Review 结论、发现的问题，以及接受或重画的决定。
-这些内容是面向用户的创作决策摘要，不是隐藏思维链；不要输出冗长自言自语。
-
 `generate_image` 返回的图片会直接进入你的视觉上下文。调用后必须查看真实图片，再判断继续调用
 还是给出 final output。不得声称执行了没有真实 Tool Output 的动作，不得展示隐藏推理、系统配置
 或密钥。
@@ -430,13 +424,45 @@ async def execute_native_agent_run(
                     )
                     text_delta_buffer = ""
                     last_delta_flush = time.monotonic()
+                    current_response_id: str | None = None
+                    function_argument_buffers: dict[str, str] = {}
+                    function_argument_last_flush: dict[str, float] = {}
+                    function_call_metadata: dict[str, dict[str, object]] = {}
+
+                    def flush_text_delta() -> None:
+                        nonlocal text_delta_buffer, last_delta_flush
+                        if not text_delta_buffer or current_response_id is None:
+                            return
+                        store.append_response_text_delta(
+                            current_response_id,
+                            text_delta_buffer,
+                        )
+                        text_delta_buffer = ""
+                        last_delta_flush = time.monotonic()
+
+                    def flush_function_arguments(item_id: str) -> None:
+                        delta = function_argument_buffers.get(item_id, "")
+                        if not delta or current_response_id is None:
+                            return
+                        metadata = function_call_metadata.get(item_id, {})
+                        store.append_function_call_arguments_delta(
+                            response_id=current_response_id,
+                            item_id=item_id,
+                            tool_call_id=str(metadata.get("tool_call_id") or ""),
+                            name=str(metadata.get("name") or ""),
+                            delta=delta,
+                        )
+                        function_argument_buffers[item_id] = ""
+                        function_argument_last_flush[item_id] = time.monotonic()
+
                     async for event in result.stream_events():
                         if event.type != "raw_response_event":
                             continue
                         raw_event = event.data
                         raw_type = getattr(raw_event, "type", "")
                         if raw_type == "response.created":
-                            store.start_model_step(raw_event.response.id)
+                            current_response_id = raw_event.response.id
+                            store.start_model_step(current_response_id)
                         elif raw_type == "response.output_text.delta":
                             text_delta_buffer += raw_event.delta
                             now = time.monotonic()
@@ -444,14 +470,60 @@ async def execute_native_agent_run(
                                 len(text_delta_buffer) >= 80
                                 or now - last_delta_flush >= 0.25
                             ):
-                                store.append_text_delta(text_delta_buffer)
-                                text_delta_buffer = ""
-                                last_delta_flush = now
+                                flush_text_delta()
+                        elif raw_type == "response.output_item.added":
+                            item = raw_event.item
+                            if getattr(item, "type", "") != "function_call":
+                                continue
+                            item_id = str(item.id)
+                            metadata = {
+                                "tool_call_id": str(item.call_id),
+                                "name": str(item.name),
+                                "output_index": int(raw_event.output_index),
+                            }
+                            function_call_metadata[item_id] = metadata
+                            function_argument_buffers[item_id] = ""
+                            function_argument_last_flush[item_id] = time.monotonic()
+                            store.start_function_call(
+                                response_id=current_response_id or "",
+                                item_id=item_id,
+                                tool_call_id=str(metadata["tool_call_id"]),
+                                name=str(metadata["name"]),
+                                output_index=int(metadata["output_index"]),
+                            )
+                        elif raw_type == "response.function_call_arguments.delta":
+                            item_id = str(raw_event.item_id)
+                            function_argument_buffers[item_id] = (
+                                function_argument_buffers.get(item_id, "")
+                                + raw_event.delta
+                            )
+                            now = time.monotonic()
+                            if (
+                                len(function_argument_buffers[item_id]) >= 80
+                                or now
+                                - function_argument_last_flush.get(item_id, now)
+                                >= 0.25
+                            ):
+                                flush_function_arguments(item_id)
+                        elif raw_type == "response.function_call_arguments.done":
+                            item_id = str(raw_event.item_id)
+                            flush_function_arguments(item_id)
+                            metadata = function_call_metadata.get(item_id, {})
+                            store.complete_function_call_arguments(
+                                response_id=current_response_id or "",
+                                item_id=item_id,
+                                tool_call_id=str(metadata.get("tool_call_id") or ""),
+                                name=str(
+                                    getattr(raw_event, "name", None)
+                                    or metadata.get("name")
+                                    or ""
+                                ),
+                                arguments=str(raw_event.arguments),
+                            )
                         elif raw_type == "response.completed":
-                            if text_delta_buffer:
-                                store.append_text_delta(text_delta_buffer)
-                                text_delta_buffer = ""
-                                last_delta_flush = time.monotonic()
+                            flush_text_delta()
+                            for item_id in tuple(function_argument_buffers):
+                                flush_function_arguments(item_id)
                             usage = getattr(raw_event.response, "usage", None)
                             usage_payload = (
                                 usage.model_dump(mode="json")
@@ -462,8 +534,9 @@ async def execute_native_agent_run(
                                 raw_event.response.id,
                                 usage=usage_payload,
                             )
-                    if text_delta_buffer:
-                        store.append_text_delta(text_delta_buffer)
+                    flush_text_delta()
+                    for item_id in tuple(function_argument_buffers):
+                        flush_function_arguments(item_id)
                 except Exception as exc:
                     store.fail_active_model_step(exc)
                     set_span_status(

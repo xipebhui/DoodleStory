@@ -257,7 +257,7 @@ class NativeAgentStore:
             _add_event(
                 db,
                 self.run_id,
-                "model.started",
+                "response.started",
                 {
                     "step_sequence": step.sequence,
                     "response_id": response_id,
@@ -292,7 +292,7 @@ class NativeAgentStore:
             _add_event(
                 db,
                 self.run_id,
-                "model.completed",
+                "response.completed",
                 {
                     "step_sequence": step.sequence,
                     "response_id": response_id,
@@ -321,8 +321,71 @@ class NativeAgentStore:
             step.error_message = str(exc)[:500]
             db.commit()
 
-    def append_text_delta(self, delta: str) -> None:
-        self.append_event("assistant.delta", {"delta": delta})
+    def append_response_text_delta(self, response_id: str, delta: str) -> None:
+        self.append_event(
+            "response.output_text.delta",
+            {"response_id": response_id, "delta": delta},
+        )
+
+    def start_function_call(
+        self,
+        *,
+        response_id: str,
+        item_id: str,
+        tool_call_id: str,
+        name: str,
+        output_index: int,
+    ) -> None:
+        self.append_event(
+            "response.function_call.started",
+            {
+                "response_id": response_id,
+                "item_id": item_id,
+                "tool_call_id": tool_call_id,
+                "name": name,
+                "output_index": output_index,
+            },
+        )
+
+    def append_function_call_arguments_delta(
+        self,
+        *,
+        response_id: str,
+        item_id: str,
+        tool_call_id: str,
+        name: str,
+        delta: str,
+    ) -> None:
+        self.append_event(
+            "response.function_call.arguments.delta",
+            {
+                "response_id": response_id,
+                "item_id": item_id,
+                "tool_call_id": tool_call_id,
+                "name": name,
+                "delta": delta,
+            },
+        )
+
+    def complete_function_call_arguments(
+        self,
+        *,
+        response_id: str,
+        item_id: str,
+        tool_call_id: str,
+        name: str,
+        arguments: str,
+    ) -> None:
+        self.append_event(
+            "response.function_call.arguments.done",
+            {
+                "response_id": response_id,
+                "item_id": item_id,
+                "tool_call_id": tool_call_id,
+                "name": name,
+                "arguments": arguments,
+            },
+        )
 
     def prepare_tool(
         self,
@@ -381,7 +444,7 @@ class NativeAgentStore:
                     "step_sequence": step.sequence,
                     "tool": "generate_image",
                     "tool_call_id": tool_call_id,
-                    "prompt": prompt,
+                    "arguments": {"prompt": prompt},
                 },
             )
             db.commit()

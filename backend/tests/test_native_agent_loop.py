@@ -381,7 +381,7 @@ class NativeAgentLoopTests(unittest.TestCase):
             )
             self.assertEqual(
                 "幂等图片提示词",
-                json.loads(prepared_event.payload_json)["prompt"],
+                json.loads(prepared_event.payload_json)["arguments"]["prompt"],
             )
 
     def test_sdk_context_session_persists_and_finds_tool_output(self) -> None:
@@ -504,6 +504,36 @@ class NativeAgentLoopTests(unittest.TestCase):
                             delta="正在整理结果",
                         ),
                     ),
+                    SimpleNamespace(
+                        type="raw_response_event",
+                        data=SimpleNamespace(
+                            type="response.output_item.added",
+                            output_index=1,
+                            item=SimpleNamespace(
+                                id="function-item-1",
+                                type="function_call",
+                                call_id="function-call-1",
+                                name="generate_image",
+                            ),
+                        ),
+                    ),
+                    SimpleNamespace(
+                        type="raw_response_event",
+                        data=SimpleNamespace(
+                            type="response.function_call_arguments.delta",
+                            item_id="function-item-1",
+                            delta='{"prompt":"真实',
+                        ),
+                    ),
+                    SimpleNamespace(
+                        type="raw_response_event",
+                        data=SimpleNamespace(
+                            type="response.function_call_arguments.done",
+                            item_id="function-item-1",
+                            name="generate_image",
+                            arguments='{"prompt":"真实参数"}',
+                        ),
+                    ),
                     response_stream_events("response-text")[1],
                 ],
             )
@@ -560,7 +590,20 @@ class NativeAgentLoopTests(unittest.TestCase):
                 .where(NativeAgentEvent.run_id == run_id)
                 .order_by(NativeAgentEvent.sequence.asc())
             ).all()
-            self.assertIn("assistant.delta", [event.event_type for event in events])
+            event_types = [event.event_type for event in events]
+            self.assertIn("response.output_text.delta", event_types)
+            self.assertIn("response.function_call.started", event_types)
+            self.assertIn("response.function_call.arguments.delta", event_types)
+            self.assertIn("response.function_call.arguments.done", event_types)
+            arguments_event = next(
+                event
+                for event in events
+                if event.event_type == "response.function_call.arguments.done"
+            )
+            self.assertEqual(
+                '{"prompt":"真实参数"}',
+                json.loads(arguments_event.payload_json)["arguments"],
+            )
             self.assertEqual("run.completed", events[-1].event_type)
 
         runtime_source = inspect.getsource(native_agent_loop)

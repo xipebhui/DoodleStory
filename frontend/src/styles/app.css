@@ -7948,54 +7948,72 @@ textarea {
   font-size: 12px;
 }
 
-.native-agent-activity {
+.native-agent-responses {
   display: grid;
-  gap: 7px;
+  gap: 12px;
   margin: 0 0 14px;
-  padding: 12px 14px;
-  border-left: 1px solid #34373b;
 }
 
-.native-agent-activity-item {
+.native-agent-response {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px 14px;
+  border-left: 1px solid #43474d;
+  background: #111416;
 }
 
-.native-agent-activity-row {
+.native-agent-response > header,
+.native-agent-function-call > header,
+.native-agent-response-waiting {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 9px;
   min-height: 24px;
   color: #9a9c9f;
   font-size: 13px;
 }
 
-.native-agent-activity-row svg {
-  flex: none;
+.native-agent-response > header span {
+  color: #d7d4cf;
+  font-weight: 650;
 }
 
-.native-agent-activity-row.is-running {
+.native-agent-response-text {
+  color: #e7e4df;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.native-agent-function-call {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #34383d;
+  border-radius: 10px;
+  background: #171a1d;
+}
+
+.native-agent-function-call > header > span:last-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.native-agent-function-call .is-running {
   color: #e4c3a8;
 }
 
-.native-agent-activity-row.is-complete {
+.native-agent-function-call .is-complete {
   color: #a8b9a8;
 }
 
-.native-agent-activity-row.is-error {
+.native-agent-function-call .is-error {
   color: #f3a18f;
 }
 
-.native-agent-image-plan {
-  margin: 2px 0 8px 24px;
-  padding: 12px 14px;
-  border: 1px solid #3b3f44;
-  border-radius: 10px;
-  background: #15181b;
-}
-
-.native-agent-image-plan strong,
-.native-agent-assistant-message strong {
+.native-agent-function-call strong {
   display: block;
   margin-bottom: 7px;
   color: #e5b184;
@@ -8003,12 +8021,15 @@ textarea {
   letter-spacing: 0.02em;
 }
 
-.native-agent-image-plan p {
+.native-agent-function-call pre {
+  overflow-x: auto;
   margin: 0;
   color: #d2d0cc;
-  font-size: 13px;
-  line-height: 1.65;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .native-agent-stream-warning {
