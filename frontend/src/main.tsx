@@ -3033,6 +3033,12 @@ function NativeAgentView({
                   </span>
                   <span>{run.image_call_count} 次生图</span>
                 </div>
+                {streamedText && !run.final_output ? (
+                  <div className="native-agent-assistant-message is-streaming">
+                    <strong>创作思考</strong>
+                    {streamedText}
+                  </div>
+                ) : null}
                 <div className="native-agent-activity" aria-label="Agent 实时执行进度">
                   {activityEvents.map((event) => {
                     const failed = event.event_type === "tool.failed"
@@ -3055,6 +3061,14 @@ function NativeAgentView({
                           ),
                       );
                     const runAdvanced = laterEvents.length > 0;
+                    const imagePlanNumber = activityEvents.filter(
+                      (candidate) =>
+                        candidate.sequence <= event.sequence
+                        && candidate.event_type === "tool.prepared",
+                    ).length;
+                    const imagePrompt = event.event_type === "tool.prepared"
+                      ? String(event.payload.prompt || "")
+                      : "";
                     const running = (event.event_type === "run.started"
                       || event.event_type === "run.resumed"
                       || event.event_type === "model.started"
@@ -3070,7 +3084,7 @@ function NativeAgentView({
                       "model.started": `第 ${modelCount || "下一"} 次模型调用开始`,
                       "model.completed": "模型响应已完成并保存",
                       "checkpoint.saved": "执行 checkpoint 已保存",
-                      "tool.prepared": "generate_image 调用已准备并持久化",
+                      "tool.prepared": `第 ${imagePlanNumber} 张画面规划已提交`,
                       "tool.started": "generate_image 正在生成图片",
                       "tool.completed": "图片生成完成，已返回模型视觉上下文",
                       "tool.reused": "已复用同一 Tool 调用的成功图片",
@@ -3080,20 +3094,27 @@ function NativeAgentView({
                       "run.failed": "本轮 Agent Loop 执行失败",
                     };
                     return (
-                      <div
-                        className={`native-agent-activity-row ${
-                          failed ? "is-error" : running ? "is-running" : "is-complete"
-                        }`}
-                        key={event.id}
-                      >
-                        {failed ? (
-                          <AlertCircle size={15} />
-                        ) : running ? (
-                          <Loader2 className="spin" size={15} />
-                        ) : (
-                          <CheckCircle2 size={15} />
-                        )}
-                        <span>{eventLabel[event.event_type] || event.event_type}</span>
+                      <div className="native-agent-activity-item" key={event.id}>
+                        <div
+                          className={`native-agent-activity-row ${
+                            failed ? "is-error" : running ? "is-running" : "is-complete"
+                          }`}
+                        >
+                          {failed ? (
+                            <AlertCircle size={15} />
+                          ) : running ? (
+                            <Loader2 className="spin" size={15} />
+                          ) : (
+                            <CheckCircle2 size={15} />
+                          )}
+                          <span>{eventLabel[event.event_type] || event.event_type}</span>
+                        </div>
+                        {imagePrompt ? (
+                          <section className="native-agent-image-plan">
+                            <strong>模型实际提交的画面 Prompt</strong>
+                            <p>{imagePrompt}</p>
+                          </section>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -3104,11 +3125,6 @@ function NativeAgentView({
                     </div>
                   ) : null}
                 </div>
-                {streamedText && !run.final_output ? (
-                  <div className="native-agent-assistant-message is-streaming">
-                    {streamedText}
-                  </div>
-                ) : null}
                 {run.images.length > 0 ? (
                   <div className="native-agent-image-grid">
                     {run.images.map((image) => (

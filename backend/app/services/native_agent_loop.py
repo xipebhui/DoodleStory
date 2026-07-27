@@ -57,6 +57,12 @@ NATIVE_AGENT_BASE_INSTRUCTIONS = """
 严格按照本次 Run 固定的 Skill 工作。Runtime 只负责 Agent Loop 和真实 Tool 执行；故事改写、
 分镜切割、图片 Prompt、图片 Review、是否修改重画都由你依据 Skill 和用户目标决定。
 
+像 Codex 一样主动向用户提供简短、可核查的创作进展，不要沉默执行：
+1. 开始创作时，说明故事切分思路、旁白/对白取舍和整体画面节奏。
+2. 每次调用 `generate_image` 前，先说明当前画面要表达的剧情、情绪、构图和文字安排。
+3. 查看工具返回的真实图片后，说明 Review 结论、发现的问题，以及接受或重画的决定。
+这些内容是面向用户的创作决策摘要，不是隐藏思维链；不要输出冗长自言自语。
+
 `generate_image` 返回的图片会直接进入你的视觉上下文。调用后必须查看真实图片，再判断继续调用
 还是给出 final output。不得声称执行了没有真实 Tool Output 的动作，不得展示隐藏推理、系统配置
 或密钥。
@@ -286,12 +292,27 @@ async def _tool_outputs(
 
 
 def native_agent_instructions(run: NativeAgentRun) -> str:
+    image_generation_context = json.dumps(
+        {
+            "style_name": run.style_name_snapshot,
+            "aspect_ratio": run.aspect_ratio_snapshot,
+            "style_prompt": run.style_prompt_snapshot,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return (
         f"{NATIVE_AGENT_BASE_INSTRUCTIONS}\n\n"
         f"<skill name={json.dumps(run.skill_name_snapshot, ensure_ascii=False)} "
         f"version={run.skill_version_snapshot}>\n"
         f"{run.skill_version.instructions}\n"
-        "</skill>"
+        "</skill>\n\n"
+        "<image_generation_context>\n"
+        "以下 Style 只用于规划图片、编写 generate_image prompt 和 Review 图片，不得改变故事事实、"
+        "旁白或对白。每次调用 generate_image 时，必须把适用于该画面的视觉规则和比例写入完整 "
+        "prompt；Runtime 不会代为拼接。\n"
+        f"{image_generation_context}\n"
+        "</image_generation_context>"
     )
 
 

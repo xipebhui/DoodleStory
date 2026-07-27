@@ -7956,6 +7956,11 @@ textarea {
   border-left: 1px solid #34373b;
 }
 
+.native-agent-activity-item {
+  display: grid;
+  gap: 8px;
+}
+
 .native-agent-activity-row {
   display: flex;
   align-items: center;
@@ -7979,6 +7984,31 @@ textarea {
 
 .native-agent-activity-row.is-error {
   color: #f3a18f;
+}
+
+.native-agent-image-plan {
+  margin: 2px 0 8px 24px;
+  padding: 12px 14px;
+  border: 1px solid #3b3f44;
+  border-radius: 10px;
+  background: #15181b;
+}
+
+.native-agent-image-plan strong,
+.native-agent-assistant-message strong {
+  display: block;
+  margin-bottom: 7px;
+  color: #e5b184;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.native-agent-image-plan p {
+  margin: 0;
+  color: #d2d0cc;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
 }
 
 .native-agent-stream-warning {

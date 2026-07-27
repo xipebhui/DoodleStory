@@ -57,6 +57,17 @@
 
 ## 最近完成的工作
 
+- 修正 Native Agent 创作过程展示与 Style 传递：确认当前 `.env` 中转站接受
+  `reasoning.summary=auto` 参数但不返回 reasoning summary 事件，因此不再用 Runtime 状态冒充
+  LLM 思考，也不伪造隐藏思维链。Base Instructions 现要求模型像 Codex 一样主动流式输出故事
+  切分、旁白/对白取舍、画面目标和图片 Review 的简短可核查决策；每个真实
+  `generate_image` Tool Call 事件同时保存并展示模型实际提交的完整图片 Prompt。Style 从
+  Tool Description 移到独立 `image_generation_context`，只用于图片规划、Prompt 和 Review，
+  不改变故事事实或文案。真实 Run `8aa0039c473843fea49295c0340193be` 证明缺口存在：选择的是
+  “极简线稿情绪漫画风”，旧代码实际生成的是“真实电影感分镜照片风格”。修正后 12 项 Native
+  Agent 定向测试、前端 TypeScript/Vite 构建和 `git diff --check` 通过；当前中转站的无副作用
+  Function Call 探测也确认同一响应可先输出可见创作决策、再提交工具调用。当前旧 Run 未被
+  擅自取消，新实现将在服务安全重启后的新 Run 生效。
 - 修正 Sprint 123 实时投影与图片 Review：`generate_image` Tool Description 不再拼入 Style
   名称、模型、比例或完整风格提示词，只保留稳定工具语义；前端 EventSource 启用跨端口会话
   凭证并直接消费逐条 `native.event`，不再只等待批次后的 `run.updated` 快照。真实失败 Run

@@ -53,6 +53,7 @@ from app.services.native_agent_loop import (
     NativeImageToolContext,
     build_generate_image_tool,
     execute_native_agent_run,
+    native_agent_instructions,
 )
 from app.services.native_agent_persistence import (
     CompletedNativeTool,
@@ -300,6 +301,18 @@ class NativeAgentLoopTests(unittest.TestCase):
                 )
             )
 
+    def test_style_context_is_scoped_to_image_generation_instructions(self) -> None:
+        run_id = self.create_durable_run()
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            instructions = native_agent_instructions(run)
+
+        self.assertIn("<image_generation_context>", instructions)
+        self.assertIn('"style_name":"测试风格"', instructions)
+        self.assertIn('"aspect_ratio":"9:16"', instructions)
+        self.assertIn('"style_prompt":"测试风格提示词"', instructions)
+        self.assertIn("只用于规划图片", instructions)
+
     def test_generate_image_idempotency_reuses_success_without_provider_call(self) -> None:
         run_id = self.create_durable_run()
         provider_calls = 0
@@ -360,6 +373,16 @@ class NativeAgentLoopTests(unittest.TestCase):
             ).all()
             self.assertEqual(1, len(steps))
             self.assertEqual(NativeAgentStepStatus.succeeded, steps[0].status)
+            prepared_event = db.scalar(
+                select(NativeAgentEvent).where(
+                    NativeAgentEvent.run_id == run_id,
+                    NativeAgentEvent.event_type == "tool.prepared",
+                )
+            )
+            self.assertEqual(
+                "幂等图片提示词",
+                json.loads(prepared_event.payload_json)["prompt"],
+            )
 
     def test_sdk_context_session_persists_and_finds_tool_output(self) -> None:
         run_id = self.create_durable_run()

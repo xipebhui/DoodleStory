@@ -381,6 +381,7 @@ class NativeAgentStore:
                     "step_sequence": step.sequence,
                     "tool": "generate_image",
                     "tool_call_id": tool_call_id,
+                    "prompt": prompt,
                 },
             )
             db.commit()

@@ -65,6 +65,11 @@ Complete（Closed）。用户要求一次完成已确认的第 1–4 阶段，�
   消费 `native.event`。真实失败记录证明 Provider 与 Tool 已完成，后续模型视觉 Review 无法
   下载 OSS URL；Tool 图片现从已保存资产编码为 Responses API 支持的 Base64 data URL。修正后
   11 项定向测试、前端构建、真实资产编码和带 Cookie 的 SSE 请求通过。
+- 后续核查发现 Style 原先只有 Tool Description 一条模型输入路径，移除后真实 Run 从所选
+  “极简线稿情绪漫画风”漂移成“真实电影感”。Style 已迁移到只约束图片规划、Prompt 和 Review
+  的 `image_generation_context`。当前中转站实测不返回官方 reasoning summary 事件，因此 UI
+  改为展示模型主动输出的可核查创作决策和每次 Tool Call 实际 Prompt，Runtime 状态降为辅助；
+  不把系统日志或伪造内容标成模型思考。修正后 12 项定向测试和前端构建通过。
 
 ## Done means
 
