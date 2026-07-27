@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
 from app.api.pagination import build_page
 from app.core.config import get_settings
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
@@ -42,7 +44,7 @@ from app.schemas.native_agent import (
     NativeAgentRunRead,
 )
 from app.services.agent_skill_management import parse_tool_names
-from app.services.native_agent_loop import execute_native_agent_run
+from app.services.native_agent_worker import enqueue_native_agent_run
 
 
 router = APIRouter(prefix="/agent-loop", tags=["native-agent-loop"])
@@ -323,6 +325,7 @@ def get_native_agent_conversation(
 @router.post(
     "/conversations/{conversation_id}/runs",
     response_model=ApiData[NativeAgentRunRead],
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_native_agent_run(
     conversation_id: str,
@@ -433,5 +436,69 @@ async def create_native_agent_run(
     conversation.last_message_at = datetime.utcnow()
     db.commit()
 
-    await execute_native_agent_run(run.id)
+    await enqueue_native_agent_run(run.id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+
+
+@router.get("/runs/{run_id}/events")
+async def stream_native_agent_run_events(
+    run_id: str,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    owned_run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == run_id,
+            NativeAgentConversation.owner_user_id == user.id,
+        )
+    )
+    if owned_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="最小 Agent Run 不存在",
+        )
+
+    async def event_stream():
+        previous_snapshot = ""
+        heartbeat_ticks = 0
+        while not await request.is_disconnected():
+            with SessionLocal() as event_db:
+                run = _load_run_for_read(event_db, run_id)
+                run_read = _run_to_read(run)
+                snapshot = json.dumps(
+                    run_read.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                terminal = run.status in {
+                    AgentRunStatus.succeeded,
+                    AgentRunStatus.failed,
+                    AgentRunStatus.cancelled,
+                }
+            if snapshot != previous_snapshot:
+                yield f"event: run.updated\ndata: {snapshot}\n\n"
+                previous_snapshot = snapshot
+                heartbeat_ticks = 0
+                if terminal:
+                    return
+            else:
+                heartbeat_ticks += 1
+                if heartbeat_ticks >= 12:
+                    yield ": heartbeat\n\n"
+                    heartbeat_ticks = 0
+            await asyncio.sleep(0.75)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

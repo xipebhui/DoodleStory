@@ -237,8 +237,8 @@
   Runtime 不再按 Style、Skill 名称、Panel 数量或漫画阶段编写 Python 业务分支，也不启动旧
   Agent 队列。新路径只复用用户、发布版 Skill、Style、文件存储和图片 Provider，运行状态写入
   `native_agent_conversations/runs/items/images`，不写旧 Agent Step、ComicPlan、Artifact、
-  Approval、GenerationTask、Panel 或 GeneratedImage。第一版 Tool 串行执行，积分、后台队列、
-  中断恢复、审批和正式 Evaluation 明确留待后续独立合同。
+  Approval、GenerationTask、Panel 或 GeneratedImage。第一版 Tool 串行执行；积分、审批和正式
+  Evaluation 明确留待后续独立合同。
 - Sprint 120 已把 Native Loop 接入现有 MLflow 3.14.0 脱敏观测层：每个 Run 以
   `native_agent_run_id` 创建唯一 `native_agent.run` 根 Trace，模型 SDK Loop、
   `generate_image` Tool 和图片 Provider 分别作为子 Span，记录模型、状态、调用次数、延迟、
@@ -247,6 +247,14 @@
   启动必须连接成功。本机为了查看模型调用与后续内容评估可显式设置
   `MLFLOW_TRACE_CONTENT=true`，生产与示例默认 `false`；两种模式都必须清除密钥、
   Authorization、URL 和内部路径。正式 Evaluation 规则仍为 Deferred。
+- Sprint 122 已把 Native Run 从阻塞式 HTTP 执行改为“数据库 queued Run + 进程内单 Worker”：
+  POST 只完成校验、持久化和入队并返回 `202 Accepted`，Worker 只接收 Run ID，再从数据库读取
+  Skill、Style、用户输入和当前状态。启动时 queued Run 重新入队；running/waiting Run 因模型
+  Loop 没有可安全重放的 checkpoint，会明确标记为中断失败，不自动重复可能已发生的生图副作用。
+  每个 Run 提供 owner-only SSE 快照流，前端按 Item/Image/终态实时更新对话时间线和图片，并在
+  新状态到达时自动滚动；刷新仍从数据库详情恢复。Native MLflow 中 `generate_image` 保持
+  `TOOL`，内部图片 Provider 使用 `TASK`，成功和失败显式记录 `OK/ERROR`。MLflow 3.14 Trace
+  图的 Tool 暗红色属于 Span 类型配色，不能作为错误判断；执行结论以 Trace/Span 状态字段为准。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

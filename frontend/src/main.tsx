@@ -44,6 +44,7 @@ import {
   API_BASE_URL,
   agentEventStreamUrl,
   api,
+  nativeAgentRunEventStreamUrl,
   type ActivationCode,
   type ActivationCodeCreated,
   type AgentConversation,
@@ -65,6 +66,7 @@ import {
   type AgentTaskInspector,
   type NativeAgentConversation,
   type NativeAgentConversationDetail,
+  type NativeAgentRun,
   type AdminCreditTransaction,
   type AdminCreditUsage,
   type AdminUserCreditDetail,
@@ -2783,6 +2785,8 @@ function NativeAgentView({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [eventConnectionError, setEventConnectionError] = useState("");
+  const threadRef = useRef<HTMLElement | null>(null);
 
   async function loadConversations() {
     const result = await api.nativeAgentConversations(50);
@@ -2827,6 +2831,65 @@ function NativeAgentView({
     });
   }, [routeConversationId]);
 
+  const activeRun =
+    [...(detail?.runs || [])]
+      .reverse()
+      .find((run) => activeAgentRunStatuses.has(run.status)) || null;
+
+  useEffect(() => {
+    if (!activeRun) {
+      setEventConnectionError("");
+      return;
+    }
+    const source = new EventSource(nativeAgentRunEventStreamUrl(activeRun.id));
+    const handleUpdate = (event: MessageEvent<string>) => {
+      try {
+        const nextRun = JSON.parse(event.data) as NativeAgentRun;
+        setDetail((current) => {
+          if (!current || current.id !== nextRun.conversation_id) return current;
+          const existingIndex = current.runs.findIndex((run) => run.id === nextRun.id);
+          const runs =
+            existingIndex === -1
+              ? [...current.runs, nextRun]
+              : current.runs.map((run) => (run.id === nextRun.id ? nextRun : run));
+          return { ...current, runs };
+        });
+        setEventConnectionError("");
+        if (!activeAgentRunStatuses.has(nextRun.status)) {
+          source.close();
+          void loadConversations().catch((loadError) => {
+            setError(loadError instanceof Error ? loadError.message : "会话列表刷新失败");
+          });
+        }
+      } catch {
+        setEventConnectionError("实时事件内容无法读取，请刷新页面恢复当前状态");
+      }
+    };
+    source.addEventListener("run.updated", handleUpdate as EventListener);
+    source.onerror = () => {
+      setEventConnectionError("实时连接已断开，浏览器正在自动重连");
+    };
+    return () => {
+      source.removeEventListener("run.updated", handleUpdate as EventListener);
+      source.close();
+    };
+  }, [activeRun?.id]);
+
+  const threadSignature = detail?.runs
+    .map((run) => `${run.id}:${run.status}:${run.items.length}:${run.images.length}`)
+    .join("|");
+
+  useEffect(() => {
+    if (!threadRef.current || !threadSignature) return;
+    const frame = window.requestAnimationFrame(() => {
+      threadRef.current?.scrollTo({
+        top: threadRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [threadSignature]);
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!content.trim() || !skillVersionId || !styleId || sending) return;
@@ -2838,17 +2901,22 @@ function NativeAgentView({
         (await api.createNativeAgentConversation({
           title: content.trim().slice(0, 40),
         }));
-      await api.createNativeAgentRun(conversation.id, {
+      const run = await api.createNativeAgentRun(conversation.id, {
         content,
         skill_version_id: skillVersionId,
         style_id: styleId,
       });
       setContent("");
-      await loadConversations();
+      setDetail((current) =>
+        current?.id === conversation.id
+          ? { ...current, runs: [...current.runs, run] }
+          : current,
+      );
+      void loadConversations().catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : "会话列表刷新失败");
+      });
       if (routeConversationId !== conversation.id) {
         onNavigatePath(`/agent/${encodeURIComponent(conversation.id)}`);
-      } else {
-        await loadDetail(conversation.id);
       }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Agent Loop 执行失败");
@@ -2876,7 +2944,7 @@ function NativeAgentView({
           <code>model → generate_image → image review → model</code>
         </header>
 
-        <section className="native-agent-thread" aria-live="polite">
+        <section className="native-agent-thread" aria-live="polite" ref={threadRef}>
           {loading ? (
             <div className="native-agent-empty"><Loader2 className="spin" size={24} />正在加载…</div>
           ) : null}
@@ -2889,6 +2957,18 @@ function NativeAgentView({
           ) : null}
           {detail?.runs.map((run) => {
             const userItem = run.items.find((item) => item.item_type === "user_input");
+            const activityItems = run.items.filter(
+              (item) => item.item_type === "tool_call" || item.item_type === "tool_result",
+            );
+            const toolCallCount = activityItems.filter(
+              (item) => item.item_type === "tool_call",
+            ).length;
+            const toolResultCount = activityItems.filter(
+              (item) => item.item_type === "tool_result",
+            ).length;
+            let callIndex = 0;
+            let resultIndex = 0;
+            const runActive = activeAgentRunStatuses.has(run.status);
             return (
               <article className="native-agent-run" key={run.id}>
                 <div className="native-agent-user-message">
@@ -2897,8 +2977,67 @@ function NativeAgentView({
                 <div className="native-agent-run-meta">
                   <span>{run.skill_name} · v{run.skill_version}</span>
                   <span>{run.style_name}</span>
-                  <span>{run.model_call_count} 次模型调用</span>
+                  <span>
+                    {runActive && run.model_call_count === 0
+                      ? "模型 Loop 运行中"
+                      : `${run.model_call_count} 次模型调用`}
+                  </span>
                   <span>{run.image_call_count} 次生图</span>
+                </div>
+                <div className="native-agent-activity" aria-label="Agent 实时执行进度">
+                  <div className="native-agent-activity-row is-complete">
+                    <CheckCircle2 size={15} />
+                    <span>Agent 已读取用户目标与 {run.skill_name} v{run.skill_version}</span>
+                  </div>
+                  {activityItems.map((item) => {
+                    if (item.item_type === "tool_call") {
+                      callIndex += 1;
+                      const waiting = callIndex > toolResultCount;
+                      return (
+                        <div
+                          className={`native-agent-activity-row ${waiting ? "is-running" : "is-complete"}`}
+                          key={item.id}
+                        >
+                          {waiting
+                            ? <Loader2 className="spin" size={15} />
+                            : <CheckCircle2 size={15} />}
+                          <span>第 {callIndex} 张图片已提交给 generate_image</span>
+                        </div>
+                      );
+                    }
+                    resultIndex += 1;
+                    const succeeded = item.payload.status === "succeeded";
+                    return (
+                      <div
+                        className={`native-agent-activity-row ${succeeded ? "is-complete" : "is-error"}`}
+                        key={item.id}
+                      >
+                        {succeeded
+                          ? <CheckCircle2 size={15} />
+                          : <AlertCircle size={15} />}
+                        <span>
+                          第 {resultIndex} 张图片
+                          {succeeded ? "生成完成，已返回模型视觉上下文" : "生成失败"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {runActive && toolCallCount === toolResultCount ? (
+                    <div className="native-agent-activity-row is-running">
+                      <Loader2 className="spin" size={15} />
+                      <span>
+                        {toolResultCount === 0
+                          ? "模型正在规划故事、分镜与图片提示词"
+                          : "模型正在查看生成结果并决定下一步"}
+                      </span>
+                    </div>
+                  ) : null}
+                  {run.status === "succeeded" ? (
+                    <div className="native-agent-activity-row is-complete">
+                      <CheckCircle2 size={15} />
+                      <span>本轮 Agent Loop 已完成</span>
+                    </div>
+                  ) : null}
                 </div>
                 {run.images.length > 0 ? (
                   <div className="native-agent-image-grid">
@@ -2927,6 +3066,12 @@ function NativeAgentView({
               </article>
             );
           })}
+          {eventConnectionError ? (
+            <div className="native-agent-stream-warning">
+              <AlertCircle size={15} />
+              {eventConnectionError}
+            </div>
+          ) : null}
         </section>
 
         <form className="native-agent-composer" onSubmit={submit}>
@@ -2936,7 +3081,7 @@ function NativeAgentView({
               <select
                 value={skillVersionId}
                 onChange={(event) => setSkillVersionId(event.target.value)}
-                disabled={sending}
+                disabled={sending || Boolean(activeRun)}
                 required
               >
                 <option value="">选择只使用 generate_image 的 Skill</option>
@@ -2950,7 +3095,7 @@ function NativeAgentView({
               <select
                 value={styleId}
                 onChange={(event) => setStyleId(event.target.value)}
-                disabled={sending}
+                disabled={sending || Boolean(activeRun)}
                 required
               >
                 <option value="">选择生图模型与视觉风格</option>
@@ -2970,10 +3115,18 @@ function NativeAgentView({
             <span>唯一 Tool：generate_image；生成结果会直接回到模型视觉上下文。</span>
             <button
               type="submit"
-              disabled={!content.trim() || !skillVersionId || !styleId || sending}
+              disabled={
+                !content.trim() ||
+                !skillVersionId ||
+                !styleId ||
+                sending ||
+                Boolean(activeRun)
+              }
             >
-              {sending ? <Loader2 className="spin" size={17} /> : <Sparkles size={17} />}
-              {sending ? "Loop 执行中…" : "运行 Agent"}
+              {sending || activeRun
+                ? <Loader2 className="spin" size={17} />
+                : <Sparkles size={17} />}
+              {sending ? "正在提交…" : activeRun ? "本轮执行中…" : "运行 Agent"}
             </button>
           </div>
           {error ? <div className="native-agent-run-error"><AlertCircle size={16} />{error}</div> : null}

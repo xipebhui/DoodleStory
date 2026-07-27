@@ -14,6 +14,11 @@ from app.services.video_task_worker import init_video_task_queue, recover_video_
 from app.services.agent_observability import initialize_agent_observability
 from app.services.agent_skill_registry import initialize_runtime_skill_registry
 from app.services.agent_skill_management import initialize_system_agent_skills
+from app.services.native_agent_worker import (
+    init_native_agent_queue,
+    recover_native_agent_runs,
+    shutdown_native_agent_queue,
+)
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -58,11 +63,14 @@ def create_app() -> FastAPI:
         styles.recover_interrupted_style_tests()
         init_task_queue()
         init_video_task_queue()
+        init_native_agent_queue()
         await recover_queued_tasks()
         await recover_video_tasks()
+        await recover_native_agent_runs()
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
+        await shutdown_native_agent_queue()
         await shutdown_task_queue()
         await shutdown_video_task_queue()
 

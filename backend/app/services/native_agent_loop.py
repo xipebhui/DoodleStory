@@ -140,7 +140,7 @@ def build_generate_image_tool(
                 with agent_span(
                     "native_agent.image_provider",
                     agent_run_id=context.run_id,
-                    span_type="TOOL",
+                    span_type="TASK",
                     attributes={
                         "image_model": context.image_model,
                         "aspect_ratio": context.aspect_ratio,
@@ -187,6 +187,11 @@ def build_generate_image_tool(
                             "height": generated.height,
                             "provider_request_id": generated.provider_request_id,
                         },
+                    )
+                    set_span_status(
+                        provider_span,
+                        "OK",
+                        agent_run_id=context.run_id,
                     )
                 model_image_url = await record_image(cleaned_prompt, generated)
             except Exception as exc:
@@ -242,6 +247,11 @@ def build_generate_image_tool(
                     "width": generated.width,
                     "height": generated.height,
                 },
+            )
+            set_span_status(
+                tool_span,
+                "OK",
+                agent_run_id=context.run_id,
             )
             return [
                 ToolOutputText(

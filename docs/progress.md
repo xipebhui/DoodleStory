@@ -5,13 +5,14 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 121 已于 2026-07-26 完成 Skill 详情与编辑闭环；真实浏览器验证系统 Skill 只读详情、复制个人草稿、个人详情进入编辑、保存回详情、刷新及后退/前进恢复通过，控制台 0 error / 0 warning；`./scripts/check.sh` 覆盖 257 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。
+- 最近验证状态：Sprint 122 已于 2026-07-27 完成 Native Loop 后台执行、SSE 实时进度和 MLflow Trace 语义修正；`./scripts/check.sh` 覆盖 260 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。本地前后端已重启，MLflow `/health` 正常；浏览器自动验收因本地浏览器 localhost 安全策略阻止 reload/DOM 检查而未执行，不以绕过策略代替。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116–121 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 116–122 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-122-native-loop-streaming-and-trace-semantics.md`
 - Complete：`docs/contracts/sprint-121-skill-detail-and-edit.md`
 - Complete：`docs/contracts/sprint-120-native-loop-mlflow-and-agent-ui.md`
 - Complete：`docs/contracts/sprint-119-minimal-native-agent-loop.md`
@@ -53,6 +54,18 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 122 Native Loop 实时事件与 Trace 语义：真实 MLflow Trace
+  `tr-201a90ff214c8da0e0c5d1b824a28c8c` 经 API 核实根 Trace、4 个
+  `native_agent.generate_image` 和 4 个 `native_agent.image_provider` Span 全部为 `OK`，
+  截图中的暗红色是 MLflow 3.14 `TOOL` 类型配色而非错误。新 Trace 保持
+  `generate_image=TOOL`，把内部 Provider 修正为 `TASK`，并对成功/失败显式写入
+  `OK/ERROR`。Native POST 改为 `202 Accepted` 后立即返回 queued Run，由新增进程内单
+  Worker 按 Run ID 后台执行；启动恢复 queued Run，并明确失败关闭无法安全重放的中断 Loop。
+  新增 owner-only Run SSE 快照流，前端把用户消息、模型规划、每次 Tool 提交、图片完成、视觉
+  Review、图片和终态按同一对话时间线实时更新，新事件自动滚动；提交不再长期占用 loading。
+  针对性 8 项和全量 260 项后端测试、Python compileall、空库 migration、前端生产构建及
+  `git diff --check` 通过。本地前后端已重启，MLflow `/health` 返回 `OK`；真实浏览器自动验收
+  被 localhost 安全策略阻止，未绕过策略，也未执行 Deferred Evaluation。
 - 完成 Sprint 121 Skill 详情与编辑闭环：新增稳定的 `/agent/skills/{skill_id}` 只读详情页和 `/agent/skills/{skill_id}/edit` 编辑页；详情完整展示正文、状态、权限、Tools、revision、更新时间与版本入口。列表对所有 Skill 提供“查看详情”，个人未归档 Skill 同时提供“编辑”；系统 Skill 保持只读复制，已归档个人 Skill 保持只读并可先恢复。真实浏览器使用系统 `简单图片故事` 验证只读详情与复制，并用个人副本完成描述编辑保存、revision 1→2、保存回详情、刷新、后退和前进，控制台 0 error / 0 warning。路由测试、前端构建、`git diff --check` 和 `./scripts/check.sh` 全部通过；全量检查覆盖 257 项后端测试和空库 migration。正式 Evaluation 继续 Deferred。
 - 完成 Sprint 120 Native Loop MLflow 与 Agent UI 一致性：新增固定官方 3.14.0 镜像、localhost
   映射、SQLite/artifact named volume、健康检查和单 worker 的本地 Compose；默认 4 worker 在

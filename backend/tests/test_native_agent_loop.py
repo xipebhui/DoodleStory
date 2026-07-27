@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 import inspect
 import json
 from pathlib import Path
@@ -9,7 +10,9 @@ from unittest.mock import AsyncMock, patch
 
 from agents import ToolOutputImage, ToolOutputText
 from agents.tool_context import ToolContext
+from fastapi import HTTPException
 import mlflow
+from mlflow.entities import SpanStatusCode
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -33,10 +36,13 @@ from app.models.enums import (
     StorageBackend,
     StyleStatus,
 )
-from app.api.native_agent import create_native_agent_run
+from app.api.native_agent import (
+    create_native_agent_run,
+    stream_native_agent_run_events,
+)
 from app.schemas.native_agent import NativeAgentRunCreate
 from app.services.image_generation import GeneratedImageFile
-from app.services import agent_observability, native_agent_loop
+from app.services import agent_observability, native_agent_loop, native_agent_worker
 from app.services.native_agent_loop import (
     NativeAgentLoopError,
     NativeImageToolContext,
@@ -317,9 +323,9 @@ class NativeAgentLoopTests(unittest.TestCase):
             db.commit()
 
             with patch(
-                "app.api.native_agent.execute_native_agent_run",
+                "app.api.native_agent.enqueue_native_agent_run",
                 new=AsyncMock(),
-            ) as execute:
+            ) as enqueue:
                 response = asyncio.run(
                     create_native_agent_run(
                         conversation.id,
@@ -333,7 +339,8 @@ class NativeAgentLoopTests(unittest.TestCase):
                     )
                 )
 
-            execute.assert_awaited_once()
+            enqueue.assert_awaited_once()
+            self.assertEqual(response.data.id, enqueue.await_args.args[0])
             self.assertEqual(AgentRunStatus.queued, response.data.status)
             self.assertEqual(1, db.query(NativeAgentRun).count())
             self.assertEqual(0, db.query(AgentRun).count())
@@ -499,9 +506,20 @@ class NativeAgentLoopTests(unittest.TestCase):
             root_span = next(
                 span for span in spans if span.name == "native_agent.run"
             )
+            tool_span = next(
+                span for span in spans if span.name == "native_agent.generate_image"
+            )
+            provider_span = next(
+                span for span in spans if span.name == "native_agent.image_provider"
+            )
             self.assertEqual("succeeded", root_span.attributes["run_status"])
             self.assertEqual(2, root_span.attributes["model_call_count"])
             self.assertEqual(1, root_span.attributes["image_call_count"])
+            self.assertEqual("TOOL", tool_span.span_type)
+            self.assertEqual(SpanStatusCode.OK, tool_span.status.status_code)
+            self.assertEqual("succeeded", tool_span.attributes["result_status"])
+            self.assertEqual("TASK", provider_span.span_type)
+            self.assertEqual(SpanStatusCode.OK, provider_span.status.status_code)
             serialized = json.dumps(traces[0].to_dict())
             self.assertNotIn("private native user content", serialized)
             self.assertNotIn("private image prompt", serialized)
@@ -509,3 +527,205 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertNotIn("private style instructions", serialized)
             self.assertNotIn("private.example", serialized)
             self.assertNotIn("private-primary-secret", serialized)
+
+    def test_recovery_fails_interrupted_run_and_requeues_only_queued_run(self) -> None:
+        with self.Session() as db:
+            user = User(email="native-recovery@example.com", password_hash="hash")
+            db.add(user)
+            db.flush()
+            skill = AgentSkill(
+                owner_user_id=user.id,
+                slug="native-recovery-skill",
+                name="恢复测试 Skill",
+                description="恢复测试。",
+                draft_instructions="# 方法",
+                draft_tool_names_json='["generate_image"]',
+                draft_revision=1,
+                status=AgentSkillStatus.published,
+            )
+            db.add(skill)
+            db.flush()
+            version = AgentSkillVersion(
+                skill_id=skill.id,
+                version=1,
+                name_snapshot=skill.name,
+                description_snapshot=skill.description,
+                instructions=skill.draft_instructions,
+                tool_names_json=skill.draft_tool_names_json,
+                content_hash="sha256:native-recovery",
+                published_by_user_id=user.id,
+            )
+            db.add(version)
+            db.flush()
+            skill.active_version_id = version.id
+            conversation = NativeAgentConversation(
+                owner_user_id=user.id,
+                title="恢复测试",
+            )
+            db.add(conversation)
+            db.flush()
+            interrupted = NativeAgentRun(
+                conversation_id=conversation.id,
+                skill_version_id=version.id,
+                status=AgentRunStatus.running,
+                model_snapshot="test-model",
+                skill_name_snapshot=version.name_snapshot,
+                skill_version_snapshot=1,
+                skill_content_hash_snapshot=version.content_hash,
+            )
+            queued = NativeAgentRun(
+                conversation_id=conversation.id,
+                skill_version_id=version.id,
+                status=AgentRunStatus.queued,
+                model_snapshot="test-model",
+                skill_name_snapshot=version.name_snapshot,
+                skill_version_snapshot=1,
+                skill_content_hash_snapshot=version.content_hash,
+            )
+            db.add_all([interrupted, queued])
+            db.commit()
+            interrupted_id = interrupted.id
+            queued_id = queued.id
+
+        async def recover() -> AsyncMock:
+            enqueue = AsyncMock()
+            with (
+                patch.object(native_agent_worker, "SessionLocal", self.Session),
+                patch.object(native_agent_worker, "_queue", asyncio.Queue()),
+                patch.object(
+                    native_agent_worker,
+                    "enqueue_native_agent_run",
+                    enqueue,
+                ),
+            ):
+                await native_agent_worker.recover_native_agent_runs()
+            return enqueue
+
+        enqueue = asyncio.run(recover())
+        enqueue.assert_awaited_once_with(queued_id)
+        with self.Session() as db:
+            persisted = db.get(NativeAgentRun, interrupted_id)
+            self.assertEqual(AgentRunStatus.failed, persisted.status)
+            self.assertEqual("NativeAgentProcessInterrupted", persisted.error_code)
+
+    def test_native_worker_executes_enqueued_run_id(self) -> None:
+        async def exercise_worker() -> AsyncMock:
+            execute = AsyncMock()
+            with patch.object(
+                native_agent_worker,
+                "execute_native_agent_run",
+                execute,
+            ):
+                native_agent_worker.init_native_agent_queue()
+                try:
+                    await native_agent_worker.enqueue_native_agent_run("run-queued")
+                    await native_agent_worker._queue.join()
+                finally:
+                    await native_agent_worker.shutdown_native_agent_queue()
+            return execute
+
+        execute = asyncio.run(exercise_worker())
+        execute.assert_awaited_once_with("run-queued")
+
+    def test_run_sse_streams_incremental_owned_snapshot_until_terminal(self) -> None:
+        with self.Session() as db:
+            user = User(email="native-sse@example.com", password_hash="hash")
+            other = User(email="native-sse-other@example.com", password_hash="hash")
+            db.add_all([user, other])
+            db.flush()
+            skill = AgentSkill(
+                owner_user_id=user.id,
+                slug="native-sse-skill",
+                name="SSE 测试 Skill",
+                description="SSE 测试。",
+                draft_instructions="# 方法",
+                draft_tool_names_json='["generate_image"]',
+                draft_revision=1,
+                status=AgentSkillStatus.published,
+            )
+            db.add(skill)
+            db.flush()
+            version = AgentSkillVersion(
+                skill_id=skill.id,
+                version=1,
+                name_snapshot=skill.name,
+                description_snapshot=skill.description,
+                instructions=skill.draft_instructions,
+                tool_names_json=skill.draft_tool_names_json,
+                content_hash="sha256:native-sse",
+                published_by_user_id=user.id,
+            )
+            db.add(version)
+            db.flush()
+            skill.active_version_id = version.id
+            conversation = NativeAgentConversation(
+                owner_user_id=user.id,
+                title="SSE 测试",
+            )
+            db.add(conversation)
+            db.flush()
+            run = NativeAgentRun(
+                conversation_id=conversation.id,
+                skill_version_id=version.id,
+                status=AgentRunStatus.running,
+                model_snapshot="test-model",
+                skill_name_snapshot=version.name_snapshot,
+                skill_version_snapshot=1,
+                skill_content_hash_snapshot=version.content_hash,
+            )
+            db.add(run)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=run.id,
+                    sequence=1,
+                    item_type=NativeAgentItemType.user_input,
+                    payload_json='{"content":"测试 SSE"}',
+                )
+            )
+            db.commit()
+            run_id = run.id
+
+            request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+            with patch("app.api.native_agent.SessionLocal", self.Session):
+                response = asyncio.run(
+                    stream_native_agent_run_events(run_id, request, user, db)
+                )
+
+                async def consume() -> list[str]:
+                    iterator = response.body_iterator.__aiter__()
+                    first = await anext(iterator)
+                    with self.Session() as update_db:
+                        persisted = update_db.get(NativeAgentRun, run_id)
+                        persisted.status = AgentRunStatus.succeeded
+                        persisted.final_output = "已完成"
+                        persisted.finished_at = datetime.utcnow()
+                        update_db.add(
+                            NativeAgentItem(
+                                run_id=run_id,
+                                sequence=2,
+                                item_type=NativeAgentItemType.assistant_output,
+                                payload_json='{"content":"已完成"}',
+                            )
+                        )
+                        update_db.commit()
+                    second = await anext(iterator)
+                    with self.assertRaises(StopAsyncIteration):
+                        await anext(iterator)
+                    return [
+                        chunk.decode() if isinstance(chunk, bytes) else chunk
+                        for chunk in (first, second)
+                    ]
+
+                frames = asyncio.run(consume())
+
+            self.assertEqual(2, len(frames))
+            self.assertIn("event: run.updated", frames[0])
+            self.assertIn('"status":"running"', frames[0])
+            self.assertIn('"status":"succeeded"', frames[1])
+            self.assertIn('"content":"已完成"', frames[1])
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(
+                    stream_native_agent_run_events(run_id, request, other, db)
+                )
+            self.assertEqual(404, raised.exception.status_code)

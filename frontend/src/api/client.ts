@@ -1569,3 +1569,7 @@ export function agentEventStreamUrl(conversationId: string, after?: string | nul
   const query = after ? `?after=${encodeURIComponent(after)}` : "";
   return `${API_BASE_URL}/api/v1/agent/conversations/${encodeURIComponent(conversationId)}/events${query}`;
 }
+
+export function nativeAgentRunEventStreamUrl(runId: string) {
+  return `${API_BASE_URL}/api/v1/agent-loop/runs/${encodeURIComponent(runId)}/events`;
+}
