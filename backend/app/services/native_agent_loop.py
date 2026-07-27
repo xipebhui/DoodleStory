@@ -27,11 +27,10 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
 from app.core.database import SessionLocal
-from app.models.entities import NativeAgentItem, NativeAgentRun
+from app.models.entities import FileAsset, NativeAgentItem, NativeAgentRun
 from app.models.enums import (
     AgentRunStatus,
     NativeAgentItemType,
-    StorageBackend,
 )
 from app.services.agent_observability import (
     agent_span,
@@ -48,7 +47,7 @@ from app.services.native_agent_persistence import (
     NativeAgentDatabaseSession,
     NativeAgentStore,
 )
-from app.services.storage import resolve_storage_key
+from app.services.storage import materialize_asset_to_local
 
 
 MAX_NATIVE_AGENT_TURNS = 12
@@ -73,26 +72,16 @@ class NativeImageToolContext:
     run_id: str
     image_model: str | None
     aspect_ratio: str | None
-    style_name: str | None
-    style_prompt: str | None
     reference_urls: tuple[str, ...]
 
 
 ImageGenerator = Callable[..., GeneratedImageFile]
 
 
-def _tool_description(context: NativeImageToolContext) -> str:
-    if context.image_model is None or context.aspect_ratio is None:
-        style_text = "本次 Run 没有 Style，不能生图；需要图片时先向用户索要 Style。"
-    else:
-        style_text = (
-            f"本次 Style={context.style_name}，模型={context.image_model}，"
-            f"比例={context.aspect_ratio}，视觉规则={context.style_prompt or '无'}。"
-        )
+def _tool_description() -> str:
     return (
         "根据完整图片 Prompt 生成一张真实图片，并把图片直接返回给当前模型进行视觉 Review。"
         "prompt 必须包含当前画面所需的全部视觉信息；Runtime 不会在背后拼接或改写 Prompt。"
-        f"{style_text}"
     )
 
 
@@ -125,7 +114,7 @@ def build_generate_image_tool(
                     "image_id": prepared.image_id,
                 },
             )
-            return _tool_outputs(prepared)
+            return await _tool_outputs(prepared)
         store.start_tool(prepared.id)
         with agent_span(
             "native_agent.generate_image",
@@ -251,29 +240,32 @@ def build_generate_image_tool(
                 "OK",
                 agent_run_id=context.run_id,
             )
-            return _tool_outputs(completed)
+            return await _tool_outputs(completed)
 
     return function_tool(
         generate_image,
         name_override="generate_image",
-        description_override=_tool_description(context),
+        description_override=_tool_description(),
         failure_error_function=None,
     )
 
 
 def _completed_image_url(completed: CompletedNativeTool) -> str:
-    if completed.public_url:
+    if completed.public_url and completed.public_url.startswith("data:"):
         return completed.public_url
-    if completed.storage_backend != StorageBackend.local:
-        raise NativeAgentLoopError("生成图片没有可供模型读取的 URL")
-    content = resolve_storage_key(completed.storage_key).read_bytes()
+    with SessionLocal() as db:
+        asset = db.get(FileAsset, completed.asset_id)
+        if asset is None:
+            raise NativeAgentLoopError("生成图片引用的资产不存在")
+        content = materialize_asset_to_local(asset).read_bytes()
     encoded = base64.b64encode(content).decode("ascii")
     return f"data:{completed.content_type};base64,{encoded}"
 
 
-def _tool_outputs(
+async def _tool_outputs(
     completed: CompletedNativeTool,
 ) -> list[ToolOutputText | ToolOutputImage]:
+    image_url = await asyncio.to_thread(_completed_image_url, completed)
     return [
         ToolOutputText(
             text=json.dumps(
@@ -287,7 +279,7 @@ def _tool_outputs(
             )
         ),
         ToolOutputImage(
-            image_url=_completed_image_url(completed),
+            image_url=image_url,
             detail="high",
         ),
     ]
@@ -339,8 +331,6 @@ async def execute_native_agent_run(
             run_id=run.id,
             image_model=run.image_model_snapshot,
             aspect_ratio=run.aspect_ratio_snapshot,
-            style_name=run.style_name_snapshot,
-            style_prompt=run.style_prompt_snapshot,
             reference_urls=reference_urls,
         )
         instructions = native_agent_instructions(run)

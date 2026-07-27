@@ -61,6 +61,10 @@ Complete（Closed）。用户要求一次完成已确认的第 1–4 阶段，�
   TypeScript/Vite 生产构建。
 - `git diff --check` 通过。
 - 本次验证没有调用真实模型或图片 Provider；正式 Evaluation 继续 Deferred。
+- 闭合后的轻量修正移除了 Tool Description 中重复的 Style 快照；前端改为携带会话凭证并逐条
+  消费 `native.event`。真实失败记录证明 Provider 与 Tool 已完成，后续模型视觉 Review 无法
+  下载 OSS URL；Tool 图片现从已保存资产编码为 Responses API 支持的 Base64 data URL。修正后
+  11 项定向测试、前端构建、真实资产编码和带 Cookie 的 SSE 请求通过。
 
 ## Done means
 

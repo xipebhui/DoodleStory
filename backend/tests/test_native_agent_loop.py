@@ -241,8 +241,6 @@ class NativeAgentLoopTests(unittest.TestCase):
                 run_id="run-1",
                 image_model="gpt-image-2",
                 aspect_ratio="9:16",
-                style_name="测试风格",
-                style_prompt="粗线条暖色",
                 reference_urls=(),
             ),
             image_generator=fake_image_generator,
@@ -251,6 +249,10 @@ class NativeAgentLoopTests(unittest.TestCase):
 
         self.assertEqual("generate_image", tool.name)
         self.assertIn("Runtime 不会在背后拼接或改写 Prompt", tool.description)
+        self.assertNotIn("测试风格", tool.description)
+        self.assertNotIn("粗线条暖色", tool.description)
+        self.assertNotIn("gpt-image-2", tool.description)
+        self.assertNotIn("9:16", tool.description)
         output = asyncio.run(
             tool.on_invoke_tool(
                 ToolContext(
@@ -279,8 +281,6 @@ class NativeAgentLoopTests(unittest.TestCase):
                 run_id="run-2",
                 image_model=None,
                 aspect_ratio=None,
-                style_name=None,
-                style_prompt=None,
                 reference_urls=(),
             ),
             image_generator=fail_generator,
@@ -311,7 +311,7 @@ class NativeAgentLoopTests(unittest.TestCase):
             return GeneratedImageFile(
                 storage_backend=StorageBackend.local,
                 storage_key="generated_image/idempotent.png",
-                public_url="https://example.invalid/idempotent.png",
+                public_url="data:image/png;base64,aWRlbXBvdGVudA==",
                 byte_size=10,
                 checksum_sha256="c" * 64,
                 content_type="image/png",
@@ -326,8 +326,6 @@ class NativeAgentLoopTests(unittest.TestCase):
                 run_id=run_id,
                 image_model="gpt-image-2",
                 aspect_ratio="9:16",
-                style_name="测试风格",
-                style_prompt="测试风格提示词",
                 reference_urls=(),
             ),
             image_generator=image_generator,
@@ -684,7 +682,7 @@ class NativeAgentLoopTests(unittest.TestCase):
         generated = GeneratedImageFile(
             storage_backend=StorageBackend.local,
             storage_key="generated_image/native-trace.png",
-            public_url="https://private.example/native-trace.png",
+            public_url="data:image/png;base64,dHJhY2U=",
             byte_size=10,
             checksum_sha256="b" * 64,
             content_type="image/png",

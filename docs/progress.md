@@ -57,6 +57,14 @@
 
 ## 最近完成的工作
 
+- 修正 Sprint 123 实时投影与图片 Review：`generate_image` Tool Description 不再拼入 Style
+  名称、模型、比例或完整风格提示词，只保留稳定工具语义；前端 EventSource 启用跨端口会话
+  凭证并直接消费逐条 `native.event`，不再只等待批次后的 `run.updated` 快照。真实失败 Run
+  `aa1c0c7b9232458b90be1bc6a94ddca9` 已确认图片 Provider、资产下载和 Tool 均成功，400 出现在
+  OpenAI 下一轮视觉 Review 下载阿里云 OSS URL 时；现改为从已保存资产生成官方支持的 Base64
+  data URL 返回模型，避免模型服务端访问对象存储域名。11 项 Native Agent 定向测试、前端
+  TypeScript/Vite 构建、真实 OSS 资产 data URL 转换、带登录 Cookie 的 SSE `native.event`
+  返回和 `git diff --check` 均通过，未执行完整 Sprint 验收或 Deferred Evaluation。
 - 完成 Sprint 123 Native Agent 可恢复 Runtime：保留 `openai-agents==0.18.3` 的 `Agent`、
   `function_tool` 和 Tool Loop，把执行入口切换为 `Runner.run_streamed()`；新增
   `native_agent_steps/events/context_items`，分别保存执行事实、可回放 UI Event 和 Agents SDK

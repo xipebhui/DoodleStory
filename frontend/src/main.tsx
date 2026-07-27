@@ -66,6 +66,7 @@ import {
   type AgentTaskInspector,
   type NativeAgentConversation,
   type NativeAgentConversationDetail,
+  type NativeAgentEvent,
   type NativeAgentRun,
   type AdminCreditTransaction,
   type AdminCreditUsage,
@@ -2845,7 +2846,32 @@ function NativeAgentView({
       setEventConnectionError("");
       return;
     }
-    const source = new EventSource(nativeAgentRunEventStreamUrl(activeRun.id));
+    const source = new EventSource(
+      nativeAgentRunEventStreamUrl(activeRun.id),
+      { withCredentials: true },
+    );
+    const handleNativeEvent = (event: MessageEvent<string>) => {
+      try {
+        const nextEvent = JSON.parse(event.data) as NativeAgentEvent;
+        setDetail((current) => {
+          if (!current) return current;
+          const runs = current.runs.map((run) => {
+            if (run.id !== activeRun.id) return run;
+            if (run.events.some((item) => item.id === nextEvent.id)) return run;
+            return {
+              ...run,
+              events: [...run.events, nextEvent].sort(
+                (left, right) => left.sequence - right.sequence,
+              ),
+            };
+          });
+          return { ...current, runs };
+        });
+        setEventConnectionError("");
+      } catch {
+        setEventConnectionError("实时事件内容无法读取，请刷新页面恢复当前状态");
+      }
+    };
     const handleUpdate = (event: MessageEvent<string>) => {
       try {
         const nextRun = JSON.parse(event.data) as NativeAgentRun;
@@ -2869,11 +2895,13 @@ function NativeAgentView({
         setEventConnectionError("实时事件内容无法读取，请刷新页面恢复当前状态");
       }
     };
+    source.addEventListener("native.event", handleNativeEvent as EventListener);
     source.addEventListener("run.updated", handleUpdate as EventListener);
     source.onerror = () => {
       setEventConnectionError("实时连接已断开，浏览器正在自动重连");
     };
     return () => {
+      source.removeEventListener("native.event", handleNativeEvent as EventListener);
       source.removeEventListener("run.updated", handleUpdate as EventListener);
       source.close();
     };
@@ -3076,7 +3104,7 @@ function NativeAgentView({
                     </div>
                   ) : null}
                 </div>
-                {runActive && streamedText ? (
+                {streamedText && !run.final_output ? (
                   <div className="native-agent-assistant-message is-streaming">
                     {streamedText}
                   </div>
