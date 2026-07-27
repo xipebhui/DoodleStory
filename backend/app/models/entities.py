@@ -21,6 +21,8 @@ from app.models.enums import (
     AgentStepStatus,
     AgentStepType,
     NativeAgentItemType,
+    NativeAgentStepStatus,
+    NativeAgentStepType,
     ContentExtractionMediaKind,
     CreditTransactionType,
     DownloadStatus,
@@ -926,6 +928,18 @@ class NativeAgentRun(Base, TimestampMixin):
         back_populates="run",
         cascade="all, delete-orphan",
     )
+    steps: Mapped[list["NativeAgentStep"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    events: Mapped[list["NativeAgentEvent"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    context_items: Mapped[list["NativeAgentContextItem"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
 
 
 class NativeAgentItem(Base):
@@ -992,6 +1006,131 @@ class NativeAgentImage(Base, TimestampMixin):
 
     run: Mapped[NativeAgentRun] = relationship(back_populates="images")
     asset: Mapped[FileAsset] = relationship()
+
+
+class NativeAgentStep(Base, TimestampMixin):
+    __tablename__ = "native_agent_steps"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "sequence",
+            name="uq_native_agent_steps_run_sequence",
+        ),
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_native_agent_steps_idempotency_key",
+        ),
+        CheckConstraint(
+            "sequence > 0",
+            name="ck_native_agent_steps_sequence_positive",
+        ),
+        CheckConstraint(
+            "attempts >= 0",
+            name="ck_native_agent_steps_attempts_non_negative",
+        ),
+        Index(
+            "ix_native_agent_steps_run_sequence",
+            "run_id",
+            "sequence",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    step_type: Mapped[NativeAgentStepType] = mapped_column(
+        Enum(NativeAgentStepType),
+        index=True,
+    )
+    status: Mapped[NativeAgentStepStatus] = mapped_column(
+        Enum(NativeAgentStepStatus),
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    tool_call_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+        index=True,
+    )
+    idempotency_key: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    input_summary_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    output_ref_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="steps")
+
+
+class NativeAgentEvent(Base):
+    __tablename__ = "native_agent_events"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "sequence",
+            name="uq_native_agent_events_run_sequence",
+        ),
+        CheckConstraint(
+            "sequence > 0",
+            name="ck_native_agent_events_sequence_positive",
+        ),
+        Index(
+            "ix_native_agent_events_run_sequence",
+            "run_id",
+            "sequence",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    payload_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="events")
+
+
+class NativeAgentContextItem(Base):
+    __tablename__ = "native_agent_context_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "sequence",
+            name="uq_native_agent_context_items_run_sequence",
+        ),
+        CheckConstraint(
+            "sequence > 0",
+            name="ck_native_agent_context_items_sequence_positive",
+        ),
+        Index(
+            "ix_native_agent_context_items_run_sequence",
+            "run_id",
+            "sequence",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    item_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="context_items")
 
 
 class AgentConversation(Base, TimestampMixin):

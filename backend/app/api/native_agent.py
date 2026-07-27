@@ -17,9 +17,11 @@ from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
     NativeAgentConversation,
+    NativeAgentEvent,
     NativeAgentImage,
     NativeAgentItem,
     NativeAgentRun,
+    NativeAgentStep,
     Style,
     StyleReferenceImage,
     User,
@@ -38,10 +40,12 @@ from app.schemas.native_agent import (
     NativeAgentConversationCreate,
     NativeAgentConversationDetailRead,
     NativeAgentConversationRead,
+    NativeAgentEventRead,
     NativeAgentImageRead,
     NativeAgentItemRead,
     NativeAgentRunCreate,
     NativeAgentRunRead,
+    NativeAgentStepRead,
 )
 from app.services.native_agent_worker import enqueue_native_agent_run
 
@@ -92,6 +96,32 @@ def _image_to_read(image: NativeAgentImage) -> NativeAgentImageRead:
     )
 
 
+def _step_to_read(step: NativeAgentStep) -> NativeAgentStepRead:
+    return NativeAgentStepRead(
+        id=step.id,
+        sequence=step.sequence,
+        step_type=step.step_type,
+        status=step.status,
+        name=step.name,
+        tool_call_id=step.tool_call_id,
+        attempts=step.attempts,
+        started_at=step.started_at,
+        finished_at=step.finished_at,
+        error_code=step.error_code,
+        error_message=step.error_message,
+    )
+
+
+def _event_to_read(event: NativeAgentEvent) -> NativeAgentEventRead:
+    return NativeAgentEventRead(
+        id=event.id,
+        sequence=event.sequence,
+        event_type=event.event_type,
+        payload=json.loads(event.payload_json),
+        created_at=event.created_at,
+    )
+
+
 def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
     return NativeAgentRunRead(
         id=run.id,
@@ -110,6 +140,14 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
         error_message=run.error_message,
         items=[_item_to_read(item) for item in sorted(run.items, key=lambda value: value.sequence)],
         images=[_image_to_read(image) for image in sorted(run.images, key=lambda value: value.created_at)],
+        steps=[
+            _step_to_read(step)
+            for step in sorted(run.steps, key=lambda value: value.sequence)
+        ],
+        events=[
+            _event_to_read(event)
+            for event in sorted(run.events, key=lambda value: value.sequence)
+        ],
         started_at=run.started_at,
         finished_at=run.finished_at,
         created_at=run.created_at,
@@ -124,6 +162,8 @@ def _load_run_for_read(db: Session, run_id: str) -> NativeAgentRun:
         .options(
             selectinload(NativeAgentRun.items),
             selectinload(NativeAgentRun.images).selectinload(NativeAgentImage.asset),
+            selectinload(NativeAgentRun.steps),
+            selectinload(NativeAgentRun.events),
         )
     )
     if run is None:
@@ -305,6 +345,8 @@ def get_native_agent_conversation(
         .options(
             selectinload(NativeAgentRun.items),
             selectinload(NativeAgentRun.images).selectinload(NativeAgentImage.asset),
+            selectinload(NativeAgentRun.steps),
+            selectinload(NativeAgentRun.events),
         )
         .order_by(NativeAgentRun.created_at.asc())
         .limit(50)
@@ -422,6 +464,18 @@ async def create_native_agent_run(
             ),
         )
     )
+    db.add(
+        NativeAgentEvent(
+            run_id=run.id,
+            sequence=1,
+            event_type="run.created",
+            payload_json=json.dumps(
+                {"status": AgentRunStatus.queued.value},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        )
+    )
     conversation.last_message_at = datetime.utcnow()
     db.commit()
 
@@ -435,6 +489,7 @@ async def stream_native_agent_run_events(
     request: Request,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
+    after: int | None = Query(default=None, ge=0),
 ) -> StreamingResponse:
     owned_run = db.scalar(
         select(NativeAgentRun)
@@ -453,11 +508,33 @@ async def stream_native_agent_run_events(
             detail="最小 Agent Run 不存在",
         )
 
+    headers = getattr(request, "headers", {})
+    header_cursor = headers.get("last-event-id") if headers else None
+    requested_cursor = after if isinstance(after, int) else None
+    try:
+        current_cursor = (
+            requested_cursor
+            if requested_cursor is not None
+            else int(header_cursor or 0)
+        )
+    except ValueError:
+        current_cursor = 0
+
     async def event_stream():
-        previous_snapshot = ""
+        nonlocal current_cursor
         heartbeat_ticks = 0
+        sent_snapshot = False
         while not await request.is_disconnected():
             with SessionLocal() as event_db:
+                events = event_db.scalars(
+                    select(NativeAgentEvent)
+                    .where(
+                        NativeAgentEvent.run_id == run_id,
+                        NativeAgentEvent.sequence > current_cursor,
+                    )
+                    .order_by(NativeAgentEvent.sequence.asc())
+                    .limit(100)
+                ).all()
                 run = _load_run_for_read(event_db, run_id)
                 run_read = _run_to_read(run)
                 snapshot = json.dumps(
@@ -470,18 +547,35 @@ async def stream_native_agent_run_events(
                     AgentRunStatus.failed,
                     AgentRunStatus.cancelled,
                 }
-            if snapshot != previous_snapshot:
+            if events:
+                for event in events:
+                    event_payload = json.dumps(
+                        _event_to_read(event).model_dump(mode="json"),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                    yield (
+                        f"id: {event.sequence}\n"
+                        f"event: native.event\n"
+                        f"data: {event_payload}\n\n"
+                    )
+                    current_cursor = event.sequence
                 yield f"event: run.updated\ndata: {snapshot}\n\n"
-                previous_snapshot = snapshot
+                sent_snapshot = True
                 heartbeat_ticks = 0
-                if terminal:
-                    return
-            else:
+            elif not sent_snapshot:
+                yield f"event: run.updated\ndata: {snapshot}\n\n"
+                sent_snapshot = True
+            if terminal and not events:
+                return
+            if not events:
                 heartbeat_ticks += 1
-                if heartbeat_ticks >= 12:
+                if heartbeat_ticks >= 24:
                     yield ": heartbeat\n\n"
                     heartbeat_ticks = 0
-            await asyncio.sleep(0.75)
+            else:
+                heartbeat_ticks = 0
+            await asyncio.sleep(0.25)
 
     return StreamingResponse(
         event_stream(),

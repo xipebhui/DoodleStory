@@ -255,6 +255,17 @@
   新状态到达时自动滚动；刷新仍从数据库详情恢复。Native MLflow 中 `generate_image` 保持
   `TOOL`，内部图片 Provider 使用 `TASK`，成功和失败显式记录 `OK/ERROR`。MLflow 3.14 Trace
   图的 Tool 暗红色属于 Span 类型配色，不能作为错误判断；执行结论以 Trace/Span 状态字段为准。
+- Sprint 123 在保持 OpenAI Agents SDK 负责 Tool Loop 的前提下，为 Native Run 增加最小可恢复
+  Runtime。`native_agent_steps` 记录模型、Tool 和 final 的 prepared/running/succeeded/failed/
+  unknown 边界；`native_agent_context_items` 通过 Agents SDK Session 协议保存完整模型上下文；
+  `native_agent_events` 保存 Run 内单调 sequence 的结构化进度和分批文本 delta。Runtime 使用
+  SDK `tool_call_id` 派生生图幂等键，Provider 调用前先提交 Tool Step；成功图片、Tool Result、
+  输出引用和完成 Event 在同一事务保存。同一成功调用重放时直接返回已有图片，不重复请求
+  Provider。服务重启只恢复纯模型中断，或所有成功 Tool 都能在 SDK Session 找到对应
+  `function_call_output` 的 Run；prepared/running Tool、unknown/failed Tool，或成功 Tool 缺少
+  SDK 输出时明确标记 unknown 并失败，不自动重画。SSE 按 Event sequence 提供 `id`，支持
+  `Last-Event-ID` 和 `after` 补发，Run snapshot 只是事件后的当前投影，不再充当唯一进度来源。
+  Worker lease、heartbeat、多实例领取和人工审批仍不在本阶段范围内。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

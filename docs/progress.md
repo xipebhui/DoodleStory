@@ -5,13 +5,16 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：按用户要求完成轻量前端修改，Native Agent 对话中的生成图片现在支持点击放大，遮罩点击或 Esc 关闭并恢复触发按钮焦点；只运行前端生产构建和 `git diff --check`，未执行完整 Sprint 检查。
+- 最近验证状态：Sprint 123 已完成；`./scripts/check.sh` 通过 263 项后端测试、Python compileall、
+  空 SQLite migration 和前端生产构建，`git diff --check` 通过。未调用真实图片 Provider，也未
+  实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116–122 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 116–123 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-123-native-agent-durable-runtime.md`
 - Complete：`docs/contracts/sprint-122-native-loop-streaming-and-trace-semantics.md`
 - Complete：`docs/contracts/sprint-121-skill-detail-and-edit.md`
 - Complete：`docs/contracts/sprint-120-native-loop-mlflow-and-agent-ui.md`
@@ -54,6 +57,16 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 123 Native Agent 可恢复 Runtime：保留 `openai-agents==0.18.3` 的 `Agent`、
+  `function_tool` 和 Tool Loop，把执行入口切换为 `Runner.run_streamed()`；新增
+  `native_agent_steps/events/context_items`，分别保存执行事实、可回放 UI Event 和 Agents SDK
+  Session 上下文。模型 response、分批文本 delta、Tool prepared/running/completed/failed/
+  unknown、checkpoint 与 Run 终态均产生有序事件；SSE 支持 `Last-Event-ID`/`after`，前端实时
+  展示模型文字、模型轮次、生图状态和恢复状态。`generate_image` 以 SDK `tool_call_id` 派生
+  幂等键，成功调用重放只返回已有图片；服务重启只恢复没有不确定副作用且 SDK Tool Output
+  完整的 Run，Provider 或 SDK 结果无法同时确认时标记 unknown 并停止自动重画。按用户要求未做
+  Worker lease、人工审批或 Evaluation。针对性 11 项与全量 263 项后端测试、compileall、空库
+  migration、前端生产构建和 `git diff --check` 均通过。
 - 为 Native Agent 对话生成图片增加点击放大：缩略图使用可聚焦按钮和明确的放大图标，打开后
   复用现有深色图片遮罩与原图资产，支持关闭按钮、点击遮罩和 Esc 关闭，并在关闭后恢复触发
   按钮焦点。按用户要求只运行前端 TypeScript/Vite 生产构建和 `git diff --check`，未执行完整

@@ -231,6 +231,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 117 可插拔 Skill 管理、版本与通用 Agent Loop](docs/contracts/sprint-117-pluggable-skill-management-agent-loop.md)
 - [Complete：Sprint 119 最小原生 Agent Loop](docs/contracts/sprint-119-minimal-native-agent-loop.md)
 - [Complete：Sprint 120 Native Loop MLflow 与 Agent UI 一致性](docs/contracts/sprint-120-native-loop-mlflow-and-agent-ui.md)
+- [Complete：Sprint 123 Native Agent 可恢复执行与持久化事件流](docs/contracts/sprint-123-native-agent-durable-runtime.md)
 - [Deferred：Agent Evaluation 与内部开放门槛](docs/contracts/deferred-agent-evaluation-internal-release-gate.md)
 - [已完成：Sprint 106 对话创建两格真实漫画](docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md)
 - [已完成：Sprint 107 传统构建与 AI 构建前端整合](docs/contracts/sprint-107-agent-frontend-workspace-integration.md)

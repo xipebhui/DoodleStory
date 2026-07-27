@@ -2880,7 +2880,10 @@ function NativeAgentView({
   }, [activeRun?.id]);
 
   const threadSignature = detail?.runs
-    .map((run) => `${run.id}:${run.status}:${run.items.length}:${run.images.length}`)
+    .map(
+      (run) =>
+        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.events.length}`,
+    )
     .join("|");
   const previewImage = detail?.runs
     .flatMap((run) => run.images)
@@ -2977,17 +2980,15 @@ function NativeAgentView({
           ) : null}
           {detail?.runs.map((run) => {
             const userItem = run.items.find((item) => item.item_type === "user_input");
-            const activityItems = run.items.filter(
-              (item) => item.item_type === "tool_call" || item.item_type === "tool_result",
+            const streamedText = run.events
+              .filter((event) => event.event_type === "assistant.delta")
+              .map((event) => String(event.payload.delta || ""))
+              .join("");
+            const activityEvents = run.events.filter(
+              (event) =>
+                event.event_type !== "assistant.delta"
+                && event.event_type !== "run.created",
             );
-            const toolCallCount = activityItems.filter(
-              (item) => item.item_type === "tool_call",
-            ).length;
-            const toolResultCount = activityItems.filter(
-              (item) => item.item_type === "tool_result",
-            ).length;
-            let callIndex = 0;
-            let resultIndex = 0;
             const runActive = activeAgentRunStatuses.has(run.status);
             return (
               <article className="native-agent-run" key={run.id}>
@@ -3005,60 +3006,81 @@ function NativeAgentView({
                   <span>{run.image_call_count} 次生图</span>
                 </div>
                 <div className="native-agent-activity" aria-label="Agent 实时执行进度">
-                  <div className="native-agent-activity-row is-complete">
-                    <CheckCircle2 size={15} />
-                    <span>Agent 已读取用户目标与 {run.skill_name} v{run.skill_version}</span>
-                  </div>
-                  {activityItems.map((item) => {
-                    if (item.item_type === "tool_call") {
-                      callIndex += 1;
-                      const waiting = callIndex > toolResultCount;
-                      return (
-                        <div
-                          className={`native-agent-activity-row ${waiting ? "is-running" : "is-complete"}`}
-                          key={item.id}
-                        >
-                          {waiting
-                            ? <Loader2 className="spin" size={15} />
-                            : <CheckCircle2 size={15} />}
-                          <span>第 {callIndex} 张图片已提交给 generate_image</span>
-                        </div>
+                  {activityEvents.map((event) => {
+                    const failed = event.event_type === "tool.failed"
+                      || event.event_type === "tool.unknown"
+                      || event.event_type === "run.failed";
+                    const stepSequence = event.payload.step_sequence;
+                    const laterEvents = activityEvents.filter(
+                      (candidate) => candidate.sequence > event.sequence,
+                    );
+                    const stepSettled = stepSequence !== undefined
+                      && laterEvents.some(
+                        (candidate) =>
+                          candidate.payload.step_sequence === stepSequence
+                          && (
+                            candidate.event_type === "model.completed"
+                            || candidate.event_type === "tool.started"
+                            || candidate.event_type === "tool.completed"
+                            || candidate.event_type === "tool.failed"
+                            || candidate.event_type === "tool.unknown"
+                          ),
                       );
-                    }
-                    resultIndex += 1;
-                    const succeeded = item.payload.status === "succeeded";
+                    const runAdvanced = laterEvents.length > 0;
+                    const running = (event.event_type === "run.started"
+                      || event.event_type === "run.resumed"
+                      || event.event_type === "model.started"
+                      || event.event_type === "tool.prepared"
+                      || event.event_type === "tool.started")
+                      && !stepSettled
+                      && !(event.event_type.startsWith("run.") && runAdvanced);
+                    const modelCount = Number(event.payload.model_call_count || 0);
+                    const eventLabel: Record<string, string> = {
+                      "run.started": `Agent 已读取用户目标与 ${run.skill_name} v${run.skill_version}`,
+                      "run.resumed": "Agent 已从持久化 checkpoint 恢复",
+                      "run.recovery_queued": "服务重启后已进入安全恢复队列",
+                      "model.started": `第 ${modelCount || "下一"} 次模型调用开始`,
+                      "model.completed": "模型响应已完成并保存",
+                      "checkpoint.saved": "执行 checkpoint 已保存",
+                      "tool.prepared": "generate_image 调用已准备并持久化",
+                      "tool.started": "generate_image 正在生成图片",
+                      "tool.completed": "图片生成完成，已返回模型视觉上下文",
+                      "tool.reused": "已复用同一 Tool 调用的成功图片",
+                      "tool.failed": "generate_image 执行失败",
+                      "tool.unknown": "生图结果无法确认，已停止自动重放",
+                      "run.completed": "本轮 Agent Loop 已完成",
+                      "run.failed": "本轮 Agent Loop 执行失败",
+                    };
                     return (
                       <div
-                        className={`native-agent-activity-row ${succeeded ? "is-complete" : "is-error"}`}
-                        key={item.id}
+                        className={`native-agent-activity-row ${
+                          failed ? "is-error" : running ? "is-running" : "is-complete"
+                        }`}
+                        key={event.id}
                       >
-                        {succeeded
-                          ? <CheckCircle2 size={15} />
-                          : <AlertCircle size={15} />}
-                        <span>
-                          第 {resultIndex} 张图片
-                          {succeeded ? "生成完成，已返回模型视觉上下文" : "生成失败"}
-                        </span>
+                        {failed ? (
+                          <AlertCircle size={15} />
+                        ) : running ? (
+                          <Loader2 className="spin" size={15} />
+                        ) : (
+                          <CheckCircle2 size={15} />
+                        )}
+                        <span>{eventLabel[event.event_type] || event.event_type}</span>
                       </div>
                     );
                   })}
-                  {runActive && toolCallCount === toolResultCount ? (
+                  {runActive && activityEvents.length === 0 ? (
                     <div className="native-agent-activity-row is-running">
                       <Loader2 className="spin" size={15} />
-                      <span>
-                        {toolResultCount === 0
-                          ? "模型正在规划故事、分镜与图片提示词"
-                          : "模型正在查看生成结果并决定下一步"}
-                      </span>
-                    </div>
-                  ) : null}
-                  {run.status === "succeeded" ? (
-                    <div className="native-agent-activity-row is-complete">
-                      <CheckCircle2 size={15} />
-                      <span>本轮 Agent Loop 已完成</span>
+                      <span>Agent 正在启动</span>
                     </div>
                   ) : null}
                 </div>
+                {runActive && streamedText ? (
+                  <div className="native-agent-assistant-message is-streaming">
+                    {streamedText}
+                  </div>
+                ) : null}
                 {run.images.length > 0 ? (
                   <div className="native-agent-image-grid">
                     {run.images.map((image) => (

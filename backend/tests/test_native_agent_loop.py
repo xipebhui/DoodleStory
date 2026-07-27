@@ -24,8 +24,11 @@ from app.models.entities import (
     AgentSkillVersion,
     GenerationTask,
     NativeAgentConversation,
+    NativeAgentContextItem,
+    NativeAgentEvent,
     NativeAgentItem,
     NativeAgentRun,
+    NativeAgentStep,
     User,
     Style,
 )
@@ -33,6 +36,8 @@ from app.models.enums import (
     AgentRunStatus,
     AgentSkillStatus,
     NativeAgentItemType,
+    NativeAgentStepStatus,
+    NativeAgentStepType,
     StorageBackend,
     StyleStatus,
 )
@@ -49,6 +54,46 @@ from app.services.native_agent_loop import (
     build_generate_image_tool,
     execute_native_agent_run,
 )
+from app.services.native_agent_persistence import (
+    CompletedNativeTool,
+    NativeAgentDatabaseSession,
+    NativeAgentStore,
+)
+
+
+class FakeStreamedResult:
+    def __init__(
+        self,
+        *,
+        final_output: str,
+        raw_response_count: int,
+        events: list[object] | None = None,
+        on_stream=None,
+    ) -> None:
+        self.final_output = final_output
+        self.raw_responses = [SimpleNamespace()] * raw_response_count
+        self._events = events or []
+        self._on_stream = on_stream
+
+    async def stream_events(self):
+        if self._on_stream is not None:
+            await self._on_stream()
+        for event in self._events:
+            yield event
+
+
+def response_stream_events(response_id: str) -> list[object]:
+    response = SimpleNamespace(id=response_id, usage=None)
+    return [
+        SimpleNamespace(
+            type="raw_response_event",
+            data=SimpleNamespace(type="response.created", response=response),
+        ),
+        SimpleNamespace(
+            type="raw_response_event",
+            data=SimpleNamespace(type="response.completed", response=response),
+        ),
+    ]
 
 
 class NativeAgentLoopTests(unittest.TestCase):
@@ -60,15 +105,86 @@ class NativeAgentLoopTests(unittest.TestCase):
             poolclass=StaticPool,
         )
         Base.metadata.create_all(engine)
-        self.Session = sessionmaker(bind=engine)
+        self.Session = sessionmaker(
+            bind=engine,
+            autoflush=False,
+            autocommit=False,
+        )
 
     def tearDown(self) -> None:
         mlflow.flush_trace_async_logging(terminate=True)
         agent_observability.reset_agent_observability_for_tests()
 
+    def create_durable_run(
+        self,
+        *,
+        status: AgentRunStatus = AgentRunStatus.queued,
+    ) -> str:
+        with self.Session() as db:
+            user = User(email="durable-run@example.com", password_hash="hash")
+            db.add(user)
+            db.flush()
+            skill = AgentSkill(
+                owner_user_id=user.id,
+                slug="durable-run-skill",
+                name="持久化测试 Skill",
+                description="测试持久化执行。",
+                draft_instructions="# 方法\n需要时调用 generate_image。",
+                draft_tool_names_json='["generate_image"]',
+                draft_revision=1,
+                status=AgentSkillStatus.published,
+            )
+            db.add(skill)
+            db.flush()
+            version = AgentSkillVersion(
+                skill_id=skill.id,
+                version=1,
+                name_snapshot=skill.name,
+                description_snapshot=skill.description,
+                instructions=skill.draft_instructions,
+                tool_names_json=skill.draft_tool_names_json,
+                content_hash="sha256:durable-run",
+                published_by_user_id=user.id,
+            )
+            db.add(version)
+            db.flush()
+            skill.active_version_id = version.id
+            conversation = NativeAgentConversation(
+                owner_user_id=user.id,
+                title="持久化测试",
+            )
+            db.add(conversation)
+            db.flush()
+            run = NativeAgentRun(
+                conversation_id=conversation.id,
+                skill_version_id=version.id,
+                status=status,
+                model_snapshot="test-model",
+                skill_name_snapshot=version.name_snapshot,
+                skill_version_snapshot=1,
+                skill_content_hash_snapshot=version.content_hash,
+                style_name_snapshot="测试风格",
+                style_prompt_snapshot="测试风格提示词",
+                image_model_snapshot="gpt-image-2",
+                aspect_ratio_snapshot="9:16",
+                style_reference_urls_json="[]",
+            )
+            db.add(run)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=run.id,
+                    sequence=1,
+                    item_type=NativeAgentItemType.user_input,
+                    payload_json='{"content":"生成图片"}',
+                )
+            )
+            db.commit()
+            return run.id
+
     def test_generate_image_is_real_function_tool_and_returns_image_to_model(self) -> None:
-        recorded_items: list[tuple[NativeAgentItemType, dict[str, object]]] = []
         recorded_prompts: list[str] = []
+        lifecycle: list[str] = []
 
         def fake_image_generator(**kwargs):
             recorded_prompts.append(str(kwargs["prompt"]))
@@ -86,13 +202,39 @@ class NativeAgentLoopTests(unittest.TestCase):
                 height=1792,
             )
 
-        async def record_item(item_type, payload):
-            recorded_items.append((item_type, payload))
+        class FakeStore:
+            def prepare_tool(inner_self, *, tool_call_id, prompt):
+                self.assertEqual("call-1", tool_call_id)
+                self.assertEqual("完整的图片提示词", prompt)
+                lifecycle.append("prepared")
+                return SimpleNamespace(id="step-1")
 
-        async def record_image(prompt, generated):
-            self.assertEqual("完整的图片提示词", prompt)
-            self.assertEqual("provider-request", generated.provider_request_id)
-            return "data:image/png;base64,aW1hZ2U="
+            def start_tool(inner_self, step_id):
+                self.assertEqual("step-1", step_id)
+                lifecycle.append("running")
+
+            def complete_tool(inner_self, step_id, **kwargs):
+                self.assertEqual("step-1", step_id)
+                self.assertEqual("完整的图片提示词", kwargs["prompt"])
+                lifecycle.append("succeeded")
+                return CompletedNativeTool(
+                    step_id=step_id,
+                    image_id="image-1",
+                    asset_id="asset-1",
+                    storage_backend=StorageBackend.local,
+                    storage_key="unused.png",
+                    public_url="data:image/png;base64,aW1hZ2U=",
+                    content_type="image/png",
+                    width=1024,
+                    height=1792,
+                    provider_request_id="provider-request",
+                )
+
+            def fail_tool(inner_self, step_id, exc):
+                raise AssertionError((step_id, exc))
+
+            def append_event(inner_self, event_type, payload):
+                raise AssertionError((event_type, payload))
 
         tool = build_generate_image_tool(
             NativeImageToolContext(
@@ -104,8 +246,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                 reference_urls=(),
             ),
             image_generator=fake_image_generator,
-            record_item=record_item,
-            record_image=record_image,
+            store=FakeStore(),
         )
 
         self.assertEqual("generate_image", tool.name)
@@ -123,22 +264,12 @@ class NativeAgentLoopTests(unittest.TestCase):
         )
 
         self.assertEqual(["完整的图片提示词"], recorded_prompts)
-        self.assertEqual(
-            [NativeAgentItemType.tool_call, NativeAgentItemType.tool_result],
-            [item_type for item_type, _ in recorded_items],
-        )
+        self.assertEqual(["prepared", "running", "succeeded"], lifecycle)
         self.assertIsInstance(output[0], ToolOutputText)
         self.assertIsInstance(output[1], ToolOutputImage)
         self.assertEqual("data:image/png;base64,aW1hZ2U=", output[1].image_url)
 
     def test_generate_image_requires_style_but_has_no_hidden_default(self) -> None:
-        async def record_item(item_type, payload):
-            del item_type, payload
-
-        async def record_image(prompt, generated):
-            del prompt, generated
-            raise AssertionError("无 Style 时不应保存图片")
-
         def fail_generator(**kwargs):
             del kwargs
             raise AssertionError("无 Style 时不应调用 Provider")
@@ -153,8 +284,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                 reference_urls=(),
             ),
             image_generator=fail_generator,
-            record_item=record_item,
-            record_image=record_image,
+            store=SimpleNamespace(),
         )
 
         with self.assertRaises(NativeAgentLoopError):
@@ -168,6 +298,103 @@ class NativeAgentLoopTests(unittest.TestCase):
                     ),
                     json.dumps({"prompt": "尝试生成"}),
                 )
+            )
+
+    def test_generate_image_idempotency_reuses_success_without_provider_call(self) -> None:
+        run_id = self.create_durable_run()
+        provider_calls = 0
+
+        def image_generator(**kwargs):
+            nonlocal provider_calls
+            provider_calls += 1
+            self.assertEqual("幂等图片提示词", kwargs["prompt"])
+            return GeneratedImageFile(
+                storage_backend=StorageBackend.local,
+                storage_key="generated_image/idempotent.png",
+                public_url="https://example.invalid/idempotent.png",
+                byte_size=10,
+                checksum_sha256="c" * 64,
+                content_type="image/png",
+                original_filename="idempotent.png",
+                provider_request_id="provider-idempotent",
+                width=1024,
+                height=1792,
+            )
+
+        tool = build_generate_image_tool(
+            NativeImageToolContext(
+                run_id=run_id,
+                image_model="gpt-image-2",
+                aspect_ratio="9:16",
+                style_name="测试风格",
+                style_prompt="测试风格提示词",
+                reference_urls=(),
+            ),
+            image_generator=image_generator,
+            store=NativeAgentStore(run_id, session_factory=self.Session),
+        )
+        invocation_context = ToolContext(
+            context=None,
+            tool_name="generate_image",
+            tool_call_id="stable-tool-call",
+            tool_arguments='{"prompt":"幂等图片提示词"}',
+        )
+        first = asyncio.run(
+            tool.on_invoke_tool(
+                invocation_context,
+                json.dumps({"prompt": "幂等图片提示词"}),
+            )
+        )
+        second = asyncio.run(
+            tool.on_invoke_tool(
+                invocation_context,
+                json.dumps({"prompt": "幂等图片提示词"}),
+            )
+        )
+
+        self.assertEqual(1, provider_calls)
+        self.assertEqual(first[1].image_url, second[1].image_url)
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            self.assertEqual(1, run.image_call_count)
+            steps = db.scalars(
+                select(NativeAgentStep).where(NativeAgentStep.run_id == run_id)
+            ).all()
+            self.assertEqual(1, len(steps))
+            self.assertEqual(NativeAgentStepStatus.succeeded, steps[0].status)
+
+    def test_sdk_context_session_persists_and_finds_tool_output(self) -> None:
+        run_id = self.create_durable_run()
+        sdk_session = NativeAgentDatabaseSession(
+            run_id,
+            session_factory=self.Session,
+        )
+        asyncio.run(
+            sdk_session.add_items(
+                [
+                    {"role": "user", "content": "生成图片"},
+                    {
+                        "type": "function_call_output",
+                        "call_id": "call-persisted",
+                        "output": "done",
+                    },
+                ]
+            )
+        )
+
+        self.assertTrue(asyncio.run(sdk_session.has_items()))
+        self.assertTrue(
+            asyncio.run(sdk_session.has_tool_output("call-persisted"))
+        )
+        self.assertFalse(
+            asyncio.run(sdk_session.has_tool_output("call-missing"))
+        )
+        with self.Session() as db:
+            self.assertEqual(
+                2,
+                db.query(NativeAgentContextItem)
+                .filter(NativeAgentContextItem.run_id == run_id)
+                .count(),
             )
 
     def test_runner_receives_one_real_tool_and_no_legacy_workflow(self) -> None:
@@ -231,14 +458,33 @@ class NativeAgentLoopTests(unittest.TestCase):
 
         captured: dict[str, object] = {}
 
-        async def fake_run(agent, input_value, *, run_config, max_turns):
+        def fake_run(
+            agent,
+            input_value,
+            *,
+            run_config,
+            max_turns,
+            session,
+        ):
             captured["agent"] = agent
             captured["input"] = input_value
             captured["run_config"] = run_config
             captured["max_turns"] = max_turns
-            return SimpleNamespace(
+            captured["session"] = session
+            return FakeStreamedResult(
                 final_output="已完成纯文本回答",
-                raw_responses=[SimpleNamespace()],
+                raw_response_count=1,
+                events=[
+                    response_stream_events("response-text")[0],
+                    SimpleNamespace(
+                        type="raw_response_event",
+                        data=SimpleNamespace(
+                            type="response.output_text.delta",
+                            delta="正在整理结果",
+                        ),
+                    ),
+                    response_stream_events("response-text")[1],
+                ],
             )
 
         fake_client = SimpleNamespace(close=AsyncMock())
@@ -253,7 +499,11 @@ class NativeAgentLoopTests(unittest.TestCase):
             patch.object(native_agent_loop, "SessionLocal", self.Session),
             patch.object(native_agent_loop, "AsyncOpenAI", return_value=fake_client),
             patch.object(native_agent_loop, "OpenAIProvider", return_value=object()),
-            patch.object(native_agent_loop.Runner, "run", side_effect=fake_run),
+            patch.object(
+                native_agent_loop.Runner,
+                "run_streamed",
+                side_effect=fake_run,
+            ),
         ):
             asyncio.run(execute_native_agent_run(run_id, settings=settings))
 
@@ -272,6 +522,25 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual(AgentRunStatus.succeeded, persisted.status)
             self.assertEqual(0, persisted.image_call_count)
             self.assertEqual("已完成纯文本回答", persisted.final_output)
+            steps = db.scalars(
+                select(NativeAgentStep)
+                .where(NativeAgentStep.run_id == run_id)
+                .order_by(NativeAgentStep.sequence.asc())
+            ).all()
+            self.assertEqual(
+                [NativeAgentStepType.model_call, NativeAgentStepType.final],
+                [step.step_type for step in steps],
+            )
+            self.assertTrue(
+                all(step.status == NativeAgentStepStatus.succeeded for step in steps)
+            )
+            events = db.scalars(
+                select(NativeAgentEvent)
+                .where(NativeAgentEvent.run_id == run_id)
+                .order_by(NativeAgentEvent.sequence.asc())
+            ).all()
+            self.assertIn("assistant.delta", [event.event_type for event in events])
+            self.assertEqual("run.completed", events[-1].event_type)
 
         runtime_source = inspect.getsource(native_agent_loop)
         self.assertNotIn("GenericToolExecutor", runtime_source)
@@ -425,21 +694,36 @@ class NativeAgentLoopTests(unittest.TestCase):
             height=1792,
         )
 
-        async def fake_run(agent, input_value, *, run_config, max_turns):
-            del input_value, run_config, max_turns
-            output = await agent.tools[0].on_invoke_tool(
-                ToolContext(
-                    context=None,
-                    tool_name="generate_image",
-                    tool_call_id="trace-tool-call",
-                    tool_arguments='{"prompt":"private image prompt"}',
-                ),
-                json.dumps({"prompt": "private image prompt"}),
-            )
-            self.assertIsInstance(output[1], ToolOutputImage)
-            return SimpleNamespace(
+        def fake_run(
+            agent,
+            input_value,
+            *,
+            run_config,
+            max_turns,
+            session,
+        ):
+            del input_value, run_config, max_turns, session
+
+            async def invoke_tool():
+                output = await agent.tools[0].on_invoke_tool(
+                    ToolContext(
+                        context=None,
+                        tool_name="generate_image",
+                        tool_call_id="trace-tool-call",
+                        tool_arguments='{"prompt":"private image prompt"}',
+                    ),
+                    json.dumps({"prompt": "private image prompt"}),
+                )
+                self.assertIsInstance(output[1], ToolOutputImage)
+
+            return FakeStreamedResult(
                 final_output="private native final output",
-                raw_responses=[SimpleNamespace(), SimpleNamespace()],
+                raw_response_count=2,
+                events=[
+                    *response_stream_events("response-trace-1"),
+                    *response_stream_events("response-trace-2"),
+                ],
+                on_stream=invoke_tool,
             )
 
         fake_client = SimpleNamespace(close=AsyncMock())
@@ -473,7 +757,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                 ),
                 patch.object(
                     native_agent_loop.Runner,
-                    "run",
+                    "run_streamed",
                     side_effect=fake_run,
                 ),
             ):
@@ -528,7 +812,7 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertNotIn("private.example", serialized)
             self.assertNotIn("private-primary-secret", serialized)
 
-    def test_recovery_fails_interrupted_run_and_requeues_only_queued_run(self) -> None:
+    def test_recovery_requeues_interrupted_model_run_and_existing_queued_run(self) -> None:
         with self.Session() as db:
             user = User(email="native-recovery@example.com", password_hash="hash")
             db.add(user)
@@ -602,11 +886,60 @@ class NativeAgentLoopTests(unittest.TestCase):
             return enqueue
 
         enqueue = asyncio.run(recover())
-        enqueue.assert_awaited_once_with(queued_id)
+        self.assertEqual(
+            [interrupted_id, queued_id],
+            [call.args[0] for call in enqueue.await_args_list],
+        )
         with self.Session() as db:
             persisted = db.get(NativeAgentRun, interrupted_id)
-            self.assertEqual(AgentRunStatus.failed, persisted.status)
-            self.assertEqual("NativeAgentProcessInterrupted", persisted.error_code)
+            self.assertEqual(AgentRunStatus.queued, persisted.status)
+            self.assertIsNone(persisted.error_code)
+
+    def test_recovery_marks_inflight_tool_unknown_and_does_not_replay(self) -> None:
+        run_id = self.create_durable_run(status=AgentRunStatus.running)
+        with self.Session() as db:
+            db.add(
+                NativeAgentStep(
+                    run_id=run_id,
+                    sequence=1,
+                    step_type=NativeAgentStepType.tool_call,
+                    status=NativeAgentStepStatus.running,
+                    name="generate_image",
+                    tool_call_id="ambiguous-tool-call",
+                    idempotency_key=(
+                        f"native:{run_id}:generate_image:ambiguous-tool-call"
+                    ),
+                    attempts=1,
+                    started_at=datetime.utcnow(),
+                )
+            )
+            db.commit()
+
+        enqueue = AsyncMock()
+
+        async def recover() -> None:
+            with (
+                patch.object(native_agent_worker, "SessionLocal", self.Session),
+                patch.object(native_agent_worker, "_queue", asyncio.Queue()),
+                patch.object(
+                    native_agent_worker,
+                    "enqueue_native_agent_run",
+                    enqueue,
+                ),
+            ):
+                await native_agent_worker.recover_native_agent_runs()
+
+        asyncio.run(recover())
+
+        enqueue.assert_not_awaited()
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            step = db.scalar(
+                select(NativeAgentStep).where(NativeAgentStep.run_id == run_id)
+            )
+            self.assertEqual(AgentRunStatus.failed, run.status)
+            self.assertEqual("NativeAgentRecoveryBlocked", run.error_code)
+            self.assertEqual(NativeAgentStepStatus.unknown, step.status)
 
     def test_native_worker_executes_enqueued_run_id(self) -> None:
         async def exercise_worker() -> AsyncMock:
@@ -708,22 +1041,33 @@ class NativeAgentLoopTests(unittest.TestCase):
                                 payload_json='{"content":"已完成"}',
                             )
                         )
+                        update_db.add(
+                            NativeAgentEvent(
+                                run_id=run_id,
+                                sequence=1,
+                                event_type="run.completed",
+                                payload_json='{"status":"succeeded"}',
+                            )
+                        )
                         update_db.commit()
                     second = await anext(iterator)
+                    third = await anext(iterator)
                     with self.assertRaises(StopAsyncIteration):
                         await anext(iterator)
                     return [
                         chunk.decode() if isinstance(chunk, bytes) else chunk
-                        for chunk in (first, second)
+                        for chunk in (first, second, third)
                     ]
 
                 frames = asyncio.run(consume())
 
-            self.assertEqual(2, len(frames))
+            self.assertEqual(3, len(frames))
             self.assertIn("event: run.updated", frames[0])
             self.assertIn('"status":"running"', frames[0])
-            self.assertIn('"status":"succeeded"', frames[1])
-            self.assertIn('"content":"已完成"', frames[1])
+            self.assertIn("id: 1", frames[1])
+            self.assertIn("event: native.event", frames[1])
+            self.assertIn('"status":"succeeded"', frames[2])
+            self.assertIn('"content":"已完成"', frames[2])
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(
                     stream_native_agent_run_events(run_id, request, other, db)

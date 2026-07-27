@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import base64
 from dataclasses import dataclass
-from datetime import datetime
 import json
 import time
-from typing import Awaitable, Callable
+from typing import Callable
 
 from agents import (
     Agent,
@@ -21,21 +20,16 @@ from agents import (
 )
 from agents.model_settings import ModelRetrySettings
 from agents.models.openai_provider import OpenAIProvider
+from agents.tool_context import ToolContext
 from openai import AsyncOpenAI
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
 from app.core.database import SessionLocal
-from app.models.entities import (
-    FileAsset,
-    NativeAgentImage,
-    NativeAgentItem,
-    NativeAgentRun,
-)
+from app.models.entities import NativeAgentItem, NativeAgentRun
 from app.models.enums import (
     AgentRunStatus,
-    FileAssetPurpose,
     NativeAgentItemType,
     StorageBackend,
 )
@@ -49,6 +43,11 @@ from app.services.agent_observability import (
     set_span_status,
 )
 from app.services.image_generation import GeneratedImageFile, ImageReference, generate_xg_image
+from app.services.native_agent_persistence import (
+    CompletedNativeTool,
+    NativeAgentDatabaseSession,
+    NativeAgentStore,
+)
 from app.services.storage import resolve_storage_key
 
 
@@ -80,8 +79,6 @@ class NativeImageToolContext:
 
 
 ImageGenerator = Callable[..., GeneratedImageFile]
-ItemRecorder = Callable[[NativeAgentItemType, dict[str, object]], Awaitable[None]]
-ImageRecorder = Callable[[str, GeneratedImageFile], Awaitable[str]]
 
 
 def _tool_description(context: NativeImageToolContext) -> str:
@@ -103,15 +100,33 @@ def build_generate_image_tool(
     context: NativeImageToolContext,
     *,
     image_generator: ImageGenerator,
-    record_item: ItemRecorder,
-    record_image: ImageRecorder,
+    store: NativeAgentStore,
 ) -> FunctionTool:
-    async def generate_image(prompt: str) -> list[ToolOutputText | ToolOutputImage]:
+    async def generate_image(
+        tool_context: ToolContext[None],
+        prompt: str,
+    ) -> list[ToolOutputText | ToolOutputImage]:
         if context.image_model is None or context.aspect_ratio is None:
             raise NativeAgentLoopError("本次 Run 没有 Style，不能调用 generate_image")
         cleaned_prompt = prompt.strip()
         if not cleaned_prompt:
             raise NativeAgentLoopError("generate_image prompt 不能为空")
+        prepared = store.prepare_tool(
+            tool_call_id=tool_context.tool_call_id,
+            prompt=cleaned_prompt,
+        )
+        if isinstance(prepared, CompletedNativeTool):
+            store.append_event(
+                "tool.reused",
+                {
+                    "tool": "generate_image",
+                    "tool_call_id": tool_context.tool_call_id,
+                    "step_id": prepared.step_id,
+                    "image_id": prepared.image_id,
+                },
+            )
+            return _tool_outputs(prepared)
+        store.start_tool(prepared.id)
         with agent_span(
             "native_agent.generate_image",
             agent_run_id=context.run_id,
@@ -129,10 +144,6 @@ def build_generate_image_tool(
                     "prompt": cleaned_prompt,
                     "reference_count": len(context.reference_urls),
                 },
-            )
-            await record_item(
-                NativeAgentItemType.tool_call,
-                {"tool": "generate_image", "prompt": cleaned_prompt},
             )
             started = time.perf_counter()
             try:
@@ -192,18 +203,16 @@ def build_generate_image_tool(
                         "OK",
                         agent_run_id=context.run_id,
                     )
-                model_image_url = await record_image(cleaned_prompt, generated)
+                completed = store.complete_tool(
+                    prepared.id,
+                    prompt=cleaned_prompt,
+                    generated=generated,
+                    image_model=context.image_model,
+                    aspect_ratio=context.aspect_ratio,
+                )
             except Exception as exc:
                 latency_ms = round((time.perf_counter() - started) * 1000)
-                await record_item(
-                    NativeAgentItemType.tool_result,
-                    {
-                        "tool": "generate_image",
-                        "status": "failed",
-                        "error_code": type(exc).__name__,
-                        "error_message": str(exc)[:500],
-                    },
-                )
+                store.fail_tool(prepared.id, exc)
                 set_span_result(
                     tool_span,
                     {
@@ -219,16 +228,6 @@ def build_generate_image_tool(
                 )
                 raise
             latency_ms = round((time.perf_counter() - started) * 1000)
-            await record_item(
-                NativeAgentItemType.tool_result,
-                {
-                    "tool": "generate_image",
-                    "status": "succeeded",
-                    "width": generated.width,
-                    "height": generated.height,
-                    "provider_request_id": generated.provider_request_id,
-                },
-            )
             set_span_result(
                 tool_span,
                 {
@@ -252,19 +251,7 @@ def build_generate_image_tool(
                 "OK",
                 agent_run_id=context.run_id,
             )
-            return [
-                ToolOutputText(
-                    text=json.dumps(
-                        {
-                            "status": "succeeded",
-                            "width": generated.width,
-                            "height": generated.height,
-                        },
-                        ensure_ascii=False,
-                    )
-                ),
-                ToolOutputImage(image_url=model_image_url, detail="high"),
-            ]
+            return _tool_outputs(completed)
 
     return function_tool(
         generate_image,
@@ -274,85 +261,36 @@ def build_generate_image_tool(
     )
 
 
-def _next_item_sequence(run_id: str) -> int:
-    with SessionLocal() as db:
-        latest = db.scalar(
-            select(func.max(NativeAgentItem.sequence)).where(
-                NativeAgentItem.run_id == run_id
-            )
-        )
-        return int(latest or 0) + 1
-
-
-async def record_native_agent_item(
-    run_id: str,
-    item_type: NativeAgentItemType,
-    payload: dict[str, object],
-) -> None:
-    with SessionLocal() as db:
-        db.add(
-            NativeAgentItem(
-                run_id=run_id,
-                sequence=_next_item_sequence(run_id),
-                item_type=item_type,
-                payload_json=json.dumps(
-                    payload,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
-            )
-        )
-        db.commit()
-
-
-def _image_url_for_model(generated: GeneratedImageFile) -> str:
-    if generated.public_url:
-        return generated.public_url
-    if generated.storage_backend != StorageBackend.local:
+def _completed_image_url(completed: CompletedNativeTool) -> str:
+    if completed.public_url:
+        return completed.public_url
+    if completed.storage_backend != StorageBackend.local:
         raise NativeAgentLoopError("生成图片没有可供模型读取的 URL")
-    content = resolve_storage_key(generated.storage_key).read_bytes()
+    content = resolve_storage_key(completed.storage_key).read_bytes()
     encoded = base64.b64encode(content).decode("ascii")
-    return f"data:{generated.content_type};base64,{encoded}"
+    return f"data:{completed.content_type};base64,{encoded}"
 
 
-async def record_native_agent_image(
-    run_id: str,
-    prompt: str,
-    generated: GeneratedImageFile,
-) -> str:
-    with SessionLocal() as db:
-        run = db.scalar(select(NativeAgentRun).where(NativeAgentRun.id == run_id))
-        if run is None:
-            raise NativeAgentLoopError("Native Agent Run 不存在")
-        if run.image_model_snapshot is None or run.aspect_ratio_snapshot is None:
-            raise NativeAgentLoopError("Native Agent Run 缺少图片配置快照")
-        asset = FileAsset(
-            purpose=FileAssetPurpose.generated_image,
-            storage_backend=generated.storage_backend,
-            storage_key=generated.storage_key,
-            public_url=generated.public_url,
-            original_filename=generated.original_filename,
-            content_type=generated.content_type,
-            byte_size=generated.byte_size,
-            checksum_sha256=generated.checksum_sha256,
-            width=generated.width,
-            height=generated.height,
-        )
-        db.add(asset)
-        db.flush()
-        db.add(
-            NativeAgentImage(
-                run_id=run.id,
-                asset_id=asset.id,
-                prompt=prompt,
-                image_model_snapshot=run.image_model_snapshot,
-                aspect_ratio_snapshot=run.aspect_ratio_snapshot,
-                provider_request_id=generated.provider_request_id,
+def _tool_outputs(
+    completed: CompletedNativeTool,
+) -> list[ToolOutputText | ToolOutputImage]:
+    return [
+        ToolOutputText(
+            text=json.dumps(
+                {
+                    "status": "succeeded",
+                    "image_id": completed.image_id,
+                    "width": completed.width,
+                    "height": completed.height,
+                },
+                ensure_ascii=False,
             )
-        )
-        run.image_call_count += 1
-        db.commit()
-    return _image_url_for_model(generated)
+        ),
+        ToolOutputImage(
+            image_url=_completed_image_url(completed),
+            detail="high",
+        ),
+    ]
 
 
 def native_agent_instructions(run: NativeAgentRun) -> str:
@@ -372,6 +310,11 @@ async def execute_native_agent_run(
     image_generator: ImageGenerator = generate_xg_image,
 ) -> None:
     resolved_settings = settings or get_settings()
+    store = NativeAgentStore(run_id, session_factory=SessionLocal)
+    sdk_session = NativeAgentDatabaseSession(
+        run_id,
+        session_factory=SessionLocal,
+    )
     with SessionLocal() as db:
         run = db.scalar(
             select(NativeAgentRun)
@@ -406,24 +349,13 @@ async def execute_native_agent_run(
             "skill_version_id": run.skill_version_id,
             "style_id": run.style_id,
         }
-        run.status = AgentRunStatus.running
-        run.started_at = datetime.utcnow()
-        db.commit()
-
-    async def record_item(
-        item_type: NativeAgentItemType,
-        payload: dict[str, object],
-    ) -> None:
-        await record_native_agent_item(run_id, item_type, payload)
-
-    async def record_image(prompt: str, generated: GeneratedImageFile) -> str:
-        return await record_native_agent_image(run_id, prompt, generated)
+    resumed = await sdk_session.has_items()
+    store.start_run(resumed=resumed)
 
     tool = build_generate_image_tool(
         context,
         image_generator=image_generator,
-        record_item=record_item,
-        record_image=record_image,
+        store=store,
     )
     client = AsyncOpenAI(
         api_key=resolved_settings.text_fallback_api_key.strip(),
@@ -471,9 +403,9 @@ async def execute_native_agent_run(
                     },
                 )
                 try:
-                    result = await Runner.run(
+                    result = Runner.run_streamed(
                         agent,
-                        user_content,
+                        [] if resumed else user_content,
                         run_config=RunConfig(
                             model_provider=provider,
                             tracing_disabled=True,
@@ -483,8 +415,46 @@ async def execute_native_agent_run(
                             ),
                         ),
                         max_turns=MAX_NATIVE_AGENT_TURNS,
+                        session=sdk_session,
                     )
-                except Exception:
+                    text_delta_buffer = ""
+                    last_delta_flush = time.monotonic()
+                    async for event in result.stream_events():
+                        if event.type != "raw_response_event":
+                            continue
+                        raw_event = event.data
+                        raw_type = getattr(raw_event, "type", "")
+                        if raw_type == "response.created":
+                            store.start_model_step(raw_event.response.id)
+                        elif raw_type == "response.output_text.delta":
+                            text_delta_buffer += raw_event.delta
+                            now = time.monotonic()
+                            if (
+                                len(text_delta_buffer) >= 80
+                                or now - last_delta_flush >= 0.25
+                            ):
+                                store.append_text_delta(text_delta_buffer)
+                                text_delta_buffer = ""
+                                last_delta_flush = now
+                        elif raw_type == "response.completed":
+                            if text_delta_buffer:
+                                store.append_text_delta(text_delta_buffer)
+                                text_delta_buffer = ""
+                                last_delta_flush = time.monotonic()
+                            usage = getattr(raw_event.response, "usage", None)
+                            usage_payload = (
+                                usage.model_dump(mode="json")
+                                if usage is not None
+                                else None
+                            )
+                            store.complete_model_step(
+                                raw_event.response.id,
+                                usage=usage_payload,
+                            )
+                    if text_delta_buffer:
+                        store.append_text_delta(text_delta_buffer)
+                except Exception as exc:
+                    store.fail_active_model_step(exc)
                     set_span_status(
                         model_span,
                         "ERROR",
@@ -512,22 +482,11 @@ async def execute_native_agent_run(
                         "model_call_count": len(result.raw_responses),
                     },
                 )
-            await record_native_agent_item(
-                run_id,
-                NativeAgentItemType.assistant_output,
-                {"content": final_output},
-            )
+            store.complete_run(final_output)
             with SessionLocal() as db:
-                run = db.scalar(
-                    select(NativeAgentRun).where(NativeAgentRun.id == run_id)
-                )
+                run = db.get(NativeAgentRun, run_id)
                 if run is None:
                     raise NativeAgentLoopError("Native Agent Run 不存在")
-                run.status = AgentRunStatus.succeeded
-                run.final_output = final_output
-                run.model_call_count = len(result.raw_responses)
-                run.finished_at = datetime.utcnow()
-                db.commit()
                 model_call_count = run.model_call_count
                 image_call_count = run.image_call_count
             set_native_agent_run_trace_status(
@@ -539,29 +498,11 @@ async def execute_native_agent_run(
                 error_code=None,
             )
         except Exception as exc:
-            await record_native_agent_item(
-                run_id,
-                NativeAgentItemType.error,
-                {
-                    "error_code": type(exc).__name__,
-                    "error_message": str(exc)[:500],
-                },
-            )
+            store.fail_run(exc)
             with SessionLocal() as db:
-                run = db.scalar(
-                    select(NativeAgentRun).where(NativeAgentRun.id == run_id)
-                )
-                if run is not None:
-                    run.status = AgentRunStatus.failed
-                    run.error_code = type(exc).__name__
-                    run.error_message = str(exc)[:500]
-                    run.finished_at = datetime.utcnow()
-                    db.commit()
-                    model_call_count = run.model_call_count
-                    image_call_count = run.image_call_count
-                else:
-                    model_call_count = 0
-                    image_call_count = 0
+                run = db.get(NativeAgentRun, run_id)
+                model_call_count = run.model_call_count if run is not None else 0
+                image_call_count = run.image_call_count if run is not None else 0
             set_native_agent_run_trace_status(
                 root_span,
                 native_agent_run_id=run_id,

@@ -61,6 +61,20 @@ class NativeAgentItemType(StrEnum):
     error = "error"
 
 
+class NativeAgentStepType(StrEnum):
+    model_call = "model_call"
+    tool_call = "tool_call"
+    final = "final"
+
+
+class NativeAgentStepStatus(StrEnum):
+    prepared = "prepared"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    unknown = "unknown"
+
+
 class AgentArtifactType(StrEnum):
     comic_plan = "comic_plan"
 

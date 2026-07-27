@@ -447,6 +447,28 @@ export type NativeAgentImage = {
   created_at: string;
 };
 
+export type NativeAgentStep = {
+  id: string;
+  sequence: number;
+  step_type: "model_call" | "tool_call" | "final";
+  status: "prepared" | "running" | "succeeded" | "failed" | "unknown";
+  name: string;
+  tool_call_id: string | null;
+  attempts: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error_code: string | null;
+  error_message: string | null;
+};
+
+export type NativeAgentEvent = {
+  id: string;
+  sequence: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
 export type NativeAgentRun = {
   id: string;
   conversation_id: string;
@@ -464,6 +486,8 @@ export type NativeAgentRun = {
   error_message: string | null;
   items: NativeAgentItem[];
   images: NativeAgentImage[];
+  steps: NativeAgentStep[];
+  events: NativeAgentEvent[];
   started_at: string | null;
   finished_at: string | null;
   created_at: string;

@@ -3,7 +3,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.enums import AgentRunStatus, NativeAgentItemType
+from app.models.enums import (
+    AgentRunStatus,
+    NativeAgentItemType,
+    NativeAgentStepStatus,
+    NativeAgentStepType,
+)
 
 
 class NativeAgentConversationCreate(BaseModel):
@@ -54,6 +59,28 @@ class NativeAgentImageRead(BaseModel):
     created_at: datetime
 
 
+class NativeAgentStepRead(BaseModel):
+    id: str
+    sequence: int
+    step_type: NativeAgentStepType
+    status: NativeAgentStepStatus
+    name: str
+    tool_call_id: str | None
+    attempts: int
+    started_at: datetime | None
+    finished_at: datetime | None
+    error_code: str | None
+    error_message: str | None
+
+
+class NativeAgentEventRead(BaseModel):
+    id: str
+    sequence: int
+    event_type: str
+    payload: dict[str, object]
+    created_at: datetime
+
+
 class NativeAgentRunRead(BaseModel):
     id: str
     conversation_id: str
@@ -71,6 +98,8 @@ class NativeAgentRunRead(BaseModel):
     error_message: str | None
     items: list[NativeAgentItemRead] = Field(default_factory=list)
     images: list[NativeAgentImageRead] = Field(default_factory=list)
+    steps: list[NativeAgentStepRead] = Field(default_factory=list)
+    events: list[NativeAgentEventRead] = Field(default_factory=list)
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime
