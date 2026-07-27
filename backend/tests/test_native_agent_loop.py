@@ -46,7 +46,10 @@ from app.api.native_agent import (
     stream_native_agent_run_events,
 )
 from app.schemas.native_agent import NativeAgentRunCreate
-from app.services.image_generation import GeneratedImageFile
+from app.services.image_generation import (
+    GeneratedImageFile,
+    ImageProviderResponseError,
+)
 from app.services import agent_observability, native_agent_loop, native_agent_worker
 from app.services.native_agent_loop import (
     NativeAgentLoopError,
@@ -300,6 +303,56 @@ class NativeAgentLoopTests(unittest.TestCase):
                     json.dumps({"prompt": "尝试生成"}),
                 )
             )
+
+    def test_image_provider_failure_returns_tool_output_to_model(self) -> None:
+        run_id = self.create_durable_run()
+
+        def rejected_image_generator(**kwargs):
+            del kwargs
+            raise ImageProviderResponseError(
+                "图片 Provider 请求失败：HTTP 400 安全政策拦截"
+            )
+
+        tool = build_generate_image_tool(
+            NativeImageToolContext(
+                run_id=run_id,
+                image_model="gpt-image-2",
+                aspect_ratio="9:16",
+                reference_urls=(),
+            ),
+            image_generator=rejected_image_generator,
+            store=NativeAgentStore(run_id, session_factory=self.Session),
+        )
+        output = asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="generate_image",
+                    tool_call_id="rejected-tool-call",
+                    tool_arguments='{"prompt":"被拒绝的图片提示词"}',
+                ),
+                json.dumps({"prompt": "被拒绝的图片提示词"}),
+            )
+        )
+
+        failure = json.loads(output)
+        self.assertEqual("failed", failure["status"])
+        self.assertEqual("image_provider_error", failure["error_type"])
+        self.assertIn("HTTP 400", failure["message"])
+        with self.Session() as db:
+            step = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.run_id == run_id,
+                    NativeAgentStep.tool_call_id == "rejected-tool-call",
+                )
+            )
+            self.assertEqual(NativeAgentStepStatus.failed, step.status)
+            event_types = db.scalars(
+                select(NativeAgentEvent.event_type).where(
+                    NativeAgentEvent.run_id == run_id
+                )
+            ).all()
+            self.assertIn("tool.failed", event_types)
 
     def test_style_context_is_scoped_to_image_generation_instructions(self) -> None:
         run_id = self.create_durable_run()

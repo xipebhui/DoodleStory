@@ -41,7 +41,12 @@ from app.services.agent_observability import (
     set_span_result,
     set_span_status,
 )
-from app.services.image_generation import GeneratedImageFile, ImageReference, generate_xg_image
+from app.services.image_generation import (
+    GeneratedImageFile,
+    ImageProviderResponseError,
+    ImageReference,
+    generate_xg_image,
+)
 from app.services.native_agent_persistence import (
     CompletedNativeTool,
     NativeAgentDatabaseSession,
@@ -82,6 +87,29 @@ def _tool_description() -> str:
     return (
         "根据完整图片 Prompt 生成一张真实图片，并把图片直接返回给当前模型进行视觉 Review。"
         "prompt 必须包含当前画面所需的全部视觉信息；Runtime 不会在背后拼接或改写 Prompt。"
+    )
+
+
+def _image_tool_failure_output(
+    _context: object,
+    error: Exception,
+) -> str | None:
+    if (
+        not isinstance(error, ImageProviderResponseError)
+        or "HTTP 400" not in str(error)
+    ):
+        return None
+    return json.dumps(
+        {
+            "status": "failed",
+            "error_type": "image_provider_error",
+            "message": str(error),
+            "next_action": (
+                "这是一次已确认失败的图片工具调用。请根据错误和当前 Skill 决定是否修改 Prompt "
+                "后再次调用 generate_image，或向用户说明无法继续；不要声称本次已经生成图片。"
+            ),
+        },
+        ensure_ascii=False,
     )
 
 
@@ -246,7 +274,7 @@ def build_generate_image_tool(
         generate_image,
         name_override="generate_image",
         description_override=_tool_description(),
-        failure_error_function=None,
+        failure_error_function=_image_tool_failure_output,
     )
 
 

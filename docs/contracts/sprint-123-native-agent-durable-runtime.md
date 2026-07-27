@@ -72,6 +72,11 @@ Complete（Closed）。用户要求一次完成已确认的第 1–4 阶段，�
   delta、Function Call 参数 delta/done 和 Tool 执行结果。前端按真实 Response 轮次展示
   `Response → Function Call → Tool → Response`，不把系统日志、领域模板或伪造内容标成模型
   思考。修正后 12 项定向测试和前端构建通过。
+- 图片 Provider 已明确返回 HTTP 400 拒绝时，Tool 仍保存 failed Step/Event，但失败内容改为
+  结构化 Tool Output 返回模型，由同一 Agents SDK Loop 决定是否修改 Prompt 再调用；超时、
+  响应解析、配置和持久化等没有明确 400 拒绝证据的错误继续抛出，避免结果不确定的副作用被
+  自动重放。会话证据确认同一 Panel 出现两张图片来自模型基于 Skill Review 主动发起的两个
+  不同 Tool Call，不是 Runtime 重复执行。修正后 13 项定向测试通过。
 
 ## Done means
 

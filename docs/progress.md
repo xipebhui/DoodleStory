@@ -57,6 +57,17 @@
 
 ## 最近完成的工作
 
+- 修正 Native Agent 图片 Provider 失败边界：`generate_image` 遇到 Provider 已明确拒绝的
+  HTTP 400（包括本次安全政策拦截）时，仍先持久化失败 Tool Step 和
+  `tool.failed` 事件，但不再由 Agents SDK 提升为终止整个 Run 的 `UserError`；现在会生成
+  结构化 Function Tool Output 交回同一模型 Loop，由模型结合 Skill 和错误决定修改 Prompt
+  重试或向用户说明无法继续。配置缺失、Provider 超时、响应解析、持久化异常等没有明确 400
+  拒绝证据的错误仍会抛出并终止，避免把结果不确定的副作用当成普通失败继续执行。会话
+  `2c250dd98dac486f8b6862440d385ad1` 的数据库证据同时确认所谓“双图”不是 Runtime 重复执行：
+  每张图片来自不同 `tool_call_id` 和 Provider request ID，模型根据 Skill v2 的图片文字精确
+  Review 规则，为去除末尾标点主动修改 Prompt 后重画。新增定向测试验证 Provider 失败会作为
+  Tool Output 返回模型且 Step 保持 failed；13 项 Native Agent 测试通过，未执行完整 Sprint
+  验收或 Deferred Evaluation。
 - 将 Native Agent 过程展示收敛为通用 Responses 事件投影：删除为漫画流程额外加入的“主动
   输出创作决策”Base Instructions 和前端“创作思考”解释层，不再要求模型为了 UI 表演过程。
   Runtime 直接消费并持久化 `response.started`、`response.output_text.delta`、
