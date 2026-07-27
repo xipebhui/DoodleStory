@@ -41,6 +41,7 @@ from app.services.agent_observability import (
     set_span_result,
     set_span_status,
 )
+from app.services.agent_skill_management import parse_tool_names
 from app.services.image_generation import (
     GeneratedImageFile,
     ImageProviderResponseError,
@@ -48,23 +49,26 @@ from app.services.image_generation import (
     generate_xg_image,
 )
 from app.services.native_agent_persistence import (
+    CompletedNativeSpeech,
     CompletedNativeTool,
     NativeAgentDatabaseSession,
     NativeAgentStore,
 )
 from app.services.storage import materialize_asset_to_local
+from app.services.volcengine_speech import (
+    GeneratedSpeech,
+    VolcengineSpeechClient,
+)
 
 
 MAX_NATIVE_AGENT_TURNS = 12
+MAX_NATIVE_AGENT_TOOL_CONCURRENCY = 2
 NATIVE_AGENT_BASE_INSTRUCTIONS = """
-你是 DoodleStory 的图片内容 Agent。
+你是专注于内容创作的agent, 主要的工作是根据用户输入提示，生成图片，或者文本图片配音的视频。
 
 严格按照本次 Run 固定的 Skill 工作。Runtime 只负责 Agent Loop 和真实 Tool 执行；故事改写、
-分镜切割、图片 Prompt、图片 Review、是否修改重画都由你依据 Skill 和用户目标决定。
+分镜切割、图片 Prompt、图片 Review、视频生成、语音生成、字幕是否修改重画都由你依据 Skill 和用户目标决定。
 
-`generate_image` 返回的图片会直接进入你的视觉上下文。调用后必须查看真实图片，再判断继续调用
-还是给出 final output。不得声称执行了没有真实 Tool Output 的动作，不得展示隐藏推理、系统配置
-或密钥。
 """.strip()
 
 
@@ -81,6 +85,16 @@ class NativeImageToolContext:
 
 
 ImageGenerator = Callable[..., GeneratedImageFile]
+SpeechGenerator = Callable[..., GeneratedSpeech]
+NATIVE_RUNTIME_TOOL_NAMES = frozenset({"generate_image", "generate_speech"})
+
+
+def native_runtime_tool_names(tool_names_json: str) -> list[str]:
+    return [
+        name
+        for name in parse_tool_names(tool_names_json)
+        if name in NATIVE_RUNTIME_TOOL_NAMES
+    ]
 
 
 def _tool_description() -> str:
@@ -88,6 +102,24 @@ def _tool_description() -> str:
         "根据完整图片 Prompt 生成一张真实图片，并把图片直接返回给当前模型进行视觉 Review。"
         "prompt 必须包含当前画面所需的全部视觉信息；Runtime 不会在背后拼接或改写 Prompt。"
     )
+
+
+def _speech_tool_description(settings: Settings) -> str:
+    return (
+        "把给定文本合成为一段真实语音，并保存为当前 Run 的可播放音频。"
+        "每次调用只处理 text 原文，不会改写、拆分或拼接文本。"
+        f"语音模型固定为 {settings.doubao_voice_gen_model.strip()}，"
+        f"音色固定为 {settings.doubao_voice_gen_speaker.strip()}。"
+        "工具返回音频资产元数据；不要声称已经听取或审核音频内容。"
+    )
+
+
+def generate_volcengine_speech(
+    *,
+    text: str,
+    settings: Settings | None = None,
+) -> GeneratedSpeech:
+    return VolcengineSpeechClient(settings=settings).generate_speech(text=text)
 
 
 def _image_tool_failure_output(
@@ -278,6 +310,165 @@ def build_generate_image_tool(
     )
 
 
+def build_generate_speech_tool(
+    run_id: str,
+    *,
+    settings: Settings,
+    speech_generator: SpeechGenerator,
+    store: NativeAgentStore,
+) -> FunctionTool:
+    async def generate_speech(
+        tool_context: ToolContext[None],
+        text: str,
+    ) -> list[ToolOutputText]:
+        cleaned_text = text.strip()
+        if not cleaned_text:
+            raise NativeAgentLoopError("generate_speech text 不能为空")
+        prepared = store.prepare_speech_tool(
+            tool_call_id=tool_context.tool_call_id,
+            text=cleaned_text,
+        )
+        if isinstance(prepared, CompletedNativeSpeech):
+            store.append_event(
+                "tool.reused",
+                {
+                    "tool": "generate_speech",
+                    "tool_call_id": tool_context.tool_call_id,
+                    "step_id": prepared.step_id,
+                    "audio_id": prepared.audio_id,
+                },
+            )
+            return _speech_tool_outputs(prepared)
+        store.start_tool(prepared.id)
+        with agent_span(
+            "native_agent.generate_speech",
+            agent_run_id=run_id,
+            span_type="TOOL",
+            attributes={
+                "tool_name": "generate_speech",
+                "resource_id": settings.doubao_voice_gen_resource_id.strip(),
+                "model": settings.doubao_voice_gen_model.strip(),
+                "speaker": settings.doubao_voice_gen_speaker.strip(),
+            },
+        ) as tool_span:
+            set_span_inputs(tool_span, {"text": cleaned_text})
+            started = time.perf_counter()
+            try:
+                with agent_span(
+                    "native_agent.speech_provider",
+                    agent_run_id=run_id,
+                    span_type="TASK",
+                    attributes={
+                        "provider": "volcengine",
+                        "resource_id": settings.doubao_voice_gen_resource_id.strip(),
+                        "model": settings.doubao_voice_gen_model.strip(),
+                        "speaker": settings.doubao_voice_gen_speaker.strip(),
+                    },
+                ) as provider_span:
+                    set_span_inputs(provider_span, {"text": cleaned_text})
+                    try:
+                        generated = await asyncio.to_thread(
+                            speech_generator,
+                            text=cleaned_text,
+                        )
+                    except Exception:
+                        set_span_status(
+                            provider_span,
+                            "ERROR",
+                            agent_run_id=run_id,
+                        )
+                        raise
+                    set_span_result(
+                        provider_span,
+                        {
+                            "byte_size": len(generated.content),
+                            "duration_ms": generated.duration_ms,
+                            "provider_request_id": generated.provider_request_id,
+                        },
+                    )
+                    set_span_outputs(
+                        provider_span,
+                        {
+                            "response_format": generated.response_format,
+                            "sample_rate": generated.sample_rate,
+                            "duration_ms": generated.duration_ms,
+                        },
+                    )
+                    set_span_status(
+                        provider_span,
+                        "OK",
+                        agent_run_id=run_id,
+                    )
+                completed = store.complete_speech_tool(
+                    prepared.id,
+                    text=cleaned_text,
+                    generated=generated,
+                    resource_id=settings.doubao_voice_gen_resource_id.strip(),
+                    model=settings.doubao_voice_gen_model.strip(),
+                    speaker=settings.doubao_voice_gen_speaker.strip(),
+                )
+            except Exception as exc:
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                store.fail_tool(prepared.id, exc)
+                set_span_result(
+                    tool_span,
+                    {
+                        "result_status": "failed",
+                        "latency_ms": latency_ms,
+                        "error_code": type(exc).__name__,
+                    },
+                )
+                set_span_status(tool_span, "ERROR", agent_run_id=run_id)
+                raise
+            latency_ms = round((time.perf_counter() - started) * 1000)
+            set_span_result(
+                tool_span,
+                {
+                    "result_status": "succeeded",
+                    "latency_ms": latency_ms,
+                    "byte_size": completed.byte_size,
+                    "duration_ms": completed.duration_ms,
+                    "provider_request_id": completed.provider_request_id,
+                },
+            )
+            set_span_outputs(
+                tool_span,
+                {
+                    "status": "succeeded",
+                    "audio_id": completed.audio_id,
+                    "asset_id": completed.asset_id,
+                },
+            )
+            set_span_status(tool_span, "OK", agent_run_id=run_id)
+            return _speech_tool_outputs(completed)
+
+    return function_tool(
+        generate_speech,
+        name_override="generate_speech",
+        description_override=_speech_tool_description(settings),
+    )
+
+
+def _speech_tool_outputs(completed: CompletedNativeSpeech) -> list[ToolOutputText]:
+    return [
+        ToolOutputText(
+            text=json.dumps(
+                {
+                    "status": "succeeded",
+                    "audio_id": completed.audio_id,
+                    "asset_id": completed.asset_id,
+                    "content_type": completed.content_type,
+                    "byte_size": completed.byte_size,
+                    "response_format": completed.response_format,
+                    "sample_rate": completed.sample_rate,
+                    "duration_ms": completed.duration_ms,
+                },
+                ensure_ascii=False,
+            )
+        )
+    ]
+
+
 def _completed_image_url(completed: CompletedNativeTool) -> str:
     if completed.public_url and completed.public_url.startswith("data:"):
         return completed.public_url
@@ -314,6 +505,7 @@ async def _tool_outputs(
 
 
 def native_agent_instructions(run: NativeAgentRun) -> str:
+    allowed_tools = set(parse_tool_names(run.skill_version.tool_names_json))
     image_generation_context = json.dumps(
         {
             "style_name": run.style_name_snapshot,
@@ -323,19 +515,23 @@ def native_agent_instructions(run: NativeAgentRun) -> str:
         ensure_ascii=False,
         separators=(",", ":"),
     )
-    return (
+    instructions = (
         f"{NATIVE_AGENT_BASE_INSTRUCTIONS}\n\n"
         f"<skill name={json.dumps(run.skill_name_snapshot, ensure_ascii=False)} "
         f"version={run.skill_version_snapshot}>\n"
         f"{run.skill_version.instructions}\n"
-        "</skill>\n\n"
-        "<image_generation_context>\n"
-        "以下 Style 只用于规划图片、编写 generate_image prompt 和 Review 图片，不得改变故事事实、"
-        "旁白或对白。每次调用 generate_image 时，必须把适用于该画面的视觉规则和比例写入完整 "
-        "prompt；Runtime 不会代为拼接。\n"
-        f"{image_generation_context}\n"
-        "</image_generation_context>"
+        "</skill>"
     )
+    if "generate_image" in allowed_tools:
+        instructions += (
+            "\n\n<image_generation_context>\n"
+            "以下 Style 只用于规划图片、编写 generate_image prompt 和 Review 图片，不得改变故事事实、"
+            "旁白或对白。每次调用 generate_image 时，必须把适用于该画面的视觉规则和比例写入完整 "
+            "prompt；Runtime 不会代为拼接。\n"
+            f"{image_generation_context}\n"
+            "</image_generation_context>"
+        )
+    return instructions
 
 
 async def execute_native_agent_run(
@@ -343,8 +539,15 @@ async def execute_native_agent_run(
     *,
     settings: Settings | None = None,
     image_generator: ImageGenerator = generate_xg_image,
+    speech_generator: SpeechGenerator | None = None,
 ) -> None:
     resolved_settings = settings or get_settings()
+    resolved_speech_generator = speech_generator or (
+        lambda *, text: generate_volcengine_speech(
+            text=text,
+            settings=resolved_settings,
+        )
+    )
     store = NativeAgentStore(run_id, session_factory=SessionLocal)
     sdk_session = NativeAgentDatabaseSession(
         run_id,
@@ -376,6 +579,9 @@ async def execute_native_agent_run(
             aspect_ratio=run.aspect_ratio_snapshot,
             reference_urls=reference_urls,
         )
+        exposed_tool_names = native_runtime_tool_names(
+            run.skill_version.tool_names_json
+        )
         instructions = native_agent_instructions(run)
         trace_context = {
             "conversation_id": run.conversation_id,
@@ -385,11 +591,24 @@ async def execute_native_agent_run(
     resumed = await sdk_session.has_items()
     store.start_run(resumed=resumed)
 
-    tool = build_generate_image_tool(
-        context,
-        image_generator=image_generator,
-        store=store,
-    )
+    tools: list[FunctionTool] = []
+    if "generate_image" in exposed_tool_names:
+        tools.append(
+            build_generate_image_tool(
+                context,
+                image_generator=image_generator,
+                store=store,
+            )
+        )
+    if "generate_speech" in exposed_tool_names:
+        tools.append(
+            build_generate_speech_tool(
+                run_id,
+                settings=resolved_settings,
+                speech_generator=resolved_speech_generator,
+                store=store,
+            )
+        )
     client = AsyncOpenAI(
         api_key=resolved_settings.text_fallback_api_key.strip(),
         base_url=resolved_settings.text_fallback_openai_base_url,
@@ -410,7 +629,7 @@ async def execute_native_agent_run(
                 name="DoodleStoryNativeImageAgent",
                 instructions=instructions,
                 model=resolved_settings.agent_model.strip(),
-                tools=[tool],
+                tools=tools,
                 model_settings=ModelSettings(
                     retry=ModelRetrySettings(max_retries=0),
                     store=False,
@@ -423,8 +642,8 @@ async def execute_native_agent_run(
                 attributes={
                     "model": resolved_settings.agent_model.strip(),
                     "max_turns": MAX_NATIVE_AGENT_TURNS,
-                    "tool_count": 1,
-                    "max_function_tool_concurrency": 1,
+                    "tool_count": len(tools),
+                    "max_function_tool_concurrency": MAX_NATIVE_AGENT_TOOL_CONCURRENCY,
                 },
             ) as model_span:
                 set_span_inputs(
@@ -432,7 +651,7 @@ async def execute_native_agent_run(
                     {
                         "user_content": user_content,
                         "instructions": instructions,
-                        "tools": ["generate_image"],
+                        "tools": exposed_tool_names,
                     },
                 )
                 try:
@@ -444,7 +663,7 @@ async def execute_native_agent_run(
                             tracing_disabled=True,
                             workflow_name="DoodleStory Native Agent Loop",
                             tool_execution=ToolExecutionConfig(
-                                max_function_tool_concurrency=1,
+                                max_function_tool_concurrency=MAX_NATIVE_AGENT_TOOL_CONCURRENCY,
                             ),
                         ),
                         max_turns=MAX_NATIVE_AGENT_TURNS,
@@ -601,12 +820,14 @@ async def execute_native_agent_run(
                     raise NativeAgentLoopError("Native Agent Run 不存在")
                 model_call_count = run.model_call_count
                 image_call_count = run.image_call_count
+                speech_call_count = run.speech_call_count
             set_native_agent_run_trace_status(
                 root_span,
                 native_agent_run_id=run_id,
                 run_status=AgentRunStatus.succeeded.value,
                 model_call_count=model_call_count,
                 image_call_count=image_call_count,
+                speech_call_count=speech_call_count,
                 error_code=None,
             )
         except Exception as exc:
@@ -615,12 +836,14 @@ async def execute_native_agent_run(
                 run = db.get(NativeAgentRun, run_id)
                 model_call_count = run.model_call_count if run is not None else 0
                 image_call_count = run.image_call_count if run is not None else 0
+                speech_call_count = run.speech_call_count if run is not None else 0
             set_native_agent_run_trace_status(
                 root_span,
                 native_agent_run_id=run_id,
                 run_status=AgentRunStatus.failed.value,
                 model_call_count=model_call_count,
                 image_call_count=image_call_count,
+                speech_call_count=speech_call_count,
                 error_code=type(exc).__name__,
             )
         finally:

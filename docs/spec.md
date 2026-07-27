@@ -228,7 +228,7 @@
 - MLflow 只承担 Agent/Skill/Tool/Provider/Approval 的观测和 Evaluation 输入，DoodleStory 数据库仍是业务状态、恢复与权限事实来源。默认不记录用户全文、完整 Prompt、图片 URL、API key 或 Provider 原始响应。
 - Agent MLflow 基线锁定 `mlflow==3.14.0`。默认 `MLFLOW_TRACING_ENABLED=false`，关闭时不导入 MLflow、不连接 Tracking URI；启用时 URI 与 Experiment 必须在启动阶段验证。每个 Agent Run 使用 `agent_run_id` 根 trace tag 唯一检索，模型 attempt、Tool Call、图片等待、Tool Result 和 finalize 作为同一 trace 的子 span；不新增 MLflow trace 数据库列，不用 trace 驱动恢复、权限、预算或取消。
 - `MLFLOW_TRACE_CONTENT=false` 时，MLflow span processor 在客户端导出前覆盖 inputs/outputs，并拒绝 Prompt、消息正文、完整 URL、内部路径、Authorization 和已配置密钥。观测初始化或运行时上报错误必须记录明确 `observability_error`；上报错误不能回滚已经提交的图片、消息、积分或 Agent Run 业务状态。
-- Sprint 117 已实现用户 Skill CRUD、不可变发布版本、`@Skill` 与由数据库发布版本驱动的通用内容创作 Agent Loop；每个 Run 第一版最多使用一个纯文本 Skill。Skill 上的相关 Tool 勾选是可选说明信息，不负责授权或限制 Runtime；模型实际能调用的函数只来自 Runtime 当前注册并传入模型的 Tools。不支持脚本、MCP、多 Skill、Workflow DSL 或用户自定义 Tool。漫画方案继续使用最小 ComicPlan control action 和既有 Artifact/Approval adapter，但正式路径不再按 Skill 名称或 `style → create_comic` 资源路由编排。用户 Memory、抠图、Remotion、文字转语音和视频解说继续顺延；后续多媒体能力应先新增原子 Tool，再由 Skill 组合，不预建通用媒体 Workflow。正式 Evaluation 推迟到用户确认功能路线冻结后的最后阶段，届时重新编号并确定 `GO_INTERNAL/NO_GO` 门槛。
+- Sprint 117 已实现用户 Skill CRUD、不可变发布版本、`@Skill` 与由数据库发布版本驱动的通用内容创作 Agent Loop；每个 Run 第一版最多使用一个纯文本 Skill。Tool 必须先由 Runtime 代码注册；Native Agent 再按本轮固定 Skill Version 的 `tool_names_json` 构造实际函数列表，未勾选的已注册 Tool 不传给模型。旧 Agent Runtime 的历史 Tool 语义不因此增加新能力。不支持脚本、MCP、多 Skill、Workflow DSL 或用户自定义 Tool。漫画方案继续使用最小 ComicPlan control action 和既有 Artifact/Approval adapter，但正式路径不再按 Skill 名称或 `style → create_comic` 资源路由编排。用户 Memory、抠图、Remotion和视频解说继续顺延；后续多媒体能力应先新增原子 Tool，再由 Skill 组合，不预建通用媒体 Workflow。正式 Evaluation 推迟到用户确认功能路线冻结后的最后阶段，届时重新编号并确定 `GO_INTERNAL/NO_GO` 门槛。
 - Sprint 118 已补齐 Skill 管理的产品导航闭环：传统工作台主侧栏直接提供 `/agent/skills` 入口，独立 Agent Studio 的 Skill 管理侧栏提供返回 `/tasks` 的入口；两端继续使用稳定 URL，不复制 Skill 编辑器，也不重新合并两套 Shell。
 - Skill 管理使用明确的列表、详情和编辑路径：`/agent/skills/{skill_id}` 只读展示完整正文、状态、权限、Tools、revision、当前版本和更新时间，`/agent/skills/{skill_id}/edit` 只用于个人且未归档 Skill 的修改。列表对所有 Skill 提供“查看详情”，对可编辑的个人 Skill 额外提供“编辑”；系统 Skill 详情只读且可复制，已归档个人 Skill 需先恢复才能编辑。
 - Sprint 119 已完成用独立数据模型重建正常 `/agent` 执行入口：当前最小 Runtime 直接使用 Agents SDK
@@ -266,6 +266,19 @@
   SDK 输出时明确标记 unknown 并失败，不自动重画。SSE 按 Event sequence 提供 `id`，支持
   `Last-Event-ID` 和 `after` 补发，Run snapshot 只是事件后的当前投影，不再充当唯一进度来源。
   Worker lease、heartbeat、多实例领取和人工审批仍不在本阶段范围内。
+- Sprint 124 为 Native Agent 新增真实 `generate_speech(text)` Function Tool。Provider 固定使用
+  火山引擎 V3 单向流式 TTS、Resource `seed-tts-2.0`、Model
+  `seed-tts-2.0-standard`、Speaker
+  `zh_female_xinlingjitang_uranus_bigtts`、MP3/24kHz/正常语速和正常音量；模型只能提供非空
+  `text`，不能覆盖 Provider、模型、音色或音频参数。接口按连续 JSON frame 解码 Base64 音频，
+  必须收到 `20000000` 成功终态；HTTP、Provider code、解析、空音频或配置错误均明确失败，不
+  fallback、不生成空资产。成功结果保存为 `native_agent_audios` 与 `generated_audio`
+  FileAsset，Tool Step、Result、Event、调用计数和 Provider request ID 可审计；同一 SDK
+  `tool_call_id` 只允许一次副作用，成功重放复用已有资产。音频只允许当前 Native Conversation
+  owner 或 Admin 读取，并通过 SSE Run snapshot 在对话内播放。Skill 编辑页的 Tool 勾选对
+  Native Runtime 是发布版本白名单：`generate_image`、`generate_speech` 仅在被选择时暴露；
+  `inspect_image` 仍属于旧 Runtime 能力。纯语音 Run 不要求 Style；若 Skill 允许并实际调用
+  `generate_image` 但本轮没有 Style，必须明确失败，不使用隐藏默认 Style。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

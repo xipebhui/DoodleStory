@@ -419,6 +419,7 @@ def set_native_agent_run_trace_status(
     model_call_count: int,
     image_call_count: int,
     error_code: str | None,
+    speech_call_count: int = 0,
 ) -> None:
     try:
         _set_span_attributes(
@@ -427,6 +428,7 @@ def set_native_agent_run_trace_status(
                 "run_status": run_status,
                 "model_call_count": model_call_count,
                 "image_call_count": image_call_count,
+                "speech_call_count": speech_call_count,
                 "error_code": error_code,
             },
         )

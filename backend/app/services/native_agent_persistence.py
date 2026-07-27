@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker, selectinload
 from app.core.database import SessionLocal
 from app.models.entities import (
     FileAsset,
+    NativeAgentAudio,
     NativeAgentContextItem,
     NativeAgentEvent,
     NativeAgentImage,
@@ -28,6 +29,8 @@ from app.models.enums import (
     NativeAgentStepType,
 )
 from app.services.image_generation import GeneratedImageFile
+from app.services.storage import save_binary_file
+from app.services.volcengine_speech import GeneratedSpeech
 
 
 def _json_default(value: object) -> object:
@@ -86,6 +89,20 @@ class CompletedNativeTool:
     content_type: str
     width: int | None
     height: int | None
+    provider_request_id: str | None
+
+
+@dataclass(frozen=True)
+class CompletedNativeSpeech:
+    step_id: str
+    audio_id: str
+    asset_id: str
+    text: str
+    content_type: str
+    byte_size: int
+    response_format: str
+    sample_rate: int
+    duration_ms: int | None
     provider_request_id: str | None
 
 
@@ -451,6 +468,68 @@ class NativeAgentStore:
             db.refresh(step)
             return step
 
+    def prepare_speech_tool(
+        self,
+        *,
+        tool_call_id: str,
+        text: str,
+    ) -> CompletedNativeSpeech | NativeAgentStep:
+        idempotency_key = f"native:{self.run_id}:generate_speech:{tool_call_id}"
+        with self._session_factory() as db:
+            existing = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None:
+                if existing.status == NativeAgentStepStatus.succeeded:
+                    return self._completed_speech(db, existing)
+                raise RuntimeError(
+                    "同一 generate_speech 调用已存在未确认执行，拒绝重复调用"
+                )
+            step = NativeAgentStep(
+                run_id=self.run_id,
+                sequence=_next_sequence(db, NativeAgentStep, self.run_id),
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.prepared,
+                name="generate_speech",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                input_summary_json=_json_dumps({"text": text}),
+                attempts=0,
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_call,
+                    payload_json=_json_dumps(
+                        {
+                            "tool": "generate_speech",
+                            "text": text,
+                            "tool_call_id": tool_call_id,
+                            "step_id": step.id,
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.prepared",
+                {
+                    "step_sequence": step.sequence,
+                    "tool": "generate_speech",
+                    "tool_call_id": tool_call_id,
+                    "arguments": {"text": text},
+                },
+            )
+            db.commit()
+            db.refresh(step)
+            return step
+
     def start_tool(self, step_id: str) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
@@ -560,6 +639,103 @@ class NativeAgentStore:
             db.commit()
             return self._completed_tool(db, step)
 
+    def complete_speech_tool(
+        self,
+        step_id: str,
+        *,
+        text: str,
+        generated: GeneratedSpeech,
+        resource_id: str,
+        model: str,
+        speaker: str,
+    ) -> CompletedNativeSpeech:
+        suffix = (
+            ".ogg"
+            if generated.response_format == "ogg_opus"
+            else f".{generated.response_format.lstrip('.')}"
+        )
+        stored = save_binary_file(
+            FileAssetPurpose.generated_audio.value,
+            generated.content,
+            suffix,
+        )
+        with self._session_factory() as db:
+            step = db.get(NativeAgentStep, step_id)
+            run = db.get(NativeAgentRun, self.run_id)
+            if step is None or run is None:
+                raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            if step.status != NativeAgentStepStatus.running:
+                raise RuntimeError("Native Agent Tool Step 不是 running 状态")
+            asset = FileAsset(
+                purpose=FileAssetPurpose.generated_audio,
+                storage_backend=stored.storage_backend,
+                storage_key=stored.storage_key,
+                public_url=stored.public_url,
+                original_filename=f"{self.run_id}-{step.id}{suffix}",
+                content_type=generated.content_type,
+                byte_size=stored.byte_size,
+                checksum_sha256=stored.checksum_sha256,
+            )
+            db.add(asset)
+            db.flush()
+            audio = NativeAgentAudio(
+                run_id=self.run_id,
+                asset_id=asset.id,
+                text=text,
+                provider_snapshot="volcengine",
+                resource_id_snapshot=resource_id,
+                model_snapshot=model,
+                speaker_snapshot=speaker,
+                response_format_snapshot=generated.response_format,
+                sample_rate_snapshot=generated.sample_rate,
+                duration_ms=generated.duration_ms,
+                provider_request_id=generated.provider_request_id,
+            )
+            db.add(audio)
+            db.flush()
+            step.status = NativeAgentStepStatus.succeeded
+            step.finished_at = datetime.utcnow()
+            step.output_ref_json = _json_dumps(
+                {
+                    "audio_id": audio.id,
+                    "asset_id": asset.id,
+                    "provider_request_id": generated.provider_request_id,
+                }
+            )
+            run.speech_call_count += 1
+            result_payload = {
+                "tool": "generate_speech",
+                "status": "succeeded",
+                "tool_call_id": step.tool_call_id,
+                "step_id": step.id,
+                "audio_id": audio.id,
+                "asset_id": asset.id,
+                "content_type": generated.content_type,
+                "byte_size": stored.byte_size,
+                "sample_rate": generated.sample_rate,
+                "duration_ms": generated.duration_ms,
+                "provider_request_id": generated.provider_request_id,
+            }
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_result,
+                    payload_json=_json_dumps(result_payload),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.completed",
+                {
+                    "step_sequence": step.sequence,
+                    **result_payload,
+                },
+            )
+            db.commit()
+            return self._completed_speech(db, step)
+
     def fail_tool(self, step_id: str, exc: Exception) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
@@ -576,7 +752,7 @@ class NativeAgentStore:
                     item_type=NativeAgentItemType.tool_result,
                     payload_json=_json_dumps(
                         {
-                            "tool": "generate_image",
+                            "tool": step.name,
                             "status": "failed",
                             "tool_call_id": step.tool_call_id,
                             "step_id": step.id,
@@ -729,4 +905,33 @@ class NativeAgentStore:
             width=image.asset.width,
             height=image.asset.height,
             provider_request_id=image.provider_request_id,
+        )
+
+    @staticmethod
+    def _completed_speech(
+        db: Session,
+        step: NativeAgentStep,
+    ) -> CompletedNativeSpeech:
+        output = json.loads(step.output_ref_json or "{}")
+        audio_id = str(output.get("audio_id") or "")
+        if not audio_id:
+            raise RuntimeError("成功 Tool Step 缺少 audio_id")
+        audio = db.scalar(
+            select(NativeAgentAudio)
+            .where(NativeAgentAudio.id == audio_id)
+            .options(selectinload(NativeAgentAudio.asset))
+        )
+        if audio is None:
+            raise RuntimeError("成功 Tool Step 引用的音频不存在")
+        return CompletedNativeSpeech(
+            step_id=step.id,
+            audio_id=audio.id,
+            asset_id=audio.asset_id,
+            text=audio.text,
+            content_type=audio.asset.content_type,
+            byte_size=audio.asset.byte_size,
+            response_format=audio.response_format_snapshot,
+            sample_rate=audio.sample_rate_snapshot,
+            duration_ms=audio.duration_ms,
+            provider_request_id=audio.provider_request_id,
         )

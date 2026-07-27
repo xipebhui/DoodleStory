@@ -59,6 +59,20 @@ class NativeAgentImageRead(BaseModel):
     created_at: datetime
 
 
+class NativeAgentAudioRead(BaseModel):
+    id: str
+    asset_id: str
+    text: str
+    provider: str
+    resource_id: str
+    model: str
+    speaker: str
+    response_format: str
+    sample_rate: int
+    duration_ms: int | None
+    created_at: datetime
+
+
 class NativeAgentStepRead(BaseModel):
     id: str
     sequence: int
@@ -93,11 +107,13 @@ class NativeAgentRunRead(BaseModel):
     model: str
     model_call_count: int
     image_call_count: int
+    speech_call_count: int
     final_output: str | None
     error_code: str | None
     error_message: str | None
     items: list[NativeAgentItemRead] = Field(default_factory=list)
     images: list[NativeAgentImageRead] = Field(default_factory=list)
+    audios: list[NativeAgentAudioRead] = Field(default_factory=list)
     steps: list[NativeAgentStepRead] = Field(default_factory=list)
     events: list[NativeAgentEventRead] = Field(default_factory=list)
     started_at: datetime | None
@@ -122,5 +138,5 @@ class NativeAgentConversationDetailRead(NativeAgentConversationRead):
 
 class NativeAgentCapabilityRead(BaseModel):
     loop: Literal["agents_sdk"]
-    tools: list[Literal["generate_image"]]
+    tools: list[Literal["generate_image", "generate_speech"]]
     image_review: Literal["native_model_vision"]

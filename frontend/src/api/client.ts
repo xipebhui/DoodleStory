@@ -447,6 +447,20 @@ export type NativeAgentImage = {
   created_at: string;
 };
 
+export type NativeAgentAudio = {
+  id: string;
+  asset_id: string;
+  text: string;
+  provider: string;
+  resource_id: string;
+  model: string;
+  speaker: string;
+  response_format: string;
+  sample_rate: number;
+  duration_ms: number | null;
+  created_at: string;
+};
+
 export type NativeAgentStep = {
   id: string;
   sequence: number;
@@ -481,11 +495,13 @@ export type NativeAgentRun = {
   model: string;
   model_call_count: number;
   image_call_count: number;
+  speech_call_count: number;
   final_output: string | null;
   error_code: string | null;
   error_message: string | null;
   items: NativeAgentItem[];
   images: NativeAgentImage[];
+  audios: NativeAgentAudio[];
   steps: NativeAgentStep[];
   events: NativeAgentEvent[];
   started_at: string | null;

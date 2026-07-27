@@ -9,6 +9,7 @@ from app.models.entities import (
     AudioReference,
     ContentExtractionMedia,
     FileAsset,
+    NativeAgentAudio,
     GeneratedImage,
     NativeAgentImage,
     NativeAgentRun,
@@ -68,6 +69,17 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
         return task_reference is not None
     if user.role == UserRole.admin:
         return True
+    if asset.purpose == FileAssetPurpose.generated_audio:
+        native_audio = db.scalar(
+            select(NativeAgentAudio)
+            .join(NativeAgentRun, NativeAgentRun.id == NativeAgentAudio.run_id)
+            .where(
+                NativeAgentAudio.asset_id == asset.id,
+                NativeAgentRun.conversation.has(owner_user_id=user.id),
+            )
+        )
+        if native_audio is not None:
+            return True
     if asset.purpose in {
         FileAssetPurpose.audio_reference,
         FileAssetPurpose.generated_audio,

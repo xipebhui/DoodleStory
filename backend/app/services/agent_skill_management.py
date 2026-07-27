@@ -28,7 +28,18 @@ TOOL_PRESENTATION = {
         "检查图片",
         "检查故事匹配、人物一致性、文字准确性和明显视觉问题。",
     ),
+    "generate_speech": (
+        "生成语音",
+        "把文本合成为固定火山引擎音色的 MP3 音频，并保存到当前 Agent Run。",
+    ),
 }
+NATIVE_ONLY_TOOL_CATALOG = (
+    {
+        "name": "generate_speech",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+)
 
 
 class AgentSkillManagementError(RuntimeError):
@@ -78,7 +89,10 @@ def parse_tool_names(raw: str) -> list[str]:
 
 
 def selectable_tool_catalog() -> list[dict[str, object]]:
-    catalog = create_default_tool_registry().catalog()
+    catalog = [
+        *create_default_tool_registry().catalog(),
+        *NATIVE_ONLY_TOOL_CATALOG,
+    ]
     result: list[dict[str, object]] = []
     for item in catalog:
         name = str(item["name"])

@@ -5,15 +5,17 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 123 已完成；`./scripts/check.sh` 通过 263 项后端测试、Python compileall、
-  空 SQLite migration 和前端生产构建，`git diff --check` 通过。未调用真实图片 Provider，也未
-  实施 Deferred Evaluation。
+- 最近验证状态：Sprint 124 已完成；火山引擎固定语音配置已完成一次真实 MP3 smoke，
+  `./scripts/check.sh` 通过 272 项后端测试、Python compileall、空 SQLite migration 和前端
+  TypeScript/Vite 生产构建，`git diff --check` 通过。未调用真实图片 Provider，也未实施
+  Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116–123 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 116–124 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-124-native-agent-volcengine-speech-tool.md`
 - Complete：`docs/contracts/sprint-123-native-agent-durable-runtime.md`
 - Complete：`docs/contracts/sprint-122-native-loop-streaming-and-trace-semantics.md`
 - Complete：`docs/contracts/sprint-121-skill-detail-and-edit.md`
@@ -57,6 +59,18 @@
 
 ## 最近完成的工作
 
+- 接入 Native Agent 固定火山引擎语音 Tool：新增 V3 流式 TTS Client、固定
+  `seed-tts-2.0-standard` / `zh_female_xinlingjitang_uranus_bigtts` 参数、Native Audio
+  资产持久化与 owner 权限；Skill catalog 可选择“生成语音”，Native Runner 按固定发布版本
+  动态暴露 `generate_image` / `generate_speech`，对话 SSE 快照展示可播放音频，纯语音 Run
+  不再强制选择 Style。真实 Provider smoke 收到 HTTP 200 与 `20000000` 成功终态并生成
+  24kHz mono MP3；`./scripts/check.sh` 通过 272 项后端测试、Python compileall、空 SQLite
+  migration 和前端生产构建，`git diff --check` 通过。
+- 将 Native Agent 同一模型 Response 内的 Function Tool 执行并发上限调整为 2；模型一次
+  输出多个 `generate_image` 调用时，Runtime 最多并行执行 2 个图片 Provider 请求。动态 Style
+  快照继续与当前 Skill Version 一起加载到同一个 `Agent.instructions`，不进入 Tool
+  Description。仅执行 Native Agent 定向测试与 `git diff --check`，未执行完整 Sprint 验收或
+  Deferred Evaluation。
 - 修复 Skill 详情与编辑页长正文被裁切：根因是 Agent 模块外壳固定为 `100dvh` 且隐藏溢出，
   Skill 管理工作区此前没有自己的纵向滚动容器。现将桌面端滚动职责放到 Skill 主内容区，详情
   正文可随页面滚到完整末尾，编辑页可滚到表单底部且正文 textarea 保持独立内部滚动；移动端

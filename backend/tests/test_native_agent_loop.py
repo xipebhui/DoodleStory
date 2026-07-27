@@ -22,8 +22,10 @@ from app.models.entities import (
     AgentRun,
     AgentSkill,
     AgentSkillVersion,
+    FileAsset,
     GenerationTask,
     NativeAgentConversation,
+    NativeAgentAudio,
     NativeAgentContextItem,
     NativeAgentEvent,
     NativeAgentItem,
@@ -45,6 +47,7 @@ from app.api.native_agent import (
     create_native_agent_run,
     stream_native_agent_run_events,
 )
+from app.api.assets import can_read_asset
 from app.schemas.native_agent import NativeAgentRunCreate
 from app.services.image_generation import (
     GeneratedImageFile,
@@ -55,14 +58,19 @@ from app.services.native_agent_loop import (
     NativeAgentLoopError,
     NativeImageToolContext,
     build_generate_image_tool,
+    build_generate_speech_tool,
     execute_native_agent_run,
     native_agent_instructions,
+    native_runtime_tool_names,
 )
 from app.services.native_agent_persistence import (
+    CompletedNativeSpeech,
     CompletedNativeTool,
     NativeAgentDatabaseSession,
     NativeAgentStore,
 )
+from app.services.storage import StoredFile
+from app.services.volcengine_speech import GeneratedSpeech
 
 
 class FakeStreamedResult:
@@ -274,6 +282,202 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertIsInstance(output[0], ToolOutputText)
         self.assertIsInstance(output[1], ToolOutputImage)
         self.assertEqual("data:image/png;base64,aW1hZ2U=", output[1].image_url)
+
+    def test_generate_speech_is_real_function_tool_and_returns_asset_metadata(self) -> None:
+        lifecycle: list[str] = []
+
+        def fake_speech_generator(**kwargs):
+            self.assertEqual("你好，这是语音测试。", kwargs["text"])
+            return GeneratedSpeech(
+                content=b"fake-mp3",
+                content_type="audio/mpeg",
+                response_format="mp3",
+                sample_rate=24000,
+                provider_request_id="speech-request",
+                duration_ms=1500,
+            )
+
+        class FakeStore:
+            def prepare_speech_tool(inner_self, *, tool_call_id, text):
+                self.assertEqual("speech-call-1", tool_call_id)
+                self.assertEqual("你好，这是语音测试。", text)
+                lifecycle.append("prepared")
+                return SimpleNamespace(id="speech-step-1")
+
+            def start_tool(inner_self, step_id):
+                self.assertEqual("speech-step-1", step_id)
+                lifecycle.append("running")
+
+            def complete_speech_tool(inner_self, step_id, **kwargs):
+                self.assertEqual("speech-step-1", step_id)
+                self.assertEqual("seed-tts-2.0", kwargs["resource_id"])
+                self.assertEqual("seed-tts-2.0-standard", kwargs["model"])
+                self.assertEqual(
+                    "zh_female_xinlingjitang_uranus_bigtts",
+                    kwargs["speaker"],
+                )
+                lifecycle.append("succeeded")
+                return CompletedNativeSpeech(
+                    step_id=step_id,
+                    audio_id="audio-1",
+                    asset_id="asset-1",
+                    text=kwargs["text"],
+                    content_type="audio/mpeg",
+                    byte_size=8,
+                    response_format="mp3",
+                    sample_rate=24000,
+                    duration_ms=1500,
+                    provider_request_id="speech-request",
+                )
+
+            def fail_tool(inner_self, step_id, exc):
+                raise AssertionError((step_id, exc))
+
+            def append_event(inner_self, event_type, payload):
+                raise AssertionError((event_type, payload))
+
+        settings = native_agent_loop.Settings(
+            doubao_voice_gen_resource_id="seed-tts-2.0",
+            doubao_voice_gen_model="seed-tts-2.0-standard",
+            doubao_voice_gen_speaker=(
+                "zh_female_xinlingjitang_uranus_bigtts"
+            ),
+        )
+        tool = build_generate_speech_tool(
+            "run-1",
+            settings=settings,
+            speech_generator=fake_speech_generator,
+            store=FakeStore(),
+        )
+
+        self.assertEqual("generate_speech", tool.name)
+        self.assertIn("seed-tts-2.0-standard", tool.description)
+        self.assertIn(
+            "zh_female_xinlingjitang_uranus_bigtts",
+            tool.description,
+        )
+        output = asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="generate_speech",
+                    tool_call_id="speech-call-1",
+                    tool_arguments='{"text":"你好，这是语音测试。"}',
+                ),
+                json.dumps({"text": "你好，这是语音测试。"}),
+            )
+        )
+
+        self.assertEqual(["prepared", "running", "succeeded"], lifecycle)
+        self.assertEqual(1, len(output))
+        self.assertIsInstance(output[0], ToolOutputText)
+        payload = json.loads(output[0].text)
+        self.assertEqual("audio-1", payload["audio_id"])
+        self.assertEqual("asset-1", payload["asset_id"])
+        self.assertEqual(24000, payload["sample_rate"])
+
+    def test_native_runtime_tools_follow_published_skill_version(self) -> None:
+        self.assertEqual(
+            ["generate_speech"],
+            native_runtime_tool_names(
+                '["generate_speech","inspect_image"]'
+            ),
+        )
+        self.assertEqual(
+            ["generate_image", "generate_speech"],
+            native_runtime_tool_names(
+                '["generate_image","generate_speech"]'
+            ),
+        )
+        self.assertNotIn(
+            "generate_speech",
+            native_runtime_tool_names('["generate_image"]'),
+        )
+
+    def test_generate_speech_persists_audio_and_owner_can_read_asset(self) -> None:
+        run_id = self.create_durable_run()
+        provider_calls = 0
+
+        def fake_speech_generator(**kwargs):
+            nonlocal provider_calls
+            provider_calls += 1
+            self.assertEqual("持久化语音测试。", kwargs["text"])
+            return GeneratedSpeech(
+                content=b"persisted-mp3",
+                content_type="audio/mpeg",
+                response_format="mp3",
+                sample_rate=24000,
+                provider_request_id="persisted-request",
+                duration_ms=1800,
+            )
+
+        settings = native_agent_loop.Settings(
+            doubao_voice_gen_resource_id="seed-tts-2.0",
+            doubao_voice_gen_model="seed-tts-2.0-standard",
+            doubao_voice_gen_speaker=(
+                "zh_female_xinlingjitang_uranus_bigtts"
+            ),
+        )
+        tool = build_generate_speech_tool(
+            run_id,
+            settings=settings,
+            speech_generator=fake_speech_generator,
+            store=NativeAgentStore(run_id, session_factory=self.Session),
+        )
+        stored = StoredFile(
+            storage_backend=StorageBackend.local,
+            storage_key="generated_audio/native-test.mp3",
+            byte_size=13,
+            checksum_sha256="d" * 64,
+        )
+
+        with patch(
+            "app.services.native_agent_persistence.save_binary_file",
+            return_value=stored,
+        ) as save_file:
+            invocation_context = ToolContext(
+                context=None,
+                tool_name="generate_speech",
+                tool_call_id="persisted-speech-call",
+                tool_arguments='{"text":"持久化语音测试。"}',
+            )
+            output = asyncio.run(
+                tool.on_invoke_tool(
+                    invocation_context,
+                    json.dumps({"text": "持久化语音测试。"}),
+                )
+            )
+            replayed = asyncio.run(
+                tool.on_invoke_tool(
+                    invocation_context,
+                    json.dumps({"text": "持久化语音测试。"}),
+                )
+            )
+
+        self.assertEqual(1, provider_calls)
+        save_file.assert_called_once_with(
+            "generated_audio",
+            b"persisted-mp3",
+            ".mp3",
+        )
+        result = json.loads(output[0].text)
+        self.assertEqual(result, json.loads(replayed[0].text))
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            audio = db.get(NativeAgentAudio, result["audio_id"])
+            asset = db.get(FileAsset, result["asset_id"])
+            owner = run.conversation.owner
+            other = User(email="other-audio@example.com", password_hash="hash")
+            db.add(other)
+            db.flush()
+
+            self.assertEqual(1, run.speech_call_count)
+            self.assertEqual(audio.asset_id, asset.id)
+            self.assertEqual("持久化语音测试。", audio.text)
+            self.assertEqual("seed-tts-2.0-standard", audio.model_snapshot)
+            self.assertEqual("audio/mpeg", asset.content_type)
+            self.assertTrue(can_read_asset(asset, owner, db))
+            self.assertFalse(can_read_asset(asset, other, db))
 
     def test_generate_image_requires_style_but_has_no_hidden_default(self) -> None:
         def fail_generator(**kwargs):
@@ -616,7 +820,7 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertEqual("只回答，不要生图", captured["input"])
         self.assertEqual(12, captured["max_turns"])
         self.assertEqual(
-            1,
+            2,
             captured["run_config"].tool_execution.max_function_tool_concurrency,
         )
         with self.Session() as db:

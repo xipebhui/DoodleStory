@@ -96,6 +96,20 @@ class Settings(BaseSettings):
     video_tts_speed: float = Field(default=1.0, ge=0.5, le=2.0)
     video_tts_gain: float = 0.0
     video_tts_timeout_seconds: int = Field(default=1200, ge=30)
+    doubao_voice_gen_appid: str = ""
+    doubao_voice_gen_ak: str = ""
+    doubao_voice_gen_sk: str = ""
+    doubao_voice_gen_base_url: str = (
+        "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+    )
+    doubao_voice_gen_resource_id: str = "seed-tts-2.0"
+    doubao_voice_gen_model: str = "seed-tts-2.0-standard"
+    doubao_voice_gen_speaker: str = "zh_female_xinlingjitang_uranus_bigtts"
+    doubao_voice_gen_format: str = "mp3"
+    doubao_voice_gen_sample_rate: int = Field(default=24000, ge=8000)
+    doubao_voice_gen_speech_rate: int = Field(default=0, ge=-50, le=100)
+    doubao_voice_gen_loudness_rate: int = Field(default=0, ge=-50, le=100)
+    doubao_voice_gen_timeout_seconds: int = Field(default=120, ge=10)
     local_whisper_model: str = "tiny"
     local_whisper_device: str = "auto"
     local_whisper_compute_type: str = "default"

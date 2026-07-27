@@ -1329,6 +1329,16 @@ const agentSkillStatusLabels: Record<AgentSkillStatus, string> = {
   archived: "已归档",
 };
 
+const agentToolDisplayNames: Record<string, string> = {
+  generate_image: "生成图片",
+  inspect_image: "检查图片",
+  generate_speech: "生成语音",
+};
+
+function agentToolDisplayName(toolName: string) {
+  return agentToolDisplayNames[toolName] || toolName;
+}
+
 function skillTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", {
     month: "2-digit",
@@ -1637,7 +1647,9 @@ function AgentSkillListView({
               </span>
               <span className="agent-skill-tools">
                 {skill.tool_names.length
-                  ? skill.tool_names.map((tool) => <i key={tool}>{tool === "generate_image" ? "生成图片" : "检查图片"}</i>)
+                  ? skill.tool_names.map((tool) => (
+                      <i key={tool}>{agentToolDisplayName(tool)}</i>
+                    ))
                   : "无创作 Tool"}
               </span>
               <time>{skillTime(skill.updated_at)}</time>
@@ -2222,7 +2234,7 @@ function AgentSkillEditorView({
         <aside className="agent-skill-editor-aside">
           <section>
             <h2>相关 Tools（可选）</h2>
-            <p>仅用于说明这个 Skill 可能使用的能力，不限制对话中的 Skill 选择。</p>
+            <p>发布后，Native Agent 只会向模型暴露此版本勾选的 Runtime Tools。</p>
             {tools.map((tool) => {
               const checked = form.toolNames.includes(tool.name);
               return (
@@ -2732,8 +2744,8 @@ function NativeAgentSidebar({
         <div className="agent-account-credit">
           <Sparkles size={16} />
           <span>
-            <strong>1 个真实 Tool</strong>
-            <small>generate_image · 模型原生看图</small>
+            <strong>Skill 驱动真实 Tools</strong>
+            <small>generate_image · generate_speech</small>
           </span>
         </div>
         <div className="agent-account-credit">
@@ -3029,7 +3041,7 @@ function NativeAgentView({
   const threadSignature = detail?.runs
     .map(
       (run) =>
-        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.events.length}`,
+        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.audios.length}:${run.events.length}`,
     )
     .join("|");
   const previewImage = detail?.runs
@@ -3062,7 +3074,7 @@ function NativeAgentView({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!content.trim() || !skillVersionId || !styleId || sending) return;
+    if (!content.trim() || !skillVersionId || sending) return;
     setSending(true);
     setError("");
     try {
@@ -3074,7 +3086,7 @@ function NativeAgentView({
       const run = await api.createNativeAgentRun(conversation.id, {
         content,
         skill_version_id: skillVersionId,
-        style_id: styleId,
+        style_id: styleId || null,
       });
       setContent("");
       setDetail((current) =>
@@ -3111,7 +3123,7 @@ function NativeAgentView({
             <span>Agents SDK 原生 Loop</span>
             <h1>{detail?.title || "从一个简单 Loop 开始"}</h1>
           </div>
-          <code>model → generate_image → image review → model</code>
+          <code>model → Skill tools → persisted assets → model</code>
         </header>
 
         <section className="native-agent-thread" aria-live="polite" ref={threadRef}>
@@ -3149,6 +3161,7 @@ function NativeAgentView({
                       : `${run.model_call_count} 次模型调用`}
                   </span>
                   <span>{run.image_call_count} 次生图</span>
+                  <span>{run.speech_call_count} 次语音生成</span>
                 </div>
                 <div className="native-agent-responses" aria-label="Agent Response 与工具调用">
                   {responses.map((response, responseIndex) => (
@@ -3241,6 +3254,34 @@ function NativeAgentView({
                     ))}
                   </div>
                 ) : null}
+                {run.audios.length > 0 ? (
+                  <div className="native-agent-audio-list">
+                    {run.audios.map((audio) => (
+                      <figure key={audio.id}>
+                        <div>
+                          <Volume2 size={18} aria-hidden="true" />
+                          <span>
+                            <strong>生成语音</strong>
+                            <small>
+                              {audio.model} · {audio.sample_rate / 1000} kHz
+                              {audio.duration_ms !== null
+                                ? ` · ${(audio.duration_ms / 1000).toFixed(1)} 秒`
+                                : ""}
+                            </small>
+                          </span>
+                        </div>
+                        <audio
+                          controls
+                          preload="metadata"
+                          src={api.assetContentUrl(audio.asset_id)}
+                        >
+                          当前浏览器不支持音频播放。
+                        </audio>
+                        <figcaption>{audio.text}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : null}
                 {run.final_output && !finalOutputAlreadyShown ? (
                   <div className="native-agent-assistant-message">{run.final_output}</div>
                 ) : null}
@@ -3283,9 +3324,8 @@ function NativeAgentView({
                 value={styleId}
                 onChange={(event) => setStyleId(event.target.value)}
                 disabled={sending || Boolean(activeRun)}
-                required
               >
-                <option value="">选择生图模型与视觉风格</option>
+                <option value="">不使用 Style（仅生图 Tool 需要）</option>
                 {styles.map((style) => (
                   <option value={style.id} key={style.id}>{style.display_name}</option>
                 ))}
@@ -3299,13 +3339,12 @@ function NativeAgentView({
             disabled={sending}
           />
           <div className="native-agent-composer-footer">
-            <span>唯一 Tool：generate_image；生成结果会直接回到模型视觉上下文。</span>
+            <span>Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。</span>
             <button
               type="submit"
               disabled={
                 !content.trim() ||
                 !skillVersionId ||
-                !styleId ||
                 sending ||
                 Boolean(activeRun)
               }

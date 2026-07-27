@@ -22,6 +22,7 @@ from app.services.agent_skill_management import (
     load_owned_skill,
     publish_skill,
     restore_skill,
+    selectable_tool_catalog,
     seed_system_skills,
     update_skill_draft,
 )
@@ -75,6 +76,17 @@ class AgentSkillManagementTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.db.close()
+
+    def test_selectable_tool_catalog_includes_native_speech_tool(self) -> None:
+        tools = {
+            str(item["name"]): item
+            for item in selectable_tool_catalog()
+        }
+
+        self.assertIn("generate_speech", tools)
+        self.assertEqual("生成语音", tools["generate_speech"]["display_name"])
+        self.assertTrue(tools["generate_speech"]["has_side_effects"])
+        self.assertTrue(tools["generate_speech"]["may_wait"])
 
     def create_draft(self, *, owner: User | None = None) -> AgentSkill:
         return create_skill(
@@ -281,4 +293,3 @@ class AgentSkillManagementTests(unittest.TestCase):
         self.db.refresh(run)
         self.assertEqual(first.id, run.skill_version_id)
         self.assertNotEqual(second.id, run.skill_version_id)
-

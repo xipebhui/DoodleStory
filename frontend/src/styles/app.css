@@ -8126,6 +8126,55 @@ textarea {
   font-size: 12px;
 }
 
+.native-agent-audio-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.native-agent-audio-list figure {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 13px 14px;
+  border: 1px solid #34373b;
+  border-radius: 12px;
+  background: #15181b;
+}
+
+.native-agent-audio-list figure > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #e5b184;
+}
+
+.native-agent-audio-list figure > div span {
+  display: grid;
+  gap: 2px;
+}
+
+.native-agent-audio-list strong {
+  color: #e7e4df;
+  font-size: 13px;
+}
+
+.native-agent-audio-list small,
+.native-agent-audio-list figcaption {
+  color: #92959a;
+  font-size: 12px;
+}
+
+.native-agent-audio-list audio {
+  width: 100%;
+}
+
+.native-agent-audio-list figcaption {
+  overflow: hidden;
+  max-height: 3.2em;
+  line-height: 1.6;
+}
+
 .native-agent-assistant-message {
   margin-top: 14px;
   padding: 15px 17px;
