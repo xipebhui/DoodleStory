@@ -181,7 +181,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                 name="最小生图",
                 description="使用一个生图工具完成图片任务。",
                 draft_instructions="# 方法\n需要图片时调用 generate_image。",
-                draft_tool_names_json='["generate_image"]',
+                draft_tool_names_json='["generate_image","inspect_image"]',
                 draft_revision=1,
                 status=AgentSkillStatus.published,
             )
@@ -289,7 +289,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                 name="原生图片 Skill",
                 description="只使用 generate_image。",
                 draft_instructions="# 方法\n调用生图后直接看图。",
-                draft_tool_names_json='["generate_image"]',
+                draft_tool_names_json='["generate_image","inspect_image"]',
                 draft_revision=1,
                 status=AgentSkillStatus.published,
             )

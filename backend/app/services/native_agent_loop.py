@@ -39,7 +39,6 @@ from app.models.enums import (
     NativeAgentItemType,
     StorageBackend,
 )
-from app.services.agent_skill_management import parse_tool_names
 from app.services.agent_observability import (
     agent_span,
     native_agent_run_span,
@@ -383,11 +382,6 @@ async def execute_native_agent_run(
             raise NativeAgentLoopError("Native Agent Run 不存在")
         if run.status != AgentRunStatus.queued:
             raise NativeAgentLoopError("Native Agent Run 不是 queued 状态")
-        tool_names = parse_tool_names(run.skill_version.tool_names_json)
-        if tool_names != ["generate_image"]:
-            raise NativeAgentLoopError(
-                "最小 Loop 只接受唯一授权 Tool：generate_image"
-            )
         user_item = db.scalar(
             select(NativeAgentItem).where(
                 NativeAgentItem.run_id == run.id,

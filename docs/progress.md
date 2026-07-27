@@ -5,7 +5,7 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 122 已于 2026-07-27 完成 Native Loop 后台执行、SSE 实时进度和 MLflow Trace 语义修正；`./scripts/check.sh` 覆盖 260 项后端测试、空库 migration、Python compileall 和前端生产构建并通过。本地前后端已重启，MLflow `/health` 正常；浏览器自动验收因本地浏览器 localhost 安全策略阻止 reload/DOM 检查而未执行，不以绕过策略代替。
+- 最近验证状态：Sprint 122 完成后按用户要求快速修正 Skill Tool 语义：相关 Tool 勾选改为可选说明，不再作为 Native 对话列表、Run 创建或执行门禁；直接后端检查已返回 `故事转化图片通用 · v2`。本次按用户要求只运行 Native Loop 8 项针对性测试、`git diff --check` 和前端生产构建，未重复完整 Sprint 检查。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
 - 当前合同状态：Sprint 116–122 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
@@ -54,6 +54,13 @@
 
 ## 最近完成的工作
 
+- 轻量修正 Skill 与 Native 对话的对应关系：移除 Native Skill 列表、Run 创建和执行阶段对
+  `tool_names == ["generate_image"]` 的硬过滤；所有当前用户可见的已发布 Skill 都能进入选择器。
+  Skill 编辑器将该区域改为“相关 Tools（可选）”，明确其只帮助理解可能使用的能力；Runtime
+  实际传给模型的 Tool 仍由代码注册决定，当前保持 `generate_image`，图片 Review 使用模型原生
+  视觉。数据库中的 `故事转化图片通用` 已发布并启用 v2，直接列表检查现在返回该版本。按用户
+  要求未运行完整 Sprint 验收，只执行 Native Loop 8 项针对性测试、前端生产构建和
+  `git diff --check`，均通过；前后端已重启。
 - 完成 Sprint 122 Native Loop 实时事件与 Trace 语义：真实 MLflow Trace
   `tr-201a90ff214c8da0e0c5d1b824a28c8c` 经 API 核实根 Trace、4 个
   `native_agent.generate_image` 和 4 个 `native_agent.image_provider` Span 全部为 `OK`，

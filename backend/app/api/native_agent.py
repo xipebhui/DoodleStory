@@ -43,7 +43,6 @@ from app.schemas.native_agent import (
     NativeAgentRunCreate,
     NativeAgentRunRead,
 )
-from app.services.agent_skill_management import parse_tool_names
 from app.services.native_agent_worker import enqueue_native_agent_run
 
 
@@ -186,11 +185,7 @@ def list_native_agent_skills(
         .order_by(AgentSkill.owner_user_id.is_not(None), AgentSkill.updated_at.desc())
         .limit(51)
     ).all()
-    eligible = [
-        (skill, version)
-        for skill, version in rows
-        if parse_tool_names(version.tool_names_json) == ["generate_image"]
-    ][:50]
+    eligible = rows[:50]
     return ApiList(
         items=[
             AgentResourceOption(
@@ -374,12 +369,6 @@ async def create_native_agent_run(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="发布版 Skill 不存在或不可用",
         )
-    if parse_tool_names(skill_version.tool_names_json) != ["generate_image"]:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="最小 Loop 只接受唯一授权 Tool：generate_image",
-        )
-
     style = None
     reference_urls: list[str] = []
     if payload.style_id is not None:

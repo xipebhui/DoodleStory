@@ -2220,7 +2220,8 @@ function AgentSkillEditorView({
         </div>
         <aside className="agent-skill-editor-aside">
           <section>
-            <h2>可用 Tools</h2>
+            <h2>相关 Tools（可选）</h2>
+            <p>仅用于说明这个 Skill 可能使用的能力，不限制对话中的 Skill 选择。</p>
             {tools.map((tool) => {
               const checked = form.toolNames.includes(tool.name);
               return (
@@ -3084,7 +3085,7 @@ function NativeAgentView({
                 disabled={sending || Boolean(activeRun)}
                 required
               >
-                <option value="">选择只使用 generate_image 的 Skill</option>
+                <option value="">选择已发布的 Skill</option>
                 {skills.map((skill) => (
                   <option value={skill.id} key={skill.id}>{skill.display_name}</option>
                 ))}
