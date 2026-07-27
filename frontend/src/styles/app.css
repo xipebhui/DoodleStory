@@ -8012,6 +8012,51 @@ textarea {
   object-fit: cover;
 }
 
+.native-agent-image-button {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff8ee;
+  cursor: zoom-in;
+}
+
+.native-agent-image-button img {
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.native-agent-image-button > svg {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  box-sizing: content-box;
+  padding: 8px;
+  border-radius: 999px;
+  background: rgba(12, 14, 16, 0.76);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.native-agent-image-button:hover img,
+.native-agent-image-button:focus-visible img {
+  transform: scale(1.015);
+  filter: brightness(0.82);
+}
+
+.native-agent-image-button:hover > svg,
+.native-agent-image-button:focus-visible > svg {
+  opacity: 1;
+}
+
+.native-agent-image-button:focus-visible {
+  outline: 2px solid #ff9948;
+  outline-offset: -2px;
+}
+
 .native-agent-image-grid figcaption {
   padding: 9px 11px;
   color: #9a9c9f;

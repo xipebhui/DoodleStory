@@ -2787,7 +2787,10 @@ function NativeAgentView({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [eventConnectionError, setEventConnectionError] = useState("");
+  const [previewImageId, setPreviewImageId] = useState<string | null>(null);
   const threadRef = useRef<HTMLElement | null>(null);
+  const previewCloseRef = useRef<HTMLButtonElement | null>(null);
+  const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   async function loadConversations() {
     const result = await api.nativeAgentConversations(50);
@@ -2879,6 +2882,9 @@ function NativeAgentView({
   const threadSignature = detail?.runs
     .map((run) => `${run.id}:${run.status}:${run.items.length}:${run.images.length}`)
     .join("|");
+  const previewImage = detail?.runs
+    .flatMap((run) => run.images)
+    .find((image) => image.id === previewImageId) || null;
 
   useEffect(() => {
     if (!threadRef.current || !threadSignature) return;
@@ -2890,6 +2896,19 @@ function NativeAgentView({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [threadSignature]);
+
+  useEffect(() => {
+    if (!previewImageId) return;
+    previewCloseRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewImageId(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      previewTriggerRef.current?.focus();
+    };
+  }, [previewImageId]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -3044,12 +3063,23 @@ function NativeAgentView({
                   <div className="native-agent-image-grid">
                     {run.images.map((image) => (
                       <figure key={image.id}>
-                        <LazyAssetImage
-                          assetId={image.asset_id}
-                          alt="Agent 生成结果"
-                          eager
-                          variant="original"
-                        />
+                        <button
+                          type="button"
+                          className="native-agent-image-button"
+                          aria-label="放大查看 Agent 生成图片"
+                          onClick={(event) => {
+                            previewTriggerRef.current = event.currentTarget;
+                            setPreviewImageId(image.id);
+                          }}
+                        >
+                          <LazyAssetImage
+                            assetId={image.asset_id}
+                            alt="Agent 生成结果"
+                            eager
+                            variant="original"
+                          />
+                          <Eye size={18} aria-hidden="true" />
+                        </button>
                         <figcaption>{image.image_model} · {image.aspect_ratio}</figcaption>
                       </figure>
                     ))}
@@ -3132,6 +3162,33 @@ function NativeAgentView({
           </div>
           {error ? <div className="native-agent-run-error"><AlertCircle size={16} />{error}</div> : null}
         </form>
+        {previewImage ? (
+          <div
+            className="image-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Agent 生成图片预览"
+            onClick={() => setPreviewImageId(null)}
+          >
+            <button
+              ref={previewCloseRef}
+              type="button"
+              className="modal-close"
+              aria-label="关闭 Agent 图片预览"
+              onClick={() => setPreviewImageId(null)}
+            >
+              <X size={18} />
+            </button>
+            <div onClick={(event) => event.stopPropagation()}>
+              <LazyAssetImage
+                assetId={previewImage.asset_id}
+                alt="Agent 生成图片放大预览"
+                eager
+                variant="original"
+              />
+            </div>
+          </div>
+        ) : null}
       </main>
     </section>
   );
