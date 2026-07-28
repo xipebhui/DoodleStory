@@ -12,6 +12,7 @@ BACKEND_PID_FILE="${BACKEND_PID_FILE:-/tmp/doodlestory-backend.pid}"
 FRONTEND_PID_FILE="${FRONTEND_PID_FILE:-/tmp/doodlestory-frontend.pid}"
 BACKEND_LOG_FILE="${BACKEND_LOG_FILE:-/tmp/doodlestory-backend.log}"
 FRONTEND_LOG_FILE="${FRONTEND_LOG_FILE:-/tmp/doodlestory-frontend.log}"
+FFPROBE_EXECUTABLE="${FFPROBE_EXECUTABLE:-$(command -v ffprobe 2>/dev/null || true)}"
 
 echo "[restart-dev] root: $ROOT_DIR"
 
@@ -90,6 +91,11 @@ kill_port "frontend" "$FRONTEND_PORT"
 sleep 1
 
 BACKEND_PYTHON="$(backend_python)"
+if [ -z "$FFPROBE_EXECUTABLE" ] || [ ! -x "$FFPROBE_EXECUTABLE" ]; then
+  echo "[restart-dev] ERROR: ffprobe is not installed or executable" >&2
+  exit 1
+fi
+echo "[restart-dev] ffprobe: $FFPROBE_EXECUTABLE"
 if [ -x "$ROOT_DIR/backend/.venv/bin/alembic" ]; then
   echo "[restart-dev] running backend migrations"
   (
@@ -101,7 +107,8 @@ fi
 echo "[restart-dev] starting backend: http://$BACKEND_HOST:$BACKEND_PORT"
 (
   cd "$ROOT_DIR"
-  nohup env PYTHONPATH=backend "$BACKEND_PYTHON" -m uvicorn app.main:app \
+  nohup env PYTHONPATH=backend FFPROBE_EXECUTABLE="$FFPROBE_EXECUTABLE" \
+    "$BACKEND_PYTHON" -m uvicorn app.main:app \
     --host "$BACKEND_HOST" \
     --port "$BACKEND_PORT" \
     </dev/null >"$BACKEND_LOG_FILE" 2>&1 &

@@ -95,6 +95,7 @@ def _json_frames(chunks: Iterator[bytes]) -> Iterator[dict[str, Any]]:
 def _probe_audio_duration_ms(
     content: bytes,
     response_format: str,
+    ffprobe_executable: str,
 ) -> int:
     suffix = {
         "mp3": ".mp3",
@@ -105,13 +106,16 @@ def _probe_audio_duration_ms(
         raise VolcengineSpeechError(
             f"火山语音没有返回时长，且格式 {response_format} 不支持本地时长探测"
         )
+    executable = ffprobe_executable.strip()
+    if not executable:
+        raise VolcengineSpeechError("FFPROBE_EXECUTABLE 不能为空")
     with TemporaryDirectory(prefix="doodlestory-tts-duration-") as temp_dir:
         audio_path = Path(temp_dir) / f"speech{suffix}"
         audio_path.write_bytes(content)
         try:
             completed = subprocess.run(
                 [
-                    "ffprobe",
+                    executable,
                     "-v",
                     "error",
                     "-show_entries",
@@ -127,7 +131,8 @@ def _probe_audio_duration_ms(
             )
         except FileNotFoundError as exc:
             raise VolcengineSpeechError(
-                "火山语音没有返回时长，且本机缺少 ffprobe"
+                "火山语音没有返回时长，且 FFPROBE_EXECUTABLE 不可执行："
+                f"{executable}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise VolcengineSpeechError(
@@ -255,6 +260,7 @@ class VolcengineSpeechClient:
             duration_ms = _probe_audio_duration_ms(
                 content,
                 response_format,
+                settings.ffprobe_executable,
             )
         return GeneratedSpeech(
             content=content,

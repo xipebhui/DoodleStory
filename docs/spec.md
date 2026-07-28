@@ -303,6 +303,10 @@
   允许每个 Scene 在整段 `subtitle` 与匹配音频的 `subtitle_id` 之间二选一，引用字幕资产时
   Remotion 只在 cue 时间窗口显示对应文本。字幕属于音频派生层并保存 provider、模型、语言、
   全文、cue JSON、时长和 owner 权限；Skill 发布版本可独立勾选这三个方法。
+- Sprint 129 将火山语音缺失 duration 时使用的媒体探测器改为显式
+  `FFPROBE_EXECUTABLE`。本地启动脚本必须在启动后端前解析并校验可执行文件绝对路径，再将其
+  传入服务进程；容器继续由 `ffmpeg` 包提供 `ffprobe`。不得依赖不确定的子进程 PATH，也不得
+  用文本长度估算音频时长。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

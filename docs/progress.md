@@ -547,6 +547,12 @@
   `1f657c883bcf4345a21e53692d0faced`；owner/其他用户权限结果为 true/false。
   `./scripts/check.sh` 通过 282 项后端测试、空库迁移、前端构建及 5 项 Remotion 测试。
 
+- 完成 Sprint 129 Native 语音 `ffprobe` 路径修复：终止并取消 Run
+  `22a69626bdcc4902a9bc4361c680886f`，运行中的 Tool 随后端进程停止且未在重启后恢复；
+  新增 `FFPROBE_EXECUTABLE`，本地启动脚本解析并校验
+  `/opt/homebrew/bin/ffprobe` 后显式传给后端。真实火山语音 smoke 成功返回 32301 bytes
+  MP3 和 4032ms 时长，重启后无 active Native Run。
+
 ## 已知缺口
 
 - 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume。

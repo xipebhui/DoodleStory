@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     doubao_voice_gen_speech_rate: int = Field(default=0, ge=-50, le=100)
     doubao_voice_gen_loudness_rate: int = Field(default=0, ge=-50, le=100)
     doubao_voice_gen_timeout_seconds: int = Field(default=120, ge=10)
+    ffprobe_executable: str = "ffprobe"
     remotion_project_dir: Path = (
         Path(__file__).resolve().parents[3] / "remotion"
     )

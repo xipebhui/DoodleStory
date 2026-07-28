@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.services.volcengine_speech import (
     VolcengineSpeechClient,
     VolcengineSpeechError,
+    _probe_audio_duration_ms,
     speech_rate_for_speed,
 )
 
@@ -73,6 +74,17 @@ def speech_settings() -> Settings:
 
 
 class VolcengineSpeechClientTests(unittest.TestCase):
+    def test_duration_probe_reports_configured_executable(self) -> None:
+        with self.assertRaisesRegex(
+            VolcengineSpeechError,
+            "/missing/ffprobe",
+        ):
+            _probe_audio_duration_ms(
+                b"audio",
+                "mp3",
+                "/missing/ffprobe",
+            )
+
     def test_supported_speed_maps_to_provider_speech_rate(self) -> None:
         self.assertEqual(
             [-50, -25, 0, 25, 50, 100],
@@ -204,7 +216,7 @@ class VolcengineSpeechClientTests(unittest.TestCase):
             ).generate_speech(text="测试")
 
         self.assertEqual(2468, generated.duration_ms)
-        probe.assert_called_once_with(b"mp3-content", "mp3")
+        probe.assert_called_once_with(b"mp3-content", "mp3", "ffprobe")
 
     def test_generate_speech_surfaces_provider_failure(self) -> None:
         response = FakeResponse(
