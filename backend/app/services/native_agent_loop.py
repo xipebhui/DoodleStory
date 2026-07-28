@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from dataclasses import dataclass
+from datetime import datetime
 import json
 from pathlib import Path
 import time
@@ -25,7 +26,7 @@ from agents.tool_context import ToolContext
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, sessionmaker
 
 from app.core.config import Settings, get_settings
 from app.core.database import SessionLocal
@@ -38,6 +39,7 @@ from app.models.entities import (
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentSubtitle,
+    NativeAgentConversation,
 )
 from app.models.enums import (
     AgentRunStatus,
@@ -82,6 +84,11 @@ from app.services.volcengine_speech import (
     speech_rate_for_speed,
 )
 from app.services.whisper_subtitles import GeneratedSubtitles, generate_whisper_subtitles
+from app.services.youtube_publishing import (
+    YoutubePublishCommand,
+    create_youtube_publish_task,
+)
+from app.services.youtube_publisher import YoutubePublisherClient
 
 
 MAX_NATIVE_AGENT_TURNS = 12
@@ -112,7 +119,13 @@ SpeechGenerator = Callable[..., GeneratedSpeech]
 SubtitleGenerator = Callable[..., GeneratedSubtitles]
 VideoRenderer = Callable[..., GeneratedRemotionVideo]
 NATIVE_RUNTIME_TOOL_NAMES = frozenset(
-    {"generate_image", "generate_speech", "generate_subtitles", "render_story_video"}
+    {
+        "generate_image",
+        "generate_speech",
+        "generate_subtitles",
+        "render_story_video",
+        "publish_youtube_video",
+    }
 )
 
 
@@ -1019,6 +1032,93 @@ def _video_tool_outputs(
     ]
 
 
+def build_publish_youtube_video_tool(
+    run_id: str,
+    *,
+    session_factory: sessionmaker = SessionLocal,
+    publisher_client: YoutubePublisherClient | None = None,
+) -> FunctionTool:
+    async def publish_youtube_video(
+        tool_context: ToolContext[None],
+    ) -> list[ToolOutputText]:
+        del tool_context
+
+        def submit_publish_task():
+            with session_factory() as db:
+                run = db.scalar(
+                    select(NativeAgentRun)
+                    .join(
+                        NativeAgentConversation,
+                        NativeAgentConversation.id == NativeAgentRun.conversation_id,
+                    )
+                    .where(NativeAgentRun.id == run_id)
+                )
+                if (
+                    run is None
+                    or run.youtube_channel_id is None
+                    or run.youtube_publishable_video_id is None
+                    or run.youtube_publish_confirmation_json is None
+                    or run.youtube_publish_confirmed_at is None
+                ):
+                    raise NativeAgentLoopError(
+                        "当前 Run 没有经过确认的结构化 YouTube 发布上下文"
+                    )
+                confirmation = json.loads(run.youtube_publish_confirmation_json)
+                task = create_youtube_publish_task(
+                    db,
+                    YoutubePublishCommand(
+                        owner_user_id=run.conversation.owner_user_id,
+                        channel_id=run.youtube_channel_id,
+                        publishable_video_id=run.youtube_publishable_video_id,
+                        visibility=str(confirmation["visibility"]),
+                        planned_publish_at=(
+                            datetime.fromisoformat(
+                                str(confirmation["planned_publish_at"]).replace(
+                                    "Z", "+00:00"
+                                )
+                            )
+                            if confirmation.get("planned_publish_at")
+                            else None
+                        ),
+                        notify_subscribers=bool(
+                            confirmation["notify_subscribers"]
+                        ),
+                        confirmed=bool(confirmation["confirmed"]),
+                        idempotency_key=f"native-run:{run.id}:youtube-publish",
+                    ),
+                    client=publisher_client,
+                )
+                return {
+                    "status": task.status,
+                    "publish_task_id": task.id,
+                    "remote_task_id": task.remote_task_id,
+                    "channel_id": task.channel_id,
+                    "source_native_agent_video_id": (
+                        task.source_native_agent_video_id
+                    ),
+                    "message": (
+                        "发布任务已提交；请在频道详情手动获取状态，不要等待或重复创建"
+                    ),
+                }
+
+        result = await asyncio.to_thread(submit_publish_task)
+        return [
+            ToolOutputText(
+                text=json.dumps(result, ensure_ascii=False)
+            )
+        ]
+
+    return function_tool(
+        publish_youtube_video,
+        name_override="publish_youtube_video",
+        description_override=(
+            "提交当前 Run 已由用户确认的 YouTube 发布任务。目标频道、视频、标题、可见性和"
+            "计划时间均由 Runtime 固定；不得从普通文本猜测或改写。提交后立即返回任务 ID，"
+            "不要等待上传完成，也不要重复调用。"
+        ),
+    )
+
+
 def _completed_image_url(completed: CompletedNativeTool) -> str:
     if completed.public_url and completed.public_url.startswith("data:"):
         return completed.public_url
@@ -1081,6 +1181,17 @@ def native_agent_instructions(run: NativeAgentRun) -> str:
             f"{image_generation_context}\n"
             "</image_generation_context>"
         )
+    if run.youtube_publish_confirmation_json:
+        instructions += (
+            "\n\n<youtube_publish_context>\n"
+            "用户已在界面中明确选择并确认以下发布配置。只有需要真正提交发布时才调用一次 "
+            "publish_youtube_video；Tool 不接收目标参数，禁止从普通文本猜测或替换频道。"
+            "Tool 返回本地任务 ID 后立即向用户说明已提交，并结束当前对话，不等待上传完成。\n"
+            f"{run.youtube_publish_confirmation_json}\n"
+            f"channel_id={run.youtube_channel_id}\n"
+            f"publishable_video_id={run.youtube_publishable_video_id}\n"
+            "</youtube_publish_context>"
+        )
     return instructions
 
 
@@ -1110,7 +1221,10 @@ async def execute_native_agent_run(
         run = db.scalar(
             select(NativeAgentRun)
             .where(NativeAgentRun.id == run_id)
-            .options(selectinload(NativeAgentRun.skill_version))
+            .options(
+                selectinload(NativeAgentRun.skill_version),
+                selectinload(NativeAgentRun.conversation),
+            )
         )
         if run is None:
             raise NativeAgentLoopError("Native Agent Run 不存在")
@@ -1137,6 +1251,12 @@ async def execute_native_agent_run(
         )
         exposed_tool_names = native_runtime_tool_names(
             run.skill_version.tool_names_json
+        )
+        has_youtube_publish_context = bool(
+            run.youtube_channel_id
+            and run.youtube_publishable_video_id
+            and run.youtube_publish_confirmation_json
+            and run.youtube_publish_confirmed_at
         )
         instructions = native_agent_instructions(run)
         trace_context = {
@@ -1183,6 +1303,8 @@ async def execute_native_agent_run(
                 store=store,
             )
         )
+    if has_youtube_publish_context:
+        tools.append(build_publish_youtube_video_tool(run_id))
     client = AsyncOpenAI(
         api_key=resolved_settings.text_fallback_api_key.strip(),
         base_url=resolved_settings.text_fallback_openai_base_url,

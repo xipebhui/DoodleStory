@@ -46,6 +46,8 @@ class YoutubeBenchmarkRead(BaseModel):
 class YoutubeUploadedVideoRead(BaseModel):
     id: str
     youtube_video_id: str
+    publish_task_id: str | None
+    source_native_agent_video_id: str | None
     title: str | None
     visibility: str | None
     views: int | None
@@ -72,6 +74,40 @@ class YoutubeChannelSummaryRead(BaseModel):
     last_sync_error: str | None
 
 
+class YoutubePublishTaskRead(BaseModel):
+    id: str
+    channel_id: str
+    publishable_video_id: str
+    source_native_agent_video_id: str
+    remote_task_id: str | None
+    status: str
+    remote_status: str | None
+    title: str
+    thumbnail_url: str | None
+    video_url: str
+    visibility: str
+    planned_publish_at: datetime
+    confirmed_at: datetime
+    last_status_checked_at: datetime | None
+    completed_at: datetime | None
+    youtube_video_id: str | None
+    youtube_url: str | None
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+
+
+class YoutubePublishTaskCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    publishable_video_id: str = Field(min_length=1, max_length=32)
+    visibility: Literal["public", "private", "unlisted"] = "public"
+    planned_publish_at: datetime | None = None
+    notify_subscribers: bool = True
+    confirmed: bool
+    idempotency_key: str = Field(min_length=8, max_length=160)
+
+
 class YoutubeChannelDetailRead(YoutubeChannelSummaryRead):
     account_email: str | None
     target_audience: str | None
@@ -81,6 +117,7 @@ class YoutubeChannelDetailRead(YoutubeChannelSummaryRead):
     analytics: dict[str, object] | None
     benchmarks: list[YoutubeBenchmarkRead]
     uploaded_videos: list[YoutubeUploadedVideoRead]
+    publish_tasks: list[YoutubePublishTaskRead]
 
 
 class PublishableVideoCreate(BaseModel):

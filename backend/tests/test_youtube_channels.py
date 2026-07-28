@@ -1,3 +1,4 @@
+from datetime import datetime
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -13,10 +14,27 @@ from app.api.youtube_channels import (
     update_channel_profile,
 )
 from app.core.database import Base
-from app.models.entities import User, YoutubeChannel
+from app.models.entities import (
+    PublishableVideo,
+    User,
+    YoutubeChannel,
+    YoutubePublishTask,
+    YoutubeUploadedVideo,
+)
 from app.models.enums import UserRole
 from app.schemas.youtube import YoutubeChannelProfileUpdate
-from app.services.youtube_publisher import YoutubePublisherClient, YoutubePublisherError
+from app.services.youtube_publisher import (
+    YoutubePublisherClient,
+    YoutubePublisherError,
+    YoutubePublisherOutcomeUnknown,
+)
+from app.services.youtube_publishing import (
+    YoutubePublishCommand,
+    YoutubePublishingConflict,
+    YoutubePublishingForbidden,
+    create_youtube_publish_task,
+    refresh_youtube_publish_task,
+)
 
 
 class FakeResponse:
@@ -163,3 +181,205 @@ class YoutubeChannelApiTests(unittest.TestCase):
             self.assertEqual(502, caught.exception.status_code)
             self.assertEqual(1234, channel.total_views)
             self.assertEqual("远程暂不可用", channel.last_sync_error)
+
+
+class FakePublishClient:
+    def __init__(
+        self,
+        *,
+        created: dict | None = None,
+        refreshed: dict | None = None,
+        create_error: Exception | None = None,
+    ) -> None:
+        self.created = created or {"id": "remote-1", "task_status": "pending"}
+        self.refreshed = refreshed or self.created
+        self.create_error = create_error
+        self.create_payloads: list[dict] = []
+
+    def create_upload_task(self, payload: dict) -> dict:
+        self.create_payloads.append(payload)
+        if self.create_error is not None:
+            raise self.create_error
+        return self.created
+
+    def upload_task(self, remote_task_id: str) -> dict:
+        del remote_task_id
+        return self.refreshed
+
+
+class YoutubePublishingServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(engine)
+        self.Session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+    def seed(self, db, *, review_status: str = "approved"):
+        user = User(email="admin@example.com", password_hash="hash", role=UserRole.admin)
+        channel = YoutubeChannel(
+            channel_id="UC1",
+            title="Channel",
+            remote_status="normal",
+        )
+        db.add_all([user, channel])
+        db.flush()
+        video = PublishableVideo(
+            owner_user_id=user.id,
+            source_native_agent_video_id="native-video-1",
+            video_url="https://cdn.example/video.mp4",
+            thumbnail_url="https://cdn.example/cover.jpg",
+            title="Title",
+            description="Description",
+            tags_json='["tag1"]',
+            contains_synthetic_media=True,
+            review_status=review_status,
+        )
+        db.add(video)
+        db.commit()
+        return user, channel, video
+
+    def command(self, user, channel, video, **overrides):
+        values = {
+            "owner_user_id": user.id,
+            "channel_id": channel.id,
+            "publishable_video_id": video.id,
+            "visibility": "public",
+            "planned_publish_at": datetime(2026, 7, 29, 3, 0, 0),
+            "notify_subscribers": True,
+            "confirmed": True,
+            "idempotency_key": "publish-test-key",
+        }
+        values.update(overrides)
+        return YoutubePublishCommand(**values)
+
+    def test_create_maps_request_and_idempotently_reuses_task(self) -> None:
+        with self.Session() as db:
+            user, channel, video = self.seed(db)
+            client = FakePublishClient()
+            task = create_youtube_publish_task(
+                db,
+                self.command(user, channel, video),
+                client=client,
+            )
+            repeated = create_youtube_publish_task(
+                db,
+                self.command(user, channel, video),
+                client=client,
+            )
+
+            self.assertEqual(task.id, repeated.id)
+            self.assertEqual(1, len(client.create_payloads))
+            payload = client.create_payloads[0]
+            self.assertEqual("UC1", payload["channel_id"])
+            self.assertEqual(
+                "Title",
+                payload["upload_args"]["body"]["snippet"]["title"],
+            )
+            self.assertEqual(
+                "public",
+                payload["upload_args"]["body"]["status"]["privacyStatus"],
+            )
+            self.assertEqual("native-video-1", task.source_native_agent_video_id)
+
+    def test_unconfirmed_or_unapproved_video_never_calls_remote(self) -> None:
+        with self.Session() as db:
+            user, channel, video = self.seed(db, review_status="draft")
+            client = FakePublishClient()
+            with self.assertRaises(YoutubePublishingForbidden):
+                create_youtube_publish_task(
+                    db,
+                    self.command(user, channel, video),
+                    client=client,
+                )
+            video.review_status = "approved"
+            db.commit()
+            with self.assertRaises(YoutubePublishingForbidden):
+                create_youtube_publish_task(
+                    db,
+                    self.command(user, channel, video, confirmed=False),
+                    client=client,
+                )
+            self.assertEqual([], client.create_payloads)
+
+    def test_unknown_create_result_is_locked_against_duplicate(self) -> None:
+        with self.Session() as db:
+            user, channel, video = self.seed(db)
+            client = FakePublishClient(
+                create_error=YoutubePublisherOutcomeUnknown("timeout")
+            )
+            task = create_youtube_publish_task(
+                db,
+                self.command(user, channel, video),
+                client=client,
+            )
+            self.assertEqual("outcome_unknown", task.status)
+            with self.assertRaises(YoutubePublishingConflict):
+                create_youtube_publish_task(
+                    db,
+                    self.command(
+                        user,
+                        channel,
+                        video,
+                        idempotency_key="different-key",
+                    ),
+                    client=FakePublishClient(),
+                )
+
+    def test_refresh_completed_creates_permanent_three_id_link(self) -> None:
+        with self.Session() as db:
+            user, channel, video = self.seed(db)
+            task = create_youtube_publish_task(
+                db,
+                self.command(user, channel, video),
+                client=FakePublishClient(),
+            )
+            refreshed = refresh_youtube_publish_task(
+                db,
+                task,
+                client=FakePublishClient(
+                    refreshed={
+                        "id": "remote-1",
+                        "task_status": "completed",
+                        "youtube_video_id": "yt-1",
+                        "updated_at": "2026-07-29T03:10:00Z",
+                    }
+                ),
+            )
+            uploaded = db.scalar(
+                select(YoutubeUploadedVideo).where(
+                    YoutubeUploadedVideo.youtube_video_id == "yt-1"
+                )
+            )
+
+            self.assertEqual("succeeded", refreshed.status)
+            self.assertIsNotNone(uploaded)
+            self.assertEqual(task.id, uploaded.publish_task_id)
+            self.assertEqual("native-video-1", uploaded.source_native_agent_video_id)
+            self.assertEqual(
+                1,
+                db.query(YoutubePublishTask).filter_by(youtube_video_id="yt-1").count(),
+            )
+
+    def test_cancelled_with_retry_error_maps_to_failed(self) -> None:
+        with self.Session() as db:
+            user, channel, video = self.seed(db)
+            task = create_youtube_publish_task(
+                db,
+                self.command(user, channel, video),
+                client=FakePublishClient(),
+            )
+            refreshed = refresh_youtube_publish_task(
+                db,
+                task,
+                client=FakePublishClient(
+                    refreshed={
+                        "id": "remote-1",
+                        "task_status": "cancelled",
+                        "last_run_error": "upload failed after 10 retries",
+                    }
+                ),
+            )
+            self.assertEqual("failed", refreshed.status)

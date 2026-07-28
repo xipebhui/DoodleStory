@@ -32,8 +32,11 @@ from app.models.entities import (
     NativeAgentRun,
     NativeAgentStep,
     NativeAgentVideo,
+    PublishableVideo,
     User,
     Style,
+    YoutubeChannel,
+    YoutubePublishTask,
 )
 from app.models.enums import (
     AgentRunStatus,
@@ -62,6 +65,7 @@ from app.services.native_agent_loop import (
     NativeImageToolContext,
     build_generate_image_tool,
     build_generate_speech_tool,
+    build_publish_youtube_video_tool,
     build_render_story_video_tool,
     execute_native_agent_run,
     native_agent_instructions,
@@ -289,6 +293,102 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertIsInstance(output[0], ToolOutputText)
         self.assertIsInstance(output[1], ToolOutputImage)
         self.assertEqual("data:image/png;base64,aW1hZ2U=", output[1].image_url)
+
+    def test_youtube_publish_tool_requires_structured_confirmed_context(self) -> None:
+        run_id = self.create_durable_run()
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            conversation = db.get(NativeAgentConversation, run.conversation_id)
+            channel = YoutubeChannel(
+                channel_id="UC-agent",
+                title="Agent Channel",
+                alias="英文主号",
+                remote_status="normal",
+            )
+            db.add(channel)
+            db.flush()
+            video = PublishableVideo(
+                owner_user_id=conversation.owner_user_id,
+                source_native_agent_video_id="native-agent-video-1",
+                video_url="https://cdn.example/agent-video.mp4",
+                title="Agent Publish",
+                description="Confirmed",
+                tags_json='["agent"]',
+                contains_synthetic_media=True,
+                review_status="approved",
+            )
+            db.add(video)
+            db.flush()
+            run.youtube_channel_id = channel.id
+            run.youtube_publishable_video_id = video.id
+            run.youtube_publish_confirmation_json = json.dumps(
+                {
+                    "visibility": "unlisted",
+                    "planned_publish_at": None,
+                    "notify_subscribers": True,
+                    "confirmed": True,
+                }
+            )
+            run.youtube_publish_confirmed_at = datetime.utcnow()
+            db.commit()
+
+        class FakePublisher:
+            def __init__(inner_self):
+                inner_self.payloads = []
+
+            def create_upload_task(inner_self, payload):
+                inner_self.payloads.append(payload)
+                return {"id": "remote-agent-1", "task_status": "pending"}
+
+        publisher = FakePublisher()
+        tool = build_publish_youtube_video_tool(
+            run_id,
+            session_factory=self.Session,
+            publisher_client=publisher,
+        )
+        output = asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="publish_youtube_video",
+                    tool_call_id="publish-call-1",
+                    tool_arguments="{}",
+                ),
+                "{}",
+            )
+        )
+        result = json.loads(output[0].text)
+        with self.Session() as db:
+            task = db.scalar(
+                select(YoutubePublishTask).where(
+                    YoutubePublishTask.id == result["publish_task_id"]
+                )
+            )
+            self.assertEqual(run_id, task.idempotency_key.split(":")[1])
+            self.assertEqual("native-agent-video-1", task.source_native_agent_video_id)
+
+        self.assertEqual("pending", result["status"])
+        self.assertEqual("UC-agent", publisher.payloads[0]["channel_id"])
+        self.assertEqual("unlisted", publisher.payloads[0]["upload_args"]["body"]["status"]["privacyStatus"])
+
+    def test_youtube_publish_tool_rejects_run_without_confirmation(self) -> None:
+        run_id = self.create_durable_run()
+        tool = build_publish_youtube_video_tool(
+            run_id,
+            session_factory=self.Session,
+        )
+        output = asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="publish_youtube_video",
+                    tool_call_id="publish-call-1",
+                    tool_arguments="{}",
+                ),
+                "{}",
+            )
+        )
+        self.assertIn("没有经过确认", str(output))
 
     def test_generate_speech_is_real_function_tool_and_returns_asset_metadata(self) -> None:
         lifecycle: list[str] = []

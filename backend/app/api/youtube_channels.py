@@ -16,6 +16,7 @@ from app.models.entities import (
     User,
     YoutubeChannel,
     YoutubeChannelBenchmark,
+    YoutubePublishTask,
     YoutubeUploadedVideo,
 )
 from app.models.enums import UserRole
@@ -28,10 +29,20 @@ from app.schemas.youtube import (
     YoutubeChannelDetailRead,
     YoutubeChannelProfileUpdate,
     YoutubeChannelSummaryRead,
+    YoutubePublishTaskCreate,
+    YoutubePublishTaskRead,
     YoutubeUploadedVideoRead,
 )
 from app.services.storage import asset_content_url
 from app.services.youtube_publisher import YoutubePublisherClient, YoutubePublisherError
+from app.services.youtube_publishing import (
+    YoutubePublishCommand,
+    YoutubePublishingConflict,
+    YoutubePublishingError,
+    YoutubePublishingForbidden,
+    create_youtube_publish_task,
+    refresh_youtube_publish_task,
+)
 
 
 router = APIRouter(prefix="/youtube", tags=["youtube"])
@@ -70,6 +81,47 @@ def channel_summary(channel: YoutubeChannel) -> YoutubeChannelSummaryRead:
     )
 
 
+def publish_task_read(task: YoutubePublishTask) -> YoutubePublishTaskRead:
+    return YoutubePublishTaskRead(
+        id=task.id,
+        channel_id=task.channel_id,
+        publishable_video_id=task.publishable_video_id,
+        source_native_agent_video_id=task.source_native_agent_video_id,
+        remote_task_id=task.remote_task_id,
+        status=task.status,
+        remote_status=task.remote_status,
+        title=task.title_snapshot,
+        thumbnail_url=task.thumbnail_url_snapshot,
+        video_url=task.video_url_snapshot,
+        visibility=task.visibility_snapshot,
+        planned_publish_at=task.planned_publish_at,
+        confirmed_at=task.confirmed_at,
+        last_status_checked_at=task.last_status_checked_at,
+        completed_at=task.completed_at,
+        youtube_video_id=task.youtube_video_id,
+        youtube_url=task.youtube_url,
+        error_code=task.error_code,
+        error_message=task.error_message,
+        created_at=task.created_at,
+    )
+
+
+def publishable_video_read(item: PublishableVideo) -> PublishableVideoRead:
+    return PublishableVideoRead(
+        id=item.id,
+        source_native_agent_video_id=item.source_native_agent_video_id,
+        video_url=item.video_url,
+        thumbnail_url=item.thumbnail_url,
+        title=item.title,
+        description=item.description,
+        tags=json.loads(item.tags_json),
+        planned_publish_at=item.planned_publish_at,
+        contains_synthetic_media=item.contains_synthetic_media,
+        review_status=item.review_status,
+        created_at=item.created_at,
+    )
+
+
 def channel_detail(channel: YoutubeChannel) -> YoutubeChannelDetailRead:
     summary = channel_summary(channel).model_dump()
     return YoutubeChannelDetailRead(
@@ -96,6 +148,8 @@ def channel_detail(channel: YoutubeChannel) -> YoutubeChannelDetailRead:
             YoutubeUploadedVideoRead(
                 id=item.id,
                 youtube_video_id=item.youtube_video_id,
+                publish_task_id=item.publish_task_id,
+                source_native_agent_video_id=item.source_native_agent_video_id,
                 title=item.title,
                 visibility=item.visibility,
                 views=item.views,
@@ -106,6 +160,10 @@ def channel_detail(channel: YoutubeChannel) -> YoutubeChannelDetailRead:
             )
             for item in channel.uploaded_videos[:100]
         ],
+        publish_tasks=[
+            publish_task_read(item)
+            for item in channel.publish_tasks[:100]
+        ],
     )
 
 
@@ -115,6 +173,7 @@ def load_channel(db: Session, channel_id: str) -> YoutubeChannel:
         .options(
             selectinload(YoutubeChannel.benchmarks),
             selectinload(YoutubeChannel.uploaded_videos),
+            selectinload(YoutubeChannel.publish_tasks),
         )
         .where(YoutubeChannel.id == channel_id)
     )
@@ -320,4 +379,96 @@ def create_publishable_video(payload: PublishableVideoCreate, user: User = Depen
     db.add(item)
     db.commit()
     db.refresh(item)
-    return ApiData(data=PublishableVideoRead(id=item.id, source_native_agent_video_id=item.source_native_agent_video_id, video_url=item.video_url, thumbnail_url=item.thumbnail_url, title=item.title, description=item.description, tags=json.loads(item.tags_json), planned_publish_at=item.planned_publish_at, contains_synthetic_media=item.contains_synthetic_media, review_status=item.review_status, created_at=item.created_at))
+    return ApiData(data=publishable_video_read(item))
+
+
+@router.get("/publishable-videos", response_model=ApiList[PublishableVideoRead])
+def list_publishable_videos(
+    review_status: str | None = Query(default=None, max_length=40),
+    pagination: Pagination = Depends(get_pagination),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[PublishableVideoRead]:
+    require_admin(user)
+    filters = [PublishableVideo.owner_user_id == user.id]
+    if review_status:
+        filters.append(PublishableVideo.review_status == review_status)
+    total = db.scalar(
+        select(func.count()).select_from(PublishableVideo).where(*filters)
+    ) or 0
+    rows = db.scalars(
+        select(PublishableVideo)
+        .where(*filters)
+        .order_by(PublishableVideo.created_at.desc(), PublishableVideo.id.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit + 1)
+    ).all()
+    return ApiList(
+        items=[publishable_video_read(item) for item in rows[: pagination.limit]],
+        page={
+            **build_page(pagination.limit, pagination.offset, len(rows)),
+            "total": total,
+        },
+    )
+
+
+@router.post(
+    "/channels/{channel_pk}/publish-tasks",
+    response_model=ApiData[YoutubePublishTaskRead],
+    status_code=202,
+)
+def create_publish_task(
+    channel_pk: str,
+    payload: YoutubePublishTaskCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[YoutubePublishTaskRead]:
+    require_admin(user)
+    try:
+        task = create_youtube_publish_task(
+            db,
+            YoutubePublishCommand(
+                owner_user_id=user.id,
+                channel_id=channel_pk,
+                publishable_video_id=payload.publishable_video_id,
+                visibility=payload.visibility,
+                planned_publish_at=payload.planned_publish_at,
+                notify_subscribers=payload.notify_subscribers,
+                confirmed=payload.confirmed,
+                idempotency_key=payload.idempotency_key,
+            ),
+        )
+    except YoutubePublishingForbidden as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except YoutubePublishingConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except YoutubePublishingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ApiData(data=publish_task_read(task))
+
+
+@router.post(
+    "/channels/{channel_pk}/publish-tasks/{task_id}/refresh",
+    response_model=ApiData[YoutubePublishTaskRead],
+)
+def refresh_publish_task(
+    channel_pk: str,
+    task_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[YoutubePublishTaskRead]:
+    require_admin(user)
+    task = db.scalar(
+        select(YoutubePublishTask).where(
+            YoutubePublishTask.id == task_id,
+            YoutubePublishTask.channel_id == channel_pk,
+            YoutubePublishTask.owner_user_id == user.id,
+        )
+    )
+    if task is None:
+        raise HTTPException(status_code=404, detail="YouTube 发布任务不存在")
+    try:
+        refreshed = refresh_youtube_publish_task(db, task)
+    except YoutubePublishingConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return ApiData(data=publish_task_read(refreshed))

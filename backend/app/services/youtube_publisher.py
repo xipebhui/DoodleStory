@@ -11,6 +11,14 @@ class YoutubePublisherError(RuntimeError):
     pass
 
 
+class YoutubePublisherRequestRejected(YoutubePublisherError):
+    pass
+
+
+class YoutubePublisherOutcomeUnknown(YoutubePublisherError):
+    pass
+
+
 class YoutubePublisherClient:
     def __init__(
         self,
@@ -36,7 +44,9 @@ class YoutubePublisherClient:
                 **kwargs,
             )
         except requests.RequestException as exc:
-            raise YoutubePublisherError(f"YouTube 发布服务请求失败：{exc}") from exc
+            raise YoutubePublisherOutcomeUnknown(
+                f"YouTube 发布服务请求结果不明确：{exc}"
+            ) from exc
         try:
             payload = response.json()
         except ValueError as exc:
@@ -45,7 +55,12 @@ class YoutubePublisherClient:
             ) from exc
         if response.status_code >= 400:
             message = payload.get("error") if isinstance(payload, dict) else None
-            raise YoutubePublisherError(
+            error_type = (
+                YoutubePublisherRequestRejected
+                if response.status_code < 500
+                else YoutubePublisherOutcomeUnknown
+            )
+            raise error_type(
                 f"YouTube 发布服务返回 HTTP {response.status_code}：{message or '未知错误'}"
             )
         if not isinstance(payload, dict):
@@ -98,3 +113,24 @@ class YoutubePublisherClient:
                 return rows
         raise YoutubePublisherError("已发布视频分页超过 100 页，已停止同步")
 
+    def create_upload_task(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self._request(
+                "POST",
+                "/api/youtube/upload-video/v1/create",
+                json=payload,
+            )
+        except (
+            YoutubePublisherRequestRejected,
+            YoutubePublisherOutcomeUnknown,
+        ):
+            raise
+        except YoutubePublisherError as exc:
+            raise YoutubePublisherOutcomeUnknown(str(exc)) from exc
+
+    def upload_task(self, remote_task_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            "/api/youtube/upload-video/v1/one",
+            params={"id": remote_task_id},
+        )

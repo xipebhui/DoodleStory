@@ -68,6 +68,7 @@ import {
   type NativeAgentConversationDetail,
   type NativeAgentEvent,
   type NativeAgentRun,
+  type PublishableVideo,
   type YoutubeChannelDetail,
   type YoutubeChannelSummary,
   type AdminCreditTransaction,
@@ -2742,6 +2743,19 @@ function youtubeMetric(value: number | null, suffix = "") {
   return `${new Intl.NumberFormat("zh-CN", { notation: value >= 10000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value)}${suffix}`;
 }
 
+function youtubePublishStatus(status: string) {
+  const labels: Record<string, string> = {
+    submitting: "正在提交",
+    pending: "等待发布",
+    running: "正在上传",
+    succeeded: "发布成功",
+    failed: "发布失败",
+    cancelled: "用户取消",
+    outcome_unknown: "结果不明确",
+  };
+  return labels[status] || status;
+}
+
 function YoutubeChannelListView({
   onNavigatePath,
 }: {
@@ -2886,6 +2900,14 @@ function YoutubeChannelDetailView({
   const [error, setError] = useState("");
   const [profile, setProfile] = useState({ alias: "", account_positioning: "", target_audience: "", stage_goal: "", ai_definition: "", operation_notes: "" });
   const [benchmark, setBenchmark] = useState({ name: "", profile_url: "", notes: "" });
+  const [publishableVideos, setPublishableVideos] = useState<PublishableVideo[]>([]);
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [publishForm, setPublishForm] = useState({
+    publishable_video_id: "",
+    visibility: "public" as "public" | "private" | "unlisted",
+    planned_publish_at: "",
+    notify_subscribers: true,
+  });
 
   async function loadChannel() {
     try {
@@ -2907,6 +2929,11 @@ function YoutubeChannelDetailView({
 
   useEffect(() => {
     void loadChannel();
+    void api.youtubePublishableVideos("approved")
+      .then((result) => setPublishableVideos(result.items))
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : "可发布视频加载失败");
+      });
   }, [channelId]);
 
   async function runAction(name: string, action: () => Promise<YoutubeChannelDetail>) {
@@ -2976,7 +3003,83 @@ function YoutubeChannelDetailView({
           <div className="youtube-form-actions"><button className="primary-button" disabled={busy === "profile"}>保存账号定义</button></div>
         </form>
       ) : null}
-      {tab === "tasks" ? <div className="youtube-empty"><Clock3 size={24} /><strong>发布任务将在 Sprint 135 接入</strong><span>本 Sprint 不创建真实发布请求。</span></div> : null}
+      {tab === "tasks" ? (
+        <section className="youtube-publish-section">
+          <header>
+            <div>
+              <h2>发布任务</h2>
+              <p>提交后不会自动轮询；需要时手动获取单条任务状态。</p>
+            </div>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={channel.remote_status !== "normal" || publishableVideos.length === 0}
+              onClick={() => {
+                setPublishForm((current) => ({
+                  ...current,
+                  publishable_video_id: current.publishable_video_id || publishableVideos[0]?.id || "",
+                }));
+                setShowPublishDialog(true);
+              }}
+            >
+              <Upload size={15} />创建发布任务
+            </button>
+          </header>
+          {publishableVideos.length === 0 ? (
+            <div className="youtube-empty">
+              <Film size={24} />
+              <strong>没有审核通过的可发布视频</strong>
+              <span>先把 Native Agent 生成视频登记并审核通过，再创建发布任务。</span>
+            </div>
+          ) : null}
+          {channel.publish_tasks.length > 0 ? (
+            <div className="youtube-publish-table">
+              <div className="youtube-publish-row youtube-video-head">
+                <span>视频 / 追踪 ID</span><span>状态</span><span>可见性</span><span>计划时间</span><span>操作</span>
+              </div>
+              {channel.publish_tasks.map((task) => (
+                <div className="youtube-publish-row" key={task.id}>
+                  <span>
+                    <strong>{task.title}</strong>
+                    <small>Agent {task.source_native_agent_video_id}</small>
+                    <small>Task {task.id}{task.youtube_video_id ? ` · YouTube ${task.youtube_video_id}` : ""}</small>
+                  </span>
+                  <span>
+                    <i className={`youtube-task-status is-${task.status}`}>{youtubePublishStatus(task.status)}</i>
+                    {task.error_message ? <small className="youtube-task-error">{task.error_message}</small> : null}
+                  </span>
+                  <span>{task.visibility}</span>
+                  <span>{formatDateTime(task.planned_publish_at)}</span>
+                  <span className="youtube-task-actions">
+                    {task.youtube_url ? <a href={task.youtube_url} target="_blank" rel="noreferrer">查看视频</a> : null}
+                    <button
+                      className="youtube-text-action"
+                      type="button"
+                      disabled={busy === `task-${task.id}` || !task.remote_task_id}
+                      onClick={async () => {
+                        setBusy(`task-${task.id}`);
+                        try {
+                          await api.refreshYoutubePublishTask(channel.id, task.id);
+                          await loadChannel();
+                        } catch (refreshError) {
+                          setError(refreshError instanceof Error ? refreshError.message : "任务状态获取失败");
+                        } finally {
+                          setBusy("");
+                        }
+                      }}
+                    >
+                      <RefreshCw className={busy === `task-${task.id}` ? "spin" : ""} size={14} />
+                      获取状态
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : publishableVideos.length > 0 ? (
+            <div className="youtube-empty"><Clock3 size={24} /><strong>还没有发布任务</strong><span>选择一个审核通过的视频开始发布。</span></div>
+          ) : null}
+        </section>
+      ) : null}
       {tab === "videos" ? (
         <section className="youtube-videos-section">
           <header><div><h2>已发布视频</h2><p>仅同步当前频道的数据。</p></div><button className="secondary-button" disabled={Boolean(busy)} type="button" onClick={() => void runAction("videos", () => api.syncYoutubeChannelVideos(channel.id))}><RefreshCw className={busy === "videos" ? "spin" : ""} size={15} />同步视频</button></header>
@@ -3009,6 +3112,81 @@ function YoutubeChannelDetailView({
           </form>
           {channel.benchmarks.map((item) => <article key={item.id}><div><strong>{item.name}</strong><a href={item.profile_url} target="_blank" rel="noreferrer">{item.profile_url}</a><small>{item.notes}</small></div><button type="button" aria-label={`删除 ${item.name}`} onClick={async () => { await api.deleteYoutubeBenchmark(channel.id, item.id); await loadChannel(); }}><Trash2 size={15} /></button></article>)}
         </section>
+      ) : null}
+      {showPublishDialog ? (
+        <div className="youtube-publish-overlay" role="presentation" onMouseDown={() => setShowPublishDialog(false)}>
+          <form
+            className="youtube-publish-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="youtube-publish-title"
+            onMouseDown={(event) => event.stopPropagation()}
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const selected = publishableVideos.find((item) => item.id === publishForm.publishable_video_id);
+              if (!selected) return;
+              setBusy("publish");
+              try {
+                await api.createYoutubePublishTask(channel.id, {
+                  publishable_video_id: selected.id,
+                  visibility: publishForm.visibility,
+                  planned_publish_at: publishForm.planned_publish_at
+                    ? new Date(publishForm.planned_publish_at).toISOString()
+                    : null,
+                  notify_subscribers: publishForm.notify_subscribers,
+                  confirmed: true,
+                  idempotency_key: crypto.randomUUID(),
+                });
+                setShowPublishDialog(false);
+                setTab("tasks");
+                await loadChannel();
+              } catch (publishError) {
+                setError(publishError instanceof Error ? publishError.message : "发布任务创建失败");
+              } finally {
+                setBusy("");
+              }
+            }}
+          >
+            <header>
+              <span><Upload size={18} /></span>
+              <div>
+                <h2 id="youtube-publish-title">确认发布到 {channel.alias || channel.title}</h2>
+                <p>确认后会创建真实 YouTube 异步上传任务，不能通过重复提交来恢复。</p>
+              </div>
+            </header>
+            <label>
+              审核通过的视频
+              <select required value={publishForm.publishable_video_id} onChange={(event) => setPublishForm({ ...publishForm, publishable_video_id: event.target.value })}>
+                {publishableVideos.map((video) => <option value={video.id} key={video.id}>{video.title} · Agent {video.source_native_agent_video_id}</option>)}
+              </select>
+            </label>
+            <div className="youtube-publish-fields">
+              <label>
+                可见性
+                <select value={publishForm.visibility} onChange={(event) => setPublishForm({ ...publishForm, visibility: event.target.value as typeof publishForm.visibility })}>
+                  <option value="public">公开</option>
+                  <option value="unlisted">不公开列出</option>
+                  <option value="private">私密</option>
+                </select>
+              </label>
+              <label>
+                计划时间（上海时区）
+                <input type="datetime-local" value={publishForm.planned_publish_at} onChange={(event) => setPublishForm({ ...publishForm, planned_publish_at: event.target.value })} />
+              </label>
+            </div>
+            <label className="youtube-publish-check">
+              <input type="checkbox" checked={publishForm.notify_subscribers} onChange={(event) => setPublishForm({ ...publishForm, notify_subscribers: event.target.checked })} />
+              发布时通知频道订阅者
+            </label>
+            <footer>
+              <button className="secondary-button" type="button" disabled={busy === "publish"} onClick={() => setShowPublishDialog(false)}>暂不发布</button>
+              <button className="primary-button" disabled={busy === "publish"}>
+                {busy === "publish" ? <Loader2 className="spin" size={15} /> : <Upload size={15} />}
+                确认并创建发布任务
+              </button>
+            </footer>
+          </form>
+        </div>
       ) : null}
     </section>
   );
@@ -3111,7 +3289,7 @@ function NativeAgentSidebar({
           <Sparkles size={16} />
           <span>
             <strong>Skill 驱动真实 Tools</strong>
-            <small>generate_image · generate_speech · generate_subtitles · render_story_video</small>
+            <small>generate_image · generate_speech · generate_subtitles · render_story_video · publish_youtube_video</small>
           </span>
         </div>
         <div className="agent-account-credit">
@@ -3279,8 +3457,22 @@ function NativeAgentView({
   const [detail, setDetail] = useState<NativeAgentConversationDetail | null>(null);
   const [skills, setSkills] = useState<AgentResourceOption[]>([]);
   const [styles, setStyles] = useState<AgentResourceOption[]>([]);
+  const [youtubeChannels, setYoutubeChannels] = useState<YoutubeChannelSummary[]>([]);
+  const [publishableVideos, setPublishableVideos] = useState<PublishableVideo[]>([]);
   const [skillVersionId, setSkillVersionId] = useState("");
   const [styleId, setStyleId] = useState("");
+  const [youtubeChannelId, setYoutubeChannelId] = useState("");
+  const [youtubePublishableVideoId, setYoutubePublishableVideoId] = useState("");
+  const [youtubeVisibility, setYoutubeVisibility] = useState<"public" | "private" | "unlisted">("public");
+  const [youtubePlannedAt, setYoutubePlannedAt] = useState("");
+  const [registeringVideoId, setRegisteringVideoId] = useState<string | null>(null);
+  const [registeringVideo, setRegisteringVideo] = useState(false);
+  const [registerForm, setRegisterForm] = useState({
+    title: "",
+    description: "",
+    tags: "",
+    thumbnail_url: "",
+  });
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -3324,6 +3516,21 @@ function NativeAgentView({
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (user.role !== "admin") return;
+    Promise.all([
+      api.youtubeChannels({ remote_status: "normal", limit: 100 }),
+      api.youtubePublishableVideos("approved"),
+    ])
+      .then(([channelResult, videoResult]) => {
+        setYoutubeChannels(channelResult.items);
+        setPublishableVideos(videoResult.items);
+      })
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : "YouTube 发布选项加载失败");
+      });
+  }, [user.role]);
 
   useEffect(() => {
     if (!routeConversationId) {
@@ -3435,6 +3642,9 @@ function NativeAgentView({
   const previewImage = detail?.runs
     .flatMap((run) => run.images)
     .find((image) => image.id === previewImageId) || null;
+  const videoToRegister = detail?.runs
+    .flatMap((run) => run.videos)
+    .find((video) => video.id === registeringVideoId) || null;
 
   useEffect(() => {
     if (!threadRef.current || !threadSignature) return;
@@ -3473,6 +3683,26 @@ function NativeAgentView({
       setError("当前会话还没有可重试的任务");
       return;
     }
+    const selectedYoutubeChannel = youtubeChannels.find((item) => item.id === youtubeChannelId);
+    const selectedPublishableVideo = publishableVideos.find((item) => item.id === youtubePublishableVideoId);
+    if (youtubeChannelId && !selectedPublishableVideo) {
+      setError("选择 @频道后，还需要选择一个审核通过的视频");
+      return;
+    }
+    if (selectedYoutubeChannel && selectedPublishableVideo) {
+      const confirmed = window.confirm(
+        [
+          `确认创建真实 YouTube 发布请求？`,
+          `频道：${selectedYoutubeChannel.alias || selectedYoutubeChannel.title}`,
+          `视频：${selectedPublishableVideo.title}`,
+          `Agent 视频 ID：${selectedPublishableVideo.source_native_agent_video_id}`,
+          `可见性：${youtubeVisibility}`,
+          `时间：${youtubePlannedAt ? formatDateTime(new Date(youtubePlannedAt).toISOString()) : "立即发布"}`,
+          "提交后 Agent 只返回异步任务 ID，不会等待上传完成。",
+        ].join("\n"),
+      );
+      if (!confirmed) return;
+    }
     setSending(true);
     setError("");
     try {
@@ -3487,8 +3717,24 @@ function NativeAgentView({
             content,
             skill_version_id: skillVersionId,
             style_id: styleId || null,
+            youtube_channel_id: selectedYoutubeChannel?.id || null,
+            youtube_publishable_video_id: selectedPublishableVideo?.id || null,
+            youtube_publish_confirmation:
+              selectedYoutubeChannel && selectedPublishableVideo
+                ? {
+                    visibility: youtubeVisibility,
+                    planned_publish_at: youtubePlannedAt
+                      ? new Date(youtubePlannedAt).toISOString()
+                      : null,
+                    notify_subscribers: true,
+                    confirmed: true,
+                  }
+                : null,
           });
       setContent("");
+      setYoutubeChannelId("");
+      setYoutubePublishableVideoId("");
+      setYoutubePlannedAt("");
       setDetail((current) =>
         current?.id === conversation.id
           ? {
@@ -3587,6 +3833,8 @@ function NativeAgentView({
                 <div className="native-agent-run-meta">
                   <span>{run.skill_name} · v{run.skill_version}</span>
                   <span>{run.style_name}</span>
+                  {run.youtube_channel_id ? <span>@{run.youtube_channel_name}</span> : null}
+                  {run.youtube_publishable_video_id ? <span>发布：{run.youtube_publishable_video_title}</span> : null}
                   <span>
                     {runActive && run.model_call_count === 0
                       ? "模型 Loop 运行中"
@@ -3731,8 +3979,31 @@ function NativeAgentView({
                           当前浏览器不支持视频播放。
                         </video>
                         <figcaption>
-                          {video.template_id} · {video.width}×{video.height}
-                          {" · "}{(video.duration_ms / 1000).toFixed(1)} 秒
+                          <span>
+                            {video.template_id} · {video.width}×{video.height}
+                            {" · "}{(video.duration_ms / 1000).toFixed(1)} 秒
+                          </span>
+                          {user.role === "admin" ? (
+                            publishableVideos.some((item) => item.source_native_agent_video_id === video.id) ? (
+                              <small className="native-video-registered"><CheckCircle2 size={13} />已审核登记</small>
+                            ) : (
+                              <button
+                                type="button"
+                                className="youtube-text-action"
+                                onClick={() => {
+                                  setRegisteringVideoId(video.id);
+                                  setRegisterForm({
+                                    title: detail?.title || "Agent 生成视频",
+                                    description: "",
+                                    tags: "",
+                                    thumbnail_url: "",
+                                  });
+                                }}
+                              >
+                                <Upload size={13} />审核并登记发布
+                              </button>
+                            )
+                          ) : null}
                         </figcaption>
                       </figure>
                     ))}
@@ -3787,6 +4058,58 @@ function NativeAgentView({
                 ))}
               </select>
             </label>
+            {user.role === "admin" ? (
+              <label>
+                <span>@频道</span>
+                <select
+                  value={youtubeChannelId}
+                  onChange={(event) => {
+                    setYoutubeChannelId(event.target.value);
+                    if (!event.target.value) setYoutubePublishableVideoId("");
+                  }}
+                  disabled={sending || Boolean(activeRun)}
+                >
+                  <option value="">不发布到 YouTube</option>
+                  {youtubeChannels.map((channel) => (
+                    <option value={channel.id} key={channel.id}>
+                      @{channel.alias || channel.title} · {channel.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {user.role === "admin" && youtubeChannelId ? (
+              <>
+                <label>
+                  <span>审核视频</span>
+                  <select
+                    value={youtubePublishableVideoId}
+                    onChange={(event) => setYoutubePublishableVideoId(event.target.value)}
+                    disabled={sending || Boolean(activeRun)}
+                    required
+                  >
+                    <option value="">选择审核通过的视频</option>
+                    {publishableVideos.map((video) => (
+                      <option value={video.id} key={video.id}>
+                        {video.title} · {video.source_native_agent_video_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>可见性</span>
+                  <select value={youtubeVisibility} onChange={(event) => setYoutubeVisibility(event.target.value as typeof youtubeVisibility)} disabled={sending || Boolean(activeRun)}>
+                    <option value="public">公开</option>
+                    <option value="unlisted">不公开列出</option>
+                    <option value="private">私密</option>
+                  </select>
+                </label>
+                <label>
+                  <span>计划时间（上海时区）</span>
+                  <input type="datetime-local" value={youtubePlannedAt} onChange={(event) => setYoutubePlannedAt(event.target.value)} disabled={sending || Boolean(activeRun)} />
+                </label>
+              </>
+            ) : null}
           </div>
           <textarea
             value={content}
@@ -3800,7 +4123,9 @@ function NativeAgentView({
                 ? "终止后不会再启动新的 Tool；已被 Provider 接收的请求可能仍会计费。"
                 : content.trim() === "重试"
                   ? "将继续最近一次 Run，并复用该 Run 固定的 Skill、Style 和成功资产；当前选择不会生效。"
-                  : "Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。"}
+                  : youtubeChannelId
+                    ? "已选择结构化 @频道；运行前会再次展示频道、视频、可见性和时间供你确认。"
+                    : "Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。"}
             </span>
             <button
               type={activeRun ? "button" : "submit"}
@@ -3853,6 +4178,61 @@ function NativeAgentView({
                 variant="original"
               />
             </div>
+          </div>
+        ) : null}
+        {videoToRegister ? (
+          <div className="youtube-publish-overlay" role="presentation" onMouseDown={() => setRegisteringVideoId(null)}>
+            <form
+              className="youtube-publish-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="register-video-title"
+              onMouseDown={(event) => event.stopPropagation()}
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setRegisteringVideo(true);
+                try {
+                  const created = await api.createYoutubePublishableVideo({
+                    source_native_agent_video_id: videoToRegister.id,
+                    thumbnail_url: registerForm.thumbnail_url.trim() || null,
+                    title: registerForm.title.trim(),
+                    description: registerForm.description.trim(),
+                    tags: registerForm.tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean),
+                    planned_publish_at: null,
+                    contains_synthetic_media: true,
+                    review_status: "approved",
+                  });
+                  setPublishableVideos((current) => [created, ...current]);
+                  setYoutubePublishableVideoId(created.id);
+                  setRegisteringVideoId(null);
+                  setError("");
+                } catch (registerError) {
+                  setError(registerError instanceof Error ? registerError.message : "视频登记失败");
+                } finally {
+                  setRegisteringVideo(false);
+                }
+              }}
+            >
+              <header>
+                <span><Film size={18} /></span>
+                <div>
+                  <h2 id="register-video-title">审核并登记 Agent 视频</h2>
+                  <p>登记后保留 Agent 视频 ID；“审核通过”表示它可以进入真实发布确认。</p>
+                </div>
+              </header>
+              <label>标题<input required maxLength={200} value={registerForm.title} onChange={(event) => setRegisterForm({ ...registerForm, title: event.target.value })} /></label>
+              <label>描述<textarea maxLength={10000} value={registerForm.description} onChange={(event) => setRegisterForm({ ...registerForm, description: event.target.value })} /></label>
+              <label>标签<input value={registerForm.tags} onChange={(event) => setRegisterForm({ ...registerForm, tags: event.target.value })} placeholder="用逗号分隔" /></label>
+              <label>封面 URL（可选）<input type="url" value={registerForm.thumbnail_url} onChange={(event) => setRegisterForm({ ...registerForm, thumbnail_url: event.target.value })} /></label>
+              <div className="youtube-register-trace">Agent 视频 ID <code>{videoToRegister.id}</code></div>
+              <footer>
+                <button className="secondary-button" type="button" disabled={registeringVideo} onClick={() => setRegisteringVideoId(null)}>取消</button>
+                <button className="primary-button" disabled={registeringVideo || !registerForm.title.trim()}>
+                  {registeringVideo ? <Loader2 className="spin" size={15} /> : <CheckCircle2 size={15} />}
+                  审核通过并登记
+                </button>
+              </footer>
+            </form>
           </div>
         ) : null}
       </main>

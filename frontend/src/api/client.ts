@@ -543,6 +543,8 @@ export type YoutubeBenchmark = {
 export type YoutubeUploadedVideo = {
   id: string;
   youtube_video_id: string;
+  publish_task_id: string | null;
+  source_native_agent_video_id: string | null;
   title: string | null;
   visibility: string | null;
   views: number | null;
@@ -550,6 +552,43 @@ export type YoutubeUploadedVideo = {
   uploaded_at: string;
   remote_last_sync_at: string | null;
   last_sync_error: string | null;
+};
+
+export type YoutubePublishTask = {
+  id: string;
+  channel_id: string;
+  publishable_video_id: string;
+  source_native_agent_video_id: string;
+  remote_task_id: string | null;
+  status: string;
+  remote_status: string | null;
+  title: string;
+  thumbnail_url: string | null;
+  video_url: string;
+  visibility: string;
+  planned_publish_at: string;
+  confirmed_at: string;
+  last_status_checked_at: string | null;
+  completed_at: string | null;
+  youtube_video_id: string | null;
+  youtube_url: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type PublishableVideo = {
+  id: string;
+  source_native_agent_video_id: string;
+  video_url: string;
+  thumbnail_url: string | null;
+  title: string;
+  description: string;
+  tags: string[];
+  planned_publish_at: string | null;
+  contains_synthetic_media: boolean;
+  review_status: "draft" | "approved";
+  created_at: string;
 };
 
 export type YoutubeChannelDetail = YoutubeChannelSummary & {
@@ -561,6 +600,7 @@ export type YoutubeChannelDetail = YoutubeChannelSummary & {
   analytics: Record<string, unknown> | null;
   benchmarks: YoutubeBenchmark[];
   uploaded_videos: YoutubeUploadedVideo[];
+  publish_tasks: YoutubePublishTask[];
 };
 
 export type NativeAgentRun = {
@@ -571,6 +611,11 @@ export type NativeAgentRun = {
   skill_version: number;
   style_id: string | null;
   style_name: string | null;
+  youtube_channel_id: string | null;
+  youtube_channel_name: string | null;
+  youtube_publishable_video_id: string | null;
+  youtube_publishable_video_title: string | null;
+  youtube_publish_confirmation: Record<string, unknown> | null;
   status: AgentRunStatus;
   model: string;
   model_call_count: number;
@@ -1142,6 +1187,14 @@ export const api = {
       content: string;
       skill_version_id: string;
       style_id: string | null;
+      youtube_channel_id: string | null;
+      youtube_publishable_video_id: string | null;
+      youtube_publish_confirmation: {
+        visibility: "public" | "private" | "unlisted";
+        planned_publish_at: string | null;
+        notify_subscribers: boolean;
+        confirmed: boolean;
+      } | null;
     },
   ) =>
     request<ApiData<NativeAgentRun>>(
@@ -1212,6 +1265,47 @@ export const api = {
       `/youtube/channels/${encodeURIComponent(channelId)}/benchmarks/${encodeURIComponent(benchmarkId)}`,
       { method: "DELETE" },
     ),
+  youtubePublishableVideos: (reviewStatus?: "draft" | "approved") => {
+    const search = new URLSearchParams({ limit: "100" });
+    if (reviewStatus) search.set("review_status", reviewStatus);
+    return request<ApiList<PublishableVideo>>(
+      `/youtube/publishable-videos?${search.toString()}`,
+    );
+  },
+  createYoutubePublishableVideo: (payload: {
+    source_native_agent_video_id: string;
+    thumbnail_url: string | null;
+    title: string;
+    description: string;
+    tags: string[];
+    planned_publish_at: string | null;
+    contains_synthetic_media: boolean;
+    review_status: "draft" | "approved";
+  }) =>
+    request<ApiData<PublishableVideo>>("/youtube/publishable-videos", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((result) => result.data),
+  createYoutubePublishTask: (
+    channelId: string,
+    payload: {
+      publishable_video_id: string;
+      visibility: "public" | "private" | "unlisted";
+      planned_publish_at: string | null;
+      notify_subscribers: boolean;
+      confirmed: boolean;
+      idempotency_key: string;
+    },
+  ) =>
+    request<ApiData<YoutubePublishTask>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/publish-tasks`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  refreshYoutubePublishTask: (channelId: string, taskId: string) =>
+    request<ApiData<YoutubePublishTask>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/publish-tasks/${encodeURIComponent(taskId)}/refresh`,
+      { method: "POST" },
+    ).then((result) => result.data),
   agentSkills: (params?: {
     scope?: "mine" | "system";
     status?: AgentSkillStatus | "";

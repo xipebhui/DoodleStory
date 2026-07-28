@@ -2,7 +2,8 @@
 
 ## Status
 
-Planned。必须在 Sprint 134 完成并验收后实施。
+Complete。实现、自动化检查和不产生外部发布的真实浏览器验收已完成；真实 YouTube 发布 smoke
+因会创建外部发布任务，按合同等待用户显式授权后单独执行。
 
 ## Goal
 
@@ -54,6 +55,19 @@ Agent 生成视频。
 3. 前端真实浏览器验证发布确认、任务列表、手动获取状态、错误恢复和 ID 追踪入口。
 4. 使用专门测试视频和测试频道做一次真实发布 smoke；执行前由用户确认真实外部发布。
 5. 运行空库 Alembic、后端测试、前端生产构建、`./scripts/check.sh` 和 `git diff --check`。
+
+## Verification result
+
+- `./scripts/check.sh` 通过：310 项后端测试、空 SQLite 全量 Alembic 迁移、前端生产构建、
+  Remotion TypeScript 检查和 5 项模板测试均通过。
+- 发布服务测试覆盖创建参数映射、确认与审核门禁、幂等复用、网络结果不明确、远程状态映射和
+  `NativeAgentVideo.id → PublishTask.id → youtube_video_id` 三段关联。
+- Native Agent Tool 测试确认 Tool 只能读取 Run 中不可变的结构化频道、视频和确认快照；
+  缺少确认时返回明确错误且不调用外部创建接口，成功提交后立即返回任务信息。
+- 真实浏览器已验证频道发布任务空态、按钮式状态获取入口、结构化 `@频道` 选择，以及选择频道后
+  才展示审核视频、可见性和上海时区计划时间；没有审核视频时运行按钮保持禁用。
+- 未执行真实发布 smoke：该操作会在外部服务创建 YouTube 发布任务，须由用户提供专用测试视频、
+  测试频道并在执行前明确确认。
 
 ## Handoff
 

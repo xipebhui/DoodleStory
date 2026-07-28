@@ -40,6 +40,10 @@ TOOL_PRESENTATION = {
         "渲染故事视频",
         "用固定 Remotion 模板把图片、旁白、整段字幕和可选 BGM 渲染为竖屏 MP4。",
     ),
+    "publish_youtube_video": (
+        "发布 YouTube 视频",
+        "提交界面中已明确选择并确认的频道与视频，立即返回异步发布任务。",
+    ),
 }
 NATIVE_ONLY_TOOL_CATALOG = (
     {
@@ -56,6 +60,11 @@ NATIVE_ONLY_TOOL_CATALOG = (
         "name": "render_story_video",
         "has_side_effects": True,
         "may_wait": True,
+    },
+    {
+        "name": "publish_youtube_video",
+        "has_side_effects": True,
+        "may_wait": False,
     },
 )
 

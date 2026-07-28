@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import (
     AgentRunStatus,
@@ -25,12 +25,24 @@ class NativeAgentConversationCreate(BaseModel):
         return normalized
 
 
+class NativeAgentYoutubePublishConfirmation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    visibility: Literal["public", "private", "unlisted"] = "public"
+    planned_publish_at: datetime | None = None
+    notify_subscribers: bool = True
+    confirmed: bool
+
+
 class NativeAgentRunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(min_length=1, max_length=20_000)
     skill_version_id: str = Field(min_length=1, max_length=32)
     style_id: str | None = Field(default=None, max_length=32)
+    youtube_channel_id: str | None = Field(default=None, max_length=32)
+    youtube_publishable_video_id: str | None = Field(default=None, max_length=32)
+    youtube_publish_confirmation: NativeAgentYoutubePublishConfirmation | None = None
 
     @field_validator("content")
     @classmethod
@@ -38,6 +50,24 @@ class NativeAgentRunCreate(BaseModel):
         if not value.strip():
             raise ValueError("消息内容不能为空")
         return value
+
+    @model_validator(mode="after")
+    def validate_youtube_context(self) -> "NativeAgentRunCreate":
+        values = (
+            self.youtube_channel_id,
+            self.youtube_publishable_video_id,
+            self.youtube_publish_confirmation,
+        )
+        if any(value is not None for value in values) and not all(
+            value is not None for value in values
+        ):
+            raise ValueError("频道、可发布视频和发布确认必须同时提供")
+        if (
+            self.youtube_publish_confirmation is not None
+            and not self.youtube_publish_confirmation.confirmed
+        ):
+            raise ValueError("真实发布前必须明确确认")
+        return self
 
 
 class NativeAgentItemRead(BaseModel):
@@ -133,6 +163,11 @@ class NativeAgentRunRead(BaseModel):
     skill_version: int
     style_id: str | None
     style_name: str | None
+    youtube_channel_id: str | None
+    youtube_channel_name: str | None
+    youtube_publishable_video_id: str | None
+    youtube_publishable_video_title: str | None
+    youtube_publish_confirmation: dict[str, object] | None
     status: AgentRunStatus
     model: str
     model_call_count: int
@@ -178,6 +213,7 @@ class NativeAgentCapabilityRead(BaseModel):
             "generate_speech",
             "generate_subtitles",
             "render_story_video",
+            "publish_youtube_video",
         ]
     ]
     image_review: Literal["native_model_vision"]

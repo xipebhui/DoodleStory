@@ -5,19 +5,20 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 134 已完成；管理员可同步并管理 17 个真实 YouTube 频道、账号定义、
-  对标账号和按频道过滤的已发布视频，也可把 Native Agent 视频唯一登记为可发布视频。
-  `./scripts/check.sh` 已通过 303 项后端测试、空库迁移、前端生产构建和 Remotion 检查；
-  未调用真实 YouTube 发布接口，也未实施 Deferred Evaluation。
+- 最近验证状态：Sprint 135 已完成；频道详情和 Native Agent 已共用同一 YouTube 异步发布
+  服务，支持结构化 `@频道`、审核与确认门禁、幂等提交、按钮式状态获取，以及
+  `NativeAgentVideo.id → PublishTask.id → youtube_video_id` 永久关联。
+  `./scripts/check.sh` 已通过 310 项后端测试、空库迁移、前端生产构建和 Remotion 检查；
+  未调用真实 YouTube 发布接口，真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 134 Complete，Sprint 135 Planned；
+- 当前合同状态：Sprint 134、Sprint 135 Complete；Sprint 135 真实外部发布 smoke 待用户授权；
   Sprint 127、Sprint 132、Sprint 133 Complete；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
 - Complete：`docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md`
-- Planned：`docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md`
+- Complete：`docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md`
 - Complete：`docs/contracts/sprint-133-native-subtitle-source-alignment.md`
 - Complete：`docs/contracts/sprint-132-native-agent-latest-run-retry.md`
 - Complete：`docs/contracts/sprint-131-api-utc-shanghai-display.md`
@@ -83,6 +84,17 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 135 YouTube 异步发布与 Agent 频道引用：新增本地发布任务、两条 Alembic 迁移和
+  页面/Agent 共用应用服务；创建前锁定频道、审核视频、标题、描述、标签、封面、视频 URL、
+  可见性、AI 合成标记和计划时间快照。提交请求在保存远程任务 ID 后立即返回，网络结果不明确时
+  标记为不可自动重建，频道详情只允许用户点击“获取状态”查询单个任务，不增加轮询或后台刷新。
+  远程完成后同步永久已发布视频并保存三段 ID 事实链。Native Agent 使用结构化 `@频道` 和
+  不可变 Run 确认快照，模型不能自行改频道或视频；页面发布和 Tool 均拒绝未确认、频道异常、
+  视频未审核或无公网 URL 的请求。前端延续 Agent Studio 深色暖橙、扁平紧凑视觉，新增任务表、
+  发布确认弹窗、状态标签、手动刷新和 Agent 视频审核登记入口。真实浏览器验证了频道任务空态及
+  `@频道` 后置字段门禁；`./scripts/check.sh` 通过 310 项后端测试、空库全量迁移、前端生产
+  构建、Remotion TypeScript 检查和 5 项模板测试。真实发布 smoke 因会创建外部任务，等待用户
+  指定测试频道、测试视频并显式授权。
 - 完成 Sprint 134 YouTube 频道账号与可发布视频基础：新增后端专用发布平台 Client、四张持久化
   表和 Admin API，频道远端事实与本地别名/账号定位/AI 定义分开保存，频道分析与视频数据只
   通过按钮同步；视频列表严格使用服务端实际接受的 `where.one.channel_id` 并处理游标分页，

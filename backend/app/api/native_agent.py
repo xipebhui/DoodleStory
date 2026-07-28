@@ -25,9 +25,11 @@ from app.models.entities import (
     NativeAgentStep,
     NativeAgentSubtitle,
     NativeAgentVideo,
+    PublishableVideo,
     Style,
     StyleReferenceImage,
     User,
+    YoutubeChannel,
 )
 from app.models.enums import (
     AgentRunStatus,
@@ -37,6 +39,7 @@ from app.models.enums import (
     NativeAgentStepType,
     StyleReferenceMode,
     StyleStatus,
+    UserRole,
 )
 from app.schemas.common import ApiData, ApiList, normalize_api_datetimes
 from app.schemas.agent import AgentResourceKind, AgentResourceOption
@@ -193,6 +196,23 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
         skill_version=run.skill_version_snapshot,
         style_id=run.style_id,
         style_name=run.style_name_snapshot,
+        youtube_channel_id=run.youtube_channel_id,
+        youtube_channel_name=(
+            (run.youtube_channel.alias or run.youtube_channel.title)
+            if run.youtube_channel is not None
+            else None
+        ),
+        youtube_publishable_video_id=run.youtube_publishable_video_id,
+        youtube_publishable_video_title=(
+            run.youtube_publishable_video.title
+            if run.youtube_publishable_video is not None
+            else None
+        ),
+        youtube_publish_confirmation=(
+            json.loads(run.youtube_publish_confirmation_json)
+            if run.youtube_publish_confirmation_json
+            else None
+        ),
         status=run.status,
         model=run.model_snapshot,
         model_call_count=run.model_call_count,
@@ -262,6 +282,8 @@ def _load_run_for_read(db: Session, run_id: str) -> NativeAgentRun:
             selectinload(NativeAgentRun.videos).selectinload(NativeAgentVideo.asset),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
+            selectinload(NativeAgentRun.youtube_channel),
+            selectinload(NativeAgentRun.youtube_publishable_video),
         )
     )
     if run is None:
@@ -304,6 +326,7 @@ def get_native_agent_capabilities(
                 "generate_speech",
                 "generate_subtitles",
                 "render_story_video",
+                "publish_youtube_video",
             ],
             image_review="native_model_vision",
         )
@@ -449,8 +472,12 @@ def get_native_agent_conversation(
             selectinload(NativeAgentRun.items),
             selectinload(NativeAgentRun.images).selectinload(NativeAgentImage.asset),
             selectinload(NativeAgentRun.audios).selectinload(NativeAgentAudio.asset),
+            selectinload(NativeAgentRun.subtitles).selectinload(NativeAgentSubtitle.asset),
+            selectinload(NativeAgentRun.videos).selectinload(NativeAgentVideo.asset),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
+            selectinload(NativeAgentRun.youtube_channel),
+            selectinload(NativeAgentRun.youtube_publishable_video),
         )
         .order_by(NativeAgentRun.created_at.asc())
         .limit(50)
@@ -540,6 +567,35 @@ async def create_native_agent_run(
             )
         reference_urls = _reference_urls(style)
 
+    youtube_channel = None
+    youtube_publishable_video = None
+    if payload.youtube_channel_id is not None:
+        if user.role != UserRole.admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="只有管理员可以在 Agent 中选择 YouTube 频道",
+            )
+        youtube_channel = db.get(YoutubeChannel, payload.youtube_channel_id)
+        if youtube_channel is None or youtube_channel.remote_status != "normal":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="所选 YouTube 频道当前不可发布",
+            )
+        youtube_publishable_video = db.scalar(
+            select(PublishableVideo).where(
+                PublishableVideo.id == payload.youtube_publishable_video_id,
+                PublishableVideo.owner_user_id == user.id,
+            )
+        )
+        if (
+            youtube_publishable_video is None
+            or youtube_publishable_video.review_status != "approved"
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="所选视频不存在或尚未审核通过",
+            )
+
     settings = get_settings()
     run = NativeAgentRun(
         conversation_id=conversation.id,
@@ -555,6 +611,28 @@ async def create_native_agent_run(
         image_model_snapshot=style.image_model_name if style is not None else None,
         aspect_ratio_snapshot=style.aspect_ratio if style is not None else None,
         style_reference_urls_json=json.dumps(reference_urls, ensure_ascii=False),
+        youtube_channel_id=(
+            youtube_channel.id if youtube_channel is not None else None
+        ),
+        youtube_publishable_video_id=(
+            youtube_publishable_video.id
+            if youtube_publishable_video is not None
+            else None
+        ),
+        youtube_publish_confirmation_json=(
+            json.dumps(
+                payload.youtube_publish_confirmation.model_dump(mode="json"),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            if payload.youtube_publish_confirmation is not None
+            else None
+        ),
+        youtube_publish_confirmed_at=(
+            datetime.utcnow()
+            if payload.youtube_publish_confirmation is not None
+            else None
+        ),
     )
     db.add(run)
     db.flush()
