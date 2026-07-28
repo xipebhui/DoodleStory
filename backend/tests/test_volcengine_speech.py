@@ -1,6 +1,7 @@
 import base64
 import json
 import unittest
+from unittest.mock import patch
 
 import requests
 
@@ -146,6 +147,31 @@ class VolcengineSpeechClientTests(unittest.TestCase):
             ).generate_speech(text="测试")
 
         self.assertTrue(response.closed)
+
+    def test_generate_speech_probes_mp3_when_provider_omits_duration(
+        self,
+    ) -> None:
+        response = FakeResponse(
+            [
+                {
+                    "code": 0,
+                    "data": base64.b64encode(b"mp3-content").decode("ascii"),
+                },
+                {"code": 20000000},
+            ]
+        )
+
+        with patch(
+            "app.services.volcengine_speech._probe_audio_duration_ms",
+            return_value=2468,
+        ) as probe:
+            generated = VolcengineSpeechClient(
+                settings=speech_settings(),
+                session=FakeSession(response),
+            ).generate_speech(text="测试")
+
+        self.assertEqual(2468, generated.duration_ms)
+        probe.assert_called_once_with(b"mp3-content", "mp3")
 
     def test_generate_speech_surfaces_provider_failure(self) -> None:
         response = FakeResponse(

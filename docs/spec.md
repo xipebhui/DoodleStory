@@ -290,6 +290,12 @@
   `tool_call_id` 重放复用原视频。Tool 仅在发布 Skill 勾选后暴露；对话 SSE 投影提供 owner
   可播放的视频，其他用户不能读取。Runtime 不接受任意 React/CSS、任意动画数值、视频素材
   混剪、逐字字幕或分布式渲染，依赖、Chromium、输入或编码失败都必须明确失败。
+- Sprint 126 将 `narrated-panel-v1` 的 Composition 宽高改为跟随首张源图真实尺寸；H.264
+  要求偶数尺寸时仅把奇数边向上补 1 像素，同一视频内图片比例不一致时明确失败。`image_id`
+  可引用同一 Native Conversation 的历史 Native 图片，或当前 owner 已有 Generation Task
+  中成功且 current 的图片，不能读取其他用户资产。火山语音在 Provider 未返回 duration 时
+  必须使用本地 `ffprobe` 读取真实 MP3/WAV/OGG 时长，探测失败则语音 Tool 明确失败，不能把
+  空时长或估算时长交给视频 Tool。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

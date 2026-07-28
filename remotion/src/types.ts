@@ -1,7 +1,7 @@
 export const TEMPLATE_ID = "narrated-panel-v1" as const;
 export const FPS = 30;
-export const WIDTH = 1080;
-export const HEIGHT = 1920;
+export const DEFAULT_WIDTH = 1080;
+export const DEFAULT_HEIGHT = 1920;
 
 export const MOTION_PRESETS = [
   "static",
@@ -27,6 +27,8 @@ export type NarratedScene = {
 export type NarratedPanelsProps = {
   scenes: NarratedScene[];
   bgm: string | null;
+  width: number;
+  height: number;
 };
 
 export const sceneDurationInFrames = (durationMs: number) =>

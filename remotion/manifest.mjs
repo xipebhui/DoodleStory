@@ -11,6 +11,16 @@ const MOTIONS = new Set([
   "pan_down",
 ]);
 const TEMPLATE_ID = "narrated-panel-v1";
+const validateDimension = (value, label) => {
+  if (
+    !Number.isInteger(value)
+    || value < 64
+    || value > 4096
+    || value % 2 !== 0
+  ) {
+    throw new Error(`${label} 必须是 64–4096 之间的偶数整数`);
+  }
+};
 
 export const validateManifest = (manifest) => {
   if (manifest?.templateId !== TEMPLATE_ID) {
@@ -22,6 +32,8 @@ export const validateManifest = (manifest) => {
   if (manifest.scenes.length > 30) {
     throw new Error("Remotion manifest 最多支持 30 个 Scene");
   }
+  validateDimension(manifest.width, "Remotion width");
+  validateDimension(manifest.height, "Remotion height");
   for (const [index, scene] of manifest.scenes.entries()) {
     if (!scene?.id || !scene.imagePath || !scene.audioPath) {
       throw new Error(`第 ${index + 1} 个 Scene 缺少资产路径`);
@@ -68,5 +80,10 @@ export const stageManifest = async (manifest, publicDir) => {
   const bgm = manifest.bgmPath
     ? await stageAsset(resolve(manifest.bgmPath), publicDir, "bgm")
     : null;
-  return {scenes, bgm};
+  return {
+    scenes,
+    bgm,
+    width: manifest.width,
+    height: manifest.height,
+  };
 };

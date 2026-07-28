@@ -32,6 +32,7 @@ from app.core.database import SessionLocal
 from app.models.entities import (
     AudioReference,
     FileAsset,
+    GeneratedImage,
     NativeAgentAudio,
     NativeAgentImage,
     NativeAgentItem,
@@ -39,6 +40,7 @@ from app.models.entities import (
 )
 from app.models.enums import (
     AgentRunStatus,
+    GeneratedImageStatus,
     NativeAgentItemType,
 )
 from app.services.agent_observability import (
@@ -159,9 +161,11 @@ def generate_volcengine_speech(
 
 def _video_tool_description() -> str:
     return (
-        "使用固定 narrated-panel-v1 Remotion 模板，把当前 Run 已生成的图片和旁白音频"
-        "按 scenes 顺序渲染为 1080x1920、30fps 的 MP4。每个 scene 必须提供当前 Run 的 "
-        "image_id、audio_id、完整非空字幕和一个 motion_preset；可选 bgm_asset_id。"
+        "使用固定 narrated-panel-v1 Remotion 模板，把图片和当前 Run 已生成的旁白音频"
+        "按 scenes 顺序渲染为跟随首张图片比例、30fps 的 MP4。image_id 可以是当前 Run "
+        "所在会话的 Native 图片 ID，也可以是当前用户已有任务中成功且 current 的图片 ID；每个 "
+        "scene 还必须提供当前 Run 的 audio_id、完整非空字幕和一个 motion_preset；可选 "
+        "bgm_asset_id。"
         "允许的 motion_preset 只有 static、zoom_in、zoom_out、pan_left、pan_right、"
         "pan_up、pan_down。Scene 时长严格使用对应语音的真实 duration_ms；不要编造 ID、"
         "时间、URL、React/CSS 或渲染参数。"
@@ -535,11 +539,32 @@ def _resolve_video_inputs(
             image.id: image
             for image in db.scalars(
                 select(NativeAgentImage)
+                .join(
+                    NativeAgentRun,
+                    NativeAgentRun.id == NativeAgentImage.run_id,
+                )
                 .where(
-                    NativeAgentImage.run_id == run_id,
+                    NativeAgentRun.conversation_id == run.conversation_id,
                     NativeAgentImage.id.in_(image_ids),
                 )
                 .options(selectinload(NativeAgentImage.asset))
+            ).all()
+        }
+        task_images = {
+            image.id: image
+            for image in db.scalars(
+                select(GeneratedImage)
+                .where(
+                    GeneratedImage.id.in_(image_ids),
+                    GeneratedImage.status
+                    == GeneratedImageStatus.succeeded,
+                    GeneratedImage.is_current.is_(True),
+                    GeneratedImage.asset_id.is_not(None),
+                    GeneratedImage.task.has(
+                        owner_user_id=run.conversation.owner_user_id
+                    ),
+                )
+                .options(selectinload(GeneratedImage.asset))
             ).all()
         }
         audios = {
@@ -556,11 +581,20 @@ def _resolve_video_inputs(
         resolved: list[RemotionScene] = []
         snapshots: list[dict[str, object]] = []
         for index, scene in enumerate(scenes, start=1):
-            image = images.get(scene.image_id)
+            native_image = images.get(scene.image_id)
+            task_image = task_images.get(scene.image_id)
+            image_asset = (
+                native_image.asset
+                if native_image is not None
+                else task_image.asset
+                if task_image is not None
+                else None
+            )
             audio = audios.get(scene.audio_id)
-            if image is None:
+            if image_asset is None:
                 raise NativeAgentLoopError(
-                    f"第 {index} 个 Scene 的 image_id 不属于当前 Run"
+                    f"第 {index} 个 Scene 的 image_id 不是当前 Run 图片，"
+                    "也不是当前用户任务的成功 current 图片"
                 )
             if audio is None:
                 raise NativeAgentLoopError(
@@ -570,6 +604,10 @@ def _resolve_video_inputs(
                 raise NativeAgentLoopError(
                     f"第 {index} 个 Scene 的音频缺少真实 duration_ms"
                 )
+            if image_asset.width is None or image_asset.height is None:
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 的图片缺少真实宽高"
+                )
             subtitle = scene.subtitle.strip()
             if not subtitle:
                 raise NativeAgentLoopError(
@@ -578,18 +616,28 @@ def _resolve_video_inputs(
             resolved.append(
                 RemotionScene(
                     scene_id=f"{index:03d}",
-                    image_path=materialize_asset_to_local(image.asset),
+                    image_path=materialize_asset_to_local(image_asset),
                     audio_path=materialize_asset_to_local(audio.asset),
                     subtitle=subtitle,
                     duration_ms=audio.duration_ms,
                     motion_preset=scene.motion_preset,
+                    image_width=image_asset.width,
+                    image_height=image_asset.height,
                 )
             )
             snapshots.append(
                 {
                     "scene_order": index,
-                    "image_id": image.id,
-                    "image_asset_id": image.asset_id,
+                    "image_id": scene.image_id,
+                    "image_source": (
+                        "current_native_run"
+                        if native_image is not None
+                        and native_image.run_id == run_id
+                        else "conversation_native_run"
+                        if native_image is not None
+                        else "generation_task"
+                    ),
+                    "image_asset_id": image_asset.id,
                     "audio_id": audio.id,
                     "audio_asset_id": audio.asset_id,
                     "subtitle": subtitle,

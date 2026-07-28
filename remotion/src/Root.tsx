@@ -4,11 +4,11 @@ import {Composition, type CalculateMetadataFunction} from "remotion";
 import {NarratedPanels} from "./NarratedPanels";
 import {
   compositionDurationInFrames,
+  DEFAULT_HEIGHT,
+  DEFAULT_WIDTH,
   FPS,
-  HEIGHT,
   TEMPLATE_ID,
   type NarratedPanelsProps,
-  WIDTH,
 } from "./types";
 
 const defaultProps: NarratedPanelsProps = {
@@ -23,12 +23,16 @@ const defaultProps: NarratedPanelsProps = {
     },
   ],
   bgm: null,
+  width: DEFAULT_WIDTH,
+  height: DEFAULT_HEIGHT,
 };
 
 const calculateMetadata: CalculateMetadataFunction<NarratedPanelsProps> = ({
   props,
 }) => ({
   durationInFrames: compositionDurationInFrames(props),
+  width: props.width,
+  height: props.height,
   props,
   defaultCodec: "h264",
   defaultAudioCodec: "aac",
@@ -42,8 +46,8 @@ export const RemotionRoot: React.FC = () => (
     component={NarratedPanels}
     durationInFrames={90}
     fps={FPS}
-    width={WIDTH}
-    height={HEIGHT}
+    width={DEFAULT_WIDTH}
+    height={DEFAULT_HEIGHT}
     defaultProps={defaultProps}
     calculateMetadata={calculateMetadata}
   />

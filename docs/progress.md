@@ -5,16 +5,19 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 125 已完成；固定 Remotion 模板已用两张本地图片、两段 Scene 旁白、
-  `zoom_in` / `pan_left` / `pan_right` 和有/无 BGM 完成真实 MP4 smoke。`ffprobe` 确认输出为
-  1080×1920、30fps、H.264/AAC。完整检查结果见“最近完成的工作”；未调用真实图片 Provider，
-  也未实施 Deferred Evaluation。
+- 最近验证状态：Sprint 126 已完成；用户指定会话的四张 1086×1448 Native 图片经真实
+  `gpt-5.4` VL 识字、四次火山语音 Tool 和 Remotion 视频 Tool 生成 41.808 秒 3:4 MP4。
+  `ffprobe` 确认 1086×1448、30fps、H.264/AAC；owner 可读且其他用户不可读。完整检查结果
+  见“最近完成的工作”；未调用真实图片生成 Provider，也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116–125 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 116–126 均已 Complete（Closed）；Sprint 127 Active；正式
+  Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Active：`docs/contracts/sprint-127-speech-speed-whisper-subtitle-tools.md`
+- Complete：`docs/contracts/sprint-126-remotion-source-image-ratio-real-task-smoke.md`
 - Complete：`docs/contracts/sprint-125-native-agent-remotion-video-tool.md`
 - Complete：`docs/contracts/sprint-124-native-agent-volcengine-speech-tool.md`
 - Complete：`docs/contracts/sprint-123-native-agent-durable-runtime.md`
@@ -60,6 +63,13 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 126 Remotion 跟随源图比例与指定会话真实验收：修复开发库缺少 Sprint 124/125
+  migration 导致历史会话 ORM 查询失败的问题；四张历史 Native 图片和 OSS 文件均完整。
+  `render_story_video` 现在可读取同一 Conversation 历史 Native 图片和 owner 的成功 current
+  Generation Task 图片，Composition 跟随首张图尺寸并拒绝混合比例。火山未返回 duration 时
+  使用 `ffprobe` 读取真实时长。指定会话新 Run `d17b9b5e5f69430d8ca8ee4811ddf10d`
+  真实生成四段语音和视频 `90152b17687745ce9116277a163f7efa`；最终 MP4 为
+  1086×1448、30fps、H.264/AAC、41.96 秒、约 61.4 MB。
 - 接入 Native Agent 固定 Remotion 视频 Tool：新增独立 Remotion 4.0.499 项目和
   `narrated-panel-v1` 模板，支持当前 Run 图片、旁白、整段字幕、七种受控 Motion Preset 与
   可选 BGM；新增 Python 渲染桥、Native Video 持久化与迁移、幂等 Tool 生命周期、MLflow

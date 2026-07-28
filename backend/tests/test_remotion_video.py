@@ -34,6 +34,8 @@ class RemotionVideoTests(unittest.TestCase):
                 self.assertEqual(REMOTION_TEMPLATE_ID, manifest["templateId"])
                 self.assertEqual("zoom_in", manifest["scenes"][0]["motion"])
                 self.assertEqual(1840, manifest["scenes"][0]["durationMs"])
+                self.assertEqual(948, manifest["width"])
+                self.assertEqual(1660, manifest["height"])
                 output_path.write_bytes(b"rendered-mp4")
                 return subprocess.CompletedProcess(
                     command,
@@ -45,8 +47,8 @@ class RemotionVideoTests(unittest.TestCase):
                             "rendererVersion": "4.0.499",
                             "durationInFrames": 56,
                             "fps": 30,
-                            "width": 1080,
-                            "height": 1920,
+                            "width": 948,
+                            "height": 1660,
                         }
                     ),
                     stderr="",
@@ -65,6 +67,8 @@ class RemotionVideoTests(unittest.TestCase):
                             subtitle="这是第一段字幕。",
                             duration_ms=1840,
                             motion_preset="zoom_in",
+                            image_width=948,
+                            image_height=1659,
                         )
                     ],
                     bgm_path=None,
@@ -99,6 +103,8 @@ class RemotionVideoTests(unittest.TestCase):
                             subtitle="字幕",
                             duration_ms=1000,
                             motion_preset="spin",
+                            image_width=948,
+                            image_height=1659,
                         )
                     ],
                     bgm_path=None,
@@ -138,8 +144,50 @@ class RemotionVideoTests(unittest.TestCase):
                                 subtitle="字幕",
                                 duration_ms=1000,
                                 motion_preset="static",
+                                image_width=948,
+                                image_height=1659,
                             )
                         ],
                         bgm_path=None,
                         settings=Settings(remotion_project_dir=project),
                     )
+
+    def test_render_rejects_mixed_source_image_ratios(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image = root / "panel.png"
+            audio = root / "narration.mp3"
+            image.write_bytes(b"png")
+            audio.write_bytes(b"mp3")
+            scenes = [
+                RemotionScene(
+                    scene_id="001",
+                    image_path=image,
+                    audio_path=audio,
+                    subtitle="竖图",
+                    duration_ms=1000,
+                    motion_preset="static",
+                    image_width=1086,
+                    image_height=1448,
+                ),
+                RemotionScene(
+                    scene_id="002",
+                    image_path=image,
+                    audio_path=audio,
+                    subtitle="横图",
+                    duration_ms=1000,
+                    motion_preset="static",
+                    image_width=1920,
+                    image_height=1080,
+                ),
+            ]
+
+            with self.assertRaisesRegex(
+                RemotionVideoError,
+                "图片比例与首张图片不一致",
+            ):
+                render_remotion_video(
+                    scenes=scenes,
+                    bgm_path=None,
+                    settings=Settings(remotion_project_dir=root),
+                )

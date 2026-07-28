@@ -5,6 +5,9 @@ import binascii
 import codecs
 from dataclasses import dataclass
 import json
+from pathlib import Path
+import subprocess
+from tempfile import TemporaryDirectory
 from typing import Any, Iterator
 import uuid
 
@@ -67,6 +70,63 @@ def _json_frames(chunks: Iterator[bytes]) -> Iterator[dict[str, Any]]:
     buffer += utf8_decoder.decode(b"", final=True)
     if buffer.strip():
         raise VolcengineSpeechError("火山语音接口返回了无法解析的尾部数据")
+
+
+def _probe_audio_duration_ms(
+    content: bytes,
+    response_format: str,
+) -> int:
+    suffix = {
+        "mp3": ".mp3",
+        "wav": ".wav",
+        "ogg_opus": ".ogg",
+    }.get(response_format)
+    if suffix is None:
+        raise VolcengineSpeechError(
+            f"火山语音没有返回时长，且格式 {response_format} 不支持本地时长探测"
+        )
+    with TemporaryDirectory(prefix="doodlestory-tts-duration-") as temp_dir:
+        audio_path = Path(temp_dir) / f"speech{suffix}"
+        audio_path.write_bytes(content)
+        try:
+            completed = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    str(audio_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise VolcengineSpeechError(
+                "火山语音没有返回时长，且本机缺少 ffprobe"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise VolcengineSpeechError(
+                "火山语音本地时长探测超时"
+            ) from exc
+        if completed.returncode != 0:
+            raise VolcengineSpeechError(
+                "火山语音本地时长探测失败："
+                f"{(completed.stderr or completed.stdout).strip()[-500:]}"
+            )
+        try:
+            duration_ms = round(float(completed.stdout.strip()) * 1000)
+        except ValueError as exc:
+            raise VolcengineSpeechError(
+                "ffprobe 没有返回有效的语音时长"
+            ) from exc
+        if duration_ms <= 0:
+            raise VolcengineSpeechError("ffprobe 返回的语音时长无效")
+        return duration_ms
 
 
 class VolcengineSpeechClient:
@@ -165,6 +225,11 @@ class VolcengineSpeechClient:
             "ogg_opus": "audio/ogg",
             "pcm": "audio/pcm",
         }.get(response_format, "application/octet-stream")
+        if duration_ms is None:
+            duration_ms = _probe_audio_duration_ms(
+                content,
+                response_format,
+            )
         return GeneratedSpeech(
             content=content,
             content_type=content_type,

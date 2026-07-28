@@ -35,6 +35,8 @@ class RemotionScene:
     subtitle: str
     duration_ms: int
     motion_preset: str
+    image_width: int
+    image_height: int
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,18 @@ def _validate_scene(scene: RemotionScene, index: int) -> None:
         raise RemotionVideoError(
             f"第 {index} 个 Scene Motion 不受支持：{scene.motion_preset}"
         )
+    if not 64 <= scene.image_width <= 4096:
+        raise RemotionVideoError(
+            f"第 {index} 个 Scene 图片宽度超出 64–4096"
+        )
+    if not 64 <= scene.image_height <= 4096:
+        raise RemotionVideoError(
+            f"第 {index} 个 Scene 图片高度超出 64–4096"
+        )
+
+
+def _even_dimension(value: int) -> int:
+    return value if value % 2 == 0 else value + 1
 
 
 def render_remotion_video(
@@ -87,6 +101,13 @@ def render_remotion_video(
         raise RemotionVideoError("render_story_video 最多支持 30 个 Scene")
     for index, scene in enumerate(scenes, start=1):
         _validate_scene(scene, index)
+    source_ratio = scenes[0].image_width / scenes[0].image_height
+    for index, scene in enumerate(scenes[1:], start=2):
+        scene_ratio = scene.image_width / scene.image_height
+        if abs(scene_ratio - source_ratio) > 0.01:
+            raise RemotionVideoError(
+                f"第 {index} 个 Scene 图片比例与首张图片不一致"
+            )
     if bgm_path is not None and not bgm_path.is_file():
         raise RemotionVideoError("BGM 音频文件不存在")
 
@@ -104,6 +125,8 @@ def render_remotion_video(
 
     manifest = {
         "templateId": REMOTION_TEMPLATE_ID,
+        "width": _even_dimension(scenes[0].image_width),
+        "height": _even_dimension(scenes[0].image_height),
         "scenes": [
             {
                 "id": scene.scene_id,

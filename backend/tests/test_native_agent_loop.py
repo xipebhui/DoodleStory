@@ -498,6 +498,8 @@ class NativeAgentLoopTests(unittest.TestCase):
                 subtitle="故事开始了。",
                 duration_ms=2100,
                 motion_preset="zoom_in",
+                image_width=948,
+                image_height=1659,
             )
 
             def fake_renderer(**kwargs):
@@ -513,8 +515,8 @@ class NativeAgentLoopTests(unittest.TestCase):
                     duration_ms=2100,
                     duration_in_frames=63,
                     fps=30,
-                    width=1080,
-                    height=1920,
+                    width=948,
+                    height=1660,
                 )
 
             tool = build_render_story_video_tool(

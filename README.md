@@ -234,6 +234,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 123 Native Agent 可恢复执行与持久化事件流](docs/contracts/sprint-123-native-agent-durable-runtime.md)
 - [Complete：Sprint 124 Native Agent 火山引擎固定语音 Tool](docs/contracts/sprint-124-native-agent-volcengine-speech-tool.md)
 - [Complete：Sprint 125 Native Agent 固定 Remotion 视频 Tool](docs/contracts/sprint-125-native-agent-remotion-video-tool.md)
+- [Complete：Sprint 126 Remotion 跟随源图比例与指定会话真实验收](docs/contracts/sprint-126-remotion-source-image-ratio-real-task-smoke.md)
 - [Deferred：Agent Evaluation 与内部开放门槛](docs/contracts/deferred-agent-evaluation-internal-release-gate.md)
 - [已完成：Sprint 106 对话创建两格真实漫画](docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md)
 - [已完成：Sprint 107 传统构建与 AI 构建前端整合](docs/contracts/sprint-107-agent-frontend-workspace-integration.md)
