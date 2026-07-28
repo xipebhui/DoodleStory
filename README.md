@@ -244,6 +244,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 126 Remotion 跟随源图比例与指定会话真实验收](docs/contracts/sprint-126-remotion-source-image-ratio-real-task-smoke.md)
 - [Complete：Sprint 134 YouTube 频道账号与视频登记](docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md)
 - [Complete：Sprint 135 YouTube 异步发布与 Agent 频道引用](docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md)
+- [Complete：Sprint 136 YouTube 列表分页与可读性](docs/contracts/sprint-136-youtube-list-pagination-and-readability.md)
 - [Deferred：Agent Evaluation 与内部开放门槛](docs/contracts/deferred-agent-evaluation-internal-release-gate.md)
 - [已完成：Sprint 106 对话创建两格真实漫画](docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md)
 - [已完成：Sprint 107 传统构建与 AI 构建前端整合](docs/contracts/sprint-107-agent-frontend-workspace-integration.md)

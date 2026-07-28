@@ -71,6 +71,7 @@ import {
   type PublishableVideo,
   type YoutubeChannelDetail,
   type YoutubeChannelSummary,
+  type YoutubeUploadedVideo,
   type AdminCreditTransaction,
   type AdminCreditUsage,
   type AdminUserCreditDetail,
@@ -2756,6 +2757,47 @@ function youtubePublishStatus(status: string) {
   return labels[status] || status;
 }
 
+const YOUTUBE_LIST_PAGE_SIZE = 10;
+
+function YoutubePagination({
+  page,
+  total,
+  loading,
+  onPageChange,
+}: {
+  page: number;
+  total: number;
+  loading: boolean;
+  onPageChange: (page: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / YOUTUBE_LIST_PAGE_SIZE));
+  if (total === 0) return null;
+  return (
+    <nav className="youtube-pagination" aria-label="列表分页">
+      <span>共 {total} 条</span>
+      <div>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={loading || page <= 1}
+          onClick={() => onPageChange(page - 1)}
+        >
+          上一页
+        </button>
+        <strong>第 {page} / {totalPages} 页</strong>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={loading || page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+        >
+          下一页
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 function YoutubeChannelListView({
   onNavigatePath,
 }: {
@@ -2763,19 +2805,24 @@ function YoutubeChannelListView({
 }) {
   const [channels, setChannels] = useState<YoutubeChannelSummary[]>([]);
   const [query, setQuery] = useState("");
+  const [appliedQuery, setAppliedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [total, setTotal] = useState(0);
 
-  async function loadChannels() {
+  async function loadChannels(targetPage = page) {
     setLoading(true);
     try {
       const result = await api.youtubeChannels({
-        q: query.trim() || undefined,
+        q: appliedQuery || undefined,
         remote_status: statusFilter || undefined,
-        limit: 100,
+        cursor: targetPage > 1
+          ? String((targetPage - 1) * YOUTUBE_LIST_PAGE_SIZE)
+          : undefined,
+        limit: YOUTUBE_LIST_PAGE_SIZE,
       });
       setChannels(result.items);
       setTotal(result.page.total ?? result.items.length);
@@ -2789,7 +2836,7 @@ function YoutubeChannelListView({
 
   useEffect(() => {
     void loadChannels();
-  }, [statusFilter]);
+  }, [appliedQuery, page, statusFilter]);
 
   async function syncChannels() {
     setSyncing(true);
@@ -2817,24 +2864,25 @@ function YoutubeChannelListView({
       </header>
       <div className="youtube-channel-toolbar">
         <div className="youtube-segments">
-          <button className={!statusFilter ? "active" : ""} type="button" onClick={() => setStatusFilter("")}>
-            全部频道 <span>{total}</span>
+          <button className={!statusFilter ? "active" : ""} type="button" onClick={() => { setPage(1); setStatusFilter(""); }}>
+            全部频道
           </button>
-          <button className={statusFilter === "normal" ? "active" : ""} type="button" onClick={() => setStatusFilter("normal")}>
-            正常 <span>{channels.filter((item) => item.remote_status === "normal").length}</span>
+          <button className={statusFilter === "normal" ? "active" : ""} type="button" onClick={() => { setPage(1); setStatusFilter("normal"); }}>
+            正常频道
           </button>
         </div>
         <form
           className="youtube-search"
           onSubmit={(event) => {
             event.preventDefault();
-            void loadChannels();
+            setPage(1);
+            setAppliedQuery(query.trim());
           }}
         >
           <Search size={16} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索别名、频道名或 Handle" />
         </form>
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="频道状态">
+        <select value={statusFilter} onChange={(event) => { setPage(1); setStatusFilter(event.target.value); }} aria-label="频道状态">
           <option value="">全部状态</option>
           <option value="normal">正常</option>
           <option value="manual">手动</option>
@@ -2847,8 +2895,8 @@ function YoutubeChannelListView({
       {!loading && channels.length === 0 ? (
         <div className="youtube-empty">
           <BarChart3 size={24} />
-          <strong>还没有频道</strong>
-          <span>点击“同步频道”从发布系统读取账号。</span>
+          <strong>{appliedQuery || statusFilter ? "没有符合条件的频道" : "还没有频道"}</strong>
+          <span>{appliedQuery || statusFilter ? "调整搜索词或状态筛选后再试。" : "点击“同步频道”从发布系统读取账号。"}</span>
         </div>
       ) : null}
       {!loading && channels.length > 0 ? (
@@ -2880,7 +2928,12 @@ function YoutubeChannelListView({
           ))}
         </div>
       ) : null}
-      <footer className="youtube-list-footer">共 {total} 个频道</footer>
+      <YoutubePagination
+        page={page}
+        total={total}
+        loading={loading}
+        onPageChange={setPage}
+      />
     </section>
   );
 }
@@ -2901,6 +2954,10 @@ function YoutubeChannelDetailView({
   const [profile, setProfile] = useState({ alias: "", account_positioning: "", target_audience: "", stage_goal: "", ai_definition: "", operation_notes: "" });
   const [benchmark, setBenchmark] = useState({ name: "", profile_url: "", notes: "" });
   const [publishableVideos, setPublishableVideos] = useState<PublishableVideo[]>([]);
+  const [uploadedVideos, setUploadedVideos] = useState<YoutubeUploadedVideo[]>([]);
+  const [videoPage, setVideoPage] = useState(1);
+  const [videoTotal, setVideoTotal] = useState(0);
+  const [videoLoading, setVideoLoading] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [publishForm, setPublishForm] = useState({
     publishable_video_id: "",
@@ -2927,6 +2984,25 @@ function YoutubeChannelDetailView({
     }
   }
 
+  async function loadUploadedVideos(targetPage = videoPage) {
+    setVideoLoading(true);
+    try {
+      const result = await api.youtubeChannelVideos(channelId, {
+        cursor: targetPage > 1
+          ? String((targetPage - 1) * YOUTUBE_LIST_PAGE_SIZE)
+          : undefined,
+        limit: YOUTUBE_LIST_PAGE_SIZE,
+      });
+      setUploadedVideos(result.items);
+      setVideoTotal(result.page.total ?? result.items.length);
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "已发布视频加载失败");
+    } finally {
+      setVideoLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadChannel();
     void api.youtubePublishableVideos("approved")
@@ -2936,6 +3012,12 @@ function YoutubeChannelDetailView({
       });
   }, [channelId]);
 
+  useEffect(() => {
+    if (tab === "videos") {
+      void loadUploadedVideos();
+    }
+  }, [channelId, tab, videoPage]);
+
   async function runAction(name: string, action: () => Promise<YoutubeChannelDetail>) {
     setBusy(name);
     try {
@@ -2943,6 +3025,23 @@ function YoutubeChannelDetailView({
       setError("");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "操作失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function syncUploadedVideos() {
+    setBusy("videos");
+    try {
+      setChannel(await api.syncYoutubeChannelVideos(channelId));
+      if (videoPage === 1) {
+        await loadUploadedVideos(1);
+      } else {
+        setVideoPage(1);
+      }
+      setError("");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "视频同步失败");
     } finally {
       setBusy("");
     }
@@ -3082,12 +3181,21 @@ function YoutubeChannelDetailView({
       ) : null}
       {tab === "videos" ? (
         <section className="youtube-videos-section">
-          <header><div><h2>已发布视频</h2><p>仅同步当前频道的数据。</p></div><button className="secondary-button" disabled={Boolean(busy)} type="button" onClick={() => void runAction("videos", () => api.syncYoutubeChannelVideos(channel.id))}><RefreshCw className={busy === "videos" ? "spin" : ""} size={15} />同步视频</button></header>
-          <div className="youtube-video-table">
-            <div className="youtube-video-row youtube-video-head"><span>视频</span><span>可见性</span><span>观看</span><span>点赞</span><span>发布时间</span></div>
-            {channel.uploaded_videos.map((video) => <div className="youtube-video-row" key={video.id}><span><strong>{video.title || "未命名视频"}</strong><small>{video.youtube_video_id}</small></span><span>{video.visibility || "—"}</span><span>{youtubeMetric(video.views)}</span><span>{youtubeMetric(video.likes)}</span><span>{formatDateTime(video.uploaded_at)}</span></div>)}
-          </div>
-          {channel.uploaded_videos.length === 0 ? <div className="youtube-empty">尚未同步已发布视频</div> : null}
+          <header><div><h2>已发布视频</h2><p>仅同步当前频道的数据，每页显示 {YOUTUBE_LIST_PAGE_SIZE} 条。</p></div><button className="secondary-button" disabled={Boolean(busy)} type="button" onClick={() => void syncUploadedVideos()}><RefreshCw className={busy === "videos" ? "spin" : ""} size={15} />同步视频</button></header>
+          {videoLoading ? <div className="youtube-empty"><Loader2 className="spin" />正在加载视频…</div> : null}
+          {!videoLoading && uploadedVideos.length > 0 ? (
+            <div className="youtube-video-table">
+              <div className="youtube-video-row youtube-video-head"><span>视频</span><span>可见性</span><span>观看</span><span>点赞</span><span>发布时间</span></div>
+              {uploadedVideos.map((video) => <div className="youtube-video-row" key={video.id}><span><strong>{video.title || "未命名视频"}</strong><small>{video.youtube_video_id}</small></span><span>{video.visibility || "—"}</span><span>{youtubeMetric(video.views)}</span><span>{youtubeMetric(video.likes)}</span><span>{formatDateTime(video.uploaded_at)}</span></div>)}
+            </div>
+          ) : null}
+          {!videoLoading && uploadedVideos.length === 0 ? <div className="youtube-empty">尚未同步已发布视频</div> : null}
+          <YoutubePagination
+            page={videoPage}
+            total={videoTotal}
+            loading={videoLoading}
+            onPageChange={setVideoPage}
+          />
         </section>
       ) : null}
       {tab === "benchmarks" ? (

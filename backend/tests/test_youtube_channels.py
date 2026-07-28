@@ -9,10 +9,13 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.youtube_channels import (
+    list_channel_videos,
+    list_channels,
     sync_channel_analytics,
     sync_channels,
     update_channel_profile,
 )
+from app.api.pagination import Pagination
 from app.core.database import Base
 from app.models.entities import (
     PublishableVideo,
@@ -156,6 +159,100 @@ class YoutubeChannelApiTests(unittest.TestCase):
             db.commit()
             with self.assertRaises(HTTPException) as caught:
                 sync_channels(user=user, db=db)
+            self.assertEqual(403, caught.exception.status_code)
+
+    def test_channel_list_uses_bounded_server_pagination(self) -> None:
+        with self.Session() as db:
+            admin = User(email="admin@example.com", password_hash="hash", role=UserRole.admin)
+            db.add(admin)
+            db.add_all(
+                [
+                    YoutubeChannel(
+                        channel_id=f"UC{index}",
+                        title=f"Channel {index}",
+                        remote_status="normal" if index != 1 else "manual",
+                    )
+                    for index in range(4)
+                ]
+            )
+            db.commit()
+
+            first = list_channels(
+                q=None,
+                remote_status="normal",
+                pagination=Pagination(limit=2, offset=0),
+                user=admin,
+                db=db,
+            )
+            second = list_channels(
+                q=None,
+                remote_status="normal",
+                pagination=Pagination(limit=2, offset=2),
+                user=admin,
+                db=db,
+            )
+
+            self.assertEqual(3, first.page.total)
+            self.assertEqual(2, len(first.items))
+            self.assertTrue(first.page.has_more)
+            self.assertEqual("2", first.page.next_cursor)
+            self.assertEqual(1, len(second.items))
+            self.assertFalse(second.page.has_more)
+
+    def test_uploaded_video_list_is_paginated_and_channel_scoped(self) -> None:
+        with self.Session() as db:
+            admin = User(email="admin@example.com", password_hash="hash", role=UserRole.admin)
+            other_user = User(email="user@example.com", password_hash="hash", role=UserRole.user)
+            channel = YoutubeChannel(channel_id="UC1", title="Channel", remote_status="normal")
+            other_channel = YoutubeChannel(channel_id="UC2", title="Other", remote_status="normal")
+            db.add_all([admin, other_user, channel, other_channel])
+            db.flush()
+            db.add_all(
+                [
+                    YoutubeUploadedVideo(
+                        channel_id=channel.id,
+                        youtube_video_id=f"video-{index}",
+                        title=f"Video {index}",
+                        uploaded_at=datetime(2026, 7, 20 + index),
+                    )
+                    for index in range(1, 4)
+                ]
+                + [
+                    YoutubeUploadedVideo(
+                        channel_id=other_channel.id,
+                        youtube_video_id="other-video",
+                        title="Other video",
+                        uploaded_at=datetime(2026, 7, 28),
+                    )
+                ]
+            )
+            db.commit()
+
+            first = list_channel_videos(
+                channel.id,
+                pagination=Pagination(limit=2, offset=0),
+                user=admin,
+                db=db,
+            )
+            second = list_channel_videos(
+                channel.id,
+                pagination=Pagination(limit=2, offset=2),
+                user=admin,
+                db=db,
+            )
+
+            self.assertEqual(["video-3", "video-2"], [item.youtube_video_id for item in first.items])
+            self.assertEqual(3, first.page.total)
+            self.assertTrue(first.page.has_more)
+            self.assertEqual(["video-1"], [item.youtube_video_id for item in second.items])
+            self.assertFalse(second.page.has_more)
+            with self.assertRaises(HTTPException) as caught:
+                list_channel_videos(
+                    channel.id,
+                    pagination=Pagination(limit=2, offset=0),
+                    user=other_user,
+                    db=db,
+                )
             self.assertEqual(403, caught.exception.status_code)
 
     def test_analytics_error_preserves_last_successful_metrics(self) -> None:

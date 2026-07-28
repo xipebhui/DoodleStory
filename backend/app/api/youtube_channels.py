@@ -122,6 +122,22 @@ def publishable_video_read(item: PublishableVideo) -> PublishableVideoRead:
     )
 
 
+def uploaded_video_read(item: YoutubeUploadedVideo) -> YoutubeUploadedVideoRead:
+    return YoutubeUploadedVideoRead(
+        id=item.id,
+        youtube_video_id=item.youtube_video_id,
+        publish_task_id=item.publish_task_id,
+        source_native_agent_video_id=item.source_native_agent_video_id,
+        title=item.title,
+        visibility=item.visibility,
+        views=item.views,
+        likes=item.likes,
+        uploaded_at=item.uploaded_at,
+        remote_last_sync_at=item.remote_last_sync_at,
+        last_sync_error=item.last_sync_error,
+    )
+
+
 def channel_detail(channel: YoutubeChannel) -> YoutubeChannelDetailRead:
     summary = channel_summary(channel).model_dump()
     return YoutubeChannelDetailRead(
@@ -144,22 +160,6 @@ def channel_detail(channel: YoutubeChannel) -> YoutubeChannelDetailRead:
             )
             for item in channel.benchmarks
         ],
-        uploaded_videos=[
-            YoutubeUploadedVideoRead(
-                id=item.id,
-                youtube_video_id=item.youtube_video_id,
-                publish_task_id=item.publish_task_id,
-                source_native_agent_video_id=item.source_native_agent_video_id,
-                title=item.title,
-                visibility=item.visibility,
-                views=item.views,
-                likes=item.likes,
-                uploaded_at=item.uploaded_at,
-                remote_last_sync_at=item.remote_last_sync_at,
-                last_sync_error=item.last_sync_error,
-            )
-            for item in channel.uploaded_videos[:100]
-        ],
         publish_tasks=[
             publish_task_read(item)
             for item in channel.publish_tasks[:100]
@@ -172,7 +172,6 @@ def load_channel(db: Session, channel_id: str) -> YoutubeChannel:
         select(YoutubeChannel)
         .options(
             selectinload(YoutubeChannel.benchmarks),
-            selectinload(YoutubeChannel.uploaded_videos),
             selectinload(YoutubeChannel.publish_tasks),
         )
         .where(YoutubeChannel.id == channel_id)
@@ -245,6 +244,45 @@ def sync_channels(user: User = Depends(current_user), db: Session = Depends(get_
 def get_channel(channel_pk: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ApiData[YoutubeChannelDetailRead]:
     require_admin(user)
     return ApiData(data=channel_detail(load_channel(db, channel_pk)))
+
+
+@router.get(
+    "/channels/{channel_pk}/videos",
+    response_model=ApiList[YoutubeUploadedVideoRead],
+)
+def list_channel_videos(
+    channel_pk: str,
+    pagination: Pagination = Depends(get_pagination),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiList[YoutubeUploadedVideoRead]:
+    require_admin(user)
+    if db.get(YoutubeChannel, channel_pk) is None:
+        raise HTTPException(status_code=404, detail="频道不存在")
+    filters = [YoutubeUploadedVideo.channel_id == channel_pk]
+    total = db.scalar(
+        select(func.count()).select_from(YoutubeUploadedVideo).where(*filters)
+    ) or 0
+    rows = db.scalars(
+        select(YoutubeUploadedVideo)
+        .where(*filters)
+        .order_by(
+            YoutubeUploadedVideo.uploaded_at.desc(),
+            YoutubeUploadedVideo.id.desc(),
+        )
+        .offset(pagination.offset)
+        .limit(pagination.limit + 1)
+    ).all()
+    return ApiList(
+        items=[
+            uploaded_video_read(item)
+            for item in rows[: pagination.limit]
+        ],
+        page={
+            **build_page(pagination.limit, pagination.offset, len(rows)),
+            "total": total,
+        },
+    )
 
 
 @router.patch("/channels/{channel_pk}/profile", response_model=ApiData[YoutubeChannelDetailRead])

@@ -599,7 +599,6 @@ export type YoutubeChannelDetail = YoutubeChannelSummary & {
   operation_notes: string | null;
   analytics: Record<string, unknown> | null;
   benchmarks: YoutubeBenchmark[];
-  uploaded_videos: YoutubeUploadedVideo[];
   publish_tasks: YoutubePublishTask[];
 };
 
@@ -1252,6 +1251,17 @@ export const api = {
       `/youtube/channels/${encodeURIComponent(channelId)}/videos/sync`,
       { method: "POST" },
     ).then((result) => result.data),
+  youtubeChannelVideos: (
+    channelId: string,
+    params?: { cursor?: string; limit?: number },
+  ) => {
+    const search = new URLSearchParams();
+    if (params?.cursor) search.set("cursor", params.cursor);
+    search.set("limit", String(params?.limit ?? 10));
+    return request<ApiList<YoutubeUploadedVideo>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/videos?${search.toString()}`,
+    );
+  },
   addYoutubeBenchmark: (
     channelId: string,
     payload: { platform: string; name: string; platform_account_id: string | null; profile_url: string; notes: string | null },

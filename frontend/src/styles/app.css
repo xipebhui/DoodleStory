@@ -2060,6 +2060,7 @@ textarea {
   min-height: 100%;
   padding: 34px 44px 28px;
   color: #e8eaee;
+  font-size: 14px;
 }
 
 .youtube-page-header,
@@ -2090,7 +2091,7 @@ textarea {
 .youtube-videos-section header p {
   margin: 7px 0 0;
   color: #7c8490;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-channel-page .primary-button,
@@ -2178,7 +2179,7 @@ textarea {
   gap: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   color: #a8afb9;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-channel-row:not(.youtube-channel-head) {
@@ -2192,7 +2193,7 @@ textarea {
 .youtube-channel-head {
   min-height: 48px;
   color: #727b88;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .youtube-channel-identity {
@@ -2235,7 +2236,7 @@ textarea {
 .youtube-channel-identity strong {
   overflow: hidden;
   color: #e5e8ec;
-  font-size: 13px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2244,7 +2245,7 @@ textarea {
 .youtube-sync-time small,
 .youtube-video-row small {
   color: #707987;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .youtube-status {
@@ -2253,7 +2254,7 @@ textarea {
   border-radius: 5px;
   padding: 4px 8px;
   color: #a7afba;
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
 }
 
@@ -2295,7 +2296,36 @@ textarea {
 .youtube-list-footer {
   padding-top: 22px;
   color: #747d89;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.youtube-pagination {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: #87909c;
+  font-size: 13px;
+}
+
+.youtube-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.youtube-pagination strong {
+  min-width: 92px;
+  color: #cbd0d7;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.youtube-pagination .secondary-button {
+  min-width: 78px;
+  min-height: 34px;
 }
 
 .youtube-inline-error {
@@ -2304,7 +2334,7 @@ textarea {
   gap: 8px;
   margin: 12px 0;
   color: #ff8b8b;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-empty {
@@ -2434,7 +2464,7 @@ textarea {
 
 .youtube-overview-grid span {
   color: #777f8b;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .youtube-overview-grid p {
@@ -2454,7 +2484,7 @@ textarea {
   display: grid;
   gap: 8px;
   color: #cbd1d9;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-profile-form .wide,
@@ -2493,7 +2523,7 @@ textarea {
   gap: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   color: #9fa7b2;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-video-head {
@@ -2543,7 +2573,7 @@ textarea {
 .youtube-benchmarks article a,
 .youtube-benchmarks article small {
   color: #7e8793;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .youtube-benchmarks article button {
@@ -2568,14 +2598,14 @@ textarea {
 .youtube-publish-dialog h2 {
   margin: 0;
   color: #e9e5df;
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .youtube-publish-section p,
 .youtube-publish-dialog p {
   margin: 5px 0 0;
   color: #7e8793;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-publish-table {
@@ -2590,7 +2620,7 @@ textarea {
   min-height: 72px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   color: #9aa1aa;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-publish-row > span:first-child,
@@ -2610,7 +2640,7 @@ textarea {
 .youtube-publish-row small {
   overflow: hidden;
   color: #69717b;
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2706,7 +2736,7 @@ textarea {
   gap: 7px;
   margin-top: 18px;
   color: #a7adb5;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .youtube-publish-dialog select,
@@ -2758,7 +2788,7 @@ textarea {
   border-left: 2px solid #9a5e31;
   background: #121417;
   color: #858d97;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .youtube-register-trace code {

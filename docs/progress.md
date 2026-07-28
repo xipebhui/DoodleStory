@@ -5,20 +5,20 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 135 已完成；频道详情和 Native Agent 已共用同一 YouTube 异步发布
-  服务，支持结构化 `@频道`、审核与确认门禁、幂等提交、按钮式状态获取，以及
-  `NativeAgentVideo.id → PublishTask.id → youtube_video_id` 永久关联。
-  `./scripts/check.sh` 已通过 310 项后端测试、空库迁移、前端生产构建和 Remotion 检查；
+- 最近验证状态：Sprint 136 已完成；YouTube 频道账号和单频道已发布视频均使用每页 10 条的
+  服务端分页，频道详情不再嵌套加载完整视频关系，频道管理文字层级整体上调约 1–2px。
+  `./scripts/check.sh` 已通过 312 项后端测试、空库迁移、前端生产构建和 Remotion 检查；
   未调用真实 YouTube 发布接口，真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 134、Sprint 135 Complete；Sprint 135 真实外部发布 smoke 待用户授权；
+- 当前合同状态：Sprint 134、Sprint 135、Sprint 136 Complete；Sprint 135 真实外部发布 smoke 待用户授权；
   Sprint 127、Sprint 132、Sprint 133 Complete；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
 - Complete：`docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md`
 - Complete：`docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md`
+- Complete：`docs/contracts/sprint-136-youtube-list-pagination-and-readability.md`
 - Complete：`docs/contracts/sprint-133-native-subtitle-source-alignment.md`
 - Complete：`docs/contracts/sprint-132-native-agent-latest-run-retry.md`
 - Complete：`docs/contracts/sprint-131-api-utc-shanghai-display.md`
@@ -84,6 +84,14 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 136 YouTube 列表分页与可读性：频道账号前端不再固定读取 100 条，改为使用现有
+  cursor/limit 后端分页，每页 10 条，并在搜索或状态筛选变化时回到第一页。新增单频道已发布
+  视频分页 API，按 `uploaded_at DESC, id DESC` 稳定排序并严格过滤 `channel_id`；频道详情不再
+  通过 ORM 关系整体加载视频，视频 Tab 独立读取当前页。两个列表统一展示总条数、当前页、总页数
+  和边界禁用的上一页/下一页。YouTube 管理页面正文、表头、辅助信息、状态、表单和发布任务文字
+  上调约 1–2px，保持既有深色暖橙、扁平紧凑视觉。真实浏览器确认 17 个频道分成 2 页、73 个
+  视频分成 8 页且翻页数据正确，控制台无错误；`./scripts/check.sh` 通过 312 项后端测试、空库
+  全量迁移、前端生产构建、Remotion TypeScript 检查和 5 项模板测试。
 - 完成 Sprint 135 YouTube 异步发布与 Agent 频道引用：新增本地发布任务、两条 Alembic 迁移和
   页面/Agent 共用应用服务；创建前锁定频道、审核视频、标题、描述、标签、封面、视频 URL、
   可见性、AI 合成标记和计划时间快照。提交请求在保存远程任务 ID 后立即返回，网络结果不明确时

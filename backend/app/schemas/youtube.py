@@ -116,7 +116,6 @@ class YoutubeChannelDetailRead(YoutubeChannelSummaryRead):
     operation_notes: str | None
     analytics: dict[str, object] | None
     benchmarks: list[YoutubeBenchmarkRead]
-    uploaded_videos: list[YoutubeUploadedVideoRead]
     publish_tasks: list[YoutubePublishTaskRead]
 
 
