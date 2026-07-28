@@ -680,3 +680,25 @@
   得到 `image_post`、652 bytes Markdown 和 4 个媒体文件。Docker daemon 当时未运行，
   因此未执行本地镜像构建；本机原 `8010` 仍是旧抖音专用进程，需按新 Compose 重建后
   才会切换到多平台服务。
+
+# Sprint 134 多 Agent 文案工作流（已完成）
+
+- 新增系统 `article-creation-team` 总 Skill：Director 通过 OpenAI Agents SDK
+  `agent.as_tool()` 调用 Writer 和 Reviewer，角色规则与协作顺序均来自同一份 Skill
+  instructions；子 Agent 不接管用户会话，也不能继续创建孙 Agent。
+- 新增 Native Agent 文案 Artifact、Approval 和根 Run Checkpoint 持久化。Writer 草稿、
+  Reviewer 审稿、最终文案均按版本与 hash 落库；最终稿进入 `waiting_for_input` 后释放
+  Worker。批准后同一 Run 成功结束，退回修改则把真实反馈追加到数据库 SDK Session，并将
+  同一 Run 重新入队，旧版本保持可追踪。
+- Agent 页面新增文案 Artifact 卡、最终稿确认与修改意见交互；三个文案 Tool 的完成状态由
+  已持久化 Artifact 校验。该系统 Skill 只开放文本 Tool，不生成媒体。
+- 新增 4 项聚焦测试，覆盖子 Agent Tool 构建、Artifact 与退回恢复、批准后纯文本完成以及
+  Approval owner 隔离。`./scripts/check.sh` 通过 320 项后端测试、空库 Alembic 全量升级、
+  前端生产构建、Remotion typecheck 与 5 项测试。
+- 真实页面 smoke 使用账号 `sprint134-smoke-20260729@example.com` 和真实模型完成
+  `Writer → Reviewer → 最终文案确认`。Run
+  `64420b2fb8fc4eb2bb2624963afa4cde` 成功，草稿/审稿/最终文案 Artifact 分别为
+  `a363d580209649ffa645d7402e768a0b`、`a135774a1cb64129a73bb87bfb4d8a46`、
+  `55210d376468451789128af60e780541`，Approval
+  `5ab1aa8fe1e24193b91ce37649d59914` 已批准；模型调用 4 次，图片、语音、字幕、视频调用均为
+  0。本地 MLflow tracing 默认关闭，因此本次 smoke 没有 Trace ID。

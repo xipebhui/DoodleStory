@@ -2,7 +2,7 @@
 
 ## Status
 
-Draft，等待用户确认后实施。
+Implemented。
 
 ## Goal
 
@@ -22,7 +22,7 @@ Draft，等待用户确认后实施。
 → Reviewer 输出审稿 Artifact
 → Director 形成最终文案 Artifact
 → Run 进入 waiting_for_input，等待用户审批
-→ 用户批准：文案标记 approved，继续交给总 Skill 中的内容制作角色
+→ 用户批准：文案标记 approved，本次纯文本 Run 完成
 → 用户要求修改：保存反馈，重新调用 Writer / Reviewer，产生新版本后再次等待审批
 ```
 
@@ -30,7 +30,7 @@ Draft，等待用户确认后实施。
 
 - 新增一个发布版总 Skill，单文件包含：
   - Director 的总体执行策略；
-  - Writer、Reviewer 和现有内容制作角色的职责；
+  - Writer、Reviewer 的职责；
   - 每个角色内部的固定子流程；
   - 角色调用顺序、允许分支、完成条件和最大修改轮次。
 - Runtime 根据同一总 Skill 和 `active_role` 构建主 Agent 与子 Agent；角色规则进入
@@ -44,7 +44,6 @@ Draft，等待用户确认后实施。
   - `article_draft`
   - `article_review`
   - `final_article`
-  - `content_production_result`
 - Artifact 使用固定外壳与灵活 JSON 内容：
   - `artifact_type`
   - `schema_version`
@@ -61,20 +60,20 @@ Draft，等待用户确认后实施。
   SDK Session、Checkpoint、Artifact 和审批结果继续。
 - 恢复时复用已经完成且 hash 有效的 Artifact，不重复执行对应子 Agent；中断时尚未产生正式
   Artifact 的纯文本子任务可以在有界次数内重新执行。
-- 批准后的最终文案由总 Skill 中的现有内容制作角色继续处理；现有图片、语音、字幕和视频
-  Tools 的业务行为、幂等与失败边界保持不变。
+- 批准后的最终文案直接结束本次 Run；本 Sprint 不进入图片、语音、字幕或视频制作。
 - 前端在现有 Agent 会话中展示：
   - 当前公开阶段和角色；
   - 已完成的文案与审稿结果；
   - 最终文案审批卡；
   - 批准、要求修改和恢复后的新版本；
   - 明确失败信息。
-- 父流程、子 Agent 调用、Artifact、审批、恢复和最终内容制作进入现有 Event 与 MLflow
+- 父流程、子 Agent 调用、Artifact、审批和恢复进入现有 Event 与 MLflow
   Trace，且不展示隐藏推理。
 
 ## Out of Scope
 
 - 不接入本地 Markdown 创作知识库、全文检索、Embedding 或向量数据库。
+- 不生成图片、语音、字幕或视频，也不调用媒体制作与发布 Tool。
 - 不拆分多个 Skill 层级，不建设 Skill 组合 DSL、Agent Builder、工作流画布或角色管理后台。
 - 不允许模型创建总 Skill 未声明的角色，也不支持子 Agent 继续创建孙 Agent。
 - 不使用 handoff，不把用户会话控制权交给 Writer、Reviewer 或内容制作角色。
@@ -101,7 +100,6 @@ Draft，等待用户确认后实施。
 - Artifact、Checkpoint 与文案 Approval 数据模型和迁移。
 - 子 Agent 输出保存、父 Agent Tool Output 回传与恢复逻辑。
 - 文案审批 API、现有会话 UI 和持久化事件展示。
-- 批准后调用现有内容制作角色的真实纵向集成。
 - 自动化测试、真实模型纵向 smoke 记录和项目文档更新。
 
 ## Done Means
@@ -113,7 +111,7 @@ Draft，等待用户确认后实施。
 - 服务重启后，已完成的 Writer/Reviewer Artifact 不会重复生成；用户回来批准后同一根 Run
   从审批点继续。
 - 用户要求修改时保存反馈并生成新版本，旧版本保持可追踪。
-- 批准后的文案能够进入现有内容制作角色，现有媒体 Tool 继续遵守幂等、取消和 unknown 边界。
+- 批准后同一个根 Run 以纯文本结果完成，媒体调用计数全部保持为零。
 - 子 Agent 失败、输出不符合约定或恢复条件不足时明确失败，不生成占位结果。
 - 前端、数据库 Event 和 MLflow 能通过同一个根 Run 定位完整执行过程。
 
@@ -139,9 +137,9 @@ git diff --check
 真实 smoke：
 
 - 使用一个真实用户、一个发布版总 Skill 和真实模型完成
-  `Writer → Reviewer → 文案审批 → 现有内容制作角色`。
+  `Writer → Reviewer → 文案审批`。
 - 在最终文案等待审批时重启后端，确认用户返回后可以批准并继续。
-- 保存 Run ID、Artifact ID、Approval ID、Trace ID 和最终内容制作结果作为验收证据。
+- 保存 Run ID、Artifact ID、Approval ID、Trace ID 和最终文案作为验收证据。
 
 ## Risks / Notes
 
@@ -155,5 +153,4 @@ git diff --check
 ## Handoff
 
 - 下一步优先根据真实文案运行记录接入本地 Markdown 创作知识检索，而不是继续扩展 Agent 层级。
-- 实施前需要用户确认：最终文案批准后是否默认立即进入现有内容制作角色；本合同当前按“立即继续”
-  编写。
+- 后续 Sprint 再决定是否把已批准文案显式交给独立媒体制作 Run；本 Sprint 在文本审批完成处断开。

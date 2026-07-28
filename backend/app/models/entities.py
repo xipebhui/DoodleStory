@@ -930,6 +930,13 @@ class NativeAgentRun(Base, TimestampMixin):
     speech_call_count: Mapped[int] = mapped_column(Integer, default=0)
     subtitle_call_count: Mapped[int] = mapped_column(Integer, default=0)
     video_call_count: Mapped[int] = mapped_column(Integer, default=0)
+    workflow_phase: Mapped[Optional[str]] = mapped_column(
+        String(80), nullable=True, index=True
+    )
+    workflow_checkpoint_json: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+    workflow_revision: Mapped[int] = mapped_column(Integer, default=0)
     final_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -974,6 +981,14 @@ class NativeAgentRun(Base, TimestampMixin):
         cascade="all, delete-orphan",
     )
     context_items: Mapped[list["NativeAgentContextItem"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    artifacts: Mapped[list["NativeAgentArtifact"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    article_approvals: Mapped[list["NativeAgentArticleApproval"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
     )
@@ -1510,6 +1525,83 @@ class NativeAgentContextItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     run: Mapped[NativeAgentRun] = relationship(back_populates="context_items")
+
+
+class NativeAgentArtifact(Base, TimestampMixin):
+    __tablename__ = "native_agent_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "artifact_type",
+            "version",
+            name="uq_native_agent_artifacts_run_type_version",
+        ),
+        CheckConstraint(
+            "version > 0",
+            name="ck_native_agent_artifacts_version_positive",
+        ),
+        Index(
+            "ix_native_agent_artifacts_run_type_version",
+            "run_id",
+            "artifact_type",
+            "version",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    artifact_type: Mapped[str] = mapped_column(String(80), index=True)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1)
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    producer_role: Mapped[str] = mapped_column(String(40))
+    content_json: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(80))
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="artifacts")
+    approval: Mapped[Optional["NativeAgentArticleApproval"]] = relationship(
+        back_populates="artifact",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class NativeAgentArticleApproval(Base):
+    __tablename__ = "native_agent_article_approvals"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_artifacts.id", ondelete="CASCADE"),
+        unique=True,
+    )
+    artifact_hash: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(40), index=True)
+    feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now()
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    decided_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    run: Mapped[NativeAgentRun] = relationship(
+        back_populates="article_approvals"
+    )
+    artifact: Mapped[NativeAgentArtifact] = relationship(
+        back_populates="approval"
+    )
+    decided_by_user: Mapped[Optional[User]] = relationship()
 
 
 class AgentConversation(Base, TimestampMixin):

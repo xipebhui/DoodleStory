@@ -641,6 +641,9 @@ export type NativeAgentRun = {
   speech_call_count: number;
   subtitle_call_count: number;
   video_call_count: number;
+  workflow_phase: string | null;
+  workflow_revision: number;
+  workflow_checkpoint: Record<string, unknown> | null;
   final_output: string | null;
   error_code: string | null;
   error_message: string | null;
@@ -652,8 +655,31 @@ export type NativeAgentRun = {
   external_contents: NativeAgentExternalContent[];
   steps: NativeAgentStep[];
   events: NativeAgentEvent[];
+  artifacts: NativeAgentArtifact[];
   started_at: string | null;
   finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NativeAgentArticleApproval = {
+  id: string;
+  status: "pending" | "approved" | "changes_requested" | "cancelled";
+  feedback: string | null;
+  requested_at: string;
+  resolved_at: string | null;
+};
+
+export type NativeAgentArtifact = {
+  id: string;
+  artifact_type: "article_draft" | "article_review" | "final_article";
+  schema_version: number;
+  version: number;
+  status: "completed" | "awaiting_approval" | "approved" | "rejected" | "superseded";
+  producer_role: string;
+  content: Record<string, unknown>;
+  content_hash: string;
+  approval: NativeAgentArticleApproval | null;
   created_at: string;
   updated_at: string;
 };
@@ -1224,6 +1250,17 @@ export const api = {
     request<ApiData<NativeAgentRun>>(
       `/agent-loop/conversations/${encodeURIComponent(conversationId)}/retry-latest`,
       { method: "POST" },
+    ).then((result) => result.data),
+  decideNativeArticleApproval: (
+    approvalId: string,
+    payload: {
+      decision: "approve" | "changes_requested";
+      feedback: string | null;
+    },
+  ) =>
+    request<ApiData<NativeAgentRun>>(
+      `/agent-loop/article-approvals/${encodeURIComponent(approvalId)}/decision`,
+      { method: "POST", body: JSON.stringify(payload) },
     ).then((result) => result.data),
   cancelNativeAgentRun: (runId: string) =>
     request<ApiData<NativeAgentRun>>(

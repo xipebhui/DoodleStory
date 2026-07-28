@@ -17,6 +17,8 @@ from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
     NativeAgentAudio,
+    NativeAgentArticleApproval,
+    NativeAgentArtifact,
     NativeAgentConversation,
     NativeAgentEvent,
     NativeAgentExternalContent,
@@ -47,6 +49,9 @@ from app.schemas.agent import AgentResourceKind, AgentResourceOption
 from app.schemas.native_agent import (
     NativeAgentCapabilityRead,
     NativeAgentAudioRead,
+    NativeAgentArticleApprovalDecision,
+    NativeAgentArticleApprovalRead,
+    NativeAgentArtifactRead,
     NativeAgentConversationCreate,
     NativeAgentConversationDetailRead,
     NativeAgentConversationRead,
@@ -65,6 +70,10 @@ from app.services.native_agent_worker import (
     enqueue_native_agent_run,
 )
 from app.services.native_agent_persistence import NativeAgentStore
+from app.services.native_article_workflow import (
+    NativeArticleWorkflowError,
+    decide_article_approval,
+)
 
 
 router = APIRouter(prefix="/agent-loop", tags=["native-agent-loop"])
@@ -212,6 +221,40 @@ def _event_to_read(event: NativeAgentEvent) -> NativeAgentEventRead:
     )
 
 
+def _article_approval_to_read(
+    approval: NativeAgentArticleApproval,
+) -> NativeAgentArticleApprovalRead:
+    return NativeAgentArticleApprovalRead(
+        id=approval.id,
+        status=approval.status,
+        feedback=approval.feedback,
+        requested_at=approval.requested_at,
+        resolved_at=approval.resolved_at,
+    )
+
+
+def _artifact_to_read(
+    artifact: NativeAgentArtifact,
+) -> NativeAgentArtifactRead:
+    return NativeAgentArtifactRead(
+        id=artifact.id,
+        artifact_type=artifact.artifact_type,
+        schema_version=artifact.schema_version,
+        version=artifact.version,
+        status=artifact.status,
+        producer_role=artifact.producer_role,
+        content=json.loads(artifact.content_json),
+        content_hash=artifact.content_hash,
+        approval=(
+            _article_approval_to_read(artifact.approval)
+            if artifact.approval is not None
+            else None
+        ),
+        created_at=artifact.created_at,
+        updated_at=artifact.updated_at,
+    )
+
+
 def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
     return NativeAgentRunRead(
         id=run.id,
@@ -245,6 +288,13 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
         speech_call_count=run.speech_call_count,
         subtitle_call_count=run.subtitle_call_count,
         video_call_count=run.video_call_count,
+        workflow_phase=run.workflow_phase,
+        workflow_revision=run.workflow_revision,
+        workflow_checkpoint=(
+            json.loads(run.workflow_checkpoint_json)
+            if run.workflow_checkpoint_json
+            else None
+        ),
         final_output=run.final_output,
         error_code=run.error_code,
         error_message=run.error_message,
@@ -295,6 +345,17 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
             _event_to_read(event)
             for event in sorted(run.events, key=lambda value: value.sequence)
         ],
+        artifacts=[
+            _artifact_to_read(artifact)
+            for artifact in sorted(
+                run.artifacts,
+                key=lambda value: (
+                    value.created_at,
+                    value.artifact_type,
+                    value.version,
+                ),
+            )
+        ],
         started_at=run.started_at,
         finished_at=run.finished_at,
         created_at=run.created_at,
@@ -317,6 +378,9 @@ def _load_run_for_read(db: Session, run_id: str) -> NativeAgentRun:
             ),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
+            selectinload(NativeAgentRun.artifacts).selectinload(
+                NativeAgentArtifact.approval
+            ),
             selectinload(NativeAgentRun.youtube_channel),
             selectinload(NativeAgentRun.youtube_publishable_video),
         )
@@ -515,6 +579,9 @@ def get_native_agent_conversation(
             ),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
+            selectinload(NativeAgentRun.artifacts).selectinload(
+                NativeAgentArtifact.approval
+            ),
             selectinload(NativeAgentRun.youtube_channel),
             selectinload(NativeAgentRun.youtube_publishable_video),
         )
@@ -553,6 +620,7 @@ async def create_native_agent_run(
                     AgentRunStatus.queued,
                     AgentRunStatus.running,
                     AgentRunStatus.waiting_for_tool,
+                    AgentRunStatus.waiting_for_input,
                     AgentRunStatus.retrying,
                     AgentRunStatus.cancel_requested,
                 ]
@@ -736,6 +804,7 @@ async def retry_latest_native_agent_run(
         AgentRunStatus.queued,
         AgentRunStatus.running,
         AgentRunStatus.waiting_for_tool,
+        AgentRunStatus.waiting_for_input,
         AgentRunStatus.retrying,
         AgentRunStatus.cancel_requested,
     }:
@@ -793,6 +862,55 @@ async def retry_latest_native_agent_run(
     db.commit()
     await enqueue_native_agent_run(run.id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+
+
+@router.post(
+    "/article-approvals/{approval_id}/decision",
+    response_model=ApiData[NativeAgentRunRead],
+)
+async def decide_native_article_approval(
+    approval_id: str,
+    payload: NativeAgentArticleApprovalDecision,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[NativeAgentRunRead]:
+    approval = db.scalar(
+        select(NativeAgentArticleApproval)
+        .join(
+            NativeAgentRun,
+            NativeAgentRun.id == NativeAgentArticleApproval.run_id,
+        )
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentArticleApproval.id == approval_id,
+            NativeAgentConversation.owner_user_id == user.id,
+        )
+    )
+    if approval is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文案审批不存在",
+        )
+    try:
+        run_id, approval_status = decide_article_approval(
+            approval_id,
+            user_id=user.id,
+            decision=payload.decision,
+            feedback=payload.feedback,
+            session_factory=SessionLocal,
+        )
+    except NativeArticleWorkflowError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    db.expire_all()
+    if approval_status == "changes_requested":
+        await enqueue_native_agent_run(run_id)
+    return ApiData(data=_run_to_read(_load_run_for_read(db, run_id)))
 
 
 @router.post(

@@ -276,6 +276,10 @@ class NativeAgentStore:
         self.run_id = run_id
         self._session_factory = session_factory
 
+    @property
+    def session_factory(self) -> sessionmaker:
+        return self._session_factory
+
     def append_event(
         self,
         event_type: str,
@@ -1693,6 +1697,44 @@ class NativeAgentStore:
                 self.run_id,
                 "run.completed",
                 {"status": "succeeded"},
+            )
+            db.commit()
+
+    def pause_for_article_approval(self, final_output: str) -> None:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            if run.status in {
+                AgentRunStatus.cancel_requested,
+                AgentRunStatus.cancelled,
+            }:
+                raise NativeAgentRunCancelled("Native Agent Run 已请求取消")
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.assistant_output,
+                    payload_json=_json_dumps({"content": final_output}),
+                )
+            )
+            run.status = AgentRunStatus.waiting_for_input
+            run.final_output = final_output
+            run.finished_at = None
+            _add_event(
+                db,
+                self.run_id,
+                "checkpoint.saved",
+                {
+                    "phase": "waiting_for_article_approval",
+                    "workflow_revision": run.workflow_revision,
+                },
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "run.waiting_for_input",
+                {"status": "waiting_for_input"},
             )
             db.commit()
 

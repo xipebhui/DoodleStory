@@ -18,6 +18,7 @@ from app.services.agent_tool_runtime import create_default_tool_registry
 
 SYSTEM_SKILL_SLUG = "idea-to-comic"
 NATIVE_LOOP_SKILL_SLUG = "simple-image-story"
+ARTICLE_TEAM_SKILL_SLUG = "article-creation-team"
 MAX_SKILL_INSTRUCTIONS_BYTES = 64 * 1024
 TOOL_PRESENTATION = {
     "generate_image": (
@@ -48,6 +49,18 @@ TOOL_PRESENTATION = {
         "微信公众号文章",
         "微信公众号 · 抓取文章正文、图片引用和来源元数据，并保存为可追踪素材。",
     ),
+    "write_article": (
+        "文案写作子 Agent",
+        "把当前文案任务交给同一 Skill 中的 Writer 角色，返回并保存完整草稿。",
+    ),
+    "review_article": (
+        "文案审稿子 Agent",
+        "把用户要求和完整草稿交给同一 Skill 中的 Reviewer 角色，返回并保存审稿意见。",
+    ),
+    "submit_final_article": (
+        "提交最终文案",
+        "保存最终文案并暂停当前 Run，等待用户批准或提出修改意见。",
+    ),
 }
 NATIVE_ONLY_TOOL_CATALOG = (
     {
@@ -72,6 +85,21 @@ NATIVE_ONLY_TOOL_CATALOG = (
     },
     {
         "name": "capture_wechat_article",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+    {
+        "name": "write_article",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+    {
+        "name": "review_article",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+    {
+        "name": "submit_final_article",
         "has_side_effects": True,
         "may_wait": True,
     },
@@ -675,7 +703,61 @@ def seed_native_loop_system_skill(
     return skill
 
 
+def seed_article_team_system_skill(
+    db: Session,
+    *,
+    skill_root: Path = DEFAULT_SKILL_ROOT,
+) -> AgentSkill:
+    existing = db.scalar(
+        select(AgentSkill).where(
+            AgentSkill.owner_user_id.is_(None),
+            AgentSkill.slug == ARTICLE_TEAM_SKILL_SLUG,
+        )
+    )
+    if existing is not None:
+        return existing
+    package = SkillRegistry(skill_root).load(ARTICLE_TEAM_SKILL_SLUG)
+    instructions = _runtime_skill_body(package.instructions)
+    tool_names = validate_tool_names(
+        ["write_article", "review_article", "submit_final_article"]
+    )
+    skill = AgentSkill(
+        owner_user_id=None,
+        slug=ARTICLE_TEAM_SKILL_SLUG,
+        name="文案创作团队",
+        description=package.description,
+        draft_instructions=instructions,
+        draft_tool_names_json=_json_array(tool_names),
+        draft_revision=1,
+        status=AgentSkillStatus.published,
+    )
+    db.add(skill)
+    db.flush()
+    version = AgentSkillVersion(
+        skill_id=skill.id,
+        version=1,
+        name_snapshot=skill.name,
+        description_snapshot=skill.description,
+        instructions=instructions,
+        tool_names_json=_json_array(tool_names),
+        content_hash=compute_skill_content_hash(
+            name=skill.name,
+            description=skill.description,
+            instructions=instructions,
+            tool_names=tool_names,
+        ),
+        published_by_user_id=None,
+    )
+    db.add(version)
+    db.flush()
+    skill.active_version_id = version.id
+    db.commit()
+    db.refresh(skill)
+    return skill
+
+
 def initialize_system_agent_skills() -> None:
     with database.SessionLocal() as db:
         seed_system_skills(db)
         seed_native_loop_system_skill(db)
+        seed_article_team_system_skill(db)

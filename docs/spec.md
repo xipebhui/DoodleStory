@@ -368,6 +368,14 @@
   `native_agent_external_contents` 记录。Tool 只向模型返回稳定素材 ID、来源摘要和最多
   1600 字预览，不无条件注入完整长文。该 Tool 只有在固定 Skill Version 的白名单包含
   `capture_wechat_article` 时才暴露，Skill 管理页显示名称“微信公众号文章”。
+- Sprint 134 为 Native Agent 增加单 Skill 驱动的多 Agent 文案链路。系统
+  `article-creation-team` Skill 在一份 instructions 中定义 Director、Writer、Reviewer
+  的职责与固定协作顺序；Director 使用 OpenAI Agents SDK `agent.as_tool()` 调用两个子
+  Agent，不使用 handoff。Writer 草稿、Reviewer 审稿和最终文案保存为带版本与内容 hash 的
+  数据库 Artifact；最终稿创建 Approval 后根 Run 进入 `waiting_for_input`，不占用 Worker。
+  用户批准后同一 Run 以纯文本结果完成；要求修改时反馈写回同一个数据库 SDK Session，并将
+  同一 Run 重新入队产生新 Artifact 版本。该 Skill 只开放 `write_article`、
+  `review_article`、`submit_final_article`，不得生成图片、语音、字幕或视频。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。

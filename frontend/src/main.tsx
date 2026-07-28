@@ -3587,6 +3587,8 @@ function NativeAgentView({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
+  const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null);
+  const [approvalFeedback, setApprovalFeedback] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [eventConnectionError, setEventConnectionError] = useState("");
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
@@ -3746,7 +3748,7 @@ function NativeAgentView({
   const threadSignature = detail?.runs
     .map(
       (run) =>
-        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.audios.length}:${run.videos.length}:${run.external_contents.length}:${run.events.length}`,
+        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.audios.length}:${run.videos.length}:${run.external_contents.length}:${run.artifacts.length}:${run.events.length}`,
     )
     .join("|");
   const previewImage = detail?.runs
@@ -3895,6 +3897,49 @@ function NativeAgentView({
     }
   }
 
+  async function decideArticleApproval(
+    runId: string,
+    approvalId: string,
+    decision: "approve" | "changes_requested",
+  ) {
+    const feedback = approvalFeedback[approvalId]?.trim() || "";
+    if (decision === "changes_requested" && !feedback) {
+      setError("请先填写具体修改意见");
+      return;
+    }
+    setDecidingApprovalId(approvalId);
+    setError("");
+    try {
+      const nextRun = await api.decideNativeArticleApproval(approvalId, {
+        decision,
+        feedback: feedback || null,
+      });
+      setDetail((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          runs: current.runs.map((run) =>
+            run.id === runId ? nextRun : run
+          ),
+        };
+      });
+      setApprovalFeedback((current) => {
+        const next = { ...current };
+        delete next[approvalId];
+        return next;
+      });
+      await loadConversations();
+    } catch (approvalError) {
+      setError(
+        approvalError instanceof Error
+          ? approvalError.message
+          : "最终文案处理失败",
+      );
+    } finally {
+      setDecidingApprovalId(null);
+    }
+  }
+
   return (
     <section className="native-agent-layout">
       <NativeAgentSidebar
@@ -3935,6 +3980,9 @@ function NativeAgentView({
                 (response) => response.text.trim() === run.final_output?.trim(),
               ),
             );
+            const visibleArticleArtifacts = run.artifacts.filter(
+              (artifact) => artifact.status !== "superseded",
+            );
             return (
               <article className="native-agent-run" key={run.id}>
                 <div className="native-agent-user-message">
@@ -3970,12 +4018,29 @@ function NativeAgentView({
                         <div className="native-agent-response-text">{response.text}</div>
                       ) : null}
                       {response.functionCalls.map((call) => {
-                        const failed = call.toolStatus === "failed"
-                          || call.toolStatus === "cancelled"
-                          || call.toolStatus === "unknown";
-                        const active = call.toolStatus === "pending"
-                          || call.toolStatus === "prepared"
-                          || call.toolStatus === "running";
+                        const persistedArticleToolComplete = (
+                          (call.name === "write_article"
+                            && run.artifacts.some((artifact) =>
+                              artifact.artifact_type === "article_draft"
+                            ))
+                          || (call.name === "review_article"
+                            && run.artifacts.some((artifact) =>
+                              artifact.artifact_type === "article_review"
+                            ))
+                          || (call.name === "submit_final_article"
+                            && run.artifacts.some((artifact) =>
+                              artifact.artifact_type === "final_article"
+                            ))
+                        );
+                        const toolStatus = persistedArticleToolComplete
+                          ? "completed"
+                          : call.toolStatus;
+                        const failed = toolStatus === "failed"
+                          || toolStatus === "cancelled"
+                          || toolStatus === "unknown";
+                        const active = toolStatus === "pending"
+                          || toolStatus === "prepared"
+                          || toolStatus === "running";
                         const toolStatusLabel: Record<NativeFunctionCallProjection["toolStatus"], string> = {
                           pending: "等待执行",
                           prepared: "已准备",
@@ -3992,7 +4057,7 @@ function NativeAgentView({
                               <span>Function Call · <code>{call.name}</code></span>
                               <span className={failed ? "is-error" : active ? "is-running" : "is-complete"}>
                                 {active ? <Loader2 className="spin" size={13} /> : failed ? <AlertCircle size={13} /> : <CheckCircle2 size={13} />}
-                                {toolStatusLabel[call.toolStatus]}
+                                {toolStatusLabel[toolStatus]}
                               </span>
                             </header>
                             {call.argumentsText ? (
@@ -4004,7 +4069,7 @@ function NativeAgentView({
                             {call.toolResult ? (
                               <div>
                                 <strong>
-                                  {call.toolStatus === "completed" || call.toolStatus === "reused"
+                                  {toolStatus === "completed" || toolStatus === "reused"
                                     ? "Tool Result"
                                     : "Tool Execution"}
                                 </strong>
@@ -4023,6 +4088,100 @@ function NativeAgentView({
                     </div>
                   ) : null}
                 </div>
+                {visibleArticleArtifacts.length > 0 ? (
+                  <div className="native-agent-artifact-list">
+                    {visibleArticleArtifacts.map((artifact) => {
+                      const title = typeof artifact.content.title === "string"
+                        ? artifact.content.title
+                        : null;
+                      const body = typeof artifact.content.body_markdown === "string"
+                        ? artifact.content.body_markdown
+                        : null;
+                      const reviewSummary = typeof artifact.content.summary === "string"
+                        ? artifact.content.summary
+                        : null;
+                      const approval = artifact.approval;
+                      const approvalPending = approval?.status === "pending";
+                      return (
+                        <section
+                          className={`native-agent-artifact is-${artifact.artifact_type}`}
+                          key={artifact.id}
+                        >
+                          <header>
+                            <span>
+                              {artifact.artifact_type === "article_draft"
+                                ? "Writer 草稿"
+                                : artifact.artifact_type === "article_review"
+                                  ? "Reviewer 审稿"
+                                  : "最终文案"}
+                              {" · "}v{artifact.version}
+                            </span>
+                            <small>
+                              {approvalPending
+                                ? "等待你的确认"
+                                : approval?.status === "approved"
+                                  ? "已确认"
+                                  : approval?.status === "changes_requested"
+                                    ? "已退回修改"
+                                    : "已完成"}
+                            </small>
+                          </header>
+                          {title ? <h3>{title}</h3> : null}
+                          {body ? (
+                            <div className="native-agent-article-body">{body}</div>
+                          ) : reviewSummary ? (
+                            <p>{reviewSummary}</p>
+                          ) : null}
+                          {approvalPending && approval ? (
+                            <div className="native-agent-approval">
+                              <textarea
+                                value={approvalFeedback[approval.id] || ""}
+                                onChange={(event) =>
+                                  setApprovalFeedback((current) => ({
+                                    ...current,
+                                    [approval.id]: event.target.value,
+                                  }))
+                                }
+                                placeholder="如果需要修改，请写清楚具体意见…"
+                                disabled={decidingApprovalId === approval.id}
+                              />
+                              <div>
+                                <button
+                                  type="button"
+                                  className="is-secondary"
+                                  disabled={decidingApprovalId === approval.id}
+                                  onClick={() =>
+                                    void decideArticleApproval(
+                                      run.id,
+                                      approval.id,
+                                      "changes_requested",
+                                    )}
+                                >
+                                  要求修改
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={decidingApprovalId === approval.id}
+                                  onClick={() =>
+                                    void decideArticleApproval(
+                                      run.id,
+                                      approval.id,
+                                      "approve",
+                                    )}
+                                >
+                                  {decidingApprovalId === approval.id
+                                    ? <Loader2 className="spin" size={15} />
+                                    : <CheckCircle2 size={15} />}
+                                  确认文案
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </section>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 {run.images.length > 0 ? (
                   <div className="native-agent-image-grid">
                     {run.images.map((image) => (
@@ -4255,18 +4414,20 @@ function NativeAgentView({
           <textarea
             value={content}
             onChange={(event) => setContent(event.target.value)}
-            placeholder="输入故事或图片创作目标…"
+            placeholder="输入文案目标，例如受众、主题、长度和语气…"
             disabled={sending || Boolean(activeRun)}
           />
           <div className="native-agent-composer-footer">
             <span>
               {activeRun
-                ? "终止后不会再启动新的 Tool；已被 Provider 接收的请求可能仍会计费。"
+                ? activeRun.status === "waiting_for_input"
+                  ? "最终文案已保存；请在上方确认，或填写意见后要求修改。"
+                  : "终止后不会再启动新的 Tool；已被 Provider 接收的请求可能仍会计费。"
                 : content.trim() === "重试"
                   ? "将继续最近一次 Run，并复用该 Run 固定的 Skill、Style 和成功资产；当前选择不会生效。"
                   : youtubeChannelId
                     ? "已选择结构化 @频道；运行前会再次展示频道、视频、可见性和时间供你确认。"
-                    : "Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。"}
+                    : "Tool 由发布版 Skill 决定；文案流程不会生成图片、语音或视频。"}
             </span>
             <button
               type={activeRun ? "button" : "submit"}

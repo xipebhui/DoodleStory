@@ -174,6 +174,58 @@ class NativeAgentEventRead(BaseModel):
     created_at: datetime
 
 
+class NativeAgentArticleApprovalRead(BaseModel):
+    id: str
+    status: Literal[
+        "pending",
+        "approved",
+        "changes_requested",
+        "cancelled",
+    ]
+    feedback: str | None
+    requested_at: datetime
+    resolved_at: datetime | None
+
+
+class NativeAgentArtifactRead(BaseModel):
+    id: str
+    artifact_type: Literal[
+        "article_draft",
+        "article_review",
+        "final_article",
+    ]
+    schema_version: int
+    version: int
+    status: Literal[
+        "completed",
+        "awaiting_approval",
+        "approved",
+        "rejected",
+        "superseded",
+    ]
+    producer_role: str
+    content: dict[str, object]
+    content_hash: str
+    approval: NativeAgentArticleApprovalRead | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NativeAgentArticleApprovalDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approve", "changes_requested"]
+    feedback: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_feedback(self) -> "NativeAgentArticleApprovalDecision":
+        if self.decision == "changes_requested" and not (
+            self.feedback and self.feedback.strip()
+        ):
+            raise ValueError("要求修改时必须填写具体意见")
+        return self
+
+
 class NativeAgentRunRead(BaseModel):
     id: str
     conversation_id: str
@@ -194,6 +246,9 @@ class NativeAgentRunRead(BaseModel):
     speech_call_count: int
     subtitle_call_count: int
     video_call_count: int
+    workflow_phase: str | None
+    workflow_revision: int
+    workflow_checkpoint: dict[str, object] | None
     final_output: str | None
     error_code: str | None
     error_message: str | None
@@ -207,6 +262,7 @@ class NativeAgentRunRead(BaseModel):
     )
     steps: list[NativeAgentStepRead] = Field(default_factory=list)
     events: list[NativeAgentEventRead] = Field(default_factory=list)
+    artifacts: list[NativeAgentArtifactRead] = Field(default_factory=list)
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime
@@ -237,6 +293,9 @@ class NativeAgentCapabilityRead(BaseModel):
             "render_story_video",
             "publish_youtube_video",
             "capture_wechat_article",
+            "write_article",
+            "review_article",
+            "submit_final_article",
         ]
     ]
     image_review: Literal["native_model_vision"]

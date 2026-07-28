@@ -72,6 +72,13 @@ from app.services.native_agent_persistence import (
     NativeAgentDatabaseSession,
     NativeAgentStore,
 )
+from app.services.native_article_workflow import (
+    ARTICLE_DRAFT,
+    ARTICLE_REVIEW,
+    has_pending_article_approval,
+    request_final_article_approval,
+    save_article_artifact,
+)
 from app.services.social_content_import import (
     SocialContentImportResult,
     import_social_content,
@@ -133,6 +140,9 @@ NATIVE_RUNTIME_TOOL_NAMES = frozenset(
         "render_story_video",
         "publish_youtube_video",
         "capture_wechat_article",
+        "write_article",
+        "review_article",
+        "submit_final_article",
     }
 )
 
@@ -162,6 +172,24 @@ class NativeVideoSceneInput(BaseModel):
         if (self.subtitle is None) == (self.subtitle_id is None):
             raise ValueError("subtitle 和 subtitle_id 必须且只能提供一个")
         return self
+
+
+class ArticleDraftOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    body_markdown: str = Field(min_length=1, max_length=30_000)
+    creative_summary: str = Field(min_length=1, max_length=1000)
+    hook: str = Field(min_length=1, max_length=1000)
+
+
+class ArticleReviewOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["approved", "changes_required"]
+    summary: str = Field(min_length=1, max_length=2000)
+    strengths: list[str] = Field(max_length=10)
+    issues: list[str] = Field(max_length=10)
 
 
 def native_runtime_tool_names(tool_names_json: str) -> list[str]:
@@ -1302,7 +1330,11 @@ async def _tool_outputs(
     ]
 
 
-def native_agent_instructions(run: NativeAgentRun) -> str:
+def native_agent_instructions(
+    run: NativeAgentRun,
+    *,
+    active_role: str | None = None,
+) -> str:
     allowed_tools = set(parse_tool_names(run.skill_version.tool_names_json))
     image_generation_context = json.dumps(
         {
@@ -1320,6 +1352,13 @@ def native_agent_instructions(run: NativeAgentRun) -> str:
         f"{run.skill_version.instructions}\n"
         "</skill>"
     )
+    if active_role is not None:
+        instructions += (
+            "\n\n<execution_context>\n"
+            f"active_role={active_role}\n"
+            "只执行 Skill 中该角色的职责。角色规则属于 instructions；当前任务内容来自输入。"
+            "\n</execution_context>"
+        )
     if "generate_image" in allowed_tools:
         instructions += (
             "\n\n<image_generation_context>\n"
@@ -1341,6 +1380,101 @@ def native_agent_instructions(run: NativeAgentRun) -> str:
             "</youtube_publish_context>"
         )
     return instructions
+
+
+def build_article_agent_tools(
+    run: NativeAgentRun,
+    *,
+    model: str,
+    store: NativeAgentStore,
+) -> list[FunctionTool]:
+    model_settings = ModelSettings(
+        retry=ModelRetrySettings(max_retries=0),
+        store=False,
+    )
+    writer = Agent(
+        name="DoodleStoryArticleWriter",
+        instructions=native_agent_instructions(run, active_role="writer"),
+        model=model,
+        model_settings=model_settings,
+        output_type=ArticleDraftOutput,
+    )
+    reviewer = Agent(
+        name="DoodleStoryArticleReviewer",
+        instructions=native_agent_instructions(run, active_role="reviewer"),
+        model=model,
+        model_settings=model_settings,
+        output_type=ArticleReviewOutput,
+    )
+
+    async def extract_writer_output(result) -> str:
+        output = ArticleDraftOutput.model_validate(result.final_output)
+        artifact = save_article_artifact(
+            run.id,
+            artifact_type=ARTICLE_DRAFT,
+            producer_role="writer",
+            content=output.model_dump(mode="json"),
+            session_factory=store.session_factory,
+        )
+        return json.dumps(
+            {"status": "succeeded", "artifact": artifact},
+            ensure_ascii=False,
+        )
+
+    async def extract_reviewer_output(result) -> str:
+        output = ArticleReviewOutput.model_validate(result.final_output)
+        artifact = save_article_artifact(
+            run.id,
+            artifact_type=ARTICLE_REVIEW,
+            producer_role="reviewer",
+            content=output.model_dump(mode="json"),
+            session_factory=store.session_factory,
+        )
+        return json.dumps(
+            {"status": "succeeded", "artifact": artifact},
+            ensure_ascii=False,
+        )
+
+    async def submit_final_article(
+        title: str,
+        body_markdown: str,
+    ) -> list[ToolOutputText]:
+        result = request_final_article_approval(
+            run.id,
+            title=title,
+            body_markdown=body_markdown,
+            session_factory=store.session_factory,
+        )
+        return [ToolOutputText(text=json.dumps(result, ensure_ascii=False))]
+
+    return [
+        writer.as_tool(
+            tool_name="write_article",
+            tool_description=(
+                "调用同一 Skill 中的 Writer 子 Agent。输入必须包含用户原始要求，以及需要时的"
+                "旧稿和审稿意见；返回已落库的完整文案草稿 Artifact。"
+            ),
+            custom_output_extractor=extract_writer_output,
+            max_turns=4,
+        ),
+        reviewer.as_tool(
+            tool_name="review_article",
+            tool_description=(
+                "调用同一 Skill 中的 Reviewer 子 Agent。输入必须包含用户原始要求和完整草稿；"
+                "返回已落库的独立审稿 Artifact。"
+            ),
+            custom_output_extractor=extract_reviewer_output,
+            max_turns=4,
+        ),
+        function_tool(
+            submit_final_article,
+            name_override="submit_final_article",
+            description_override=(
+                "保存最终标题和完整 Markdown 正文，创建用户审批并暂停当前文案 Run。"
+                "Writer 和 Reviewer 均完成后才能调用；调用后停止执行。"
+            ),
+        ),
+    ]
 
 
 async def execute_native_agent_run(
@@ -1406,7 +1540,19 @@ async def execute_native_agent_run(
             and run.youtube_publish_confirmation_json
             and run.youtube_publish_confirmed_at
         )
-        instructions = native_agent_instructions(run)
+        article_tool_names = {
+            "write_article",
+            "review_article",
+            "submit_final_article",
+        }
+        instructions = native_agent_instructions(
+            run,
+            active_role=(
+                "director"
+                if article_tool_names.intersection(exposed_tool_names)
+                else None
+            ),
+        )
         trace_context = {
             "conversation_id": run.conversation_id,
             "skill_version_id": run.skill_version_id,
@@ -1460,6 +1606,17 @@ async def execute_native_agent_run(
         )
     if has_youtube_publish_context:
         tools.append(build_publish_youtube_video_tool(run_id))
+    if article_tool_names.intersection(exposed_tool_names):
+        article_tools = build_article_agent_tools(
+            run,
+            model=resolved_settings.agent_model.strip(),
+            store=store,
+        )
+        tools.extend(
+            tool
+            for tool in article_tools
+            if tool.name in exposed_tool_names
+        )
     client = AsyncOpenAI(
         api_key=resolved_settings.text_fallback_api_key.strip(),
         base_url=resolved_settings.text_fallback_openai_base_url,
@@ -1664,7 +1821,15 @@ async def execute_native_agent_run(
                         "model_call_count": len(result.raw_responses),
                     },
                 )
-            store.complete_run(final_output)
+            if has_pending_article_approval(
+                run_id,
+                session_factory=SessionLocal,
+            ):
+                store.pause_for_article_approval(final_output)
+                terminal_status = AgentRunStatus.waiting_for_input
+            else:
+                store.complete_run(final_output)
+                terminal_status = AgentRunStatus.succeeded
             with SessionLocal() as db:
                 run = db.get(NativeAgentRun, run_id)
                 if run is None:
@@ -1676,7 +1841,7 @@ async def execute_native_agent_run(
             set_native_agent_run_trace_status(
                 root_span,
                 native_agent_run_id=run_id,
-                run_status=AgentRunStatus.succeeded.value,
+                run_status=terminal_status.value,
                 model_call_count=model_call_count,
                 image_call_count=image_call_count,
                 speech_call_count=speech_call_count,
