@@ -20,6 +20,7 @@ from app.models.entities import (
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentStep,
+    NativeAgentVideo,
 )
 from app.models.enums import (
     AgentRunStatus,
@@ -29,6 +30,7 @@ from app.models.enums import (
     NativeAgentStepType,
 )
 from app.services.image_generation import GeneratedImageFile
+from app.services.remotion_video import GeneratedRemotionVideo
 from app.services.storage import save_binary_file
 from app.services.volcengine_speech import GeneratedSpeech
 
@@ -104,6 +106,23 @@ class CompletedNativeSpeech:
     sample_rate: int
     duration_ms: int | None
     provider_request_id: str | None
+
+
+@dataclass(frozen=True)
+class CompletedNativeVideo:
+    step_id: str
+    video_id: str
+    asset_id: str
+    content_type: str
+    byte_size: int
+    template_id: str
+    renderer_version: str
+    duration_ms: int
+    duration_in_frames: int
+    fps: int
+    width: int
+    height: int
+    bgm_asset_id: str | None
 
 
 class NativeAgentDatabaseSession(SessionABC):
@@ -530,6 +549,75 @@ class NativeAgentStore:
             db.refresh(step)
             return step
 
+    def prepare_video_tool(
+        self,
+        *,
+        tool_call_id: str,
+        scenes: list[dict[str, object]],
+        bgm_asset_id: str | None,
+    ) -> CompletedNativeVideo | NativeAgentStep:
+        idempotency_key = (
+            f"native:{self.run_id}:render_story_video:{tool_call_id}"
+        )
+        arguments = {
+            "scenes": scenes,
+            "bgm_asset_id": bgm_asset_id,
+        }
+        with self._session_factory() as db:
+            existing = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None:
+                if existing.status == NativeAgentStepStatus.succeeded:
+                    return self._completed_video(db, existing)
+                raise RuntimeError(
+                    "同一 render_story_video 调用已存在未确认执行，拒绝重复调用"
+                )
+            step = NativeAgentStep(
+                run_id=self.run_id,
+                sequence=_next_sequence(db, NativeAgentStep, self.run_id),
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.prepared,
+                name="render_story_video",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                input_summary_json=_json_dumps(arguments),
+                attempts=0,
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_call,
+                    payload_json=_json_dumps(
+                        {
+                            "tool": "render_story_video",
+                            "tool_call_id": tool_call_id,
+                            "step_id": step.id,
+                            **arguments,
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.prepared",
+                {
+                    "step_sequence": step.sequence,
+                    "tool": "render_story_video",
+                    "tool_call_id": tool_call_id,
+                    "arguments": arguments,
+                },
+            )
+            db.commit()
+            db.refresh(step)
+            return step
+
     def start_tool(self, step_id: str) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
@@ -736,6 +824,99 @@ class NativeAgentStore:
             db.commit()
             return self._completed_speech(db, step)
 
+    def complete_video_tool(
+        self,
+        step_id: str,
+        *,
+        scenes: list[dict[str, object]],
+        bgm_asset_id: str | None,
+        generated: GeneratedRemotionVideo,
+    ) -> CompletedNativeVideo:
+        stored = save_binary_file(
+            FileAssetPurpose.generated_video.value,
+            generated.content,
+            ".mp4",
+        )
+        with self._session_factory() as db:
+            step = db.get(NativeAgentStep, step_id)
+            run = db.get(NativeAgentRun, self.run_id)
+            if step is None or run is None:
+                raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            if step.status != NativeAgentStepStatus.running:
+                raise RuntimeError("Native Agent Tool Step 不是 running 状态")
+            asset = FileAsset(
+                purpose=FileAssetPurpose.generated_video,
+                storage_backend=stored.storage_backend,
+                storage_key=stored.storage_key,
+                public_url=stored.public_url,
+                original_filename=f"{self.run_id}-{step.id}.mp4",
+                content_type=generated.content_type,
+                byte_size=stored.byte_size,
+                checksum_sha256=stored.checksum_sha256,
+                width=generated.width,
+                height=generated.height,
+            )
+            db.add(asset)
+            db.flush()
+            video = NativeAgentVideo(
+                run_id=self.run_id,
+                asset_id=asset.id,
+                bgm_asset_id=bgm_asset_id,
+                template_id_snapshot=generated.template_id,
+                renderer_version_snapshot=generated.renderer_version,
+                scenes_json=_json_dumps(scenes),
+                duration_ms=generated.duration_ms,
+                duration_in_frames=generated.duration_in_frames,
+                fps=generated.fps,
+                width=generated.width,
+                height=generated.height,
+            )
+            db.add(video)
+            db.flush()
+            step.status = NativeAgentStepStatus.succeeded
+            step.finished_at = datetime.utcnow()
+            step.output_ref_json = _json_dumps(
+                {
+                    "video_id": video.id,
+                    "asset_id": asset.id,
+                }
+            )
+            run.video_call_count += 1
+            result_payload = {
+                "tool": "render_story_video",
+                "status": "succeeded",
+                "tool_call_id": step.tool_call_id,
+                "step_id": step.id,
+                "video_id": video.id,
+                "asset_id": asset.id,
+                "content_type": generated.content_type,
+                "byte_size": stored.byte_size,
+                "template_id": generated.template_id,
+                "duration_ms": generated.duration_ms,
+                "fps": generated.fps,
+                "width": generated.width,
+                "height": generated.height,
+            }
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_result,
+                    payload_json=_json_dumps(result_payload),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.completed",
+                {
+                    "step_sequence": step.sequence,
+                    **result_payload,
+                },
+            )
+            db.commit()
+            return self._completed_video(db, step)
+
     def fail_tool(self, step_id: str, exc: Exception) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
@@ -934,4 +1115,36 @@ class NativeAgentStore:
             sample_rate=audio.sample_rate_snapshot,
             duration_ms=audio.duration_ms,
             provider_request_id=audio.provider_request_id,
+        )
+
+    @staticmethod
+    def _completed_video(
+        db: Session,
+        step: NativeAgentStep,
+    ) -> CompletedNativeVideo:
+        output = json.loads(step.output_ref_json or "{}")
+        video_id = str(output.get("video_id") or "")
+        if not video_id:
+            raise RuntimeError("成功 Tool Step 缺少 video_id")
+        video = db.scalar(
+            select(NativeAgentVideo)
+            .where(NativeAgentVideo.id == video_id)
+            .options(selectinload(NativeAgentVideo.asset))
+        )
+        if video is None:
+            raise RuntimeError("成功 Tool Step 引用的视频不存在")
+        return CompletedNativeVideo(
+            step_id=step.id,
+            video_id=video.id,
+            asset_id=video.asset_id,
+            content_type=video.asset.content_type,
+            byte_size=video.asset.byte_size,
+            template_id=video.template_id_snapshot,
+            renderer_version=video.renderer_version_snapshot,
+            duration_ms=video.duration_ms,
+            duration_in_frames=video.duration_in_frames,
+            fps=video.fps,
+            width=video.width,
+            height=video.height,
+            bgm_asset_id=video.bgm_asset_id,
         )

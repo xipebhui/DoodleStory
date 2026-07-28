@@ -228,7 +228,7 @@
 - MLflow 只承担 Agent/Skill/Tool/Provider/Approval 的观测和 Evaluation 输入，DoodleStory 数据库仍是业务状态、恢复与权限事实来源。默认不记录用户全文、完整 Prompt、图片 URL、API key 或 Provider 原始响应。
 - Agent MLflow 基线锁定 `mlflow==3.14.0`。默认 `MLFLOW_TRACING_ENABLED=false`，关闭时不导入 MLflow、不连接 Tracking URI；启用时 URI 与 Experiment 必须在启动阶段验证。每个 Agent Run 使用 `agent_run_id` 根 trace tag 唯一检索，模型 attempt、Tool Call、图片等待、Tool Result 和 finalize 作为同一 trace 的子 span；不新增 MLflow trace 数据库列，不用 trace 驱动恢复、权限、预算或取消。
 - `MLFLOW_TRACE_CONTENT=false` 时，MLflow span processor 在客户端导出前覆盖 inputs/outputs，并拒绝 Prompt、消息正文、完整 URL、内部路径、Authorization 和已配置密钥。观测初始化或运行时上报错误必须记录明确 `observability_error`；上报错误不能回滚已经提交的图片、消息、积分或 Agent Run 业务状态。
-- Sprint 117 已实现用户 Skill CRUD、不可变发布版本、`@Skill` 与由数据库发布版本驱动的通用内容创作 Agent Loop；每个 Run 第一版最多使用一个纯文本 Skill。Tool 必须先由 Runtime 代码注册；Native Agent 再按本轮固定 Skill Version 的 `tool_names_json` 构造实际函数列表，未勾选的已注册 Tool 不传给模型。旧 Agent Runtime 的历史 Tool 语义不因此增加新能力。不支持脚本、MCP、多 Skill、Workflow DSL 或用户自定义 Tool。漫画方案继续使用最小 ComicPlan control action 和既有 Artifact/Approval adapter，但正式路径不再按 Skill 名称或 `style → create_comic` 资源路由编排。用户 Memory、抠图、Remotion和视频解说继续顺延；后续多媒体能力应先新增原子 Tool，再由 Skill 组合，不预建通用媒体 Workflow。正式 Evaluation 推迟到用户确认功能路线冻结后的最后阶段，届时重新编号并确定 `GO_INTERNAL/NO_GO` 门槛。
+- Sprint 117 已实现用户 Skill CRUD、不可变发布版本、`@Skill` 与由数据库发布版本驱动的通用内容创作 Agent Loop；每个 Run 第一版最多使用一个纯文本 Skill。Tool 必须先由 Runtime 代码注册；Native Agent 再按本轮固定 Skill Version 的 `tool_names_json` 构造实际函数列表，未勾选的已注册 Tool 不传给模型。旧 Agent Runtime 的历史 Tool 语义不因此增加新能力。不支持脚本、MCP、多 Skill、Workflow DSL 或用户自定义 Tool。漫画方案继续使用最小 ComicPlan control action 和既有 Artifact/Approval adapter，但正式路径不再按 Skill 名称或 `style → create_comic` 资源路由编排。用户 Memory 与抠图继续顺延；多媒体能力必须先新增原子 Tool，再由 Skill 组合，不预建通用媒体 Workflow。正式 Evaluation 推迟到用户确认功能路线冻结后的最后阶段，届时重新编号并确定 `GO_INTERNAL/NO_GO` 门槛。
 - Sprint 118 已补齐 Skill 管理的产品导航闭环：传统工作台主侧栏直接提供 `/agent/skills` 入口，独立 Agent Studio 的 Skill 管理侧栏提供返回 `/tasks` 的入口；两端继续使用稳定 URL，不复制 Skill 编辑器，也不重新合并两套 Shell。
 - Skill 管理使用明确的列表、详情和编辑路径：`/agent/skills/{skill_id}` 只读展示完整正文、状态、权限、Tools、revision、当前版本和更新时间，`/agent/skills/{skill_id}/edit` 只用于个人且未归档 Skill 的修改。列表对所有 Skill 提供“查看详情”，对可编辑的个人 Skill 额外提供“编辑”；系统 Skill 详情只读且可复制，已归档个人 Skill 需先恢复才能编辑。
 - Sprint 119 已完成用独立数据模型重建正常 `/agent` 执行入口：当前最小 Runtime 直接使用 Agents SDK
@@ -279,6 +279,17 @@
   Native Runtime 是发布版本白名单：`generate_image`、`generate_speech` 仅在被选择时暴露；
   `inspect_image` 仍属于旧 Runtime 能力。纯语音 Run 不要求 Style；若 Skill 允许并实际调用
   `generate_image` 但本轮没有 Style，必须明确失败，不使用隐藏默认 Style。
+- Sprint 125 为 Native Agent 新增真实
+  `render_story_video(scenes, bgm_asset_id?)` Function Tool。V1 只使用固定
+  `narrated-panel-v1` Remotion 模板：1080×1920、30fps、H.264/AAC、固定字幕样式和固定
+  BGM 混音；模型只能为每个 Scene 提供当前 Run 的 `image_id`、`audio_id`、整段字幕，以及
+  `static/zoom/pan` 七种 Motion Preset 之一。Scene 时长严格取对应 Native Audio 的
+  `duration_ms`，不得由模型猜测。可选 BGM 必须是当前会话生成的语音资产或 owner 未删除的
+  Audio Reference。成功 MP4 保存为 `native_agent_videos` 与 `generated_video` FileAsset，
+  并保存模板、渲染器版本、Scene/BGM 快照、时长、帧数、fps 和分辨率；同一成功
+  `tool_call_id` 重放复用原视频。Tool 仅在发布 Skill 勾选后暴露；对话 SSE 投影提供 owner
+  可播放的视频，其他用户不能读取。Runtime 不接受任意 React/CSS、任意动画数值、视频素材
+  混剪、逐字字幕或分布式渲染，依赖、Chromium、输入或编码失败都必须明确失败。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

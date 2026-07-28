@@ -31,6 +31,7 @@ from app.models.entities import (
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentStep,
+    NativeAgentVideo,
     User,
     Style,
 )
@@ -59,6 +60,7 @@ from app.services.native_agent_loop import (
     NativeImageToolContext,
     build_generate_image_tool,
     build_generate_speech_tool,
+    build_render_story_video_tool,
     execute_native_agent_run,
     native_agent_instructions,
     native_runtime_tool_names,
@@ -71,6 +73,7 @@ from app.services.native_agent_persistence import (
 )
 from app.services.storage import StoredFile
 from app.services.volcengine_speech import GeneratedSpeech
+from app.services.remotion_video import GeneratedRemotionVideo, RemotionScene
 
 
 class FakeStreamedResult:
@@ -476,6 +479,129 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual("持久化语音测试。", audio.text)
             self.assertEqual("seed-tts-2.0-standard", audio.model_snapshot)
             self.assertEqual("audio/mpeg", asset.content_type)
+            self.assertTrue(can_read_asset(asset, owner, db))
+            self.assertFalse(can_read_asset(asset, other, db))
+
+    def test_render_story_video_persists_video_and_reuses_tool_call(self) -> None:
+        run_id = self.create_durable_run()
+        renderer_calls = 0
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            image_path = root / "panel.png"
+            audio_path = root / "narration.mp3"
+            image_path.write_bytes(b"png")
+            audio_path.write_bytes(b"mp3")
+            resolved_scene = RemotionScene(
+                scene_id="001",
+                image_path=image_path,
+                audio_path=audio_path,
+                subtitle="故事开始了。",
+                duration_ms=2100,
+                motion_preset="zoom_in",
+            )
+
+            def fake_renderer(**kwargs):
+                nonlocal renderer_calls
+                renderer_calls += 1
+                self.assertEqual([resolved_scene], kwargs["scenes"])
+                self.assertIsNone(kwargs["bgm_path"])
+                return GeneratedRemotionVideo(
+                    content=b"persisted-mp4",
+                    content_type="video/mp4",
+                    template_id="narrated-panel-v1",
+                    renderer_version="4.0.499",
+                    duration_ms=2100,
+                    duration_in_frames=63,
+                    fps=30,
+                    width=1080,
+                    height=1920,
+                )
+
+            tool = build_render_story_video_tool(
+                run_id,
+                settings=native_agent_loop.Settings(),
+                video_renderer=fake_renderer,
+                store=NativeAgentStore(
+                    run_id,
+                    session_factory=self.Session,
+                ),
+            )
+            stored = StoredFile(
+                storage_backend=StorageBackend.local,
+                storage_key="generated_video/native-test.mp4",
+                byte_size=13,
+                checksum_sha256="e" * 64,
+            )
+            arguments = {
+                "scenes": [
+                    {
+                        "image_id": "image-1",
+                        "audio_id": "audio-1",
+                        "subtitle": "故事开始了。",
+                        "motion_preset": "zoom_in",
+                    }
+                ]
+            }
+            invocation_context = ToolContext(
+                context=None,
+                tool_name="render_story_video",
+                tool_call_id="persisted-video-call",
+                tool_arguments=json.dumps(arguments, ensure_ascii=False),
+            )
+            snapshots = [
+                {
+                    "scene_order": 1,
+                    "image_id": "image-1",
+                    "audio_id": "audio-1",
+                    "subtitle": "故事开始了。",
+                    "duration_ms": 2100,
+                    "motion_preset": "zoom_in",
+                }
+            ]
+            with (
+                patch(
+                    "app.services.native_agent_loop._resolve_video_inputs",
+                    return_value=([resolved_scene], snapshots, None),
+                ),
+                patch(
+                    "app.services.native_agent_persistence.save_binary_file",
+                    return_value=stored,
+                ) as save_file,
+            ):
+                output = asyncio.run(
+                    tool.on_invoke_tool(
+                        invocation_context,
+                        json.dumps(arguments, ensure_ascii=False),
+                    )
+                )
+                replayed = asyncio.run(
+                    tool.on_invoke_tool(
+                        invocation_context,
+                        json.dumps(arguments, ensure_ascii=False),
+                    )
+                )
+
+        self.assertEqual(1, renderer_calls)
+        save_file.assert_called_once_with(
+            "generated_video",
+            b"persisted-mp4",
+            ".mp4",
+        )
+        result = json.loads(output[0].text)
+        self.assertEqual(result, json.loads(replayed[0].text))
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            video = db.get(NativeAgentVideo, result["video_id"])
+            asset = db.get(FileAsset, result["asset_id"])
+            owner = run.conversation.owner
+            other = User(email="other-video@example.com", password_hash="hash")
+            db.add(other)
+            db.flush()
+
+            self.assertEqual(1, run.video_call_count)
+            self.assertEqual("narrated-panel-v1", video.template_id_snapshot)
+            self.assertEqual(2100, video.duration_ms)
+            self.assertEqual("video/mp4", asset.content_type)
             self.assertTrue(can_read_asset(asset, owner, db))
             self.assertFalse(can_read_asset(asset, other, db))
 

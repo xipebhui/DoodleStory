@@ -5,16 +5,17 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 124 已完成；火山引擎固定语音配置已完成一次真实 MP3 smoke，
-  `./scripts/check.sh` 通过 272 项后端测试、Python compileall、空 SQLite migration 和前端
-  TypeScript/Vite 生产构建，`git diff --check` 通过。未调用真实图片 Provider，也未实施
-  Deferred Evaluation。
+- 最近验证状态：Sprint 125 已完成；固定 Remotion 模板已用两张本地图片、两段 Scene 旁白、
+  `zoom_in` / `pan_left` / `pan_right` 和有/无 BGM 完成真实 MP4 smoke。`ffprobe` 确认输出为
+  1080×1920、30fps、H.264/AAC。完整检查结果见“最近完成的工作”；未调用真实图片 Provider，
+  也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116–124 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 116–125 均已 Complete（Closed）；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-125-native-agent-remotion-video-tool.md`
 - Complete：`docs/contracts/sprint-124-native-agent-volcengine-speech-tool.md`
 - Complete：`docs/contracts/sprint-123-native-agent-durable-runtime.md`
 - Complete：`docs/contracts/sprint-122-native-loop-streaming-and-trace-semantics.md`
@@ -59,6 +60,16 @@
 
 ## 最近完成的工作
 
+- 接入 Native Agent 固定 Remotion 视频 Tool：新增独立 Remotion 4.0.499 项目和
+  `narrated-panel-v1` 模板，支持当前 Run 图片、旁白、整段字幕、七种受控 Motion Preset 与
+  可选 BGM；新增 Python 渲染桥、Native Video 持久化与迁移、幂等 Tool 生命周期、MLflow
+  Span、owner 资产权限、API/SSE 投影和对话 MP4 播放器。Skill catalog 可勾选“渲染故事视频”，
+  Native Runner 仅按固定发布版本暴露 `render_story_video`。Docker 构建固定 Node、依赖与
+  Chrome Headless Shell。真实 smoke 已覆盖两段 Scene 无 BGM，以及一段 Scene 带 BGM；
+  `ffprobe` 确认 1080×1920、30fps、H.264 视频和 AAC 双声道音频。`./scripts/check.sh`
+  通过 276 项后端测试、Python compileall、空 SQLite migration、前端生产构建、Remotion
+  TypeScript 检查与模板测试，`git diff --check` 通过。本机 Docker CLI 无可用 Server，
+  因此未执行完整镜像构建；Dockerfile 已包含固定 Node/Remotion/Chromium 与中文字体依赖。
 - 接入 Native Agent 固定火山引擎语音 Tool：新增 V3 流式 TTS Client、固定
   `seed-tts-2.0-standard` / `zh_female_xinlingjitang_uranus_bigtts` 参数、Native Audio
   资产持久化与 owner 权限；Skill catalog 可选择“生成语音”，Native Runner 按固定发布版本

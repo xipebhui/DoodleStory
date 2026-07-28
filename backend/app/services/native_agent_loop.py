@@ -4,8 +4,9 @@ import asyncio
 import base64
 from dataclasses import dataclass
 import json
+from pathlib import Path
 import time
-from typing import Callable
+from typing import Callable, Literal
 
 from agents import (
     Agent,
@@ -22,12 +23,20 @@ from agents.model_settings import ModelRetrySettings
 from agents.models.openai_provider import OpenAIProvider
 from agents.tool_context import ToolContext
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
 from app.core.database import SessionLocal
-from app.models.entities import FileAsset, NativeAgentItem, NativeAgentRun
+from app.models.entities import (
+    AudioReference,
+    FileAsset,
+    NativeAgentAudio,
+    NativeAgentImage,
+    NativeAgentItem,
+    NativeAgentRun,
+)
 from app.models.enums import (
     AgentRunStatus,
     NativeAgentItemType,
@@ -51,8 +60,14 @@ from app.services.image_generation import (
 from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
     CompletedNativeTool,
+    CompletedNativeVideo,
     NativeAgentDatabaseSession,
     NativeAgentStore,
+)
+from app.services.remotion_video import (
+    GeneratedRemotionVideo,
+    RemotionScene,
+    render_remotion_video,
 )
 from app.services.storage import materialize_asset_to_local
 from app.services.volcengine_speech import (
@@ -86,7 +101,27 @@ class NativeImageToolContext:
 
 ImageGenerator = Callable[..., GeneratedImageFile]
 SpeechGenerator = Callable[..., GeneratedSpeech]
-NATIVE_RUNTIME_TOOL_NAMES = frozenset({"generate_image", "generate_speech"})
+VideoRenderer = Callable[..., GeneratedRemotionVideo]
+NATIVE_RUNTIME_TOOL_NAMES = frozenset(
+    {"generate_image", "generate_speech", "render_story_video"}
+)
+
+
+class NativeVideoSceneInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    image_id: str = Field(min_length=1, max_length=32)
+    audio_id: str = Field(min_length=1, max_length=32)
+    subtitle: str = Field(min_length=1, max_length=500)
+    motion_preset: Literal[
+        "static",
+        "zoom_in",
+        "zoom_out",
+        "pan_left",
+        "pan_right",
+        "pan_up",
+        "pan_down",
+    ]
 
 
 def native_runtime_tool_names(tool_names_json: str) -> list[str]:
@@ -120,6 +155,17 @@ def generate_volcengine_speech(
     settings: Settings | None = None,
 ) -> GeneratedSpeech:
     return VolcengineSpeechClient(settings=settings).generate_speech(text=text)
+
+
+def _video_tool_description() -> str:
+    return (
+        "使用固定 narrated-panel-v1 Remotion 模板，把当前 Run 已生成的图片和旁白音频"
+        "按 scenes 顺序渲染为 1080x1920、30fps 的 MP4。每个 scene 必须提供当前 Run 的 "
+        "image_id、audio_id、完整非空字幕和一个 motion_preset；可选 bgm_asset_id。"
+        "允许的 motion_preset 只有 static、zoom_in、zoom_out、pan_left、pan_right、"
+        "pan_up、pan_down。Scene 时长严格使用对应语音的真实 duration_ms；不要编造 ID、"
+        "时间、URL、React/CSS 或渲染参数。"
+    )
 
 
 def _image_tool_failure_output(
@@ -469,6 +515,306 @@ def _speech_tool_outputs(completed: CompletedNativeSpeech) -> list[ToolOutputTex
     ]
 
 
+def _resolve_video_inputs(
+    run_id: str,
+    *,
+    scenes: list[NativeVideoSceneInput],
+    bgm_asset_id: str | None,
+) -> tuple[list[RemotionScene], list[dict[str, object]], Path | None]:
+    with SessionLocal() as db:
+        run = db.scalar(
+            select(NativeAgentRun)
+            .where(NativeAgentRun.id == run_id)
+            .options(selectinload(NativeAgentRun.conversation))
+        )
+        if run is None:
+            raise NativeAgentLoopError("Native Agent Run 不存在")
+        image_ids = [scene.image_id for scene in scenes]
+        audio_ids = [scene.audio_id for scene in scenes]
+        images = {
+            image.id: image
+            for image in db.scalars(
+                select(NativeAgentImage)
+                .where(
+                    NativeAgentImage.run_id == run_id,
+                    NativeAgentImage.id.in_(image_ids),
+                )
+                .options(selectinload(NativeAgentImage.asset))
+            ).all()
+        }
+        audios = {
+            audio.id: audio
+            for audio in db.scalars(
+                select(NativeAgentAudio)
+                .where(
+                    NativeAgentAudio.run_id == run_id,
+                    NativeAgentAudio.id.in_(audio_ids),
+                )
+                .options(selectinload(NativeAgentAudio.asset))
+            ).all()
+        }
+        resolved: list[RemotionScene] = []
+        snapshots: list[dict[str, object]] = []
+        for index, scene in enumerate(scenes, start=1):
+            image = images.get(scene.image_id)
+            audio = audios.get(scene.audio_id)
+            if image is None:
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 的 image_id 不属于当前 Run"
+                )
+            if audio is None:
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 的 audio_id 不属于当前 Run"
+                )
+            if audio.duration_ms is None or audio.duration_ms <= 0:
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 的音频缺少真实 duration_ms"
+                )
+            subtitle = scene.subtitle.strip()
+            if not subtitle:
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 字幕不能为空"
+                )
+            resolved.append(
+                RemotionScene(
+                    scene_id=f"{index:03d}",
+                    image_path=materialize_asset_to_local(image.asset),
+                    audio_path=materialize_asset_to_local(audio.asset),
+                    subtitle=subtitle,
+                    duration_ms=audio.duration_ms,
+                    motion_preset=scene.motion_preset,
+                )
+            )
+            snapshots.append(
+                {
+                    "scene_order": index,
+                    "image_id": image.id,
+                    "image_asset_id": image.asset_id,
+                    "audio_id": audio.id,
+                    "audio_asset_id": audio.asset_id,
+                    "subtitle": subtitle,
+                    "duration_ms": audio.duration_ms,
+                    "motion_preset": scene.motion_preset,
+                }
+            )
+        bgm_path = None
+        if bgm_asset_id:
+            bgm_asset = db.get(FileAsset, bgm_asset_id)
+            if bgm_asset is None or not bgm_asset.content_type.startswith("audio/"):
+                raise NativeAgentLoopError("BGM 资产不存在或不是音频")
+            native_bgm = db.scalar(
+                select(NativeAgentAudio)
+                .join(
+                    NativeAgentRun,
+                    NativeAgentRun.id == NativeAgentAudio.run_id,
+                )
+                .where(
+                    NativeAgentAudio.asset_id == bgm_asset.id,
+                    NativeAgentRun.conversation_id == run.conversation_id,
+                )
+            )
+            reference_bgm = db.scalar(
+                select(AudioReference).where(
+                    AudioReference.asset_id == bgm_asset.id,
+                    AudioReference.owner_user_id
+                    == run.conversation.owner_user_id,
+                    AudioReference.deleted_at.is_(None),
+                )
+            )
+            if native_bgm is None and reference_bgm is None:
+                raise NativeAgentLoopError("当前会话无权使用该 BGM 资产")
+            bgm_path = materialize_asset_to_local(bgm_asset)
+        return resolved, snapshots, bgm_path
+
+
+def build_render_story_video_tool(
+    run_id: str,
+    *,
+    settings: Settings,
+    video_renderer: VideoRenderer,
+    store: NativeAgentStore,
+) -> FunctionTool:
+    async def render_story_video(
+        tool_context: ToolContext[None],
+        scenes: list[NativeVideoSceneInput],
+        bgm_asset_id: str | None = None,
+    ) -> list[ToolOutputText]:
+        if not scenes:
+            raise NativeAgentLoopError(
+                "render_story_video 至少需要一个 Scene"
+            )
+        if len(scenes) > 30:
+            raise NativeAgentLoopError(
+                "render_story_video 最多支持 30 个 Scene"
+            )
+        scene_arguments = [
+            scene.model_dump(mode="json")
+            for scene in scenes
+        ]
+        prepared = store.prepare_video_tool(
+            tool_call_id=tool_context.tool_call_id,
+            scenes=scene_arguments,
+            bgm_asset_id=bgm_asset_id,
+        )
+        if isinstance(prepared, CompletedNativeVideo):
+            store.append_event(
+                "tool.reused",
+                {
+                    "tool": "render_story_video",
+                    "tool_call_id": tool_context.tool_call_id,
+                    "step_id": prepared.step_id,
+                    "video_id": prepared.video_id,
+                },
+            )
+            return _video_tool_outputs(prepared)
+        store.start_tool(prepared.id)
+        with agent_span(
+            "native_agent.render_story_video",
+            agent_run_id=run_id,
+            span_type="TOOL",
+            attributes={
+                "tool_name": "render_story_video",
+                "template_id": "narrated-panel-v1",
+                "scene_count": len(scenes),
+                "has_bgm": bgm_asset_id is not None,
+            },
+        ) as tool_span:
+            set_span_inputs(
+                tool_span,
+                {
+                    "scenes": scene_arguments,
+                    "bgm_asset_id": bgm_asset_id,
+                },
+            )
+            started = time.perf_counter()
+            try:
+                resolved_scenes, snapshots, bgm_path = await asyncio.to_thread(
+                    _resolve_video_inputs,
+                    run_id,
+                    scenes=scenes,
+                    bgm_asset_id=bgm_asset_id,
+                )
+                with agent_span(
+                    "native_agent.remotion_renderer",
+                    agent_run_id=run_id,
+                    span_type="TASK",
+                    attributes={
+                        "template_id": "narrated-panel-v1",
+                        "scene_count": len(scenes),
+                        "has_bgm": bgm_asset_id is not None,
+                    },
+                ) as provider_span:
+                    set_span_inputs(
+                        provider_span,
+                        {
+                            "scene_count": len(scenes),
+                            "has_bgm": bgm_asset_id is not None,
+                        },
+                    )
+                    try:
+                        generated = await asyncio.to_thread(
+                            video_renderer,
+                            scenes=resolved_scenes,
+                            bgm_path=bgm_path,
+                            settings=settings,
+                        )
+                    except Exception:
+                        set_span_status(
+                            provider_span,
+                            "ERROR",
+                            agent_run_id=run_id,
+                        )
+                        raise
+                    set_span_result(
+                        provider_span,
+                        {
+                            "byte_size": len(generated.content),
+                            "duration_ms": generated.duration_ms,
+                            "renderer_version": generated.renderer_version,
+                        },
+                    )
+                    set_span_outputs(
+                        provider_span,
+                        {
+                            "fps": generated.fps,
+                            "width": generated.width,
+                            "height": generated.height,
+                        },
+                    )
+                    set_span_status(
+                        provider_span,
+                        "OK",
+                        agent_run_id=run_id,
+                    )
+                completed = store.complete_video_tool(
+                    prepared.id,
+                    scenes=snapshots,
+                    bgm_asset_id=bgm_asset_id,
+                    generated=generated,
+                )
+            except Exception as exc:
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                store.fail_tool(prepared.id, exc)
+                set_span_result(
+                    tool_span,
+                    {
+                        "result_status": "failed",
+                        "latency_ms": latency_ms,
+                        "error_code": type(exc).__name__,
+                    },
+                )
+                set_span_status(tool_span, "ERROR", agent_run_id=run_id)
+                raise
+            latency_ms = round((time.perf_counter() - started) * 1000)
+            set_span_result(
+                tool_span,
+                {
+                    "result_status": "succeeded",
+                    "latency_ms": latency_ms,
+                    "byte_size": completed.byte_size,
+                    "duration_ms": completed.duration_ms,
+                },
+            )
+            set_span_outputs(
+                tool_span,
+                {
+                    "status": "succeeded",
+                    "video_id": completed.video_id,
+                    "asset_id": completed.asset_id,
+                },
+            )
+            set_span_status(tool_span, "OK", agent_run_id=run_id)
+            return _video_tool_outputs(completed)
+
+    return function_tool(
+        render_story_video,
+        name_override="render_story_video",
+        description_override=_video_tool_description(),
+    )
+
+
+def _video_tool_outputs(
+    completed: CompletedNativeVideo,
+) -> list[ToolOutputText]:
+    return [
+        ToolOutputText(
+            text=json.dumps(
+                {
+                    "status": "succeeded",
+                    "video_id": completed.video_id,
+                    "asset_id": completed.asset_id,
+                    "template_id": completed.template_id,
+                    "duration_ms": completed.duration_ms,
+                    "fps": completed.fps,
+                    "width": completed.width,
+                    "height": completed.height,
+                },
+                ensure_ascii=False,
+            )
+        )
+    ]
+
+
 def _completed_image_url(completed: CompletedNativeTool) -> str:
     if completed.public_url and completed.public_url.startswith("data:"):
         return completed.public_url
@@ -540,6 +886,7 @@ async def execute_native_agent_run(
     settings: Settings | None = None,
     image_generator: ImageGenerator = generate_xg_image,
     speech_generator: SpeechGenerator | None = None,
+    video_renderer: VideoRenderer = render_remotion_video,
 ) -> None:
     resolved_settings = settings or get_settings()
     resolved_speech_generator = speech_generator or (
@@ -606,6 +953,15 @@ async def execute_native_agent_run(
                 run_id,
                 settings=resolved_settings,
                 speech_generator=resolved_speech_generator,
+                store=store,
+            )
+        )
+    if "render_story_video" in exposed_tool_names:
+        tools.append(
+            build_render_story_video_tool(
+                run_id,
+                settings=resolved_settings,
+                video_renderer=video_renderer,
                 store=store,
             )
         )
@@ -821,6 +1177,7 @@ async def execute_native_agent_run(
                 model_call_count = run.model_call_count
                 image_call_count = run.image_call_count
                 speech_call_count = run.speech_call_count
+                video_call_count = run.video_call_count
             set_native_agent_run_trace_status(
                 root_span,
                 native_agent_run_id=run_id,
@@ -828,6 +1185,7 @@ async def execute_native_agent_run(
                 model_call_count=model_call_count,
                 image_call_count=image_call_count,
                 speech_call_count=speech_call_count,
+                video_call_count=video_call_count,
                 error_code=None,
             )
         except Exception as exc:
@@ -837,6 +1195,7 @@ async def execute_native_agent_run(
                 model_call_count = run.model_call_count if run is not None else 0
                 image_call_count = run.image_call_count if run is not None else 0
                 speech_call_count = run.speech_call_count if run is not None else 0
+                video_call_count = run.video_call_count if run is not None else 0
             set_native_agent_run_trace_status(
                 root_span,
                 native_agent_run_id=run_id,
@@ -844,6 +1203,7 @@ async def execute_native_agent_run(
                 model_call_count=model_call_count,
                 image_call_count=image_call_count,
                 speech_call_count=speech_call_count,
+                video_call_count=video_call_count,
                 error_code=type(exc).__name__,
             )
         finally:

@@ -87,6 +87,13 @@ class AgentSkillManagementTests(unittest.TestCase):
         self.assertEqual("生成语音", tools["generate_speech"]["display_name"])
         self.assertTrue(tools["generate_speech"]["has_side_effects"])
         self.assertTrue(tools["generate_speech"]["may_wait"])
+        self.assertIn("render_story_video", tools)
+        self.assertEqual(
+            "渲染故事视频",
+            tools["render_story_video"]["display_name"],
+        )
+        self.assertTrue(tools["render_story_video"]["has_side_effects"])
+        self.assertTrue(tools["render_story_video"]["may_wait"])
 
     def create_draft(self, *, owner: User | None = None) -> AgentSkill:
         return create_skill(

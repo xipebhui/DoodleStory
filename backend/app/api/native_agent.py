@@ -23,6 +23,7 @@ from app.models.entities import (
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentStep,
+    NativeAgentVideo,
     Style,
     StyleReferenceImage,
     User,
@@ -48,6 +49,7 @@ from app.schemas.native_agent import (
     NativeAgentRunCreate,
     NativeAgentRunRead,
     NativeAgentStepRead,
+    NativeAgentVideoRead,
 )
 from app.services.native_agent_worker import enqueue_native_agent_run
 
@@ -114,6 +116,23 @@ def _audio_to_read(audio: NativeAgentAudio) -> NativeAgentAudioRead:
     )
 
 
+def _video_to_read(video: NativeAgentVideo) -> NativeAgentVideoRead:
+    return NativeAgentVideoRead(
+        id=video.id,
+        asset_id=video.asset_id,
+        bgm_asset_id=video.bgm_asset_id,
+        template_id=video.template_id_snapshot,
+        renderer_version=video.renderer_version_snapshot,
+        scenes=json.loads(video.scenes_json),
+        duration_ms=video.duration_ms,
+        duration_in_frames=video.duration_in_frames,
+        fps=video.fps,
+        width=video.width,
+        height=video.height,
+        created_at=video.created_at,
+    )
+
+
 def _step_to_read(step: NativeAgentStep) -> NativeAgentStepRead:
     return NativeAgentStepRead(
         id=step.id,
@@ -154,12 +173,35 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
         model_call_count=run.model_call_count,
         image_call_count=run.image_call_count,
         speech_call_count=run.speech_call_count,
+        video_call_count=run.video_call_count,
         final_output=run.final_output,
         error_code=run.error_code,
         error_message=run.error_message,
-        items=[_item_to_read(item) for item in sorted(run.items, key=lambda value: value.sequence)],
-        images=[_image_to_read(image) for image in sorted(run.images, key=lambda value: value.created_at)],
-        audios=[_audio_to_read(audio) for audio in sorted(run.audios, key=lambda value: value.created_at)],
+        items=[
+            _item_to_read(item)
+            for item in sorted(run.items, key=lambda value: value.sequence)
+        ],
+        images=[
+            _image_to_read(image)
+            for image in sorted(
+                run.images,
+                key=lambda value: value.created_at,
+            )
+        ],
+        audios=[
+            _audio_to_read(audio)
+            for audio in sorted(
+                run.audios,
+                key=lambda value: value.created_at,
+            )
+        ],
+        videos=[
+            _video_to_read(video)
+            for video in sorted(
+                run.videos,
+                key=lambda value: value.created_at,
+            )
+        ],
         steps=[
             _step_to_read(step)
             for step in sorted(run.steps, key=lambda value: value.sequence)
@@ -183,6 +225,7 @@ def _load_run_for_read(db: Session, run_id: str) -> NativeAgentRun:
             selectinload(NativeAgentRun.items),
             selectinload(NativeAgentRun.images).selectinload(NativeAgentImage.asset),
             selectinload(NativeAgentRun.audios).selectinload(NativeAgentAudio.asset),
+            selectinload(NativeAgentRun.videos).selectinload(NativeAgentVideo.asset),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
         )
@@ -222,7 +265,11 @@ def get_native_agent_capabilities(
     return ApiData(
         data=NativeAgentCapabilityRead(
             loop="agents_sdk",
-            tools=["generate_image", "generate_speech"],
+            tools=[
+                "generate_image",
+                "generate_speech",
+                "render_story_video",
+            ],
             image_review="native_model_vision",
         )
     )

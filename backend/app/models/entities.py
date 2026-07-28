@@ -912,6 +912,7 @@ class NativeAgentRun(Base, TimestampMixin):
     model_call_count: Mapped[int] = mapped_column(Integer, default=0)
     image_call_count: Mapped[int] = mapped_column(Integer, default=0)
     speech_call_count: Mapped[int] = mapped_column(Integer, default=0)
+    video_call_count: Mapped[int] = mapped_column(Integer, default=0)
     final_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -930,6 +931,10 @@ class NativeAgentRun(Base, TimestampMixin):
         cascade="all, delete-orphan",
     )
     audios: Mapped[list["NativeAgentAudio"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    videos: Mapped[list["NativeAgentVideo"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
     )
@@ -1047,6 +1052,45 @@ class NativeAgentAudio(Base, TimestampMixin):
 
     run: Mapped[NativeAgentRun] = relationship(back_populates="audios")
     asset: Mapped[FileAsset] = relationship()
+
+
+class NativeAgentVideo(Base, TimestampMixin):
+    __tablename__ = "native_agent_videos"
+    __table_args__ = (
+        Index(
+            "ix_native_agent_videos_run_created",
+            "run_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    asset_id: Mapped[str] = mapped_column(
+        ForeignKey("file_assets.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+    bgm_asset_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("file_assets.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    template_id_snapshot: Mapped[str] = mapped_column(String(120))
+    renderer_version_snapshot: Mapped[str] = mapped_column(String(40))
+    scenes_json: Mapped[str] = mapped_column(Text)
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    duration_in_frames: Mapped[int] = mapped_column(Integer)
+    fps: Mapped[int] = mapped_column(Integer)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="videos")
+    asset: Mapped[FileAsset] = relationship(foreign_keys=[asset_id])
+    bgm_asset: Mapped[Optional[FileAsset]] = relationship(
+        foreign_keys=[bgm_asset_id]
+    )
 
 
 class NativeAgentStep(Base, TimestampMixin):

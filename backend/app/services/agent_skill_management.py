@@ -32,10 +32,19 @@ TOOL_PRESENTATION = {
         "生成语音",
         "把文本合成为固定火山引擎音色的 MP3 音频，并保存到当前 Agent Run。",
     ),
+    "render_story_video": (
+        "渲染故事视频",
+        "用固定 Remotion 模板把图片、旁白、整段字幕和可选 BGM 渲染为竖屏 MP4。",
+    ),
 }
 NATIVE_ONLY_TOOL_CATALOG = (
     {
         "name": "generate_speech",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+    {
+        "name": "render_story_video",
         "has_side_effects": True,
         "may_wait": True,
     },

@@ -42,6 +42,15 @@ fi
 
 run_if_present "frontend build" "$ROOT_DIR/frontend/package.json" npm run build
 
+if [ -f "$ROOT_DIR/remotion/package.json" ]; then
+  echo "[check] remotion typecheck and unit tests"
+  (
+    cd "$ROOT_DIR/remotion"
+    npm run typecheck
+    npm test
+  )
+fi
+
 if [ -f "$ROOT_DIR/voice_gen.py" ]; then
   echo "[check] compiling standalone python entrypoints"
   python3 -m compileall "$ROOT_DIR/voice_gen.py"

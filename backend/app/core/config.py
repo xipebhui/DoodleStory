@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     doubao_voice_gen_speech_rate: int = Field(default=0, ge=-50, le=100)
     doubao_voice_gen_loudness_rate: int = Field(default=0, ge=-50, le=100)
     doubao_voice_gen_timeout_seconds: int = Field(default=120, ge=10)
+    remotion_project_dir: Path = (
+        Path(__file__).resolve().parents[3] / "remotion"
+    )
+    remotion_node_executable: str = "node"
+    remotion_render_timeout_seconds: int = Field(default=1200, ge=30)
     local_whisper_model: str = "tiny"
     local_whisper_device: str = "auto"
     local_whisper_compute_type: str = "default"

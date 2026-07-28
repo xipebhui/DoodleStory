@@ -13,6 +13,7 @@ from app.models.entities import (
     GeneratedImage,
     NativeAgentImage,
     NativeAgentRun,
+    NativeAgentVideo,
     StyleReferenceImage,
     TaskCharacter,
     TaskCharacterAppearance,
@@ -79,6 +80,17 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
             )
         )
         if native_audio is not None:
+            return True
+    if asset.purpose == FileAssetPurpose.generated_video:
+        native_video = db.scalar(
+            select(NativeAgentVideo)
+            .join(NativeAgentRun, NativeAgentRun.id == NativeAgentVideo.run_id)
+            .where(
+                NativeAgentVideo.asset_id == asset.id,
+                NativeAgentRun.conversation.has(owner_user_id=user.id),
+            )
+        )
+        if native_video is not None:
             return True
     if asset.purpose in {
         FileAssetPurpose.audio_reference,

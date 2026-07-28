@@ -1333,6 +1333,7 @@ const agentToolDisplayNames: Record<string, string> = {
   generate_image: "生成图片",
   inspect_image: "检查图片",
   generate_speech: "生成语音",
+  render_story_video: "生成故事视频",
 };
 
 function agentToolDisplayName(toolName: string) {
@@ -2745,7 +2746,7 @@ function NativeAgentSidebar({
           <Sparkles size={16} />
           <span>
             <strong>Skill 驱动真实 Tools</strong>
-            <small>generate_image · generate_speech</small>
+            <small>generate_image · generate_speech · render_story_video</small>
           </span>
         </div>
         <div className="agent-account-credit">
@@ -3041,7 +3042,7 @@ function NativeAgentView({
   const threadSignature = detail?.runs
     .map(
       (run) =>
-        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.audios.length}:${run.events.length}`,
+        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.audios.length}:${run.videos.length}:${run.events.length}`,
     )
     .join("|");
   const previewImage = detail?.runs
@@ -3162,6 +3163,7 @@ function NativeAgentView({
                   </span>
                   <span>{run.image_call_count} 次生图</span>
                   <span>{run.speech_call_count} 次语音生成</span>
+                  <span>{run.video_call_count} 次视频生成</span>
                 </div>
                 <div className="native-agent-responses" aria-label="Agent Response 与工具调用">
                   {responses.map((response, responseIndex) => (
@@ -3278,6 +3280,25 @@ function NativeAgentView({
                           当前浏览器不支持音频播放。
                         </audio>
                         <figcaption>{audio.text}</figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                ) : null}
+                {run.videos.length > 0 ? (
+                  <div className="native-agent-video-list">
+                    {run.videos.map((video) => (
+                      <figure key={video.id}>
+                        <video
+                          controls
+                          preload="metadata"
+                          src={api.assetContentUrl(video.asset_id)}
+                        >
+                          当前浏览器不支持视频播放。
+                        </video>
+                        <figcaption>
+                          {video.template_id} · {video.width}×{video.height}
+                          {" · "}{(video.duration_ms / 1000).toFixed(1)} 秒
+                        </figcaption>
                       </figure>
                     ))}
                   </div>

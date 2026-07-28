@@ -483,6 +483,21 @@ export type NativeAgentEvent = {
   created_at: string;
 };
 
+export type NativeAgentVideo = {
+  id: string;
+  asset_id: string;
+  bgm_asset_id: string | null;
+  template_id: string;
+  renderer_version: string;
+  scenes: Array<Record<string, unknown>>;
+  duration_ms: number;
+  duration_in_frames: number;
+  fps: number;
+  width: number;
+  height: number;
+  created_at: string;
+};
+
 export type NativeAgentRun = {
   id: string;
   conversation_id: string;
@@ -496,12 +511,14 @@ export type NativeAgentRun = {
   model_call_count: number;
   image_call_count: number;
   speech_call_count: number;
+  video_call_count: number;
   final_output: string | null;
   error_code: string | null;
   error_message: string | null;
   items: NativeAgentItem[];
   images: NativeAgentImage[];
   audios: NativeAgentAudio[];
+  videos: NativeAgentVideo[];
   steps: NativeAgentStep[];
   events: NativeAgentEvent[];
   started_at: string | null;

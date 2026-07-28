@@ -8175,6 +8175,35 @@ textarea {
   line-height: 1.6;
 }
 
+.native-agent-video-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 360px));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.native-agent-video-list figure {
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid #34373b;
+  border-radius: 12px;
+  background: #15181b;
+}
+
+.native-agent-video-list video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  background: #08090a;
+  object-fit: contain;
+}
+
+.native-agent-video-list figcaption {
+  padding: 9px 11px;
+  color: #92959a;
+  font-size: 12px;
+}
+
 .native-agent-assistant-message {
   margin-top: 14px;
   padding: 15px 17px;
