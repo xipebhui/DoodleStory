@@ -170,7 +170,7 @@ TASK_FAILURE_ALERT_TIMEOUT_SECONDS=10
 TASK_FAILURE_ALERT_TASK_BASE_URL=
 ```
 
-## 抖音导入依赖服务
+## 多平台素材导入依赖服务
 
 Compose 默认把 DoodleStory 配成：
 
@@ -180,7 +180,14 @@ DOUYIN_IMPORT_SERVICE_BASE_URL=http://douyin-import-service:8010
 
 这是 Compose 内部服务名，不需要也不应该暴露到公网。
 
-抖音导入服务需要以下配置：
+部署前先准备多平台导入服务及其隔离依赖仓库：
+
+```bash
+./scripts/prepare-social-import-dependencies.sh
+```
+
+Compose 会从 DoodleStory 上级目录构建 `douyin-import-service/Dockerfile`。公众号
+抓取使用容器内独立的 Crawl4AI / Playwright 环境；抖音导入仍需要以下配置：
 
 ```env
 DOUYIN_COOKIE=
@@ -190,7 +197,7 @@ DOUYIN_DOWNLOAD_TIMEOUT_SECONDS=180
 如果不想把 Cookie 放入环境变量，也可以把 `cookies.json` 放入 `douyin-import-cache` volume 中的：
 
 ```text
-/app/douyin-downloader/.cache/douyin/cookies.json
+/app/douyin-import-service/.cache/douyin/cookies.json
 ```
 
 仓库提供了安装/覆盖 Cookie 的脚本。先启动一次 Compose，让 `douyin-import-service` 容器和 `douyin-import-cache` volume 创建出来，然后执行：

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_PATH="${1:-${DOUYIN_COOKIE_SOURCE:-}}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
-COOKIE_TARGET="/app/douyin-downloader/.cache/douyin/cookies.json"
+COOKIE_TARGET="/app/douyin-import-service/.cache/douyin/cookies.json"
 
 if [[ -z "${SOURCE_PATH}" ]]; then
   for candidate in \

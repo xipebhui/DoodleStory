@@ -19,6 +19,7 @@ from app.models.entities import (
     NativeAgentAudio,
     NativeAgentConversation,
     NativeAgentEvent,
+    NativeAgentExternalContent,
     NativeAgentImage,
     NativeAgentItem,
     NativeAgentRun,
@@ -50,6 +51,7 @@ from app.schemas.native_agent import (
     NativeAgentConversationDetailRead,
     NativeAgentConversationRead,
     NativeAgentEventRead,
+    NativeAgentExternalContentRead,
     NativeAgentImageRead,
     NativeAgentItemRead,
     NativeAgentRunCreate,
@@ -161,6 +163,29 @@ def _video_to_read(video: NativeAgentVideo) -> NativeAgentVideoRead:
     )
 
 
+def _external_content_to_read(
+    content: NativeAgentExternalContent,
+) -> NativeAgentExternalContentRead:
+    return NativeAgentExternalContentRead(
+        id=content.id,
+        content_asset_id=content.content_asset_id,
+        platform=content.platform,
+        content_type=content.content_type,
+        source_url=content.source_url,
+        resolved_url=content.resolved_url,
+        source_content_id=content.source_content_id,
+        title=content.title,
+        description=content.description,
+        author_name=content.author_name,
+        publish_time=content.publish_time,
+        publish_timestamp=content.publish_timestamp,
+        tags=json.loads(content.tags_json),
+        metrics=json.loads(content.metrics_json),
+        excerpt=content.excerpt,
+        created_at=content.created_at,
+    )
+
+
 def _step_to_read(step: NativeAgentStep) -> NativeAgentStepRead:
     return NativeAgentStepRead(
         id=step.id,
@@ -255,6 +280,13 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
                 key=lambda value: value.created_at,
             )
         ],
+        external_contents=[
+            _external_content_to_read(content)
+            for content in sorted(
+                run.external_contents,
+                key=lambda value: value.created_at,
+            )
+        ],
         steps=[
             _step_to_read(step)
             for step in sorted(run.steps, key=lambda value: value.sequence)
@@ -280,6 +312,9 @@ def _load_run_for_read(db: Session, run_id: str) -> NativeAgentRun:
             selectinload(NativeAgentRun.audios).selectinload(NativeAgentAudio.asset),
             selectinload(NativeAgentRun.subtitles).selectinload(NativeAgentSubtitle.asset),
             selectinload(NativeAgentRun.videos).selectinload(NativeAgentVideo.asset),
+            selectinload(NativeAgentRun.external_contents).selectinload(
+                NativeAgentExternalContent.content_asset
+            ),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
             selectinload(NativeAgentRun.youtube_channel),
@@ -327,6 +362,7 @@ def get_native_agent_capabilities(
                 "generate_subtitles",
                 "render_story_video",
                 "publish_youtube_video",
+                "capture_wechat_article",
             ],
             image_review="native_model_vision",
         )
@@ -474,6 +510,9 @@ def get_native_agent_conversation(
             selectinload(NativeAgentRun.audios).selectinload(NativeAgentAudio.asset),
             selectinload(NativeAgentRun.subtitles).selectinload(NativeAgentSubtitle.asset),
             selectinload(NativeAgentRun.videos).selectinload(NativeAgentVideo.asset),
+            selectinload(NativeAgentRun.external_contents).selectinload(
+                NativeAgentExternalContent.content_asset
+            ),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
             selectinload(NativeAgentRun.youtube_channel),

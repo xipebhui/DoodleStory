@@ -961,6 +961,10 @@ class NativeAgentRun(Base, TimestampMixin):
         back_populates="run",
         cascade="all, delete-orphan",
     )
+    external_contents: Mapped[list["NativeAgentExternalContent"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
     steps: Mapped[list["NativeAgentStep"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
@@ -1155,6 +1159,43 @@ class NativeAgentVideo(Base, TimestampMixin):
     bgm_asset: Mapped[Optional[FileAsset]] = relationship(
         foreign_keys=[bgm_asset_id]
     )
+
+
+class NativeAgentExternalContent(Base, TimestampMixin):
+    __tablename__ = "native_agent_external_contents"
+    __table_args__ = (
+        Index(
+            "ix_native_agent_external_contents_run_created",
+            "run_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    content_asset_id: Mapped[str] = mapped_column(
+        ForeignKey("file_assets.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+    platform: Mapped[str] = mapped_column(String(40), index=True)
+    content_type: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    source_url: Mapped[str] = mapped_column(String(1000))
+    resolved_url: Mapped[str] = mapped_column(String(1000))
+    source_content_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    author_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    publish_time: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    publish_timestamp: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tags_json: Mapped[str] = mapped_column(Text, default="[]")
+    metrics_json: Mapped[str] = mapped_column(Text, default="{}")
+    excerpt: Mapped[str] = mapped_column(Text)
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="external_contents")
+    content_asset: Mapped[FileAsset] = relationship()
 
 
 class YoutubeChannel(Base, TimestampMixin):

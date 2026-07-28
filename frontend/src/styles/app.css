@@ -8895,6 +8895,55 @@ textarea {
   margin-top: 14px;
 }
 
+.native-agent-external-content-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.native-agent-external-content-list article {
+  padding: 15px 16px;
+  border: 1px solid #34373b;
+  border-radius: 12px;
+  background: #15181b;
+}
+
+.native-agent-external-content-list article > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.native-agent-external-content-list article > div:first-child span {
+  display: grid;
+  gap: 2px;
+}
+
+.native-agent-external-content-list small,
+.native-agent-external-content-list p {
+  color: #9a9c9f;
+}
+
+.native-agent-external-content-list p {
+  margin: 8px 0 0;
+}
+
+.native-agent-external-content-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 11px;
+}
+
+.native-agent-external-content-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #f58e40;
+  font-weight: 650;
+  text-decoration: none;
+}
+
 .native-agent-audio-list figure {
   display: grid;
   gap: 10px;

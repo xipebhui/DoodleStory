@@ -133,6 +133,25 @@ class NativeAgentVideoRead(BaseModel):
     created_at: datetime
 
 
+class NativeAgentExternalContentRead(BaseModel):
+    id: str
+    content_asset_id: str
+    platform: str
+    content_type: str | None
+    source_url: str
+    resolved_url: str
+    source_content_id: str | None
+    title: str | None
+    description: str | None
+    author_name: str | None
+    publish_time: str | None
+    publish_timestamp: int | None
+    tags: list[str]
+    metrics: dict[str, object]
+    excerpt: str
+    created_at: datetime
+
+
 class NativeAgentStepRead(BaseModel):
     id: str
     sequence: int
@@ -183,6 +202,9 @@ class NativeAgentRunRead(BaseModel):
     audios: list[NativeAgentAudioRead] = Field(default_factory=list)
     subtitles: list[NativeAgentSubtitleRead] = Field(default_factory=list)
     videos: list[NativeAgentVideoRead] = Field(default_factory=list)
+    external_contents: list[NativeAgentExternalContentRead] = Field(
+        default_factory=list
+    )
     steps: list[NativeAgentStepRead] = Field(default_factory=list)
     events: list[NativeAgentEventRead] = Field(default_factory=list)
     started_at: datetime | None
@@ -214,6 +236,7 @@ class NativeAgentCapabilityRead(BaseModel):
             "generate_subtitles",
             "render_story_video",
             "publish_youtube_video",
+            "capture_wechat_article",
         ]
     ]
     image_review: Literal["native_model_vision"]

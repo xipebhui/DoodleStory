@@ -44,6 +44,10 @@ TOOL_PRESENTATION = {
         "发布 YouTube 视频",
         "提交界面中已明确选择并确认的频道与视频，立即返回异步发布任务。",
     ),
+    "capture_wechat_article": (
+        "微信公众号文章",
+        "微信公众号 · 抓取文章正文、图片引用和来源元数据，并保存为可追踪素材。",
+    ),
 }
 NATIVE_ONLY_TOOL_CATALOG = (
     {
@@ -65,6 +69,11 @@ NATIVE_ONLY_TOOL_CATALOG = (
         "name": "publish_youtube_video",
         "has_side_effects": True,
         "may_wait": False,
+    },
+    {
+        "name": "capture_wechat_article",
+        "has_side_effects": True,
+        "may_wait": True,
     },
 )
 

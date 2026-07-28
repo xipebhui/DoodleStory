@@ -149,6 +149,7 @@ class FileAssetPurpose(StrEnum):
     douyin_media = "douyin_media"
     douyin_audio = "douyin_audio"
     douyin_metadata = "douyin_metadata"
+    external_content = "external_content"
 
 
 class ContentExtractionMediaKind(StrEnum):

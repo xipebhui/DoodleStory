@@ -1376,11 +1376,13 @@ const agentSkillStatusLabels: Record<AgentSkillStatus, string> = {
 };
 
 const agentToolDisplayNames: Record<string, string> = {
+  capture_wechat_article: "微信公众号文章",
   generate_image: "生成图片",
   inspect_image: "检查图片",
   generate_speech: "生成语音",
   generate_subtitles: "生成字幕",
   render_story_video: "生成故事视频",
+  publish_youtube_video: "发布 YouTube 视频",
 };
 
 function agentToolDisplayName(toolName: string) {
@@ -3744,7 +3746,7 @@ function NativeAgentView({
   const threadSignature = detail?.runs
     .map(
       (run) =>
-        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.audios.length}:${run.videos.length}:${run.events.length}`,
+        `${run.id}:${run.status}:${run.items.length}:${run.images.length}:${run.audios.length}:${run.videos.length}:${run.external_contents.length}:${run.events.length}`,
     )
     .join("|");
   const previewImage = detail?.runs
@@ -4044,6 +4046,37 @@ function NativeAgentView({
                         </button>
                         <figcaption>{image.image_model} · {image.aspect_ratio}</figcaption>
                       </figure>
+                    ))}
+                  </div>
+                ) : null}
+                {run.external_contents.length > 0 ? (
+                  <div className="native-agent-external-content-list">
+                    {run.external_contents.map((content) => (
+                      <article key={content.id}>
+                        <div>
+                          <FileText size={19} aria-hidden="true" />
+                          <span>
+                            <small>微信公众号文章</small>
+                            <strong>{content.title || "未命名公众号文章"}</strong>
+                          </span>
+                        </div>
+                        <p>
+                          {[content.author_name, content.publish_time].filter(Boolean).join(" · ")
+                            || "来源信息未提供"}
+                        </p>
+                        <div className="native-agent-external-content-actions">
+                          <a href={content.source_url} target="_blank" rel="noreferrer">
+                            查看原文 <ArrowUpRight size={13} />
+                          </a>
+                          <a
+                            href={api.assetContentUrl(content.content_asset_id)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            打开 Markdown <FileText size={13} />
+                          </a>
+                        </div>
+                      </article>
                     ))}
                   </div>
                 ) : null}

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import time
 from typing import Callable, Literal
+from urllib.parse import urlsplit
 
 from agents import (
     Agent,
@@ -65,10 +66,15 @@ from app.services.image_generation import (
 from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
     CompletedNativeSubtitle,
+    CompletedNativeExternalContent,
     CompletedNativeTool,
     CompletedNativeVideo,
     NativeAgentDatabaseSession,
     NativeAgentStore,
+)
+from app.services.social_content_import import (
+    SocialContentImportResult,
+    import_social_content,
 )
 from app.services.remotion_video import (
     GeneratedRemotionVideo,
@@ -118,6 +124,7 @@ ImageGenerator = Callable[..., GeneratedImageFile]
 SpeechGenerator = Callable[..., GeneratedSpeech]
 SubtitleGenerator = Callable[..., GeneratedSubtitles]
 VideoRenderer = Callable[..., GeneratedRemotionVideo]
+SocialContentImporter = Callable[[str], SocialContentImportResult]
 NATIVE_RUNTIME_TOOL_NAMES = frozenset(
     {
         "generate_image",
@@ -125,8 +132,12 @@ NATIVE_RUNTIME_TOOL_NAMES = frozenset(
         "generate_subtitles",
         "render_story_video",
         "publish_youtube_video",
+        "capture_wechat_article",
     }
 )
+
+WECHAT_ARTICLE_HOST = "mp.weixin.qq.com"
+WECHAT_ARTICLE_EXCERPT_MAX_CHARS = 1600
 
 
 class NativeVideoSceneInput(BaseModel):
@@ -1032,6 +1043,143 @@ def _video_tool_outputs(
     ]
 
 
+def _normalize_wechat_article_url(url: str) -> str:
+    normalized = url.strip()
+    parsed = urlsplit(normalized)
+    if parsed.scheme != "https" or (parsed.hostname or "").lower() != WECHAT_ARTICLE_HOST:
+        raise NativeAgentLoopError(
+            "capture_wechat_article 只接受 https://mp.weixin.qq.com/ 文章链接"
+        )
+    return normalized
+
+
+def _read_wechat_markdown(result: SocialContentImportResult) -> bytes:
+    if result.platform != "wechat":
+        raise NativeAgentLoopError(
+            f"素材导入服务返回平台 {result.platform!r}，预期为 'wechat'"
+        )
+    output_dir = result.output_dir.expanduser().resolve()
+    markdown_candidates = [
+        path.expanduser().resolve()
+        for path in result.metadata_files
+        if path.name == "content.md"
+    ]
+    if len(markdown_candidates) != 1:
+        raise NativeAgentLoopError(
+            "微信公众号抓取结果必须包含且只能包含一个 content.md"
+        )
+    markdown_path = markdown_candidates[0]
+    try:
+        markdown_path.relative_to(output_dir)
+    except ValueError as exc:
+        raise NativeAgentLoopError(
+            "微信公众号抓取结果的 content.md 不在导入输出目录内"
+        ) from exc
+    if not markdown_path.is_file():
+        raise NativeAgentLoopError("微信公众号抓取结果的 content.md 不存在")
+    content = markdown_path.read_bytes()
+    if not content:
+        raise NativeAgentLoopError("微信公众号抓取结果的 content.md 为空")
+    try:
+        content.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise NativeAgentLoopError(
+            "微信公众号抓取结果的 content.md 不是 UTF-8 文本"
+        ) from exc
+    return content
+
+
+def _external_content_tool_outputs(
+    completed: CompletedNativeExternalContent,
+) -> list[ToolOutputText]:
+    return [
+        ToolOutputText(
+            text=json.dumps(
+                {
+                    "status": "succeeded",
+                    "external_content_id": completed.external_content_id,
+                    "asset_id": completed.asset_id,
+                    "platform": completed.platform,
+                    "title": completed.title,
+                    "author_name": completed.author_name,
+                    "publish_time": completed.publish_time,
+                    "source_url": completed.source_url,
+                    "byte_size": completed.byte_size,
+                    "content_excerpt": completed.excerpt,
+                    "message": (
+                        "完整 Markdown 正文已保存为素材；正文预览仅用于本轮快速理解。"
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        )
+    ]
+
+
+def build_capture_wechat_article_tool(
+    run_id: str,
+    *,
+    importer: SocialContentImporter = import_social_content,
+    store: NativeAgentStore,
+) -> FunctionTool:
+    async def capture_wechat_article(
+        tool_context: ToolContext[None],
+        url: str,
+    ) -> list[ToolOutputText]:
+        normalized_url = _normalize_wechat_article_url(url)
+        prepared = store.prepare_external_content_tool(
+            tool_call_id=tool_context.tool_call_id,
+            url=normalized_url,
+        )
+        if isinstance(prepared, CompletedNativeExternalContent):
+            store.append_event(
+                "tool.reused",
+                {
+                    "tool": "capture_wechat_article",
+                    "tool_call_id": tool_context.tool_call_id,
+                    "step_id": prepared.step_id,
+                    "external_content_id": prepared.external_content_id,
+                },
+            )
+            return _external_content_tool_outputs(prepared)
+        store.start_tool(prepared.id)
+        try:
+            result = await asyncio.to_thread(importer, normalized_url)
+            markdown = await asyncio.to_thread(_read_wechat_markdown, result)
+            markdown_text = markdown.decode("utf-8")
+            completed = store.complete_external_content_tool(
+                prepared.id,
+                platform=result.platform,
+                content_type=result.content_type,
+                source_url=result.url,
+                resolved_url=result.resolved_url,
+                source_content_id=result.content_id,
+                title=result.title,
+                description=result.description,
+                author_name=result.author_name,
+                publish_time=result.publish_time,
+                publish_timestamp=result.publish_timestamp,
+                tags=result.tags,
+                metrics=result.metrics,
+                markdown=markdown,
+                excerpt=markdown_text[:WECHAT_ARTICLE_EXCERPT_MAX_CHARS],
+            )
+        except Exception as exc:
+            store.fail_tool(prepared.id, exc)
+            raise
+        return _external_content_tool_outputs(completed)
+
+    return function_tool(
+        capture_wechat_article,
+        name_override="capture_wechat_article",
+        description_override=(
+            "抓取一个 https://mp.weixin.qq.com/ 微信公众号文章链接，保存完整 Markdown "
+            "正文与来源元数据，并返回 external_content_id、asset_id 和有限长度正文预览。"
+            "只用于用户明确要求读取或采集公众号文章时；不要传入其他平台链接。"
+        ),
+    )
+
+
 def build_publish_youtube_video_tool(
     run_id: str,
     *,
@@ -1300,6 +1448,13 @@ async def execute_native_agent_run(
                 run_id,
                 settings=resolved_settings,
                 video_renderer=video_renderer,
+                store=store,
+            )
+        )
+    if "capture_wechat_article" in exposed_tool_names:
+        tools.append(
+            build_capture_wechat_article_tool(
+                run_id,
                 store=store,
             )
         )

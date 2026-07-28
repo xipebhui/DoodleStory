@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from agents import ToolOutputImage, ToolOutputText
 from agents.tool_context import ToolContext
@@ -28,6 +28,7 @@ from app.models.entities import (
     NativeAgentAudio,
     NativeAgentContextItem,
     NativeAgentEvent,
+    NativeAgentExternalContent,
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentStep,
@@ -65,6 +66,7 @@ from app.services.native_agent_loop import (
     NativeImageToolContext,
     build_generate_image_tool,
     build_generate_speech_tool,
+    build_capture_wechat_article_tool,
     build_publish_youtube_video_tool,
     build_render_story_video_tool,
     execute_native_agent_run,
@@ -79,6 +81,7 @@ from app.services.native_agent_persistence import (
     NativeAgentRunCancelled,
     NativeAgentStore,
 )
+from app.services.social_content_import import SocialContentImportResult
 from app.services.storage import StoredFile
 from app.services.volcengine_speech import GeneratedSpeech
 from app.services.remotion_video import GeneratedRemotionVideo, RemotionScene
@@ -389,6 +392,121 @@ class NativeAgentLoopTests(unittest.TestCase):
             )
         )
         self.assertIn("没有经过确认", str(output))
+
+    def test_capture_wechat_article_rejects_other_platform_before_import(self) -> None:
+        class UnexpectedStore:
+            def prepare_external_content_tool(inner_self, **kwargs):
+                self.fail(f"不应准备 Tool：{kwargs}")
+
+        importer = Mock()
+        tool = build_capture_wechat_article_tool(
+            "run-1",
+            importer=importer,
+            store=UnexpectedStore(),
+        )
+
+        output = asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="capture_wechat_article",
+                    tool_call_id="wechat-call-invalid",
+                    tool_arguments='{"url":"https://www.youtube.com/watch?v=1"}',
+                ),
+                '{"url":"https://www.youtube.com/watch?v=1"}',
+            )
+        )
+
+        self.assertIn("只接受 https://mp.weixin.qq.com/", str(output))
+        importer.assert_not_called()
+
+    def test_capture_wechat_article_persists_markdown_and_reuses_call(self) -> None:
+        run_id = self.create_durable_run()
+        importer_calls = 0
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            markdown_path = output_dir / "content.md"
+            markdown_path.write_text("# 标题\n\n这是公众号文章正文。", encoding="utf-8")
+
+            def importer(url: str) -> SocialContentImportResult:
+                nonlocal importer_calls
+                importer_calls += 1
+                self.assertEqual("https://mp.weixin.qq.com/s/test", url)
+                return SocialContentImportResult(
+                    platform="wechat",
+                    url=url,
+                    resolved_url=url,
+                    output_dir=output_dir,
+                    content_type="article",
+                    content_id="test",
+                    title="标题",
+                    description="摘要",
+                    tags=["测试"],
+                    author_name="测试公众号",
+                    publish_time="2026-07-28",
+                    publish_timestamp=1785168000,
+                    media_files=[],
+                    metadata_files=[markdown_path],
+                    metrics={"image_count": 0},
+                )
+
+            stored = StoredFile(
+                storage_backend=StorageBackend.local,
+                storage_key="external_content/test.md",
+                byte_size=markdown_path.stat().st_size,
+                checksum_sha256="b" * 64,
+            )
+            store = NativeAgentStore(run_id, session_factory=self.Session)
+            tool = build_capture_wechat_article_tool(
+                run_id,
+                importer=importer,
+                store=store,
+            )
+            context = ToolContext(
+                context=None,
+                tool_name="capture_wechat_article",
+                tool_call_id="wechat-call-1",
+                tool_arguments='{"url":"https://mp.weixin.qq.com/s/test"}',
+            )
+            with patch(
+                "app.services.native_agent_persistence.save_binary_file",
+                return_value=stored,
+            ) as save_file:
+                output = asyncio.run(
+                    tool.on_invoke_tool(
+                        context,
+                        '{"url":"https://mp.weixin.qq.com/s/test"}',
+                    )
+                )
+                replayed = asyncio.run(
+                    tool.on_invoke_tool(
+                        context,
+                        '{"url":"https://mp.weixin.qq.com/s/test"}',
+                    )
+                )
+
+        result = json.loads(output[0].text)
+        self.assertEqual(result, json.loads(replayed[0].text))
+        self.assertEqual(1, importer_calls)
+        self.assertEqual("标题", result["title"])
+        self.assertIn("公众号文章正文", result["content_excerpt"])
+        save_file.assert_called_once()
+        with self.Session() as db:
+            content = db.get(
+                NativeAgentExternalContent,
+                result["external_content_id"],
+            )
+            asset = db.get(FileAsset, result["asset_id"])
+            run = db.get(NativeAgentRun, run_id)
+            owner = run.conversation.owner
+            other = User(email="other-wechat@example.com", password_hash="hash")
+            db.add(other)
+            db.flush()
+            self.assertEqual("wechat", content.platform)
+            self.assertEqual(["测试"], json.loads(content.tags_json))
+            self.assertEqual(asset.id, content.content_asset_id)
+            self.assertTrue(can_read_asset(asset, owner, db))
+            self.assertFalse(can_read_asset(asset, other, db))
 
     def test_generate_speech_is_real_function_tool_and_returns_asset_metadata(self) -> None:
         lifecycle: list[str] = []

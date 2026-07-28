@@ -9,7 +9,7 @@ services:
       - "8000"
     volumes:
       - doodlestory-data:/app/data
-      - douyin-import-storage:/app/douyin-downloader/storage:ro
+      - douyin-import-storage:/app/douyin-import-service/storage:ro
     depends_on:
       douyin-import-service:
         condition: service_healthy
@@ -66,20 +66,22 @@ services:
 
   douyin-import-service:
     build:
-      context: ../douyin-downloader
-      dockerfile: Dockerfile.doodlestory-import
+      context: ..
+      dockerfile: douyin-import-service/Dockerfile
     expose:
       - "8010"
     volumes:
-      - douyin-import-storage:/app/douyin-downloader/storage
-      - douyin-import-cache:/app/douyin-downloader/.cache/douyin
+      - douyin-import-storage:/app/douyin-import-service/storage
+      - douyin-import-cache:/app/douyin-import-service/.cache/douyin
     environment:
       DOUYIN_DOWNLOADER_ROOT: /app/douyin-downloader
       DOUYIN_DOWNLOADER_PYTHON: /usr/local/bin/python
       DOUYIN_COOKIE: ${DOUYIN_COOKIE:-}
-      DOUYIN_COOKIE_FILE: /app/douyin-downloader/.cache/douyin/cookies.json
-      DOUYIN_IMPORT_STORAGE_ROOT: /app/douyin-downloader/storage
+      DOUYIN_COOKIE_FILE: /app/douyin-import-service/.cache/douyin/cookies.json
+      DOUYIN_IMPORT_STORAGE_ROOT: /app/douyin-import-service/storage
       DOUYIN_DOWNLOAD_TIMEOUT_SECONDS: ${DOUYIN_DOWNLOAD_TIMEOUT_SECONDS:-180}
+      WECHAT_CRAWLER_ROOT: /app/wechat-article-crawler
+      WECHAT_CRAWLER_PYTHON: /opt/wechat-venv/bin/python
     healthcheck:
       test:
         - CMD

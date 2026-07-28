@@ -658,3 +658,25 @@
 1. 保持 Sprint 117 已关闭状态，不自动扩展多 Skill、脚本/MCP、Memory、TTS、Remotion 或视频能力。
 2. 等用户明确确认功能路线冻结并授权后，再重新编号并激活 Deferred Evaluation。
 3. 当前不要宣告 `GO_INTERNAL` 或 `NO_GO`。
+# Sprint 137（已完成）
+
+- 已确定将同级多平台导入服务中调通的微信公众号文章抓取能力封装为
+  `capture_wechat_article(url)` Native Agent Tool；DoodleStory 负责 Tool
+  白名单、执行记录与素材持久化，抓取服务继续负责 Crawl4AI / Playwright。
+- 当前范围仅包含微信公众号文章，不包含 YouTube、小红书、抖音 Agent Tool 或账号
+  分析；完整合同见 `docs/contracts/sprint-137-wechat-article-agent-tool.md`。
+- 已新增真实 `capture_wechat_article(url)` Native Agent Tool：仅允许
+  `https://mp.weixin.qq.com/`，调用多平台导入服务 `/api/v1/import`，校验
+  `wechat` 平台与输出目录内唯一 `content.md`，完整正文写入
+  `external_content` 文件资产，来源信息写入 `native_agent_external_contents`；
+  Tool 结果返回稳定内容 ID、资产 ID 和最多 1600 字预览。
+- Skill 管理 Tool 目录、列表和详情已标注“微信公众号文章”；对话结果增加公众号文章
+  素材卡片，可打开原文和持久化 Markdown。Compose 改为从同级多平台导入服务构建，并
+  新增依赖仓库准备脚本。
+- 验证完成：后端定向 34 项测试通过；`./scripts/check.sh` 的 316 项后端测试、
+  Alembic 全量升级、前端构建、Remotion typecheck 与 5 项测试全部通过；新迁移另做
+  upgrade → downgrade → upgrade 通过；Compose 配置展开通过。多平台服务在独立端口
+  健康检查确认包含 `/api/v1/import`，使用历史已验证公众号公开链接真实回归返回 200，
+  得到 `image_post`、652 bytes Markdown 和 4 个媒体文件。Docker daemon 当时未运行，
+  因此未执行本地镜像构建；本机原 `8010` 仍是旧抖音专用进程，需按新 Compose 重建后
+  才会切换到多平台服务。

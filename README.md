@@ -15,6 +15,8 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 - Native Agent 多媒体：Skill 可组合火山 Seed-TTS 六档倍速语音、TTS 原文校准的本地
   Whisper WebVTT 字幕和固定 Remotion 图片旁白视频模板；字幕文字保持语音生成原文，并按
   真实音频时间轴显示。
+- 微信公众号素材：Skill 可选择“微信公众号文章” Tool，Agent 通过同级多平台导入服务
+  抓取正文并保存 Markdown 素材、标题、作者、发布时间和来源链接。
 - YouTube 频道发布：管理员维护频道别名、账号定位和对标账号，把审核通过的 Native Agent
   视频登记为可发布视频；频道详情和 Agent 对话共用异步发布服务，支持结构化 `@频道`、发布前
   明确确认、按钮式任务状态获取，以及
@@ -245,6 +247,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 134 YouTube 频道账号与视频登记](docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md)
 - [Complete：Sprint 135 YouTube 异步发布与 Agent 频道引用](docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md)
 - [Complete：Sprint 136 YouTube 列表分页与可读性](docs/contracts/sprint-136-youtube-list-pagination-and-readability.md)
+- [Complete：Sprint 137 微信公众号文章 Agent Tool](docs/contracts/sprint-137-wechat-article-agent-tool.md)
 - [Deferred：Agent Evaluation 与内部开放门槛](docs/contracts/deferred-agent-evaluation-internal-release-gate.md)
 - [已完成：Sprint 106 对话创建两格真实漫画](docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md)
 - [已完成：Sprint 107 传统构建与 AI 构建前端整合](docs/contracts/sprint-107-agent-frontend-workspace-integration.md)

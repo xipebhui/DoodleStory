@@ -10,6 +10,7 @@ from app.models.entities import (
     ContentExtractionMedia,
     FileAsset,
     NativeAgentAudio,
+    NativeAgentExternalContent,
     GeneratedImage,
     NativeAgentImage,
     NativeAgentRun,
@@ -93,6 +94,19 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
         )
         if native_video is not None:
             return True
+    if asset.purpose == FileAssetPurpose.external_content:
+        external_content = db.scalar(
+            select(NativeAgentExternalContent)
+            .join(
+                NativeAgentRun,
+                NativeAgentRun.id == NativeAgentExternalContent.run_id,
+            )
+            .where(
+                NativeAgentExternalContent.content_asset_id == asset.id,
+                NativeAgentRun.conversation.has(owner_user_id=user.id),
+            )
+        )
+        return external_content is not None
     if asset.purpose == FileAssetPurpose.generated_subtitle:
         native_subtitle = db.scalar(
             select(NativeAgentSubtitle)
@@ -108,6 +122,7 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
         FileAssetPurpose.generated_audio,
         FileAssetPurpose.generated_subtitle,
         FileAssetPurpose.generated_video,
+        FileAssetPurpose.external_content,
     }:
         return False
     if asset.purpose == FileAssetPurpose.character_reference:

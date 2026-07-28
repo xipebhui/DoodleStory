@@ -35,7 +35,7 @@
 
 - 本地开发保持前后端双服务：FastAPI 后端默认监听 `127.0.0.1:8000`，Vite 前端默认监听 `127.0.0.1:3000`。
 - Docker 生产部署中，DoodleStory 应用镜像使用单容器形态：构建阶段生成前端静态文件，运行阶段由 FastAPI 同时提供前端页面和 `/api/v1/*` API。
-- Docker Compose 部署可以同时编排 DoodleStory 和同级目录的 `douyin-downloader` 依赖仓库；`douyin-downloader` 内置 DoodleStory 专用 HTTP 导入入口并以 Compose 服务名 `douyin-import-service` 暴露 `8010`，DoodleStory 通过 `http://douyin-import-service:8010` 调用，抖音导入服务不暴露公网入口。
+- Docker Compose 部署同时编排 DoodleStory 和同级目录的多平台 `douyin-import-service`；该服务组合 `douyin-downloader`、`wechat-article-crawler` 与 `XHS-Downloader` 的隔离运行环境，并以 Compose 服务名 `douyin-import-service` 暴露内部端口 `8010`。DoodleStory 通过 `http://douyin-import-service:8010` 调用，导入服务不暴露公网入口。
 - 生产容器内部只监听 HTTP 端口 `8000`；在 Coolify + Traefik 节点上只能通过 `expose: "8000"` 暴露给 Traefik，不手动映射宿主机 `80/443`。
 - Docker 生产镜像通过 `DOODLESTORY_FRONTEND_DIST` 指向前端构建目录；该变量为空时不启用静态前端挂载，保留本地开发行为。
 - 容器启动时必须先执行 Alembic migration，再启动 Uvicorn。
@@ -361,6 +361,13 @@
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。
+- Sprint 137 为 Native Agent 新增 `capture_wechat_article(url)` Function Tool。Runtime
+  在请求外部服务前只接受 `https://mp.weixin.qq.com/` 链接，通过多平台导入服务
+  `/api/v1/import` 获取已调通的公众号抓取结果；完整 UTF-8 Markdown 正文必须登记为
+  `external_content` 文件资产，来源 URL、标题、作者、发布时间、标签和指标登记为
+  `native_agent_external_contents` 记录。Tool 只向模型返回稳定素材 ID、来源摘要和最多
+  1600 字预览，不无条件注入完整长文。该 Tool 只有在固定 Skill Version 的白名单包含
+  `capture_wechat_article` 时才暴露，Skill 管理页显示名称“微信公众号文章”。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。
@@ -372,7 +379,7 @@
 - 图片 Provider timeout 重试：生图请求和结果图下载如果出现 timeout，会自动重试 `IMAGE_PROVIDER_TIMEOUT_RETRY_ATTEMPTS` 次，默认 3 次；任一重试成功即停止，最终仍失败时必须写入明确错误。
 - 文件存储：支持本地磁盘、七牛对象存储和阿里云 OSS。`STORAGE_BACKEND=local` 时使用本地磁盘，存储根目录通过 `DOODLESTORY_STORAGE_ROOT` 配置，未配置时默认项目目录下的 `./storage`；`STORAGE_BACKEND=qiniu` 时新上传和新生成资产写入七牛对象存储，七牛配置兼容 `QINIU_*` 和现有 `QNY_*` 命名。QNY 公开访问域名优先使用 `QNY_PUBLIC_BASE_URL`，历史 `QNY_DOMAIN` 继续兼容；当 QNY 域名没有显式 `http://` 或 `https://` 时，由 `QNY_USE_HTTPS` 决定协议。`STORAGE_BACKEND=aliyun_oss` 时新上传和新生成资产写入阿里云 OSS，配置读取 `ALIYUN_OSS_ACCESS_KEY_ID`、`ALIYUN_OSS_ACCESS_KEY_SECRET`、`ALIYUN_OSS_BUCKET`、`ALIYUN_OSS_ENDPOINT` 和可选 `ALIYUN_OSS_PUBLIC_BASE_URL`；未配置自定义公开域名时，公开 URL 使用 `https://<bucket>.<endpoint-host>/<storage_key>`。对象存储资产使用固定公开原图 URL；为避免 CDN 忽略 query string 时用缩略图参数污染原图缓存，任务列表、小尺寸预览和原图展示均直接使用无 query 的对象原图 URL。本地资产由后端按需生成 WebP 缩略图。
 - 使用对象存储时，新写入资产上传成功后默认删除服务器存储根目录下的本地镜像，避免 `generated_image`、`douyin_media` 和 `download_archive` 长期占用系统盘；只有显式设置 `OBJECT_STORAGE_KEEP_LOCAL_MIRROR=true` 时才保留完整本地镜像。后端处理流程需要把对象存储资产转成本地文件时，允许通过 `materialize_asset_to_local` 下载到 `_cache` 短期使用，并在任务下载打包等一次性流程结束后清理该缓存。任务批量下载生成的 zip 跟随当前 `STORAGE_BACKEND` 保存；对象存储模式下 zip 上传到对象存储，不再固定保存为本地资产。
-- 抖音素材导入：已完成在同级 `douyin-downloader` fork 中内置 DoodleStory 专用最小 HTTP 服务；`内容提取` tab 由 DoodleStory 后端调用该服务，前端不得直接请求抖音导入服务。Docker Compose 部署时默认地址为 `http://douyin-import-service:8010`；本地非 Docker 开发仍可配置为 `http://127.0.0.1:8010`。下载后的服务器绝对路径不能暴露给浏览器，必须登记为 DoodleStory 资产后再展示。
+- 多平台素材导入：同级 `douyin-import-service` 统一提供旧抖音 `/api/v1/download` 和自动识别平台的 `/api/v1/import`；`内容提取` tab 与 Native Agent 都只能由 DoodleStory 后端调用该服务，前端不得直连。Docker Compose 默认地址为 `http://douyin-import-service:8010`，本地非 Docker 开发可配置为 `http://127.0.0.1:8010`。外部服务返回的服务器绝对路径不能暴露给浏览器，所需内容必须先登记为 DoodleStory 资产。
 - 内容提取模型：图文图片内容提取按原顺序逐张调用 OpenAI 兼容 `/chat/completions`，每个请求只传一个公网原图 `image_url`，不要求模型理解跨页故事。单图先使用 `TEXT_FALLBACK_BASE_URL`、`TEXT_FALLBACK_API_KEY` 和 `TEXT_FALLBACK_MODEL=gpt-5.4` 当前指向的火苗平台；配置、请求、空响应或单图固定结构校验失败时，改用 `LIO_BASE_URL`、`LIO_API_KEY` 和 `LIO_MODEL` 对同一张图最多发起 3 次请求，前两次失败后有界退避，第三次仍失败则整个内容提取失败。LIO 配置缺失属于永久错误，不重复请求。后端不依赖模型输出页码，而是给每份成功单图结果确定性添加 `第X页` 并按输入顺序合并；任意图片失败时不跳过、不返回占位或部分结果。图片素材登记为 DoodleStory 资产时必须使用抖音下载服务返回的原始文件 bytes，不做压缩、缩放或格式转换，并在对象存储上传完成后把资产公网原图 URL 按原顺序传给 VL，不再把图片转成 base64 data URL；没有公网 HTTP(S) URL 时必须明确失败。视频音频转写继续使用 SiliconFlow 多模态模型。内容提取和视频转写必须使用抖音下载服务返回的本地原始媒体路径，不应为了处理流程从对象存储公开 CDN 回拉刚下载的媒体。
 - 内容提取创建使用轻量后台处理：提交后立即保存记录并返回列表，后台分阶段完成解析下载和内容提取；下载媒体登记后先提交，内容提取完成后标记成功。列表按需刷新处理状态；如果后端进程重启导致同进程后台任务中断，启动恢复会把遗留 `processing` 记录标记失败并提示重新提取。仍保留显式重新提取接口用于用户在详情中重新执行，不引入外部队列或复杂状态机。
 - DY 爆款复刻复用内容提取轻量后台处理；复刻请求中的风格、图片数量和人物参考配置只作为当前同进程后台任务参数使用，内容提取成功后通过普通任务创建服务创建 `提取分镜` 任务，任务执行仍由现有进程内任务队列负责。

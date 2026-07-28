@@ -513,6 +513,25 @@ export type NativeAgentVideo = {
   created_at: string;
 };
 
+export type NativeAgentExternalContent = {
+  id: string;
+  content_asset_id: string;
+  platform: string;
+  content_type: string | null;
+  source_url: string;
+  resolved_url: string;
+  source_content_id: string | null;
+  title: string | null;
+  description: string | null;
+  author_name: string | null;
+  publish_time: string | null;
+  publish_timestamp: number | null;
+  tags: string[];
+  metrics: Record<string, unknown>;
+  excerpt: string;
+  created_at: string;
+};
+
 export type YoutubeChannelSummary = {
   id: string;
   channel_id: string;
@@ -630,6 +649,7 @@ export type NativeAgentRun = {
   audios: NativeAgentAudio[];
   subtitles: NativeAgentSubtitle[];
   videos: NativeAgentVideo[];
+  external_contents: NativeAgentExternalContent[];
   steps: NativeAgentStep[];
   events: NativeAgentEvent[];
   started_at: string | null;

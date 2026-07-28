@@ -16,6 +16,7 @@ from app.models.entities import (
     NativeAgentAudio,
     NativeAgentContextItem,
     NativeAgentEvent,
+    NativeAgentExternalContent,
     NativeAgentImage,
     NativeAgentItem,
     NativeAgentRun,
@@ -158,6 +159,20 @@ class CompletedNativeVideo:
     width: int
     height: int
     bgm_asset_id: str | None
+
+
+@dataclass(frozen=True)
+class CompletedNativeExternalContent:
+    step_id: str
+    external_content_id: str
+    asset_id: str
+    platform: str
+    title: str | None
+    author_name: str | None
+    publish_time: str | None
+    source_url: str
+    excerpt: str
+    byte_size: int
 
 
 class NativeAgentDatabaseSession(SessionABC):
@@ -930,6 +945,84 @@ class NativeAgentStore:
             db.refresh(step)
             return step
 
+    def prepare_external_content_tool(
+        self,
+        *,
+        tool_call_id: str,
+        url: str,
+    ) -> CompletedNativeExternalContent | NativeAgentStep:
+        idempotency_key = (
+            f"native:{self.run_id}:capture_wechat_article:{tool_call_id}"
+        )
+        arguments = {"url": url}
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
+            retry_step = self._claim_retry_step(
+                db,
+                name="capture_wechat_article",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                arguments=arguments,
+            )
+            if retry_step is not None:
+                return retry_step
+            existing = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None:
+                if existing.status == NativeAgentStepStatus.succeeded:
+                    return self._completed_external_content(db, existing)
+                raise RuntimeError(
+                    "同一 capture_wechat_article 调用已存在未确认执行，拒绝重复调用"
+                )
+            step = NativeAgentStep(
+                run_id=self.run_id,
+                sequence=_next_sequence(db, NativeAgentStep, self.run_id),
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.prepared,
+                name="capture_wechat_article",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                input_summary_json=_json_dumps(arguments),
+                attempts=0,
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_call,
+                    payload_json=_json_dumps(
+                        {
+                            "tool": "capture_wechat_article",
+                            "tool_call_id": tool_call_id,
+                            "step_id": step.id,
+                            **arguments,
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.prepared",
+                {
+                    "step_sequence": step.sequence,
+                    "tool": "capture_wechat_article",
+                    "tool_call_id": tool_call_id,
+                    "arguments": arguments,
+                },
+            )
+            db.commit()
+            db.refresh(step)
+            return step
+
     def start_tool(self, step_id: str) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
@@ -1355,6 +1448,110 @@ class NativeAgentStore:
             db.commit()
             return self._completed_video(db, step)
 
+    def complete_external_content_tool(
+        self,
+        step_id: str,
+        *,
+        platform: str,
+        content_type: str | None,
+        source_url: str,
+        resolved_url: str,
+        source_content_id: str | None,
+        title: str | None,
+        description: str | None,
+        author_name: str | None,
+        publish_time: str | None,
+        publish_timestamp: int | None,
+        tags: list[str],
+        metrics: dict[str, object],
+        markdown: bytes,
+        excerpt: str,
+    ) -> CompletedNativeExternalContent:
+        stored = save_binary_file(
+            FileAssetPurpose.external_content.value,
+            markdown,
+            ".md",
+        )
+        with self._session_factory() as db:
+            step = db.get(NativeAgentStep, step_id)
+            run = db.get(NativeAgentRun, self.run_id)
+            if step is None or run is None:
+                raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            _require_run_writable(run)
+            if step.status != NativeAgentStepStatus.running:
+                raise RuntimeError("Native Agent Tool Step 不是 running 状态")
+            asset = FileAsset(
+                purpose=FileAssetPurpose.external_content,
+                storage_backend=stored.storage_backend,
+                storage_key=stored.storage_key,
+                public_url=stored.public_url,
+                original_filename=f"{self.run_id}-{step.id}.md",
+                content_type="text/markdown; charset=utf-8",
+                byte_size=stored.byte_size,
+                checksum_sha256=stored.checksum_sha256,
+            )
+            db.add(asset)
+            db.flush()
+            content = NativeAgentExternalContent(
+                run_id=self.run_id,
+                content_asset_id=asset.id,
+                platform=platform,
+                content_type=content_type,
+                source_url=source_url,
+                resolved_url=resolved_url,
+                source_content_id=source_content_id,
+                title=title,
+                description=description,
+                author_name=author_name,
+                publish_time=publish_time,
+                publish_timestamp=publish_timestamp,
+                tags_json=_json_dumps(tags),
+                metrics_json=_json_dumps(metrics),
+                excerpt=excerpt,
+            )
+            db.add(content)
+            db.flush()
+            step.status = NativeAgentStepStatus.succeeded
+            step.finished_at = datetime.utcnow()
+            step.error_code = None
+            step.error_message = None
+            step.output_ref_json = _json_dumps(
+                {
+                    "external_content_id": content.id,
+                    "asset_id": asset.id,
+                }
+            )
+            result_payload = {
+                "tool": "capture_wechat_article",
+                "status": "succeeded",
+                "tool_call_id": step.tool_call_id,
+                "step_id": step.id,
+                "external_content_id": content.id,
+                "asset_id": asset.id,
+                "platform": platform,
+                "title": title,
+                "author_name": author_name,
+                "publish_time": publish_time,
+                "source_url": source_url,
+                "byte_size": stored.byte_size,
+            }
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_result,
+                    payload_json=_json_dumps(result_payload),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.completed",
+                {"step_sequence": step.sequence, **result_payload},
+            )
+            db.commit()
+            return self._completed_external_content(db, step)
+
     def fail_tool(self, step_id: str, exc: Exception) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
@@ -1734,4 +1931,33 @@ class NativeAgentStore:
             width=video.width,
             height=video.height,
             bgm_asset_id=video.bgm_asset_id,
+        )
+
+    @staticmethod
+    def _completed_external_content(
+        db: Session,
+        step: NativeAgentStep,
+    ) -> CompletedNativeExternalContent:
+        output = json.loads(step.output_ref_json or "{}")
+        content_id = str(output.get("external_content_id") or "")
+        if not content_id:
+            raise RuntimeError("成功 Tool Step 缺少 external_content_id")
+        content = db.scalar(
+            select(NativeAgentExternalContent)
+            .where(NativeAgentExternalContent.id == content_id)
+            .options(selectinload(NativeAgentExternalContent.content_asset))
+        )
+        if content is None:
+            raise RuntimeError("成功 Tool Step 引用的外部内容不存在")
+        return CompletedNativeExternalContent(
+            step_id=step.id,
+            external_content_id=content.id,
+            asset_id=content.content_asset_id,
+            platform=content.platform,
+            title=content.title,
+            author_name=content.author_name,
+            publish_time=content.publish_time,
+            source_url=content.source_url,
+            excerpt=content.excerpt,
+            byte_size=content.content_asset.byte_size,
         )

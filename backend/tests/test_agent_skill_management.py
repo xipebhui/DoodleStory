@@ -94,6 +94,17 @@ class AgentSkillManagementTests(unittest.TestCase):
         )
         self.assertTrue(tools["render_story_video"]["has_side_effects"])
         self.assertTrue(tools["render_story_video"]["may_wait"])
+        self.assertIn("capture_wechat_article", tools)
+        self.assertEqual(
+            "微信公众号文章",
+            tools["capture_wechat_article"]["display_name"],
+        )
+        self.assertIn(
+            "微信公众号",
+            tools["capture_wechat_article"]["description"],
+        )
+        self.assertTrue(tools["capture_wechat_article"]["has_side_effects"])
+        self.assertTrue(tools["capture_wechat_article"]["may_wait"])
 
     def create_draft(self, *, owner: User | None = None) -> AgentSkill:
         return create_skill(
