@@ -33,6 +33,8 @@ from app.models.enums import (
     AgentRunStatus,
     AgentSkillStatus,
     NativeAgentItemType,
+    NativeAgentStepStatus,
+    NativeAgentStepType,
     StyleReferenceMode,
     StyleStatus,
 )
@@ -57,6 +59,7 @@ from app.services.native_agent_worker import (
     cancel_native_agent_run,
     enqueue_native_agent_run,
 )
+from app.services.native_agent_persistence import NativeAgentStore
 
 
 router = APIRouter(prefix="/agent-loop", tags=["native-agent-loop"])
@@ -484,6 +487,7 @@ async def create_native_agent_run(
                     AgentRunStatus.queued,
                     AgentRunStatus.running,
                     AgentRunStatus.waiting_for_tool,
+                    AgentRunStatus.retrying,
                     AgentRunStatus.cancel_requested,
                 ]
             ),
@@ -581,6 +585,95 @@ async def create_native_agent_run(
     conversation.last_message_at = datetime.utcnow()
     db.commit()
 
+    await enqueue_native_agent_run(run.id)
+    return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+
+
+@router.post(
+    "/conversations/{conversation_id}/retry-latest",
+    response_model=ApiData[NativeAgentRunRead],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_latest_native_agent_run(
+    conversation_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[NativeAgentRunRead]:
+    conversation = _load_owned_conversation(
+        db,
+        conversation_id=conversation_id,
+        owner_user_id=user.id,
+    )
+    run = db.scalar(
+        select(NativeAgentRun)
+        .where(NativeAgentRun.conversation_id == conversation.id)
+        .order_by(NativeAgentRun.created_at.desc(), NativeAgentRun.id.desc())
+        .limit(1)
+    )
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前会话还没有可重试的任务",
+        )
+    if run.status in {
+        AgentRunStatus.queued,
+        AgentRunStatus.running,
+        AgentRunStatus.waiting_for_tool,
+        AgentRunStatus.retrying,
+        AgentRunStatus.cancel_requested,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="最近一次任务仍在执行，不能重复提交重试",
+        )
+    if run.status == AgentRunStatus.cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="最近一次任务已由用户终止，不能自动重试",
+        )
+
+    unknown_step = db.scalar(
+        select(NativeAgentStep)
+        .where(
+            NativeAgentStep.run_id == run.id,
+            NativeAgentStep.step_type == NativeAgentStepType.tool_call,
+            NativeAgentStep.status == NativeAgentStepStatus.unknown,
+        )
+        .order_by(NativeAgentStep.sequence.desc())
+        .limit(1)
+    )
+    if unknown_step is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="最近一次任务存在结果未知的 Tool，为避免重复计费不能自动重试",
+        )
+    failed_step = db.scalar(
+        select(NativeAgentStep)
+        .where(
+            NativeAgentStep.run_id == run.id,
+            NativeAgentStep.step_type == NativeAgentStepType.tool_call,
+            NativeAgentStep.status == NativeAgentStepStatus.failed,
+        )
+        .order_by(NativeAgentStep.sequence.desc())
+        .limit(1)
+    )
+    if run.status == AgentRunStatus.succeeded and failed_step is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="最近一次任务已经完成，没有失败的 Tool 可以重试",
+        )
+
+    try:
+        NativeAgentStore(run.id, session_factory=SessionLocal).request_retry(
+            failed_step_id=failed_step.id if failed_step is not None else None
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    conversation.last_message_at = datetime.utcnow()
+    db.commit()
     await enqueue_native_agent_run(run.id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
 

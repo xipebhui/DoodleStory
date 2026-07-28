@@ -3128,7 +3128,17 @@ function NativeAgentView({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!content.trim() || !skillVersionId || sending || activeRun) return;
+    const retryingLatestRun = content.trim() === "重试";
+    if (
+      !content.trim()
+      || (!retryingLatestRun && !skillVersionId)
+      || sending
+      || activeRun
+    ) return;
+    if (retryingLatestRun && !detail) {
+      setError("当前会话还没有可重试的任务");
+      return;
+    }
     setSending(true);
     setError("");
     try {
@@ -3137,15 +3147,24 @@ function NativeAgentView({
         (await api.createNativeAgentConversation({
           title: content.trim().slice(0, 40),
         }));
-      const run = await api.createNativeAgentRun(conversation.id, {
-        content,
-        skill_version_id: skillVersionId,
-        style_id: styleId || null,
-      });
+      const run = retryingLatestRun
+        ? await api.retryLatestNativeAgentRun(conversation.id)
+        : await api.createNativeAgentRun(conversation.id, {
+            content,
+            skill_version_id: skillVersionId,
+            style_id: styleId || null,
+          });
       setContent("");
       setDetail((current) =>
         current?.id === conversation.id
-          ? { ...current, runs: [...current.runs, run] }
+          ? {
+              ...current,
+              runs: retryingLatestRun
+                ? current.runs.map((existingRun) =>
+                    existingRun.id === run.id ? run : existingRun
+                  )
+                : [...current.runs, run],
+            }
           : current,
       );
       void loadConversations().catch((loadError) => {
@@ -3413,7 +3432,7 @@ function NativeAgentView({
                 value={skillVersionId}
                 onChange={(event) => setSkillVersionId(event.target.value)}
                 disabled={sending || Boolean(activeRun)}
-                required
+                required={content.trim() !== "重试"}
               >
                 <option value="">选择已发布的 Skill</option>
                 {skills.map((skill) => (
@@ -3445,7 +3464,9 @@ function NativeAgentView({
             <span>
               {activeRun
                 ? "终止后不会再启动新的 Tool；已被 Provider 接收的请求可能仍会计费。"
-                : "Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。"}
+                : content.trim() === "重试"
+                  ? "将继续最近一次 Run，并复用该 Run 固定的 Skill、Style 和成功资产；当前选择不会生效。"
+                  : "Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。"}
             </span>
             <button
               type={activeRun ? "button" : "submit"}
@@ -3453,7 +3474,9 @@ function NativeAgentView({
               onClick={activeRun ? () => void cancelActiveRun() : undefined}
               disabled={activeRun
                 ? cancellationPending
-                : !content.trim() || !skillVersionId || sending}
+                : !content.trim()
+                  || (content.trim() !== "重试" && !skillVersionId)
+                  || sending}
             >
               {sending || cancellationPending
                 ? <Loader2 className="spin" size={17} />

@@ -320,6 +320,15 @@
   前端所有日期时间及今天/昨天分组固定按 `Asia/Shanghai` 展示，不依赖服务器或浏览器本地
   时区。不得把历史数据库时间整体增加 8 小时，也不得通过修改 SQLite Session 时区改变存储
   语义。
+- Sprint 132 为 Native Agent 增加 Conversation 内最近 Run 原地重试。用户在已有会话提交去除
+  首尾空白后精确等于“重试”的消息时，前端调用
+  `POST /agent-loop/conversations/{conversation_id}/retry-latest`；后端按创建时间倒序选择最近
+  Run，不创建新 Run，也不接收或采用提交区当前 Skill/Style，继续使用目标 Run 固定的 Skill
+  Version、Style/模型快照、SDK Context 和成功资产。是否可重试必须同时检查 Run 与 Tool Step：
+  Tool 失败但模型已用说明文字把 Run 收尾为 succeeded 时仍允许重试；真正完成、活动中、用户
+  取消或存在 unknown Tool 的 Run 必须明确拒绝。已知失败 Tool 在同一 Step 上增加 attempt，
+  首次重试必须使用原 Tool 名和原参数；模型未执行指定 Tool、改写参数或仍有 failed Tool 时
+  Run 不得被标成成功。`retrying` 状态必须在服务重启后重新入队。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

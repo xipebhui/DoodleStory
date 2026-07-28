@@ -47,6 +47,7 @@ from app.models.enums import (
 from app.api.native_agent import (
     cancel_native_run,
     create_native_agent_run,
+    retry_latest_native_agent_run,
     stream_native_agent_run_events,
 )
 from app.api.assets import can_read_asset
@@ -70,6 +71,7 @@ from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
     CompletedNativeTool,
     NativeAgentDatabaseSession,
+    NativeAgentRetryArgumentsMismatch,
     NativeAgentRunCancelled,
     NativeAgentStore,
 )
@@ -1070,6 +1072,122 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual(0, db.query(AgentRun).count())
             self.assertEqual(0, db.query(GenerationTask).count())
 
+    def test_retry_latest_reuses_same_run_snapshots_and_failed_tool(self) -> None:
+        run_id = self.create_durable_run(status=AgentRunStatus.succeeded)
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            conversation = db.get(NativeAgentConversation, run.conversation_id)
+            user = db.get(User, conversation.owner_user_id)
+            run.final_output = "视频生成失败，请稍后重试"
+            failed_step = NativeAgentStep(
+                run_id=run_id,
+                sequence=1,
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.failed,
+                name="generate_image",
+                tool_call_id="failed-call",
+                idempotency_key=f"native:{run_id}:generate_image:failed-call",
+                input_summary_json='{"prompt":"原始提示词"}',
+                attempts=1,
+                error_code="ImageProviderError",
+                error_message="Provider 失败",
+                finished_at=datetime.utcnow(),
+            )
+            db.add(failed_step)
+            db.commit()
+            failed_step_id = failed_step.id
+            original_skill_version_id = run.skill_version_id
+            original_style_name = run.style_name_snapshot
+
+            with (
+                patch("app.api.native_agent.SessionLocal", self.Session),
+                patch(
+                    "app.api.native_agent.enqueue_native_agent_run",
+                    new=AsyncMock(),
+                ) as enqueue,
+            ):
+                response = asyncio.run(
+                    retry_latest_native_agent_run(
+                        conversation.id,
+                        user,
+                        db,
+                    )
+                )
+
+            enqueue.assert_awaited_once_with(run_id)
+            self.assertEqual(run_id, response.data.id)
+            self.assertEqual(AgentRunStatus.retrying, response.data.status)
+            self.assertEqual(
+                original_skill_version_id,
+                response.data.skill_version_id,
+            )
+            self.assertEqual(original_style_name, response.data.style_name)
+
+        with self.Session() as db:
+            persisted = db.get(NativeAgentRun, run_id)
+            step = db.get(NativeAgentStep, failed_step_id)
+            retry_item = db.scalar(
+                select(NativeAgentItem)
+                .where(
+                    NativeAgentItem.run_id == run_id,
+                    NativeAgentItem.item_type == NativeAgentItemType.user_input,
+                )
+                .order_by(NativeAgentItem.sequence.desc())
+                .limit(1)
+            )
+            context = db.scalar(
+                select(NativeAgentContextItem)
+                .where(NativeAgentContextItem.run_id == run_id)
+                .order_by(NativeAgentContextItem.sequence.desc())
+                .limit(1)
+            )
+            self.assertEqual(AgentRunStatus.retrying, persisted.status)
+            self.assertIsNone(persisted.final_output)
+            self.assertEqual(NativeAgentStepStatus.prepared, step.status)
+            self.assertEqual("retry", json.loads(retry_item.payload_json)["control"])
+            self.assertIn("原参数", json.loads(context.item_json)["content"])
+
+        store = NativeAgentStore(run_id, session_factory=self.Session)
+        with self.assertRaises(NativeAgentRetryArgumentsMismatch):
+            store.prepare_tool(
+                tool_call_id="changed-call",
+                prompt="改写后的提示词",
+            )
+        claimed = store.prepare_tool(
+            tool_call_id="retry-call",
+            prompt="原始提示词",
+        )
+        self.assertEqual(failed_step_id, claimed.id)
+        store.start_tool(failed_step_id)
+        with self.Session() as db:
+            step = db.get(NativeAgentStep, failed_step_id)
+            self.assertEqual(2, step.attempts)
+            self.assertEqual("retry-call", step.tool_call_id)
+            self.assertIsNone(step.error_code)
+            self.assertIsNone(step.error_message)
+
+    def test_failed_tool_cannot_be_closed_as_successful_run(self) -> None:
+        run_id = self.create_durable_run()
+        store = NativeAgentStore(run_id, session_factory=self.Session)
+        store.start_run(resumed=False)
+        step = store.prepare_tool(
+            tool_call_id="failed-provider-call",
+            prompt="会失败的提示词",
+        )
+        store.start_tool(step.id)
+        store.fail_tool(step.id, RuntimeError("Provider 明确失败"))
+
+        with self.assertRaisesRegex(RuntimeError, "generate_image 执行失败"):
+            store.complete_run("图片失败，请重试")
+        store.fail_run(RuntimeError("generate_image 执行失败"))
+
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            persisted_step = db.get(NativeAgentStep, step.id)
+            self.assertEqual(AgentRunStatus.failed, run.status)
+            self.assertEqual(NativeAgentStepStatus.failed, persisted_step.status)
+            self.assertIsNone(run.final_output)
+
     def test_native_run_trace_covers_model_tool_provider_and_redacts_content(self) -> None:
         with self.Session() as db:
             user = User(email="native-trace@example.com", password_hash="hash")
@@ -1321,10 +1439,20 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_snapshot=1,
                 skill_content_hash_snapshot=version.content_hash,
             )
-            db.add_all([interrupted, queued])
+            retrying = NativeAgentRun(
+                conversation_id=conversation.id,
+                skill_version_id=version.id,
+                status=AgentRunStatus.retrying,
+                model_snapshot="test-model",
+                skill_name_snapshot=version.name_snapshot,
+                skill_version_snapshot=1,
+                skill_content_hash_snapshot=version.content_hash,
+            )
+            db.add_all([interrupted, queued, retrying])
             db.commit()
             interrupted_id = interrupted.id
             queued_id = queued.id
+            retrying_id = retrying.id
 
         async def recover() -> AsyncMock:
             enqueue = AsyncMock()
@@ -1341,10 +1469,9 @@ class NativeAgentLoopTests(unittest.TestCase):
             return enqueue
 
         enqueue = asyncio.run(recover())
-        self.assertEqual(
-            [interrupted_id, queued_id],
-            [call.args[0] for call in enqueue.await_args_list],
-        )
+        enqueued_ids = [call.args[0] for call in enqueue.await_args_list]
+        self.assertEqual(interrupted_id, enqueued_ids[0])
+        self.assertEqual({queued_id, retrying_id}, set(enqueued_ids[1:]))
         with self.Session() as db:
             persisted = db.get(NativeAgentRun, interrupted_id)
             self.assertEqual(AgentRunStatus.queued, persisted.status)

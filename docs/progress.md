@@ -11,11 +11,12 @@
   见“最近完成的工作”；未调用真实图片生成 Provider，也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 131 Complete；Sprint 127 仍为 Active；正式 Evaluation 保持
+- 当前合同状态：Sprint 132 Complete；Sprint 127 仍为 Active；正式 Evaluation 保持
   Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-132-native-agent-latest-run-retry.md`
 - Complete：`docs/contracts/sprint-131-api-utc-shanghai-display.md`
 - Complete：`docs/contracts/sprint-130-native-agent-run-cancellation.md`
 - Complete：`docs/contracts/sprint-129-native-speech-ffprobe-executable.md`
@@ -571,6 +572,15 @@
   Agent 与普通 Agent SSE 同步使用相同格式；前端日期时间和今天/昨天分组固定按
   `Asia/Shanghai` 展示。没有修改数据库值或整体加 8 小时。新增 4 项时间契约测试并补强
   Native SSE 断言；`./scripts/check.sh` 通过 289 项后端测试、空库 Alembic 升级、前端构建、
+  Remotion 类型检查和 5 项测试，`git diff --check` 通过。
+
+- 完成 Sprint 132 Native Agent 最近 Run 原地重试：已有会话输入精确“重试”会调用专用接口，
+  自动选择该会话最近 Run 并继续同一 Run ID，不采用提交区当前 Skill/Style，而是复用 Run
+  固定的 Skill Version、Style/模型快照、SDK Context 和成功资产。后台同时检查 Run 与 Tool
+  Step，支持 Tool 失败但 Run 曾被模型收尾为 succeeded 的情况；已知失败 Tool 必须用原名称和
+  原参数在同一 Step 增加 attempt，改写参数、未执行失败 Tool 或仍有 failed Tool 都不能把 Run
+  标成成功。活动中、已取消、真正完成和 unknown Tool 明确拒绝；`retrying` Run 可在服务重启
+  后重新入队。`./scripts/check.sh` 通过 292 项后端测试、空库 Alembic 升级、前端构建、
   Remotion 类型检查和 5 项测试，`git diff --check` 通过。
 
 ## 已知缺口

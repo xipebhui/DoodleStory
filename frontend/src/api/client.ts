@@ -1097,6 +1097,11 @@ export const api = {
       `/agent-loop/conversations/${encodeURIComponent(conversationId)}/runs`,
       { method: "POST", body: JSON.stringify(payload) },
     ).then((result) => result.data),
+  retryLatestNativeAgentRun: (conversationId: string) =>
+    request<ApiData<NativeAgentRun>>(
+      `/agent-loop/conversations/${encodeURIComponent(conversationId)}/retry-latest`,
+      { method: "POST" },
+    ).then((result) => result.data),
   cancelNativeAgentRun: (runId: string) =>
     request<ApiData<NativeAgentRun>>(
       `/agent-loop/runs/${encodeURIComponent(runId)}/cancel`,

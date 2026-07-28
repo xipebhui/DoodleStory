@@ -41,6 +41,10 @@ class NativeAgentRunCancelled(RuntimeError):
     pass
 
 
+class NativeAgentRetryArgumentsMismatch(RuntimeError):
+    pass
+
+
 def _require_run_writable(run: NativeAgentRun) -> None:
     if run.status in {
         AgentRunStatus.cancel_requested,
@@ -266,6 +270,152 @@ class NativeAgentStore:
             _add_event(db, self.run_id, event_type, payload)
             db.commit()
 
+    def request_retry(self, *, failed_step_id: str | None) -> None:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            if run.status in {
+                AgentRunStatus.queued,
+                AgentRunStatus.running,
+                AgentRunStatus.waiting_for_tool,
+                AgentRunStatus.retrying,
+                AgentRunStatus.cancel_requested,
+            }:
+                raise RuntimeError("Native Agent Run 正在执行，不能重复提交重试")
+            if run.status == AgentRunStatus.cancelled:
+                raise RuntimeError("用户已终止的 Native Agent Run 不能自动重试")
+
+            retry_step: NativeAgentStep | None = None
+            if failed_step_id is not None:
+                retry_step = db.get(NativeAgentStep, failed_step_id)
+                if (
+                    retry_step is None
+                    or retry_step.run_id != self.run_id
+                    or retry_step.step_type != NativeAgentStepType.tool_call
+                    or retry_step.status != NativeAgentStepStatus.failed
+                ):
+                    raise RuntimeError("Native Agent 重试目标不是已知失败的 Tool Step")
+                retry_step.status = NativeAgentStepStatus.prepared
+                retry_step.started_at = None
+                retry_step.finished_at = None
+                retry_step.error_code = None
+                retry_step.error_message = None
+
+            run.status = AgentRunStatus.retrying
+            run.error_code = None
+            run.error_message = None
+            run.final_output = None
+            run.finished_at = None
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.user_input,
+                    payload_json=_json_dumps(
+                        {"content": "重试", "control": "retry"}
+                    ),
+                )
+            )
+            db.add(
+                NativeAgentContextItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(
+                        db,
+                        NativeAgentContextItem,
+                        self.run_id,
+                    ),
+                    item_json=_json_dumps(
+                        {
+                            "role": "user",
+                            "content": (
+                                "重试。请从最近失败的 Tool 继续，严格复用失败调用的"
+                                "原参数和已经成功生成的资产，不要重新执行已经成功的付费 Tool。"
+                            ),
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "run.retry_requested",
+                {
+                    "status": AgentRunStatus.retrying.value,
+                    "failed_step_id": retry_step.id if retry_step else None,
+                    "failed_step_sequence": (
+                        retry_step.sequence if retry_step else None
+                    ),
+                    "tool": retry_step.name if retry_step else None,
+                },
+            )
+            db.commit()
+
+    def _claim_retry_step(
+        self,
+        db: Session,
+        *,
+        name: str,
+        tool_call_id: str,
+        idempotency_key: str,
+        arguments: dict[str, object],
+    ) -> NativeAgentStep | None:
+        retry_step = db.scalar(
+            select(NativeAgentStep)
+            .where(
+                NativeAgentStep.run_id == self.run_id,
+                NativeAgentStep.step_type == NativeAgentStepType.tool_call,
+                NativeAgentStep.status == NativeAgentStepStatus.prepared,
+                NativeAgentStep.attempts > 0,
+            )
+            .order_by(NativeAgentStep.sequence.desc())
+            .limit(1)
+        )
+        if retry_step is None:
+            return None
+        arguments_json = _json_dumps(arguments)
+        if (
+            retry_step.name != name
+            or retry_step.input_summary_json != arguments_json
+        ):
+            raise NativeAgentRetryArgumentsMismatch(
+                "重试必须先使用最近失败 Tool 的原名称和原参数"
+            )
+        retry_step.tool_call_id = tool_call_id
+        retry_step.idempotency_key = idempotency_key
+        retry_step.error_code = None
+        retry_step.error_message = None
+        db.add(
+            NativeAgentItem(
+                run_id=self.run_id,
+                sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                item_type=NativeAgentItemType.tool_call,
+                payload_json=_json_dumps(
+                    {
+                        "tool": name,
+                        "tool_call_id": tool_call_id,
+                        "step_id": retry_step.id,
+                        **arguments,
+                    }
+                ),
+            )
+        )
+        _add_event(
+            db,
+            self.run_id,
+            "tool.retry_prepared",
+            {
+                "step_sequence": retry_step.sequence,
+                "tool": name,
+                "tool_call_id": tool_call_id,
+                "arguments": arguments,
+                "next_attempt": retry_step.attempts + 1,
+            },
+        )
+        db.commit()
+        db.refresh(retry_step)
+        return retry_step
+
     def start_run(self, *, resumed: bool) -> None:
         with self._session_factory() as db:
             run = db.get(NativeAgentRun, self.run_id)
@@ -480,6 +630,16 @@ class NativeAgentStore:
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
+            arguments = {"prompt": prompt}
+            retry_step = self._claim_retry_step(
+                db,
+                name="generate_image",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                arguments=arguments,
+            )
+            if retry_step is not None:
+                return retry_step
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -499,7 +659,7 @@ class NativeAgentStore:
                 name="generate_image",
                 tool_call_id=tool_call_id,
                 idempotency_key=idempotency_key,
-                input_summary_json=_json_dumps({"prompt": prompt}),
+                input_summary_json=_json_dumps(arguments),
                 attempts=0,
             )
             db.add(step)
@@ -547,6 +707,16 @@ class NativeAgentStore:
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
+            arguments = {"text": text, "speed": speed}
+            retry_step = self._claim_retry_step(
+                db,
+                name="generate_speech",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                arguments=arguments,
+            )
+            if retry_step is not None:
+                return retry_step
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -566,7 +736,7 @@ class NativeAgentStore:
                 name="generate_speech",
                 tool_call_id=tool_call_id,
                 idempotency_key=idempotency_key,
-                input_summary_json=_json_dumps({"text": text, "speed": speed}),
+                input_summary_json=_json_dumps(arguments),
                 attempts=0,
             )
             db.add(step)
@@ -614,6 +784,16 @@ class NativeAgentStore:
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
+            arguments = {"audio_id": audio_id}
+            retry_step = self._claim_retry_step(
+                db,
+                name="generate_subtitles",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                arguments=arguments,
+            )
+            if retry_step is not None:
+                return retry_step
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -625,7 +805,6 @@ class NativeAgentStore:
                 raise RuntimeError(
                     "同一 generate_subtitles 调用已存在未确认执行，拒绝重复调用"
                 )
-            arguments = {"audio_id": audio_id}
             step = NativeAgentStep(
                 run_id=self.run_id,
                 sequence=_next_sequence(db, NativeAgentStep, self.run_id),
@@ -688,6 +867,15 @@ class NativeAgentStore:
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
+            retry_step = self._claim_retry_step(
+                db,
+                name="render_story_video",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                arguments=arguments,
+            )
+            if retry_step is not None:
+                return retry_step
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -810,6 +998,8 @@ class NativeAgentStore:
             db.flush()
             step.status = NativeAgentStepStatus.succeeded
             step.finished_at = datetime.utcnow()
+            step.error_code = None
+            step.error_message = None
             step.output_ref_json = _json_dumps(
                 {
                     "image_id": image.id,
@@ -920,6 +1110,8 @@ class NativeAgentStore:
             db.flush()
             step.status = NativeAgentStepStatus.succeeded
             step.finished_at = datetime.utcnow()
+            step.error_code = None
+            step.error_message = None
             step.output_ref_json = _json_dumps(
                 {
                     "audio_id": audio.id,
@@ -1026,6 +1218,8 @@ class NativeAgentStore:
             db.flush()
             step.status = NativeAgentStepStatus.succeeded
             step.finished_at = datetime.utcnow()
+            step.error_code = None
+            step.error_message = None
             step.output_ref_json = _json_dumps(
                 {"subtitle_id": subtitle.id, "asset_id": asset.id}
             )
@@ -1117,6 +1311,8 @@ class NativeAgentStore:
             db.flush()
             step.status = NativeAgentStepStatus.succeeded
             step.finished_at = datetime.utcnow()
+            step.error_code = None
+            step.error_message = None
             step.output_ref_json = _json_dumps(
                 {
                     "video_id": video.id,
@@ -1220,13 +1416,58 @@ class NativeAgentStore:
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
+            failed_tool = db.scalar(
+                select(NativeAgentStep)
+                .where(
+                    NativeAgentStep.run_id == self.run_id,
+                    NativeAgentStep.step_type == NativeAgentStepType.tool_call,
+                    NativeAgentStep.status == NativeAgentStepStatus.failed,
+                )
+                .order_by(NativeAgentStep.sequence.desc())
+                .limit(1)
+            )
+            if failed_tool is not None:
+                raise RuntimeError(
+                    f"{failed_tool.name} 执行失败："
+                    f"{failed_tool.error_message or '未返回错误详情'}"
+                )
+            pending_retry = db.scalar(
+                select(NativeAgentStep)
+                .where(
+                    NativeAgentStep.run_id == self.run_id,
+                    NativeAgentStep.step_type == NativeAgentStepType.tool_call,
+                    NativeAgentStep.status == NativeAgentStepStatus.prepared,
+                    NativeAgentStep.attempts > 0,
+                )
+                .order_by(NativeAgentStep.sequence.desc())
+                .limit(1)
+            )
+            if pending_retry is not None:
+                pending_retry.status = NativeAgentStepStatus.failed
+                pending_retry.finished_at = datetime.utcnow()
+                pending_retry.error_code = "NativeAgentRetryNotExecuted"
+                pending_retry.error_message = "模型没有执行指定的失败 Tool 重试"
+                _add_event(
+                    db,
+                    self.run_id,
+                    "tool.retry_not_executed",
+                    {
+                        "step_sequence": pending_retry.sequence,
+                        "tool": pending_retry.name,
+                    },
+                )
+                db.commit()
+                raise NativeAgentRetryArgumentsMismatch(
+                    "模型没有执行指定的失败 Tool 重试"
+                )
+            step_sequence = _next_sequence(db, NativeAgentStep, self.run_id)
             step = NativeAgentStep(
                 run_id=self.run_id,
-                sequence=_next_sequence(db, NativeAgentStep, self.run_id),
+                sequence=step_sequence,
                 step_type=NativeAgentStepType.final,
                 status=NativeAgentStepStatus.succeeded,
                 name="final_output",
-                idempotency_key=f"native:{self.run_id}:final",
+                idempotency_key=f"native:{self.run_id}:final:{step_sequence}",
                 output_ref_json=_json_dumps({"content": final_output}),
                 attempts=1,
                 started_at=datetime.utcnow(),

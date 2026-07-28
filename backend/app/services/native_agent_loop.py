@@ -1111,8 +1111,11 @@ async def execute_native_agent_run(
         )
         if run is None:
             raise NativeAgentLoopError("Native Agent Run 不存在")
-        if run.status != AgentRunStatus.queued:
-            raise NativeAgentLoopError("Native Agent Run 不是 queued 状态")
+        if run.status not in {
+            AgentRunStatus.queued,
+            AgentRunStatus.retrying,
+        }:
+            raise NativeAgentLoopError("Native Agent Run 不是 queued 或 retrying 状态")
         user_item = db.scalar(
             select(NativeAgentItem).where(
                 NativeAgentItem.run_id == run.id,

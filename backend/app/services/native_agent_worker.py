@@ -153,7 +153,14 @@ async def recover_native_agent_runs() -> None:
         ).all()
         queued_ids = db.scalars(
             select(NativeAgentRun.id)
-            .where(NativeAgentRun.status == AgentRunStatus.queued)
+            .where(
+                NativeAgentRun.status.in_(
+                    [
+                        AgentRunStatus.queued,
+                        AgentRunStatus.retrying,
+                    ]
+                )
+            )
             .order_by(NativeAgentRun.created_at.asc())
         ).all()
         cancel_requested_ids = db.scalars(
