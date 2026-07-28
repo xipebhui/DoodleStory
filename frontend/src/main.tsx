@@ -68,6 +68,8 @@ import {
   type NativeAgentConversationDetail,
   type NativeAgentEvent,
   type NativeAgentRun,
+  type YoutubeChannelDetail,
+  type YoutubeChannelSummary,
   type AdminCreditTransaction,
   type AdminCreditUsage,
   type AdminUserCreditDetail,
@@ -295,6 +297,7 @@ function App() {
   const agentRoute = parseAgentRoute(pathname);
   const routeAgentConversationId = agentRoute?.conversationId ?? null;
   const routeAgentSkillPage = agentRoute?.skillPage ?? null;
+  const routeAgentChannelPage = agentRoute?.channelPage ?? null;
   const routeTaskId = taskIdFromPathname(pathname);
   const routeVideoTaskId = videoTaskIdFromPathname(pathname);
 
@@ -408,7 +411,19 @@ function App() {
   if (view === "agent") {
     return (
       <main className="agent-module-shell">
-        {routeAgentSkillPage ? (
+        {routeAgentChannelPage ? (
+          <YoutubeChannelManagementView
+            user={user}
+            creditOverview={creditOverview}
+            creditError={creditError}
+            route={routeAgentChannelPage}
+            onNavigatePath={navigateToPath}
+            onLogout={async () => {
+              await api.logout();
+              setUser(null);
+            }}
+          />
+        ) : routeAgentSkillPage ? (
           <AgentSkillManagementView
             user={user}
             creditOverview={creditOverview}
@@ -1385,6 +1400,7 @@ function AgentStudioSidebar({
   creditOverview,
   creditError,
   activeSkills,
+  activeChannels = false,
   onNavigatePath,
   onLogout,
 }: {
@@ -1392,6 +1408,7 @@ function AgentStudioSidebar({
   creditOverview: CreditOverview | null;
   creditError: string;
   activeSkills: boolean;
+  activeChannels?: boolean;
   onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
   onLogout: () => Promise<void>;
 }) {
@@ -1431,6 +1448,17 @@ function AgentStudioSidebar({
           <Box size={17} />
           Skill 管理
         </button>
+        {user.role === "admin" ? (
+          <button
+            type="button"
+            className={activeChannels ? "active" : ""}
+            aria-current={activeChannels ? "page" : undefined}
+            onClick={() => onNavigatePath("/agent/channels")}
+          >
+            <BarChart3 size={17} />
+            频道账号
+          </button>
+        ) : null}
         <button type="button" onClick={() => onNavigatePath("/agent")}>
           <Search size={17} />
           搜索对话
@@ -2709,6 +2737,306 @@ function AgentSkillManagementView({
   );
 }
 
+function youtubeMetric(value: number | null, suffix = "") {
+  if (value === null) return "—";
+  return `${new Intl.NumberFormat("zh-CN", { notation: value >= 10000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value)}${suffix}`;
+}
+
+function YoutubeChannelListView({
+  onNavigatePath,
+}: {
+  onNavigatePath: (path: string) => void;
+}) {
+  const [channels, setChannels] = useState<YoutubeChannelSummary[]>([]);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState("");
+  const [total, setTotal] = useState(0);
+
+  async function loadChannels() {
+    setLoading(true);
+    try {
+      const result = await api.youtubeChannels({
+        q: query.trim() || undefined,
+        remote_status: statusFilter || undefined,
+        limit: 100,
+      });
+      setChannels(result.items);
+      setTotal(result.page.total ?? result.items.length);
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "频道加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadChannels();
+  }, [statusFilter]);
+
+  async function syncChannels() {
+    setSyncing(true);
+    try {
+      await api.syncYoutubeChannels();
+      await loadChannels();
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "频道同步失败");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <section className="youtube-channel-page">
+      <header className="youtube-page-header">
+        <div>
+          <h1>频道账号</h1>
+          <p>管理 YouTube 频道、账号定位与发布数据</p>
+        </div>
+        <button className="primary-button" type="button" disabled={syncing} onClick={() => void syncChannels()}>
+          <RefreshCw className={syncing ? "spin" : ""} size={16} />
+          {syncing ? "正在同步" : "同步频道"}
+        </button>
+      </header>
+      <div className="youtube-channel-toolbar">
+        <div className="youtube-segments">
+          <button className={!statusFilter ? "active" : ""} type="button" onClick={() => setStatusFilter("")}>
+            全部频道 <span>{total}</span>
+          </button>
+          <button className={statusFilter === "normal" ? "active" : ""} type="button" onClick={() => setStatusFilter("normal")}>
+            正常 <span>{channels.filter((item) => item.remote_status === "normal").length}</span>
+          </button>
+        </div>
+        <form
+          className="youtube-search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void loadChannels();
+          }}
+        >
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索别名、频道名或 Handle" />
+        </form>
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="频道状态">
+          <option value="">全部状态</option>
+          <option value="normal">正常</option>
+          <option value="manual">手动</option>
+          <option value="banned">封禁</option>
+          <option value="unknown">未知</option>
+        </select>
+      </div>
+      {error ? <div className="youtube-inline-error"><AlertCircle size={16} />{error}</div> : null}
+      {loading ? <div className="youtube-empty"><Loader2 className="spin" />正在加载频道…</div> : null}
+      {!loading && channels.length === 0 ? (
+        <div className="youtube-empty">
+          <BarChart3 size={24} />
+          <strong>还没有频道</strong>
+          <span>点击“同步频道”从发布系统读取账号。</span>
+        </div>
+      ) : null}
+      {!loading && channels.length > 0 ? (
+        <div className="youtube-channel-table">
+          <div className="youtube-channel-row youtube-channel-head">
+            <span>频道 / 别名</span><span>状态</span><span>账号定位</span><span>频道数据</span><span>最近同步</span><span>操作</span>
+          </div>
+          {channels.map((channel) => (
+            <div className="youtube-channel-row" key={channel.id}>
+              <div className="youtube-channel-identity">
+                <span className="youtube-channel-avatar">
+                  {channel.avatar_url ? <img src={channel.avatar_url} alt="" /> : (channel.alias || channel.title).slice(0, 1)}
+                </span>
+                <span>
+                  <strong>{channel.alias || channel.title}</strong>
+                  {channel.alias ? <small>{channel.title}</small> : null}
+                  <small>{channel.handle ? `@${channel.handle.replace(/^@/, "")}` : channel.channel_id}</small>
+                </span>
+              </div>
+              <span><i className={`youtube-status is-${channel.remote_status}`}>{channel.remote_status === "normal" ? "正常" : channel.remote_status === "manual" ? "手动" : "需检查"}</i></span>
+              <span className="youtube-positioning">{channel.account_positioning || "尚未定义账号定位"}</span>
+              <span className="youtube-data">{youtubeMetric(channel.total_subscribers)} 订阅 · {youtubeMetric(channel.total_views)} 观看 · {youtubeMetric(channel.total_videos)} 视频</span>
+              <span className="youtube-sync-time">
+                {channel.last_sync_success_at ? formatDateTime(channel.last_sync_success_at) : "尚未同步分析"}
+                {channel.last_sync_error ? <small><AlertCircle size={12} />{channel.last_sync_error}</small> : null}
+              </span>
+              <button className="youtube-text-action" type="button" onClick={() => onNavigatePath(`/agent/channels/${encodeURIComponent(channel.id)}`)}>查看</button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <footer className="youtube-list-footer">共 {total} 个频道</footer>
+    </section>
+  );
+}
+
+type YoutubeDetailTab = "overview" | "profile" | "tasks" | "videos" | "benchmarks";
+
+function YoutubeChannelDetailView({
+  channelId,
+  onNavigatePath,
+}: {
+  channelId: string;
+  onNavigatePath: (path: string) => void;
+}) {
+  const [channel, setChannel] = useState<YoutubeChannelDetail | null>(null);
+  const [tab, setTab] = useState<YoutubeDetailTab>("overview");
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [profile, setProfile] = useState({ alias: "", account_positioning: "", target_audience: "", stage_goal: "", ai_definition: "", operation_notes: "" });
+  const [benchmark, setBenchmark] = useState({ name: "", profile_url: "", notes: "" });
+
+  async function loadChannel() {
+    try {
+      const result = await api.youtubeChannel(channelId);
+      setChannel(result);
+      setProfile({
+        alias: result.alias || "",
+        account_positioning: result.account_positioning || "",
+        target_audience: result.target_audience || "",
+        stage_goal: result.stage_goal || "",
+        ai_definition: result.ai_definition || "",
+        operation_notes: result.operation_notes || "",
+      });
+      setError("");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "频道加载失败");
+    }
+  }
+
+  useEffect(() => {
+    void loadChannel();
+  }, [channelId]);
+
+  async function runAction(name: string, action: () => Promise<YoutubeChannelDetail>) {
+    setBusy(name);
+    try {
+      setChannel(await action());
+      setError("");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "操作失败");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  if (!channel) {
+    return <div className="youtube-empty">{error || "正在加载频道…"}</div>;
+  }
+
+  return (
+    <section className="youtube-channel-page youtube-channel-detail">
+      <button className="youtube-breadcrumb" type="button" onClick={() => onNavigatePath("/agent/channels")}>频道账号</button>
+      <header className="youtube-detail-header">
+        <span className="youtube-detail-avatar">{channel.avatar_url ? <img src={channel.avatar_url} alt="" /> : (channel.alias || channel.title).slice(0, 1)}</span>
+        <div>
+          <div className="youtube-detail-title"><h1>{channel.alias || channel.title}</h1><i className={`youtube-status is-${channel.remote_status}`}>{channel.remote_status === "normal" ? "正常" : channel.remote_status}</i></div>
+          <p>{channel.title}{channel.handle ? ` · @${channel.handle.replace(/^@/, "")}` : ""}</p>
+        </div>
+        <div className="youtube-detail-actions">
+          <button className="secondary-button" type="button" onClick={() => setTab("profile")}>编辑账号定义</button>
+          <button className="primary-button" type="button" disabled={Boolean(busy)} onClick={() => void runAction("analytics", () => api.syncYoutubeChannelAnalytics(channel.id))}>
+            <RefreshCw className={busy === "analytics" ? "spin" : ""} size={16} />同步频道
+          </button>
+          <small>最近同步：{channel.last_sync_success_at ? formatDateTime(channel.last_sync_success_at) : "暂无"}</small>
+        </div>
+      </header>
+      <div className="youtube-metric-strip">
+        <span><small>订阅者</small><strong>{youtubeMetric(channel.total_subscribers)}</strong></span>
+        <span><small>总观看量</small><strong>{youtubeMetric(channel.total_views)}</strong></span>
+        <span><small>观看时长</small><strong>{youtubeMetric(channel.total_watch_time_hours, " 小时")}</strong></span>
+        <span><small>已发布视频</small><strong>{youtubeMetric(channel.total_videos)}</strong></span>
+      </div>
+      <nav className="youtube-detail-tabs">
+        {([["overview", "概览"], ["profile", "账号定义"], ["tasks", "发布任务"], ["videos", "已发布视频"], ["benchmarks", "对标账号"]] as const).map(([value, label]) => (
+          <button className={tab === value ? "active" : ""} type="button" key={value} onClick={() => setTab(value)}>{label}</button>
+        ))}
+      </nav>
+      {error ? <div className="youtube-inline-error"><AlertCircle size={16} />{error}</div> : null}
+      {tab === "overview" ? (
+        <div className="youtube-overview-grid">
+          <section><span>账号定位</span><p>{channel.account_positioning || "尚未填写"}</p></section>
+          <section><span>目标受众</span><p>{channel.target_audience || "尚未填写"}</p></section>
+          <section><span>阶段目标</span><p>{channel.stage_goal || "尚未填写"}</p></section>
+          <section><span>AI 账号定义</span><p>{channel.ai_definition || "尚未填写"}</p></section>
+        </div>
+      ) : null}
+      {tab === "profile" ? (
+        <form className="youtube-profile-form" onSubmit={(event) => {
+          event.preventDefault();
+          void runAction("profile", () => api.updateYoutubeChannelProfile(channel.id, Object.fromEntries(Object.entries(profile).map(([key, value]) => [key, value.trim() || null])) as Parameters<typeof api.updateYoutubeChannelProfile>[1]));
+        }}>
+          <label>频道别名<input value={profile.alias} onChange={(event) => setProfile({ ...profile, alias: event.target.value })} placeholder="例如：英文动画主号" /></label>
+          <label>账号定位<textarea value={profile.account_positioning} onChange={(event) => setProfile({ ...profile, account_positioning: event.target.value })} /></label>
+          <label>目标受众<textarea value={profile.target_audience} onChange={(event) => setProfile({ ...profile, target_audience: event.target.value })} /></label>
+          <label>阶段目标<textarea value={profile.stage_goal} onChange={(event) => setProfile({ ...profile, stage_goal: event.target.value })} /></label>
+          <label className="wide">AI 账号定义<textarea value={profile.ai_definition} onChange={(event) => setProfile({ ...profile, ai_definition: event.target.value })} /></label>
+          <label className="wide">运营备注<textarea value={profile.operation_notes} onChange={(event) => setProfile({ ...profile, operation_notes: event.target.value })} /></label>
+          <div className="youtube-form-actions"><button className="primary-button" disabled={busy === "profile"}>保存账号定义</button></div>
+        </form>
+      ) : null}
+      {tab === "tasks" ? <div className="youtube-empty"><Clock3 size={24} /><strong>发布任务将在 Sprint 135 接入</strong><span>本 Sprint 不创建真实发布请求。</span></div> : null}
+      {tab === "videos" ? (
+        <section className="youtube-videos-section">
+          <header><div><h2>已发布视频</h2><p>仅同步当前频道的数据。</p></div><button className="secondary-button" disabled={Boolean(busy)} type="button" onClick={() => void runAction("videos", () => api.syncYoutubeChannelVideos(channel.id))}><RefreshCw className={busy === "videos" ? "spin" : ""} size={15} />同步视频</button></header>
+          <div className="youtube-video-table">
+            <div className="youtube-video-row youtube-video-head"><span>视频</span><span>可见性</span><span>观看</span><span>点赞</span><span>发布时间</span></div>
+            {channel.uploaded_videos.map((video) => <div className="youtube-video-row" key={video.id}><span><strong>{video.title || "未命名视频"}</strong><small>{video.youtube_video_id}</small></span><span>{video.visibility || "—"}</span><span>{youtubeMetric(video.views)}</span><span>{youtubeMetric(video.likes)}</span><span>{formatDateTime(video.uploaded_at)}</span></div>)}
+          </div>
+          {channel.uploaded_videos.length === 0 ? <div className="youtube-empty">尚未同步已发布视频</div> : null}
+        </section>
+      ) : null}
+      {tab === "benchmarks" ? (
+        <section className="youtube-benchmarks">
+          <form onSubmit={async (event) => {
+            event.preventDefault();
+            setBusy("benchmark");
+            try {
+              await api.addYoutubeBenchmark(channel.id, { platform: "youtube", name: benchmark.name, profile_url: benchmark.profile_url, notes: benchmark.notes || null, platform_account_id: null });
+              setBenchmark({ name: "", profile_url: "", notes: "" });
+              await loadChannel();
+            } catch (benchmarkError) {
+              setError(benchmarkError instanceof Error ? benchmarkError.message : "对标账号添加失败");
+            } finally {
+              setBusy("");
+            }
+          }}>
+            <input required value={benchmark.name} onChange={(event) => setBenchmark({ ...benchmark, name: event.target.value })} placeholder="对标账号名称" />
+            <input required type="url" value={benchmark.profile_url} onChange={(event) => setBenchmark({ ...benchmark, profile_url: event.target.value })} placeholder="YouTube 主页 URL" />
+            <input value={benchmark.notes} onChange={(event) => setBenchmark({ ...benchmark, notes: event.target.value })} placeholder="备注（可选）" />
+            <button className="primary-button" disabled={busy === "benchmark"}>添加对标账号</button>
+          </form>
+          {channel.benchmarks.map((item) => <article key={item.id}><div><strong>{item.name}</strong><a href={item.profile_url} target="_blank" rel="noreferrer">{item.profile_url}</a><small>{item.notes}</small></div><button type="button" aria-label={`删除 ${item.name}`} onClick={async () => { await api.deleteYoutubeBenchmark(channel.id, item.id); await loadChannel(); }}><Trash2 size={15} /></button></article>)}
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function YoutubeChannelManagementView({
+  user,
+  creditOverview,
+  creditError,
+  route,
+  onNavigatePath,
+  onLogout,
+}: {
+  user: User;
+  creditOverview: CreditOverview | null;
+  creditError: string;
+  route: { mode: "list" } | { mode: "detail"; channelId: string };
+  onNavigatePath: (path: string, options?: { replace?: boolean }) => void;
+  onLogout: () => Promise<void>;
+}) {
+  return (
+    <section className="agent-skill-workspace">
+      <AgentStudioSidebar user={user} creditOverview={creditOverview} creditError={creditError} activeSkills={false} activeChannels onNavigatePath={onNavigatePath} onLogout={onLogout} />
+      <main>{route.mode === "list" ? <YoutubeChannelListView onNavigatePath={onNavigatePath} /> : <YoutubeChannelDetailView channelId={route.channelId} onNavigatePath={onNavigatePath} />}</main>
+    </section>
+  );
+}
+
 function NativeAgentSidebar({
   user,
   conversations,
@@ -2744,6 +3072,12 @@ function NativeAgentSidebar({
           <Box size={17} />
           Skill 管理
         </button>
+        {user.role === "admin" ? (
+          <button type="button" onClick={() => onNavigatePath("/agent/channels")}>
+            <BarChart3 size={17} />
+            频道账号
+          </button>
+        ) : null}
         <a
           href={viewRoutes.tasks}
           onClick={(event) => {

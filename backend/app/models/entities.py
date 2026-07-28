@@ -1139,6 +1139,108 @@ class NativeAgentVideo(Base, TimestampMixin):
     )
 
 
+class YoutubeChannel(Base, TimestampMixin):
+    __tablename__ = "youtube_channels"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    channel_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    handle: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    account_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    remote_status: Mapped[str] = mapped_column(String(40), index=True)
+    alias: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, index=True)
+    account_positioning: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    target_audience: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stage_goal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_definition: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    operation_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    total_subscribers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_views: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    total_watch_time_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    total_videos: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    analytics_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    remote_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sync_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    benchmarks: Mapped[list["YoutubeChannelBenchmark"]] = relationship(
+        back_populates="channel", cascade="all, delete-orphan"
+    )
+    uploaded_videos: Mapped[list["YoutubeUploadedVideo"]] = relationship(
+        back_populates="channel",
+        cascade="all, delete-orphan",
+        order_by="YoutubeUploadedVideo.uploaded_at.desc()",
+    )
+
+
+class YoutubeChannelBenchmark(Base, TimestampMixin):
+    __tablename__ = "youtube_channel_benchmarks"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "profile_url", name="uq_youtube_benchmark_channel_url"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    channel_id: Mapped[str] = mapped_column(
+        ForeignKey("youtube_channels.id", ondelete="CASCADE"), index=True
+    )
+    platform: Mapped[str] = mapped_column(String(40), default="youtube")
+    name: Mapped[str] = mapped_column(String(160))
+    platform_account_id: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    profile_url: Mapped[str] = mapped_column(String(1000))
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    channel: Mapped[YoutubeChannel] = relationship(back_populates="benchmarks")
+
+
+class PublishableVideo(Base, TimestampMixin):
+    __tablename__ = "publishable_videos"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    owner_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    source_native_agent_video_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_videos.id", ondelete="RESTRICT"), unique=True
+    )
+    video_url: Mapped[str] = mapped_column(String(1000))
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    tags_json: Mapped[str] = mapped_column(Text, default="[]")
+    planned_publish_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    contains_synthetic_media: Mapped[bool] = mapped_column(Boolean, default=True)
+    review_status: Mapped[str] = mapped_column(String(40), default="draft", index=True)
+
+    owner: Mapped[User] = relationship()
+    source_native_agent_video: Mapped[NativeAgentVideo] = relationship()
+
+
+class YoutubeUploadedVideo(Base, TimestampMixin):
+    __tablename__ = "youtube_uploaded_videos"
+    __table_args__ = (
+        Index("ix_youtube_uploaded_channel_uploaded", "channel_id", "uploaded_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    channel_id: Mapped[str] = mapped_column(
+        ForeignKey("youtube_channels.id", ondelete="CASCADE"), index=True
+    )
+    youtube_video_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    remote_upload_task_id: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tags_json: Mapped[str] = mapped_column(Text, default="[]")
+    visibility: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    views: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    likes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime)
+    remote_last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    channel: Mapped[YoutubeChannel] = relationship(back_populates="uploaded_videos")
+
+
 class NativeAgentStep(Base, TimestampMixin):
     __tablename__ = "native_agent_steps"
     __table_args__ = (

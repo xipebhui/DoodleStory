@@ -513,6 +513,56 @@ export type NativeAgentVideo = {
   created_at: string;
 };
 
+export type YoutubeChannelSummary = {
+  id: string;
+  channel_id: string;
+  title: string;
+  handle: string | null;
+  avatar_url: string | null;
+  remote_status: string;
+  alias: string | null;
+  account_positioning: string | null;
+  total_subscribers: number | null;
+  total_views: number | null;
+  total_watch_time_hours: number | null;
+  total_videos: number | null;
+  last_sync_success_at: string | null;
+  last_sync_error: string | null;
+};
+
+export type YoutubeBenchmark = {
+  id: string;
+  platform: string;
+  name: string;
+  platform_account_id: string | null;
+  profile_url: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type YoutubeUploadedVideo = {
+  id: string;
+  youtube_video_id: string;
+  title: string | null;
+  visibility: string | null;
+  views: number | null;
+  likes: number | null;
+  uploaded_at: string;
+  remote_last_sync_at: string | null;
+  last_sync_error: string | null;
+};
+
+export type YoutubeChannelDetail = YoutubeChannelSummary & {
+  account_email: string | null;
+  target_audience: string | null;
+  stage_goal: string | null;
+  ai_definition: string | null;
+  operation_notes: string | null;
+  analytics: Record<string, unknown> | null;
+  benchmarks: YoutubeBenchmark[];
+  uploaded_videos: YoutubeUploadedVideo[];
+};
+
 export type NativeAgentRun = {
   id: string;
   conversation_id: string;
@@ -966,6 +1016,7 @@ export type PageInfo = {
   limit: number;
   next_cursor: string | null;
   has_more: boolean;
+  total?: number | null;
 };
 
 export type ApiData<T> = {
@@ -1107,6 +1158,60 @@ export const api = {
       `/agent-loop/runs/${encodeURIComponent(runId)}/cancel`,
       { method: "POST" },
     ).then((result) => result.data),
+  youtubeChannels: (params?: { q?: string; remote_status?: string; cursor?: string; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.q) search.set("q", params.q);
+    if (params?.remote_status) search.set("remote_status", params.remote_status);
+    if (params?.cursor) search.set("cursor", params.cursor);
+    search.set("limit", String(params?.limit ?? 10));
+    return request<ApiList<YoutubeChannelSummary>>(`/youtube/channels?${search.toString()}`);
+  },
+  syncYoutubeChannels: () =>
+    request<ApiData<{ total: number; created: number; updated: number }>>("/youtube/channels/sync", {
+      method: "POST",
+    }).then((result) => result.data),
+  youtubeChannel: (channelId: string) =>
+    request<ApiData<YoutubeChannelDetail>>(`/youtube/channels/${encodeURIComponent(channelId)}`).then(
+      (result) => result.data,
+    ),
+  updateYoutubeChannelProfile: (
+    channelId: string,
+    payload: {
+      alias: string | null;
+      account_positioning: string | null;
+      target_audience: string | null;
+      stage_goal: string | null;
+      ai_definition: string | null;
+      operation_notes: string | null;
+    },
+  ) =>
+    request<ApiData<YoutubeChannelDetail>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/profile`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  syncYoutubeChannelAnalytics: (channelId: string) =>
+    request<ApiData<YoutubeChannelDetail>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/analytics/sync`,
+      { method: "POST" },
+    ).then((result) => result.data),
+  syncYoutubeChannelVideos: (channelId: string) =>
+    request<ApiData<YoutubeChannelDetail>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/videos/sync`,
+      { method: "POST" },
+    ).then((result) => result.data),
+  addYoutubeBenchmark: (
+    channelId: string,
+    payload: { platform: string; name: string; platform_account_id: string | null; profile_url: string; notes: string | null },
+  ) =>
+    request<ApiData<YoutubeBenchmark>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/benchmarks`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  deleteYoutubeBenchmark: (channelId: string, benchmarkId: string) =>
+    request<void>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/benchmarks/${encodeURIComponent(benchmarkId)}`,
+      { method: "DELETE" },
+    ),
   agentSkills: (params?: {
     scope?: "mine" | "system";
     status?: AgentSkillStatus | "";

@@ -54,6 +54,7 @@ class PageInfo(BaseModel):
     limit: int
     next_cursor: str | None
     has_more: bool
+    total: int | None = None
 
 
 class ApiList(BaseModel, Generic[T]):

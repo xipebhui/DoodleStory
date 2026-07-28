@@ -5,18 +5,18 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 126 已完成；用户指定会话的四张 1086×1448 Native 图片经真实
-  `gpt-5.4` VL 识字、四次火山语音 Tool 和 Remotion 视频 Tool 生成 41.808 秒 3:4 MP4。
-  `ffprobe` 确认 1086×1448、30fps、H.264/AAC；owner 可读且其他用户不可读。完整检查结果
-  见“最近完成的工作”；未调用真实图片生成 Provider，也未实施 Deferred Evaluation。
+- 最近验证状态：Sprint 134 已完成；管理员可同步并管理 17 个真实 YouTube 频道、账号定义、
+  对标账号和按频道过滤的已发布视频，也可把 Native Agent 视频唯一登记为可发布视频。
+  `./scripts/check.sh` 已通过 303 项后端测试、空库迁移、前端生产构建和 Remotion 检查；
+  未调用真实 YouTube 发布接口，也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 134 Active（Ready for implementation），Sprint 135 Planned；
+- 当前合同状态：Sprint 134 Complete，Sprint 135 Planned；
   Sprint 127、Sprint 132、Sprint 133 Complete；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
-- Active：`docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md`
+- Complete：`docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md`
 - Planned：`docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md`
 - Complete：`docs/contracts/sprint-133-native-subtitle-source-alignment.md`
 - Complete：`docs/contracts/sprint-132-native-agent-latest-run-retry.md`
@@ -83,6 +83,16 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 134 YouTube 频道账号与可发布视频基础：新增后端专用发布平台 Client、四张持久化
+  表和 Admin API，频道远端事实与本地别名/账号定位/AI 定义分开保存，频道分析与视频数据只
+  通过按钮同步；视频列表严格使用服务端实际接受的 `where.one.channel_id` 并处理游标分页，
+  不会混入其他频道。可发布视频通过外键和唯一约束固定关联 `NativeAgentVideo.id`，并要求
+  owner、成功生成结果和公网 URL。前端在 Agent Studio 增加 Admin-only“频道账号”，按用户
+  确认的深色、暖橙、扁平信息层级实现列表、搜索/筛选、详情指标、账号定义、对标账号、已发布
+  视频和明确的 Sprint 135 发布任务空态。真实只读 smoke 读取 17 个频道，并在样本频道读取
+  51,345 总观看、236 小时观看时长和 73 条已发布视频；真实浏览器完成列表、详情和视频页验收。
+  `./scripts/check.sh` 通过 303 项后端测试、空 SQLite 全量迁移、前端生产构建、Remotion
+  TypeScript 检查与 5 项模板测试，`git diff --check` 通过。
 - 完成 Sprint 126 Remotion 跟随源图比例与指定会话真实验收：修复开发库缺少 Sprint 124/125
   migration 导致历史会话 ORM 查询失败的问题；四张历史 Native 图片和 OSS 文件均完整。
   `render_story_video` 现在可读取同一 Conversation 历史 Native 图片和 owner 的成功 current

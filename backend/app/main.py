@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from app.api import agent_skills, audio_references, assets, auth, characters, content_extractions, credits, native_agent, style_tests, styles, tasks, video_tasks
+from app.api import agent_skills, audio_references, assets, auth, characters, content_extractions, credits, native_agent, style_tests, styles, tasks, video_tasks, youtube_channels
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
 from app.core.logging import configure_logging
@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(credits.router, prefix="/api/v1")
     app.include_router(agent_skills.router, prefix="/api/v1")
     app.include_router(native_agent.router, prefix="/api/v1")
+    app.include_router(youtube_channels.router, prefix="/api/v1")
 
     @app.get("/health")
     def health() -> dict[str, str]:

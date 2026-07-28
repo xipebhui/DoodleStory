@@ -128,6 +128,9 @@ class Settings(BaseSettings):
     comic_video_episode_height: int = Field(default=1920, ge=64)
     comic_video_episode_fps: int = Field(default=10, ge=1, le=120)
     comic_video_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    ytb_publish_url: str = ""
+    ytb_publish_api_key: str = ""
+    ytb_publish_timeout_seconds: int = Field(default=60, ge=5, le=300)
 
     model_config = SettingsConfigDict(
         env_file=("../.env", ".env"),

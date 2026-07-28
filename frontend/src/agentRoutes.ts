@@ -8,6 +8,10 @@ export type AgentRoute = {
     | { mode: "edit"; skillId: string }
     | { mode: "version"; skillId: string; versionId: string }
     | null;
+  channelPage:
+    | { mode: "list" }
+    | { mode: "detail"; channelId: string }
+    | null;
 };
 
 function decodeRoutePart(value: string): string | null {
@@ -23,18 +27,27 @@ export function parseAgentRoute(pathname: string): AgentRoute | null {
   const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   const parts = normalized.split("/").filter(Boolean);
   if (parts.length === 1 && parts[0] === "agent") {
-    return { conversationId: null, taskId: null, skillPage: null };
+    return { conversationId: null, taskId: null, skillPage: null, channelPage: null };
+  }
+  if (parts.length === 2 && parts[0] === "agent" && parts[1] === "channels") {
+    return { conversationId: null, taskId: null, skillPage: null, channelPage: { mode: "list" } };
+  }
+  if (parts.length === 3 && parts[0] === "agent" && parts[1] === "channels") {
+    const channelId = decodeRoutePart(parts[2]);
+    return channelId
+      ? { conversationId: null, taskId: null, skillPage: null, channelPage: { mode: "detail", channelId } }
+      : null;
   }
   if (parts.length === 2 && parts[0] === "agent" && parts[1] === "skills") {
-    return { conversationId: null, taskId: null, skillPage: { mode: "list" } };
+    return { conversationId: null, taskId: null, skillPage: { mode: "list" }, channelPage: null };
   }
   if (parts.length === 3 && parts[0] === "agent" && parts[1] === "skills" && parts[2] === "new") {
-    return { conversationId: null, taskId: null, skillPage: { mode: "new" } };
+    return { conversationId: null, taskId: null, skillPage: { mode: "new" }, channelPage: null };
   }
   if (parts.length === 3 && parts[0] === "agent" && parts[1] === "skills") {
     const skillId = decodeRoutePart(parts[2]);
     return skillId
-      ? { conversationId: null, taskId: null, skillPage: { mode: "detail", skillId } }
+      ? { conversationId: null, taskId: null, skillPage: { mode: "detail", skillId }, channelPage: null }
       : null;
   }
   if (
@@ -45,7 +58,7 @@ export function parseAgentRoute(pathname: string): AgentRoute | null {
   ) {
     const skillId = decodeRoutePart(parts[2]);
     return skillId
-      ? { conversationId: null, taskId: null, skillPage: { mode: "edit", skillId } }
+      ? { conversationId: null, taskId: null, skillPage: { mode: "edit", skillId }, channelPage: null }
       : null;
   }
   if (
@@ -61,18 +74,19 @@ export function parseAgentRoute(pathname: string): AgentRoute | null {
           conversationId: null,
           taskId: null,
           skillPage: { mode: "version", skillId, versionId },
+          channelPage: null,
         }
       : null;
   }
   if (parts.length === 2 && parts[0] === "agent") {
     const conversationId = decodeRoutePart(parts[1]);
-    return conversationId ? { conversationId, taskId: null, skillPage: null } : null;
+    return conversationId ? { conversationId, taskId: null, skillPage: null, channelPage: null } : null;
   }
   if (parts.length === 4 && parts[0] === "agent" && parts[2] === "tasks") {
     const conversationId = decodeRoutePart(parts[1]);
     const taskId = decodeRoutePart(parts[3]);
     return conversationId && taskId
-      ? { conversationId, taskId, skillPage: null }
+      ? { conversationId, taskId, skillPage: null, channelPage: null }
       : null;
   }
   return null;

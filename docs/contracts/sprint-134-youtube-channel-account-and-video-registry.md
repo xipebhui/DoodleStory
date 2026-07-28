@@ -2,13 +2,19 @@
 
 ## Status
 
-Active（Ready for implementation）。本 Sprint 只建立频道账号、账号知识、可发布视频和手动数据
-同步基础，不调用真实发布接口。
+Complete。本 Sprint 已建立频道账号、账号知识、可发布视频和手动数据同步基础；未调用真实
+发布接口。
 
 ## Goal
 
 让管理员在 DoodleStory 内管理 YouTube 频道，维护频道别名、AI 账号定义和对标账号，并把
 Native Agent 生成的视频登记成可追踪、可发布的视频资产。
+
+## Visual baseline
+
+实施前必须阅读 `docs/design/sprint-134-youtube-channel-ui/README.md`，并对齐其中用户确认的
+频道列表与频道详情效果图。正式页面必须延续现有深色 Agent Studio、暖橙单一强调色、扁平表格
+和克制信息层级，不得实现成浅色通用后台或彩色指标卡 dashboard。
 
 ## In scope
 
@@ -51,6 +57,16 @@ Native Agent 生成的视频登记成可追踪、可发布的视频资产。
 3. 使用当前 `.env` 做一次真实只读 smoke：频道列表、随机频道分析、该频道已发布视频。
 4. 前端验证列表/详情/编辑/加载/空态/错误态和手动同步，不出现隐藏自动轮询。
 5. 运行空库 Alembic、后端测试、前端生产构建、`./scripts/check.sh` 和 `git diff --check`。
+
+### Result
+
+- `./scripts/check.sh` 通过：303 项后端测试、空 SQLite 全量迁移、前端生产构建、Remotion
+  TypeScript 检查与 5 项模板测试全部通过。
+- `git diff --check` 通过；Sprint 定向测试 5 项通过。
+- 使用当前 `.env` 完成真实只读 smoke：读取 17 个频道，随机频道分析成功，目标频道严格按
+  `where.one.channel_id` 分页读取 73 条视频。
+- 使用真实浏览器验证 Admin 频道列表、频道详情、指标摘要和已发布视频列表；页面数据来自本地
+  同步结果，没有写入演示账号、指标或发布任务 Mock。
 
 ## Handoff
 
