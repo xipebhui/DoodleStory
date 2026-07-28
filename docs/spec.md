@@ -314,6 +314,12 @@
   状态；同一 Conversation 在取消收敛前不得提交下一轮。Native composer 在活动 Run 时把提交
   按钮切换为“终止任务”，点击后显示“正在终止…”并禁用输入、选择器和按钮，直到 SSE 返回
   `cancelled`。已经被第三方同步 HTTP Provider 接收的请求无法由本地强制撤销或保证不计费。
+- Sprint 131 统一时间契约：数据库继续保存 UTC，现有 SQLite `CURRENT_TIMESTAMP` 与
+  `datetime.utcnow()` 产生的无时区值在 API 输出边界一律解释为 UTC；所有 `ApiData`、
+  `ApiList`、Native Agent SSE 和普通 Agent SSE 的时间必须输出带 `Z` 的 ISO 8601 字符串。
+  前端所有日期时间及今天/昨天分组固定按 `Asia/Shanghai` 展示，不依赖服务器或浏览器本地
+  时区。不得把历史数据库时间整体增加 8 小时，也不得通过修改 SQLite Session 时区改变存储
+  语义。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

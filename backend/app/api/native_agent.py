@@ -36,7 +36,7 @@ from app.models.enums import (
     StyleReferenceMode,
     StyleStatus,
 )
-from app.schemas.common import ApiData, ApiList
+from app.schemas.common import ApiData, ApiList, normalize_api_datetimes
 from app.schemas.agent import AgentResourceKind, AgentResourceOption
 from app.schemas.native_agent import (
     NativeAgentCapabilityRead,
@@ -736,7 +736,7 @@ async def stream_native_agent_run_events(
                     .limit(100)
                 ).all()
                 run = _load_run_for_read(event_db, run_id)
-                run_read = _run_to_read(run)
+                run_read = normalize_api_datetimes(_run_to_read(run))
                 snapshot = json.dumps(
                     run_read.model_dump(mode="json"),
                     ensure_ascii=False,
@@ -750,7 +750,9 @@ async def stream_native_agent_run_events(
             if events:
                 for event in events:
                     event_payload = json.dumps(
-                        _event_to_read(event).model_dump(mode="json"),
+                        normalize_api_datetimes(
+                            _event_to_read(event)
+                        ).model_dump(mode="json"),
                         ensure_ascii=False,
                         separators=(",", ":"),
                     )

@@ -856,12 +856,26 @@ function parseAgentDraftResources(raw: string | null): AgentResourceRef[] {
   });
 }
 
+const chinaTimeZone = "Asia/Shanghai";
+const chinaDateKeyFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: chinaTimeZone,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function chinaDateNumber(value: Date) {
+  const parts = chinaDateKeyFormatter.formatToParts(value);
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+  return Date.UTC(year, month - 1, day);
+}
+
 function agentConversationGroupLabel(value: string) {
-  const date = new Date(value);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const dayOffset = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+  const dayOffset = Math.round(
+    (chinaDateNumber(new Date()) - chinaDateNumber(new Date(value))) / 86_400_000,
+  );
   if (dayOffset === 0) return "今天";
   if (dayOffset === 1) return "昨天";
   if (dayOffset < 7) return "最近 7 天";
@@ -871,9 +885,19 @@ function agentConversationGroupLabel(value: string) {
 function agentConversationTime(value: string) {
   const date = new Date(value);
   const group = agentConversationGroupLabel(value);
-  if (group === "今天") return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  if (group === "今天") {
+    return date.toLocaleTimeString("zh-CN", {
+      timeZone: chinaTimeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
   if (group === "昨天") return "昨天";
-  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+  return date.toLocaleDateString("zh-CN", {
+    timeZone: chinaTimeZone,
+    month: "numeric",
+    day: "numeric",
+  });
 }
 
 function agentConversationSummary(conversation: AgentConversation, detail: AgentConversationDetail | null) {
@@ -1252,7 +1276,11 @@ function AgentTaskInspectorDialog({
                         <span>{agentImageStatusLabel(version.status)}</span>
                         {version.is_current ? <small>当前</small> : null}
                         {version.accepted_at ? <small>已接受</small> : null}
-                        <time>{new Date(version.created_at).toLocaleString("zh-CN")}</time>
+                        <time>
+                          {new Date(version.created_at).toLocaleString("zh-CN", {
+                            timeZone: chinaTimeZone,
+                          })}
+                        </time>
                         <button
                           type="button"
                           onClick={() => onReferenceImage(inspector, selectedPanel, version)}
@@ -1344,6 +1372,7 @@ function agentToolDisplayName(toolName: string) {
 
 function skillTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", {
+    timeZone: chinaTimeZone,
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -4435,7 +4464,13 @@ function AgentView({
                     <div key={event.id}>
                       <i />
                       <span>{agentEventText(event)}</span>
-                      <time>{new Date(event.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>
+                      <time>
+                        {new Date(event.created_at).toLocaleTimeString("zh-CN", {
+                          timeZone: chinaTimeZone,
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </time>
                     </div>
                   ))}
                   {eventConnectionError ? (
@@ -4777,6 +4812,7 @@ function imageWorkflowLabel(step: string | null) {
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "暂无";
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: chinaTimeZone,
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

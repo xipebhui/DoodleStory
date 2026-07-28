@@ -11,11 +11,12 @@
   见“最近完成的工作”；未调用真实图片生成 Provider，也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 130 Complete；Sprint 127 仍为 Active；正式 Evaluation 保持
+- 当前合同状态：Sprint 131 Complete；Sprint 127 仍为 Active；正式 Evaluation 保持
   Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-131-api-utc-shanghai-display.md`
 - Complete：`docs/contracts/sprint-130-native-agent-run-cancellation.md`
 - Complete：`docs/contracts/sprint-129-native-speech-ffprobe-executable.md`
 - Active：`docs/contracts/sprint-127-speech-speed-whisper-subtitle-tools.md`
@@ -563,6 +564,14 @@
   改为“终止任务”，终止完成前禁用输入、Skill/Style 选择和按钮。新增测试覆盖取消持久化、
   API 幂等、运行中 Task 取消和迟到结果拒绝；`./scripts/check.sh` 通过 286 项后端测试、空库
   Alembic 升级、前端生产构建、Remotion 类型检查及 5 项测试，`git diff --check` 通过。
+
+- 完成 Sprint 131 API UTC 与东八区展示修正：确认宿主机已经是 CST，实际偏差来自 SQLite
+  UTC 时间和 `datetime.utcnow()` 经 Pydantic 输出时缺少时区标识，浏览器把它误当成本地时间。
+  现已在 `ApiData`、`ApiList` 响应边界递归把 naive datetime 标记为 UTC 并输出 `Z`，Native
+  Agent 与普通 Agent SSE 同步使用相同格式；前端日期时间和今天/昨天分组固定按
+  `Asia/Shanghai` 展示。没有修改数据库值或整体加 8 小时。新增 4 项时间契约测试并补强
+  Native SSE 断言；`./scripts/check.sh` 通过 289 项后端测试、空库 Alembic 升级、前端构建、
+  Remotion 类型检查和 5 项测试，`git diff --check` 通过。
 
 ## 已知缺口
 

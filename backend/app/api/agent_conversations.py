@@ -63,7 +63,7 @@ from app.schemas.agent import (
     AgentTaskInspectorRead,
     AgentTurnAcceptedRead,
 )
-from app.schemas.common import ApiData, ApiList
+from app.schemas.common import ApiData, ApiList, api_datetime_iso
 from app.services.agent_runner import enqueue_agent_run
 from app.services.agent_hitl import AgentApprovalError, decide_approval, emit_agent_event
 from app.services.agent_resources import (
@@ -1101,7 +1101,7 @@ async def stream_agent_events(
                     (
                         f"id: {event.id}\n"
                         f"event: {event.event_type.value}\n"
-                        f"data: {json.dumps({'run_id': event.run_id, 'sequence': event.sequence, 'payload': json.loads(event.public_payload_json), 'created_at': event.created_at.isoformat()}, ensure_ascii=False)}\n\n"
+                        f"data: {json.dumps({'run_id': event.run_id, 'sequence': event.sequence, 'payload': json.loads(event.public_payload_json), 'created_at': api_datetime_iso(event.created_at)}, ensure_ascii=False)}\n\n"
                     )
                     for event in events
                 ]

@@ -70,6 +70,7 @@ def speech_settings() -> Settings:
         doubao_voice_gen_sample_rate=24000,
         doubao_voice_gen_speech_rate=0,
         doubao_voice_gen_loudness_rate=0,
+        ffprobe_executable="ffprobe",
     )
 
 

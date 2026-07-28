@@ -1631,8 +1631,10 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual(3, len(frames))
             self.assertIn("event: run.updated", frames[0])
             self.assertIn('"status":"running"', frames[0])
+            self.assertRegex(frames[0], r'"created_at":"[^"]+Z"')
             self.assertIn("id: 1", frames[1])
             self.assertIn("event: native.event", frames[1])
+            self.assertRegex(frames[1], r'"created_at":"[^"]+Z"')
             self.assertIn('"status":"succeeded"', frames[2])
             self.assertIn('"content":"已完成"', frames[2])
             with self.assertRaises(HTTPException) as raised:
