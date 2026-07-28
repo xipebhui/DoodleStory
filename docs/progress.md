@@ -11,11 +11,12 @@
   见“最近完成的工作”；未调用真实图片生成 Provider，也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 132 Complete；Sprint 127 仍为 Active；正式 Evaluation 保持
-  Deferred。
+- 当前合同状态：Sprint 133、Sprint 132 Complete；Sprint 127 仍为 Active；正式
+  Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-133-native-subtitle-source-alignment.md`
 - Complete：`docs/contracts/sprint-132-native-agent-latest-run-retry.md`
 - Complete：`docs/contracts/sprint-131-api-utc-shanghai-display.md`
 - Complete：`docs/contracts/sprint-130-native-agent-run-cancellation.md`
@@ -540,6 +541,14 @@
 - 完成 Sprint 117 `@Skill` 与数据库 Runtime 主链路：资源搜索只返回当前用户或系统的未归档启用版本，消息接受时由服务端覆盖伪造名称/摘要并在同一事务固定 `agent_runs.skill_version_id`；前端资源菜单接入真实 Skill 分组并在选择第二个 Skill 时明确替换。Runtime 新增通用 Base Instructions、数据库准确版本 loader、显式/自动 catalog selection、Run 一次性 pin、Tool 白名单校验和 Skill 安全活动事件；正式漫画执行不再调用文件 `load_skill`、`process_comic_agent_run()`、`run_comic_plan()` 或 `run_comic_final()`，而由任意带 `generate_image` 权限且具有已鉴权风格的发布版 Skill 进入统一方案确认/执行路径，无生图权限的 Skill 只走文本结果且不能创建任务。新增资源权限、消息事务 pin、归档后 Run 恢复、自动选择和无权限无副作用测试；`./scripts/check.sh` 通过 250 项后端测试、compileall、空库 migration 和前端生产构建。
 - Sprint 117 真实验收与 QA 闭合：隔离数据库注册真实账号并创建 `Sprint 117 清透水彩` 风格；系统 `想法转漫画 v1` 完成《雨伞的回声》2-Panel 方案确认和 2 张真实图片，UI clone 并发布的个人 `个人两格反转漫画 v1` 完成《最后一盆绿》2-Panel 方案和 2 张真实图片，四张均成功、积分 30→26。UI 新建的无 Tool `故事因果检查 v1` 使用真实文本 Provider 输出因果检查，未创建第三个任务且余额保持 26；Style-only 消息由 catalog 自动选择系统 Skill 并停在方案确认。另验证个人 Skill 发布 v2、查看历史、重新激活 v1，文字 Skill 归档后历史 Message 仍保留准确 v1 安全快照。最终 `./scripts/check.sh` 通过 252 项后端测试，QA 报告为 `docs/qa/sprint-117-pluggable-skill-management-agent-loop-report.md`；Sprint 117 标记 Complete（Closed），Evaluation 保持 Deferred。
 - 完成 Sprint 118 Skill 管理入口修正：传统工作台主侧栏新增直接进入 `/agent/skills` 的 `Skill 管理`，Skill 管理的 Agent Studio 侧栏新增 `返回传统工作台`；主侧栏导航统一通过现有稳定 URL 路由，不复制 Skill 编辑器或合并 Shell。真实浏览器完成 `/tasks → /agent/skills → /tasks` 往返并验证后退/前进恢复；Agent 路由 4 项测试、前端生产构建和完整 `./scripts/check.sh` 均通过，后者包含 252 项后端测试、compileall 和空库 migration。Evaluation 未实施。
+
+- 完成 Sprint 133 Native 语音字幕原文二次校准：`generate_subtitles` 读取对应
+  `NativeAgentAudio.text`，要求 faster-whisper 返回词级时间戳，将识别字符与原文做单调
+  序列对齐后只复用真实时间轴；字幕全文、cue 和 WebVTT 文字均来自 TTS 原文，并按标点和
+  18 个规范化字符上限切分。匹配率低于 50%、原文为空或缺少词级时间戳时明确失败，不保存
+  未校准 Whisper 文本或切换在线服务。8 项聚焦测试及两条真实火山 TTS smoke 通过，其中
+  54 字、15480ms 音频拆为 6 条单调 cue 且全文与原文一致；`./scripts/check.sh` 通过
+  298 项后端测试、空库迁移、前端构建和 5 项 Remotion 测试。
 
 - 完成 Sprint 127 语音倍速、Whisper 字幕与 Remotion 时间轴：`generate_speech` 新增
   0.5/0.75/1.0/1.25/1.5/2.0 六档倍速并持久化 speed/speech_rate 快照；

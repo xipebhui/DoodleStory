@@ -582,10 +582,12 @@ def build_generate_subtitles_tool(
                     raise NativeAgentLoopError("音频缺少真实 duration_ms")
                 audio_path = materialize_asset_to_local(audio.asset)
                 duration_ms = audio.duration_ms
+                reference_text = audio.text
             generated = await asyncio.to_thread(
                 subtitle_generator,
                 audio_path=audio_path,
                 duration_ms=duration_ms,
+                reference_text=reference_text,
                 settings=settings,
             )
             completed = store.complete_subtitle_tool(
@@ -602,8 +604,9 @@ def build_generate_subtitles_tool(
         generate_subtitles,
         name_override="generate_subtitles",
         description_override=(
-            "使用本地 OpenAI Whisper 为当前 Run 的真实 audio_id 生成带时间轴的 WebVTT "
-            "字幕资产，返回 subtitle_id、字幕 asset_id、语言、模型、时长和 cue 数量。"
+            "使用当前 audio_id 保存的语音生成原文校准字幕文字，并使用本地 OpenAI "
+            "Whisper 提取真实时间轴，生成 WebVTT 字幕资产；返回 subtitle_id、字幕 "
+            "asset_id、语言、模型、时长和 cue 数量。"
         ),
     )
 

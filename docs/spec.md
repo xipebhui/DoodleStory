@@ -303,6 +303,12 @@
   允许每个 Scene 在整段 `subtitle` 与匹配音频的 `subtitle_id` 之间二选一，引用字幕资产时
   Remotion 只在 cue 时间窗口显示对应文本。字幕属于音频派生层并保存 provider、模型、语言、
   全文、cue JSON、时长和 owner 权限；Skill 发布版本可独立勾选这三个方法。
+- Sprint 133 将系统自生成语音的字幕改为原文约束对齐：`generate_subtitles(audio_id)`
+  必须读取对应 `NativeAgentAudio.text`，faster-whisper 开启词级时间戳并只提供时间锚点；
+  最终字幕全文、cue 文字和 WebVTT 均使用语音生成原文，按原文标点和固定可读长度切分。
+  Whisper 识别字符与原文规范化字符通过单调序列匹配映射时间，模型快照追加
+  `source-aligned-v1`；原文为空、缺少词级时间戳或匹配率不足时明确失败，不保存未经校准的
+  Whisper 文本，也不自动切换在线服务。
 - Sprint 129 将火山语音缺失 duration 时使用的媒体探测器改为显式
   `FFPROBE_EXECUTABLE`。本地启动脚本必须在启动后端前解析并校验可执行文件绝对路径，再将其
   传入服务进程；容器继续由 `ffmpeg` 包提供 `ffprobe`。不得依赖不确定的子进程 PATH，也不得
