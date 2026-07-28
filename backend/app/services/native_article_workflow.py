@@ -12,11 +12,11 @@ from app.models.entities import (
     NativeAgentArticleApproval,
     NativeAgentArtifact,
     NativeAgentContextItem,
-    NativeAgentEvent,
     NativeAgentItem,
     NativeAgentRun,
 )
 from app.models.enums import AgentRunStatus, NativeAgentItemType
+from app.services.native_agent_persistence import add_native_agent_event
 
 
 ARTICLE_DRAFT = "article_draft"
@@ -44,24 +44,6 @@ def _content_hash(content_json: str) -> str:
 def _next_sequence(db: Session, model, run_id: str) -> int:
     latest = db.scalar(select(func.max(model.sequence)).where(model.run_id == run_id))
     return int(latest or 0) + 1
-
-
-def _add_event(
-    db: Session,
-    *,
-    run_id: str,
-    event_type: str,
-    payload: dict[str, object],
-) -> NativeAgentEvent:
-    event = NativeAgentEvent(
-        run_id=run_id,
-        sequence=_next_sequence(db, NativeAgentEvent, run_id),
-        event_type=event_type,
-        payload_json=_json_dumps(payload),
-    )
-    db.add(event)
-    db.flush()
-    return event
 
 
 def _checkpoint(run: NativeAgentRun) -> dict[str, object]:
@@ -144,7 +126,7 @@ def save_article_artifact(
         checkpoint["workflow_revision"] = run.workflow_revision
         run.workflow_phase = str(checkpoint["phase"])
         run.workflow_checkpoint_json = _json_dumps(checkpoint)
-        _add_event(
+        add_native_agent_event(
             db,
             run_id=run_id,
             event_type="artifact.created",
@@ -244,7 +226,7 @@ def request_final_article_approval(
         )
         run.workflow_phase = "waiting_for_article_approval"
         run.workflow_checkpoint_json = _json_dumps(checkpoint)
-        _add_event(
+        add_native_agent_event(
             db,
             run_id=run_id,
             event_type="artifact.created",
@@ -255,7 +237,7 @@ def request_final_article_approval(
                 "producer_role": "director",
             },
         )
-        _add_event(
+        add_native_agent_event(
             db,
             run_id=run_id,
             event_type="approval.requested",
@@ -336,7 +318,7 @@ def decide_article_approval(
             run.final_output = str(content["body_markdown"])
             run.finished_at = now
             checkpoint["phase"] = "article_approved"
-            _add_event(
+            add_native_agent_event(
                 db,
                 run_id=run.id,
                 event_type="run.completed",
@@ -389,7 +371,7 @@ def decide_article_approval(
                 )
             )
         run.workflow_checkpoint_json = _json_dumps(checkpoint)
-        _add_event(
+        add_native_agent_event(
             db,
             run_id=run.id,
             event_type="approval.resolved",

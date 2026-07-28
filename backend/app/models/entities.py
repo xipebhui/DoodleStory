@@ -926,6 +926,7 @@ class NativeAgentRun(Base, TimestampMixin):
         DateTime, nullable=True
     )
     model_call_count: Mapped[int] = mapped_column(Integer, default=0)
+    event_sequence: Mapped[int] = mapped_column(Integer, default=0)
     image_call_count: Mapped[int] = mapped_column(Integer, default=0)
     speech_call_count: Mapped[int] = mapped_column(Integer, default=0)
     subtitle_call_count: Mapped[int] = mapped_column(Integer, default=0)

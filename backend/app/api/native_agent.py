@@ -69,7 +69,10 @@ from app.services.native_agent_worker import (
     cancel_native_agent_run,
     enqueue_native_agent_run,
 )
-from app.services.native_agent_persistence import NativeAgentStore
+from app.services.native_agent_persistence import (
+    NativeAgentStore,
+    add_native_agent_event,
+)
 from app.services.native_article_workflow import (
     NativeArticleWorkflowError,
     decide_article_approval,
@@ -755,17 +758,11 @@ async def create_native_agent_run(
             ),
         )
     )
-    db.add(
-        NativeAgentEvent(
-            run_id=run.id,
-            sequence=1,
-            event_type="run.created",
-            payload_json=json.dumps(
-                {"status": AgentRunStatus.queued.value},
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ),
-        )
+    add_native_agent_event(
+        db,
+        run.id,
+        "run.created",
+        {"status": AgentRunStatus.queued.value},
     )
     conversation.last_message_at = datetime.utcnow()
     db.commit()
@@ -986,25 +983,11 @@ async def cancel_native_run(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="已结束的 Native Agent Run 不能终止",
                 )
-        next_sequence = int(
-            db.scalar(
-                select(func.max(NativeAgentEvent.sequence)).where(
-                    NativeAgentEvent.run_id == run.id
-                )
-            )
-            or 0
-        ) + 1
-        db.add(
-            NativeAgentEvent(
-                run_id=run.id,
-                sequence=next_sequence,
-                event_type="run.cancel_requested",
-                payload_json=json.dumps(
-                    {"status": AgentRunStatus.cancel_requested.value},
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
-            )
+        add_native_agent_event(
+            db,
+            run.id,
+            "run.cancel_requested",
+            {"status": AgentRunStatus.cancel_requested.value},
         )
         db.commit()
     await cancel_native_agent_run(run.id)

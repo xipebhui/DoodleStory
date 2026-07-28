@@ -1,5 +1,8 @@
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +19,7 @@ from app.models.entities import (
     NativeAgentArtifact,
     NativeAgentContextItem,
     NativeAgentConversation,
+    NativeAgentEvent,
     NativeAgentItem,
     NativeAgentRun,
     User,
@@ -52,8 +56,14 @@ class NativeArticleWorkflowTests(unittest.TestCase):
             autocommit=False,
         )
 
-    def create_run(self, *, email: str) -> tuple[str, str]:
-        with self.Session() as db:
+    def create_run(
+        self,
+        *,
+        email: str,
+        session_factory=None,
+    ) -> tuple[str, str]:
+        resolved_session_factory = session_factory or self.Session
+        with resolved_session_factory() as db:
             user = User(email=email, password_hash="hash")
             db.add(user)
             db.flush()
@@ -290,6 +300,72 @@ class NativeArticleWorkflowTests(unittest.TestCase):
                     )
                 )
             self.assertEqual(404, raised.exception.status_code)
+
+    def test_parent_stream_and_child_artifact_allocate_unique_events(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "concurrent-events.db"
+            engine = create_engine(
+                f"sqlite:///{database_path}",
+                connect_args={
+                    "check_same_thread": False,
+                    "timeout": 10,
+                },
+            )
+            Base.metadata.create_all(engine)
+            session_factory = sessionmaker(
+                bind=engine,
+                autoflush=False,
+                autocommit=False,
+            )
+            run_id, _ = self.create_run(
+                email="concurrent-events@example.com",
+                session_factory=session_factory,
+            )
+
+            def append_parent_events() -> None:
+                store = NativeAgentStore(
+                    run_id,
+                    session_factory=session_factory,
+                )
+                for index in range(40):
+                    store.append_event(
+                        "response.function_call.arguments.delta",
+                        {"index": index},
+                    )
+
+            def append_child_artifacts() -> None:
+                for index in range(20):
+                    save_article_artifact(
+                        run_id,
+                        artifact_type=ARTICLE_DRAFT,
+                        producer_role="writer",
+                        content={
+                            "title": f"并发草稿 {index}",
+                            "body_markdown": f"正文 {index}",
+                            "creative_summary": "并发测试",
+                            "hook": "测试钩子",
+                        },
+                        session_factory=session_factory,
+                    )
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                parent_future = executor.submit(append_parent_events)
+                child_future = executor.submit(append_child_artifacts)
+                parent_future.result()
+                child_future.result()
+
+            with session_factory() as db:
+                run = db.get(NativeAgentRun, run_id)
+                sequences = list(
+                    db.scalars(
+                        select(NativeAgentEvent.sequence)
+                        .where(NativeAgentEvent.run_id == run_id)
+                        .order_by(NativeAgentEvent.sequence)
+                    ).all()
+                )
+                self.assertIsNotNone(run)
+                self.assertEqual(list(range(1, 61)), sequences)
+                self.assertEqual(60, run.event_sequence)
 
 
 if __name__ == "__main__":

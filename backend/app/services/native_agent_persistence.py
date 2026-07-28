@@ -7,7 +7,7 @@ from typing import Any
 
 from agents.items import TResponseInputItem
 from agents.memory.session import SessionABC
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, sessionmaker, selectinload
 
 from app.core.database import SessionLocal
@@ -74,7 +74,6 @@ def _next_sequence(
     db: Session,
     model: type[NativeAgentItem]
     | type[NativeAgentStep]
-    | type[NativeAgentEvent]
     | type[NativeAgentContextItem],
     run_id: str,
 ) -> int:
@@ -82,21 +81,32 @@ def _next_sequence(
     return int(latest or 0) + 1
 
 
-def _add_event(
+def add_native_agent_event(
     db: Session,
     run_id: str,
     event_type: str,
     payload: dict[str, object],
 ) -> NativeAgentEvent:
+    sequence = db.scalar(
+        update(NativeAgentRun)
+        .where(NativeAgentRun.id == run_id)
+        .values(event_sequence=NativeAgentRun.event_sequence + 1)
+        .returning(NativeAgentRun.event_sequence)
+    )
+    if sequence is None:
+        raise RuntimeError("Native Agent Run 不存在，无法追加事件")
     event = NativeAgentEvent(
         run_id=run_id,
-        sequence=_next_sequence(db, NativeAgentEvent, run_id),
+        sequence=int(sequence),
         event_type=event_type,
         payload_json=_json_dumps(payload),
     )
     db.add(event)
     db.flush()
     return event
+
+
+_add_event = add_native_agent_event
 
 
 @dataclass(frozen=True)

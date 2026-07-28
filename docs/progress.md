@@ -702,3 +702,11 @@
   `55210d376468451789128af60e780541`，Approval
   `5ab1aa8fe1e24193b91ce37649d59914` 已批准；模型调用 4 次，图片、语音、字幕、视频调用均为
   0。本地 MLflow tracing 默认关闭，因此本次 smoke 没有 Trace ID。
+- 修复用户手动 Run `65cb3561ecf44b168954f1a8dc3c8d80` 的并发事件序号冲突。该 Run
+  已真实调用 `write_article` 子 Agent，并保存 Writer Artifact
+  `9e4d371ba7d14c45b46cad378a88a2c5`；失败原因是父 Agent 流式写 Function Call 参数时与
+  子 Agent Artifact 事件同时使用 `MAX(sequence) + 1`，抢到相同序号。现新增 Run 级
+  `event_sequence` 原子计数器并回填历史最大序号，所有 Native Event 写入口统一原子分配。
+  新增双线程交错写入 40 个父事件和 20 个子 Artifact 事件的回归测试，序号完整为 1–60；
+  `./scripts/check.sh` 通过 321 项后端测试、空库迁移、前端构建与 Remotion 测试。失败 Run
+  的 Writer Artifact 和数据库 SDK Session 均保留，可由用户在原会话输入“重试”继续。
