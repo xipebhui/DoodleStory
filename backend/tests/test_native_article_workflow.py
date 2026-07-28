@@ -3,9 +3,11 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from agents.usage import Usage
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -31,14 +33,21 @@ from app.models.enums import (
 )
 from app.api.native_agent import decide_native_article_approval
 from app.schemas.native_agent import NativeAgentArticleApprovalDecision
-from app.services.native_agent_loop import build_article_agent_tools
+from app.services.native_agent_loop import (
+    CompiledArticleWorkflow,
+    NativeModelMetricHooks,
+    article_role_instructions,
+    build_article_agent_tools,
+)
 from app.services.native_agent_persistence import NativeAgentStore
 from app.services.native_article_workflow import (
     ARTICLE_DRAFT,
     ARTICLE_REVIEW,
     decide_article_approval,
+    load_compiled_workflow_plan,
     request_final_article_approval,
     save_article_artifact,
+    save_compiled_workflow_plan,
 )
 
 
@@ -235,20 +244,183 @@ class NativeArticleWorkflowTests(unittest.TestCase):
 
     def test_article_skill_builds_sdk_agents_as_tools(self) -> None:
         run_id, _ = self.create_run(email="tools@example.com")
+        workflow = CompiledArticleWorkflow.model_validate(
+            {
+                "workflow_summary": "先写作，再审稿，最后提交审批。",
+                "shared_constraints": ["只生成文本。"],
+                "roles": [
+                    {
+                        "name": "director",
+                        "mission": "协调文案工作流。",
+                        "instructions": ["调用子 Agent，不直接跳过。"],
+                    },
+                    {
+                        "name": "writer",
+                        "mission": "完成文章草稿。",
+                        "instructions": ["写出完整正文。"],
+                    },
+                    {
+                        "name": "reviewer",
+                        "mission": "独立审稿。",
+                        "instructions": ["只指出影响交付的问题。"],
+                    },
+                ],
+                "execution_steps": [
+                    {
+                        "sequence": 1,
+                        "tool_name": "write_article",
+                        "objective": "取得草稿。",
+                        "required_inputs": ["用户要求"],
+                        "completion_condition": "草稿 Artifact 已保存。",
+                    },
+                    {
+                        "sequence": 2,
+                        "tool_name": "review_article",
+                        "objective": "完成审稿。",
+                        "required_inputs": ["用户要求", "草稿"],
+                        "completion_condition": "审稿 Artifact 已保存。",
+                    },
+                    {
+                        "sequence": 3,
+                        "tool_name": "submit_final_article",
+                        "objective": "提交最终文案。",
+                        "required_inputs": ["标题", "正文"],
+                        "completion_condition": "进入用户审批。",
+                    },
+                ],
+                "quality_gates": ["文章满足用户要求。"],
+            }
+        )
         with self.Session() as db:
             run = db.get(NativeAgentRun, run_id)
             self.assertIsNotNone(run)
             run.skill_version
+            store = NativeAgentStore(run_id, session_factory=self.Session)
             tools = build_article_agent_tools(
                 run,
+                workflow=workflow,
                 model="test-model",
-                store=NativeAgentStore(run_id, session_factory=self.Session),
+                store=store,
+                hooks=NativeModelMetricHooks(store, phase="test"),
+            )
+            writer_instructions = article_role_instructions(
+                run,
+                workflow,
+                active_role="writer",
             )
 
         self.assertEqual(
             {"write_article", "review_article", "submit_final_article"},
             {tool.name for tool in tools},
         )
+        self.assertIn("写出完整正文", writer_instructions)
+        self.assertNotIn("协调文案工作流", writer_instructions)
+        self.assertNotIn("独立审稿", writer_instructions)
+
+    def test_compiled_workflow_is_persisted_and_reused_by_skill_hash(self) -> None:
+        run_id, _ = self.create_run(email="compiled-plan@example.com")
+        plan = {
+            "workflow_summary": "模型编译后的计划",
+            "roles": [{"name": "director"}],
+        }
+        save_compiled_workflow_plan(
+            run_id,
+            skill_content_hash="sha256:article-team",
+            plan=plan,
+            session_factory=self.Session,
+        )
+
+        loaded = load_compiled_workflow_plan(
+            run_id,
+            skill_content_hash="sha256:article-team",
+            session_factory=self.Session,
+        )
+
+        self.assertEqual(plan, loaded)
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            events = db.scalars(
+                select(NativeAgentEvent).where(
+                    NativeAgentEvent.run_id == run_id,
+                    NativeAgentEvent.event_type == "workflow.compiled",
+                )
+            ).all()
+            self.assertEqual("workflow_compiled", run.workflow_phase)
+            self.assertEqual(1, len(events))
+
+    def test_model_request_metric_counts_concurrent_child_calls(self) -> None:
+        database_path = Path(self._testMethodName + ".db")
+        with TemporaryDirectory() as temp_dir:
+            engine = create_engine(
+                f"sqlite:///{Path(temp_dir) / database_path}",
+                connect_args={"check_same_thread": False, "timeout": 30},
+            )
+            Base.metadata.create_all(engine)
+            session_factory = sessionmaker(
+                bind=engine,
+                autoflush=False,
+                autocommit=False,
+            )
+            run_id, _ = self.create_run(
+                email="metric-concurrency@example.com",
+                session_factory=session_factory,
+            )
+            store = NativeAgentStore(run_id, session_factory=session_factory)
+
+            def record(index: int) -> None:
+                store.record_model_request_started(
+                    metric_call_id=f"metric-{index}",
+                    role="writer" if index % 2 else "reviewer",
+                    phase="test",
+                )
+
+            with ThreadPoolExecutor(max_workers=6) as executor:
+                list(executor.map(record, range(6)))
+
+            with session_factory() as db:
+                run = db.get(NativeAgentRun, run_id)
+                events = db.scalars(
+                    select(NativeAgentEvent).where(
+                        NativeAgentEvent.run_id == run_id,
+                        NativeAgentEvent.event_type == "model.request.started",
+                    )
+                ).all()
+                self.assertEqual(6, run.model_call_count)
+                self.assertEqual(6, len(events))
+
+    def test_model_metric_pairs_sdk_callbacks_across_async_tasks(self) -> None:
+        run_id, _ = self.create_run(email="metric-hooks@example.com")
+        store = NativeAgentStore(run_id, session_factory=self.Session)
+        hooks = NativeModelMetricHooks(store, phase="test")
+        agent = SimpleNamespace(name="DoodleStoryArticleWorkflowCompiler")
+
+        async def invoke_callbacks() -> None:
+            await asyncio.create_task(
+                hooks.on_llm_start(None, agent, None, [])
+            )
+            await asyncio.create_task(
+                hooks.on_llm_end(
+                    None,
+                    agent,
+                    SimpleNamespace(usage=Usage(requests=1)),
+                )
+            )
+
+        asyncio.run(invoke_callbacks())
+
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            events = db.scalars(
+                select(NativeAgentEvent).where(
+                    NativeAgentEvent.run_id == run_id,
+                    NativeAgentEvent.event_type.in_(
+                        ("model.request.started", "model.request.completed")
+                    ),
+                )
+            ).all()
+            self.assertEqual(1, run.model_call_count)
+            self.assertEqual(2, len(events))
+            self.assertEqual(1, hooks.completed_count)
 
     def test_approval_api_is_owner_scoped_and_returns_fresh_state(self) -> None:
         run_id, user_id = self.create_run(email="api-owner@example.com")

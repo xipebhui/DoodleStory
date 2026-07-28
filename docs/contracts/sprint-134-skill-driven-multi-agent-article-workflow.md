@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented。
+Implemented，2026-07-29 增补模型驱动 Skill 编译与完整模型调用 Metric。
 
 ## Goal
 
@@ -33,8 +33,13 @@ Implemented。
   - Writer、Reviewer 的职责；
   - 每个角色内部的固定子流程；
   - 角色调用顺序、允许分支、完成条件和最大修改轮次。
-- Runtime 根据同一总 Skill 和 `active_role` 构建主 Agent 与子 Agent；角色规则进入
-  `instructions`，当前任务目标和 Artifact 引用作为子 Agent 输入。
+- 每个 Run 首次执行时使用一次 Workflow Compiler 模型调用理解完整总 Skill，输出结构化的
+  Director / Writer / Reviewer 局部 instructions、执行步骤、分支条件和质量门槛；Runtime
+  只校验固定角色与 Tool 能力边界，不按 Markdown 标题程序化拆解 Skill。
+- 编译计划连同 Skill content hash 保存到根 Run Checkpoint；中断恢复复用同一计划，不重复
+  编译，也不允许同一 Run 静默替换为不同计划。
+- Director 与子 Agent 分别只注入编译计划中属于自己的局部 instructions；当前任务目标和
+  Artifact 引用作为子 Agent 输入，完整 Skill 只进入 Workflow Compiler。
 - 使用 OpenAI Agents SDK `agent.as_tool()` 完成 manager-style 调用：
   - 主 Agent 保持流程控制权；
   - 子 Agent 只接收当前子任务所需输入；
@@ -69,6 +74,9 @@ Implemented。
   - 明确失败信息。
 - 父流程、子 Agent 调用、Artifact、审批和恢复进入现有 Event 与 MLflow
   Trace，且不展示隐藏推理。
+- SDK LLM 生命周期为 Compiler、Director、Writer、Reviewer 的每个真实请求写入
+  `model.request.started/completed`；Run 总调用数、每次 execution attempt 和角色拆分进入
+  数据库事件与 MLflow 根 Trace。
 
 ## Out of Scope
 
@@ -96,7 +104,7 @@ Implemented。
 ## Deliverables
 
 - Native Agent 主/子 Agent 构建与 `agent.as_tool()` 调用实现。
-- 单文件总 Skill 及 `active_role` instructions 注入。
+- 单文件总 Skill、模型驱动 Workflow Compiler、编译计划持久化与局部角色 instructions 注入。
 - Artifact、Checkpoint 与文案 Approval 数据模型和迁移。
 - 子 Agent 输出保存、父 Agent Tool Output 回传与恢复逻辑。
 - 文案审批 API、现有会话 UI 和持久化事件展示。
@@ -106,7 +114,8 @@ Implemented。
 
 - 用户提交一个创作要求后，Director 真实调用 Writer 和 Reviewer 子 Agent，并得到数据库中可查看
   的草稿与审稿 Artifact。
-- 子 Agent 的角色方法来自总 Skill instructions；用户输入中不伪装角色规则或复制整份 Skill。
+- 子 Agent 的角色方法来自模型编译后的总 Skill；用户输入中不伪装角色规则或复制整份 Skill，
+  Writer/Reviewer instructions 不包含其他角色完整规则。
 - 最终文案出现审批卡，在用户未操作期间 Run 稳定保持 `waiting_for_input`，服务和浏览器均可关闭。
 - 服务重启后，已完成的 Writer/Reviewer Artifact 不会重复生成；用户回来批准后同一根 Run
   从审批点继续。
@@ -114,6 +123,8 @@ Implemented。
 - 批准后同一个根 Run 以纯文本结果完成，媒体调用计数全部保持为零。
 - 子 Agent 失败、输出不符合约定或恢复条件不足时明确失败，不生成占位结果。
 - 前端、数据库 Event 和 MLflow 能通过同一个根 Run 定位完整执行过程。
+- 页面模型调用数等于 Compiler、Director 与全部子 Agent 的真实请求总和；MLflow 中每个
+  execution attempt 可独立辨认，并能看到角色调用拆分。
 
 ## Verification
 
@@ -125,6 +136,9 @@ git diff --check
 自动化场景：
 
 - Director 调用 Writer，子 Agent final output 被保存为 `article_draft` 并作为 Tool Output 返回。
+- Workflow Compiler 输出固定结构计划并按 Skill hash 持久化，恢复时复用。
+- Writer 与 Reviewer instructions 互不包含对方或 Director 的完整规则。
+- SDK start/end 回调跨异步任务执行时仍能正确关联 Metric；并发子调用不会丢失计数。
 - Reviewer 消费草稿并保存 `article_review`，Director 据此生成 `final_article`。
 - 最终文案进入 `waiting_for_input` 后不占用活动 Worker。
 - 模拟服务重启后，等待审批状态、Artifact 版本和 SDK Session 均可恢复。
@@ -141,12 +155,23 @@ git diff --check
 - 在最终文案等待审批时重启后端，确认用户返回后可以批准并继续。
 - 保存 Run ID、Artifact ID、Approval ID、Trace ID 和最终文案作为验收证据。
 
+2026-07-29 增补真实 smoke：
+
+- 页面 Conversation `b0515a8119f34a4b919e2a7750f1693b` 的 Run
+  `a714a716fecc41a7898fe24277fefa3a` 完成
+  `Workflow Compiler → Director → Writer → Director → Reviewer → Director → Director`，
+  进入 `waiting_for_article_approval`。
+- 数据库与页面均显示真实模型调用 7 次，角色拆分为 Compiler 1、Director 4、Writer 1、
+  Reviewer 1；started/completed 事件各 7 条，图片、语音、字幕、视频调用均为 0。
+- MLflow 只有 1 个根 Trace，`execution_attempt=1`，根 Span 的总数、完成数与角色拆分和数据库
+  一致；完整 Skill 只用于 Compiler 输入，Writer 和 Reviewer 分别只含自己的局部 role。
+
 ## Risks / Notes
 
 - `agent.as_tool()` 提供模型层的主子 Agent 调用，但长期等待和恢复由 DoodleStory 数据库状态负责，
   不能依赖嵌套调用一直驻留内存。
-- 总 Skill 会同时包含总体策略和多个角色流程，第一版保持单文件；只有真实维护或上下文问题出现后，
-  才评审是否拆分专业 Skill。
+- 总 Skill 会同时包含总体策略和多个角色流程，第一版保持单文件；Workflow Compiler 负责在
+  Run 开始时理解并局部化，不要求作者维护多层 Skill 或程序化 DSL。
 - 本 Sprint 将 Human in the Loop 设在最终文案边界，避免在子 Agent 内部暂停导致嵌套恢复语义
   过度复杂。
 

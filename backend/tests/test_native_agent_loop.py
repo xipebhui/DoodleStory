@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from agents import ToolOutputImage, ToolOutputText
 from agents.tool_context import ToolContext
+from agents.usage import Usage
 from fastapi import HTTPException
 import mlflow
 from mlflow.entities import SpanStatusCode
@@ -1496,6 +1497,12 @@ class NativeAgentLoopTests(unittest.TestCase):
             del input_value, run_config, max_turns, session
 
             async def invoke_tool():
+                await agent.hooks.on_llm_start(None, agent, None, [])
+                await agent.hooks.on_llm_end(
+                    None,
+                    agent,
+                    SimpleNamespace(usage=Usage(requests=1)),
+                )
                 output = await agent.tools[0].on_invoke_tool(
                     ToolContext(
                         context=None,
@@ -1506,6 +1513,12 @@ class NativeAgentLoopTests(unittest.TestCase):
                     json.dumps({"prompt": "private image prompt"}),
                 )
                 self.assertIsInstance(output[1], ToolOutputImage)
+                await agent.hooks.on_llm_start(None, agent, None, [])
+                await agent.hooks.on_llm_end(
+                    None,
+                    agent,
+                    SimpleNamespace(usage=Usage(requests=1)),
+                )
 
             return FakeStreamedResult(
                 final_output="private native final output",

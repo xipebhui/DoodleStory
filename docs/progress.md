@@ -710,3 +710,19 @@
   新增双线程交错写入 40 个父事件和 20 个子 Artifact 事件的回归测试，序号完整为 1–60；
   `./scripts/check.sh` 通过 321 项后端测试、空库迁移、前端构建与 Remotion 测试。失败 Run
   的 Writer Artifact 和数据库 SDK Session 均保留，可由用户在原会话输入“重试”继续。
+- 增补模型驱动的 Skill Workflow Compiler：完整 `article-creation-team` Skill 只进入一次
+  Compiler 模型调用，结构化输出 Director / Writer / Reviewer 局部 instructions、执行步骤、
+  分支条件和质量门槛，并按 Skill hash 保存到 Run Checkpoint。Director 和子 Agent 不再注入
+  整份 Skill；Runtime 只校验固定角色与三个文案 Tool 的可执行边界。
+- 修正 Native Agent 模型调用 Metric：不再把父流 `response.created` 数量当作总调用数，改由
+  SDK LLM 生命周期对 Compiler、Director、Writer、Reviewer 的每次请求原子计数，并保存
+  `model.request.started/completed`、角色与 execution attempt。MLflow 根 Trace 同步记录本次
+  总数、完成数和角色拆分；多个恢复 Trace 可通过 `execution_attempt` 区分。
+- 自动化新增编译计划持久化、角色 instructions 隔离、并发模型请求原子计数和跨异步任务
+  start/end 关联测试。`./scripts/check.sh` 通过 324 项后端测试（最终定向回归为 34 项）、
+  空库 Alembic 全量升级、前端生产构建、Remotion typecheck 与 5 项测试。
+- 真实页面 Conversation `b0515a8119f34a4b919e2a7750f1693b` 的 Run
+  `a714a716fecc41a7898fe24277fefa3a` 已生成 Writer 草稿、Reviewer 审稿与最终审批稿并进入
+  `waiting_for_input`。数据库和 MLflow 均为 7 次真实模型调用：Compiler 1、Director 4、
+  Writer 1、Reviewer 1；started/completed 各 7 条，三个文案 Artifact 齐全，四类媒体调用均
+  为 0。MLflow 仅 1 个根 Trace，Writer/Reviewer 各自只注入自己的局部 instructions。

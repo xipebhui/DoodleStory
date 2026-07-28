@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -9,6 +10,7 @@ from pathlib import Path
 import time
 from typing import Callable, Literal
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from agents import (
     Agent,
@@ -21,9 +23,11 @@ from agents import (
     ToolOutputText,
     function_tool,
 )
+from agents.lifecycle import AgentHooksBase
 from agents.model_settings import ModelRetrySettings
 from agents.models.openai_provider import OpenAIProvider
 from agents.tool_context import ToolContext
+from agents.usage import serialize_usage
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
@@ -76,8 +80,10 @@ from app.services.native_article_workflow import (
     ARTICLE_DRAFT,
     ARTICLE_REVIEW,
     has_pending_article_approval,
+    load_compiled_workflow_plan,
     request_final_article_approval,
     save_article_artifact,
+    save_compiled_workflow_plan,
 )
 from app.services.social_content_import import (
     SocialContentImportResult,
@@ -112,6 +118,19 @@ NATIVE_AGENT_BASE_INSTRUCTIONS = """
 严格按照本次 Run 固定的 Skill 工作。Runtime 只负责 Agent Loop 和真实 Tool 执行；故事改写、
 分镜切割、图片 Prompt、图片 Review、视频生成、语音生成、字幕是否修改重画都由你依据 Skill 和用户目标决定。
 
+""".strip()
+ARTICLE_WORKFLOW_COMPILER_INSTRUCTIONS = """
+你是 DoodleStory 的文案工作流编译器。你的唯一工作是把一个完整 Skill 编译成可执行的结构化计划，
+不能执行创作任务，也不能直接写文章。
+
+运行时固定提供 Director、Writer、Reviewer 三个角色，以及 write_article、review_article、
+submit_final_article 三个工具。你需要理解 Skill 中的总体策略、角色职责、协作步骤和质量门槛，
+然后：
+1. 为每个角色生成只包含该角色职责的局部 instructions，不得把其他角色的完整规则复制进去；
+2. 把跨角色共同遵守的约束放入 shared_constraints；
+3. 把 Director 的工具调用顺序、分支条件和完成条件编译到 execution_steps；
+4. 保留 Skill 的真实语义，不得自行增加 Skill 未声明的创作规则、角色或工具；
+5. 输出必须能让 Director 调用 Writer 和 Reviewer，并通过 submit_final_article 进入用户审批。
 """.strip()
 
 
@@ -190,6 +209,123 @@ class ArticleReviewOutput(BaseModel):
     summary: str = Field(min_length=1, max_length=2000)
     strengths: list[str] = Field(max_length=10)
     issues: list[str] = Field(max_length=10)
+
+
+class CompiledArticleRole(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Literal["director", "writer", "reviewer"]
+    mission: str = Field(min_length=1, max_length=1000)
+    instructions: list[str] = Field(min_length=1, max_length=20)
+
+
+class CompiledArticleWorkflowStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: int = Field(ge=1, le=20)
+    tool_name: Literal[
+        "write_article",
+        "review_article",
+        "submit_final_article",
+    ]
+    objective: str = Field(min_length=1, max_length=1000)
+    required_inputs: list[str] = Field(min_length=1, max_length=20)
+    completion_condition: str = Field(min_length=1, max_length=1000)
+    branch_condition: str | None = Field(default=None, max_length=1000)
+
+
+class CompiledArticleWorkflow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_summary: str = Field(min_length=1, max_length=2000)
+    shared_constraints: list[str] = Field(min_length=1, max_length=20)
+    roles: list[CompiledArticleRole] = Field(min_length=3, max_length=3)
+    execution_steps: list[CompiledArticleWorkflowStep] = Field(
+        min_length=3,
+        max_length=20,
+    )
+    quality_gates: list[str] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_executable_topology(self) -> "CompiledArticleWorkflow":
+        role_names = [role.name for role in self.roles]
+        if set(role_names) != {"director", "writer", "reviewer"}:
+            raise ValueError("编译计划必须且只能包含 Director、Writer、Reviewer")
+        if len(role_names) != len(set(role_names)):
+            raise ValueError("编译计划角色不能重复")
+        sequences = [step.sequence for step in self.execution_steps]
+        if sequences != sorted(sequences) or len(sequences) != len(set(sequences)):
+            raise ValueError("编译计划步骤 sequence 必须严格递增且不能重复")
+        tools = {step.tool_name for step in self.execution_steps}
+        required_tools = {
+            "write_article",
+            "review_article",
+            "submit_final_article",
+        }
+        if tools != required_tools:
+            raise ValueError("编译计划必须覆盖 Writer、Reviewer 与最终审批工具")
+        return self
+
+    def role(self, name: Literal["director", "writer", "reviewer"]) -> CompiledArticleRole:
+        return next(role for role in self.roles if role.name == name)
+
+
+class NativeModelMetricHooks(AgentHooksBase):
+    def __init__(self, store: NativeAgentStore, *, phase: str) -> None:
+        self._store = store
+        self._phase = phase
+        self._active_calls: dict[str, deque[str]] = {}
+        self.started_count = 0
+        self.completed_count = 0
+        self.role_counts: dict[str, int] = {}
+
+    @staticmethod
+    def _role_name(agent: Agent) -> str:
+        mapping = {
+            "DoodleStoryArticleWorkflowCompiler": "workflow_compiler",
+            "DoodleStoryArticleDirector": "director",
+            "DoodleStoryArticleWriter": "writer",
+            "DoodleStoryArticleReviewer": "reviewer",
+        }
+        return mapping.get(agent.name, "main_agent")
+
+    async def on_llm_start(
+        self,
+        context,
+        agent: Agent,
+        system_prompt: str | None,
+        input_items: list[object],
+    ) -> None:
+        del context, system_prompt, input_items
+        role = self._role_name(agent)
+        metric_call_id = uuid4().hex
+        self._active_calls.setdefault(role, deque()).append(metric_call_id)
+        self.started_count += 1
+        self.role_counts[role] = self.role_counts.get(role, 0) + 1
+        self._store.record_model_request_started(
+            metric_call_id=metric_call_id,
+            role=role,
+            phase=self._phase,
+        )
+
+    async def on_llm_end(self, context, agent: Agent, response) -> None:
+        del context
+        role = self._role_name(agent)
+        role_calls = self._active_calls.get(role)
+        if not role_calls:
+            raise NativeAgentLoopError("模型调用完成事件缺少开始记录")
+        metric_call_id = role_calls.popleft()
+        if not role_calls:
+            self._active_calls.pop(role, None)
+        response_usage = getattr(response, "usage", None)
+        usage = serialize_usage(response_usage) if response_usage is not None else None
+        self.completed_count += 1
+        self._store.record_model_request_completed(
+            metric_call_id=metric_call_id,
+            role=role,
+            phase=self._phase,
+            usage=usage,
+        )
 
 
 def native_runtime_tool_names(tool_names_json: str) -> list[str]:
@@ -1382,11 +1518,144 @@ def native_agent_instructions(
     return instructions
 
 
+def article_role_instructions(
+    run: NativeAgentRun,
+    workflow: CompiledArticleWorkflow,
+    *,
+    active_role: Literal["director", "writer", "reviewer"],
+) -> str:
+    role = workflow.role(active_role)
+    shared_constraints = "\n".join(
+        f"- {constraint}" for constraint in workflow.shared_constraints
+    )
+    role_instructions = "\n".join(
+        f"{index}. {instruction}"
+        for index, instruction in enumerate(role.instructions, start=1)
+    )
+    instructions = (
+        "你属于 DoodleStory 的内容创作与脚本编写系统。当前 Run 的完整 Skill 已由"
+        " Workflow Compiler 编译并校验；你只执行下面分配给当前角色的局部计划。\n\n"
+        f"<workflow_summary>\n{workflow.workflow_summary}\n</workflow_summary>\n\n"
+        f"<shared_constraints>\n{shared_constraints}\n</shared_constraints>\n\n"
+        f"<role name={json.dumps(active_role)}>\n"
+        f"任务：{role.mission}\n"
+        f"{role_instructions}\n"
+        "</role>"
+    )
+    if active_role == "director":
+        steps = [
+            step.model_dump(mode="json")
+            for step in workflow.execution_steps
+        ]
+        gates = "\n".join(f"- {gate}" for gate in workflow.quality_gates)
+        instructions += (
+            "\n\n<execution_plan>\n"
+            f"{json.dumps(steps, ensure_ascii=False, separators=(',', ':'))}\n"
+            "</execution_plan>\n\n"
+            f"<quality_gates>\n{gates}\n</quality_gates>\n\n"
+            "你负责按 execution_plan 给子 Agent 分配任务并保持用户会话控制权。"
+            "角色协作使用 Agent Tool，不使用 handoff。子 Agent 返回的 Artifact 是后续步骤的"
+            "正式输入；submit_final_article 返回等待审批后立即停止。"
+        )
+    return instructions
+
+
+async def compile_article_workflow(
+    run: NativeAgentRun,
+    *,
+    provider: OpenAIProvider,
+    model: str,
+    store: NativeAgentStore,
+    hooks: NativeModelMetricHooks,
+) -> CompiledArticleWorkflow:
+    persisted = load_compiled_workflow_plan(
+        run.id,
+        skill_content_hash=run.skill_content_hash_snapshot,
+        session_factory=store.session_factory,
+    )
+    if persisted is not None:
+        return CompiledArticleWorkflow.model_validate(persisted)
+    compiler = Agent(
+        name="DoodleStoryArticleWorkflowCompiler",
+        instructions=ARTICLE_WORKFLOW_COMPILER_INSTRUCTIONS,
+        model=model,
+        model_settings=ModelSettings(
+            retry=ModelRetrySettings(max_retries=0),
+            store=False,
+        ),
+        output_type=CompiledArticleWorkflow,
+        hooks=hooks,
+    )
+    compiler_input = json.dumps(
+        {
+            "skill_name": run.skill_name_snapshot,
+            "skill_version": run.skill_version_snapshot,
+            "skill_content_hash": run.skill_content_hash_snapshot,
+            "available_roles": ["director", "writer", "reviewer"],
+            "available_tools": [
+                "write_article",
+                "review_article",
+                "submit_final_article",
+            ],
+            "skill": run.skill_version.instructions,
+        },
+        ensure_ascii=False,
+    )
+    with agent_span(
+        "native_agent.workflow_compiler",
+        agent_run_id=run.id,
+        span_type="CHAT_MODEL",
+        attributes={
+            "model": model,
+            "skill_content_hash": run.skill_content_hash_snapshot,
+        },
+    ) as compiler_span:
+        set_span_inputs(
+            compiler_span,
+            {
+                "instructions": ARTICLE_WORKFLOW_COMPILER_INSTRUCTIONS,
+                "skill": run.skill_version.instructions,
+            },
+        )
+        result = await Runner.run(
+            compiler,
+            compiler_input,
+            run_config=RunConfig(
+                model_provider=provider,
+                tracing_disabled=True,
+                workflow_name="DoodleStory Article Workflow Compiler",
+            ),
+            max_turns=2,
+        )
+        workflow = CompiledArticleWorkflow.model_validate(result.final_output)
+        set_span_outputs(
+            compiler_span,
+            {"compiled_workflow": workflow.model_dump(mode="json")},
+        )
+        set_span_result(
+            compiler_span,
+            {
+                "model_call_count": len(result.raw_responses),
+                "role_count": len(workflow.roles),
+                "step_count": len(workflow.execution_steps),
+            },
+        )
+    save_compiled_workflow_plan(
+        run.id,
+        skill_content_hash=run.skill_content_hash_snapshot,
+        plan=workflow.model_dump(mode="json"),
+        session_factory=store.session_factory,
+    )
+    return workflow
+
+
 def build_article_agent_tools(
     run: NativeAgentRun,
     *,
+    workflow: CompiledArticleWorkflow,
     model: str,
     store: NativeAgentStore,
+    hooks: NativeModelMetricHooks,
 ) -> list[FunctionTool]:
     model_settings = ModelSettings(
         retry=ModelRetrySettings(max_retries=0),
@@ -1394,17 +1663,27 @@ def build_article_agent_tools(
     )
     writer = Agent(
         name="DoodleStoryArticleWriter",
-        instructions=native_agent_instructions(run, active_role="writer"),
+        instructions=article_role_instructions(
+            run,
+            workflow,
+            active_role="writer",
+        ),
         model=model,
         model_settings=model_settings,
         output_type=ArticleDraftOutput,
+        hooks=hooks,
     )
     reviewer = Agent(
         name="DoodleStoryArticleReviewer",
-        instructions=native_agent_instructions(run, active_role="reviewer"),
+        instructions=article_role_instructions(
+            run,
+            workflow,
+            active_role="reviewer",
+        ),
         model=model,
         model_settings=model_settings,
         output_type=ArticleReviewOutput,
+        hooks=hooks,
     )
 
     async def extract_writer_output(result) -> str:
@@ -1545,13 +1824,11 @@ async def execute_native_agent_run(
             "review_article",
             "submit_final_article",
         }
-        instructions = native_agent_instructions(
-            run,
-            active_role=(
-                "director"
-                if article_tool_names.intersection(exposed_tool_names)
-                else None
-            ),
+        is_article_workflow = bool(
+            article_tool_names.intersection(exposed_tool_names)
+        )
+        instructions = (
+            None if is_article_workflow else native_agent_instructions(run)
         )
         trace_context = {
             "conversation_id": run.conversation_id,
@@ -1559,64 +1836,7 @@ async def execute_native_agent_run(
             "style_id": run.style_id,
         }
     resumed = await sdk_session.has_items()
-    store.start_run(resumed=resumed)
-
-    tools: list[FunctionTool] = []
-    if "generate_image" in exposed_tool_names:
-        tools.append(
-            build_generate_image_tool(
-                context,
-                image_generator=image_generator,
-                store=store,
-            )
-        )
-    if "generate_speech" in exposed_tool_names:
-        tools.append(
-            build_generate_speech_tool(
-                run_id,
-                settings=resolved_settings,
-                speech_generator=resolved_speech_generator,
-                store=store,
-            )
-        )
-    if "generate_subtitles" in exposed_tool_names:
-        tools.append(
-            build_generate_subtitles_tool(
-                run_id,
-                settings=resolved_settings,
-                subtitle_generator=subtitle_generator,
-                store=store,
-            )
-        )
-    if "render_story_video" in exposed_tool_names:
-        tools.append(
-            build_render_story_video_tool(
-                run_id,
-                settings=resolved_settings,
-                video_renderer=video_renderer,
-                store=store,
-            )
-        )
-    if "capture_wechat_article" in exposed_tool_names:
-        tools.append(
-            build_capture_wechat_article_tool(
-                run_id,
-                store=store,
-            )
-        )
-    if has_youtube_publish_context:
-        tools.append(build_publish_youtube_video_tool(run_id))
-    if article_tool_names.intersection(exposed_tool_names):
-        article_tools = build_article_agent_tools(
-            run,
-            model=resolved_settings.agent_model.strip(),
-            store=store,
-        )
-        tools.extend(
-            tool
-            for tool in article_tools
-            if tool.name in exposed_tool_names
-        )
+    execution_attempt = store.start_run(resumed=resumed)
     client = AsyncOpenAI(
         api_key=resolved_settings.text_fallback_api_key.strip(),
         base_url=resolved_settings.text_fallback_openai_base_url,
@@ -1626,6 +1846,7 @@ async def execute_native_agent_run(
     provider = OpenAIProvider(openai_client=client, use_responses=True)
     with native_agent_run_span(
         native_agent_run_id=run_id,
+        execution_attempt=execution_attempt,
         conversation_id=trace_context["conversation_id"],
         skill_version_id=trace_context["skill_version_id"],
         style_id=trace_context["style_id"],
@@ -1633,8 +1854,91 @@ async def execute_native_agent_run(
         app_environment=resolved_settings.app_env,
     ) as root_span:
         try:
+            metric_hooks = NativeModelMetricHooks(
+                store,
+                phase=f"execution_attempt_{execution_attempt}",
+            )
+            workflow: CompiledArticleWorkflow | None = None
+            if is_article_workflow:
+                workflow = await compile_article_workflow(
+                    run,
+                    provider=provider,
+                    model=resolved_settings.agent_model.strip(),
+                    store=store,
+                    hooks=metric_hooks,
+                )
+                instructions = article_role_instructions(
+                    run,
+                    workflow,
+                    active_role="director",
+                )
+            if instructions is None:
+                raise NativeAgentLoopError("Native Agent 缺少运行 instructions")
+
+            tools: list[FunctionTool] = []
+            if "generate_image" in exposed_tool_names:
+                tools.append(
+                    build_generate_image_tool(
+                        context,
+                        image_generator=image_generator,
+                        store=store,
+                    )
+                )
+            if "generate_speech" in exposed_tool_names:
+                tools.append(
+                    build_generate_speech_tool(
+                        run_id,
+                        settings=resolved_settings,
+                        speech_generator=resolved_speech_generator,
+                        store=store,
+                    )
+                )
+            if "generate_subtitles" in exposed_tool_names:
+                tools.append(
+                    build_generate_subtitles_tool(
+                        run_id,
+                        settings=resolved_settings,
+                        subtitle_generator=subtitle_generator,
+                        store=store,
+                    )
+                )
+            if "render_story_video" in exposed_tool_names:
+                tools.append(
+                    build_render_story_video_tool(
+                        run_id,
+                        settings=resolved_settings,
+                        video_renderer=video_renderer,
+                        store=store,
+                    )
+                )
+            if "capture_wechat_article" in exposed_tool_names:
+                tools.append(
+                    build_capture_wechat_article_tool(
+                        run_id,
+                        store=store,
+                    )
+                )
+            if has_youtube_publish_context:
+                tools.append(build_publish_youtube_video_tool(run_id))
+            if workflow is not None:
+                article_tools = build_article_agent_tools(
+                    run,
+                    workflow=workflow,
+                    model=resolved_settings.agent_model.strip(),
+                    store=store,
+                    hooks=metric_hooks,
+                )
+                tools.extend(
+                    tool
+                    for tool in article_tools
+                    if tool.name in exposed_tool_names
+                )
             agent = Agent(
-                name="DoodleStoryNativeImageAgent",
+                name=(
+                    "DoodleStoryArticleDirector"
+                    if workflow is not None
+                    else "DoodleStoryNativeContentAgent"
+                ),
                 instructions=instructions,
                 model=resolved_settings.agent_model.strip(),
                 tools=tools,
@@ -1642,7 +1946,9 @@ async def execute_native_agent_run(
                     retry=ModelRetrySettings(max_retries=0),
                     store=False,
                 ),
+                hooks=metric_hooks,
             )
+            model_loop_start_count = metric_hooks.started_count
             with agent_span(
                 "native_agent.model_loop",
                 agent_run_id=run_id,
@@ -1803,7 +2109,10 @@ async def execute_native_agent_run(
                 set_span_result(
                     model_span,
                     {
-                        "model_call_count": len(result.raw_responses),
+                        "model_call_count": (
+                            metric_hooks.started_count - model_loop_start_count
+                        ),
+                        "model_call_count_by_role": metric_hooks.role_counts,
                     },
                 )
                 final_output = str(result.final_output or "").strip()
@@ -1818,7 +2127,10 @@ async def execute_native_agent_run(
                     model_span,
                     {
                         "final_output": final_output,
-                        "model_call_count": len(result.raw_responses),
+                        "model_call_count": (
+                            metric_hooks.started_count - model_loop_start_count
+                        ),
+                        "model_call_count_by_role": metric_hooks.role_counts,
                     },
                 )
             if has_pending_article_approval(
@@ -1838,6 +2150,15 @@ async def execute_native_agent_run(
                 image_call_count = run.image_call_count
                 speech_call_count = run.speech_call_count
                 video_call_count = run.video_call_count
+            set_span_result(
+                root_span,
+                {
+                    "execution_attempt": execution_attempt,
+                    "attempt_model_call_count": metric_hooks.started_count,
+                    "attempt_model_call_completed_count": metric_hooks.completed_count,
+                    "attempt_model_call_count_by_role": metric_hooks.role_counts,
+                },
+            )
             set_native_agent_run_trace_status(
                 root_span,
                 native_agent_run_id=run_id,
@@ -1850,6 +2171,16 @@ async def execute_native_agent_run(
             )
         except Exception as exc:
             store.fail_run(exc)
+            if "metric_hooks" in locals():
+                set_span_result(
+                    root_span,
+                    {
+                        "execution_attempt": execution_attempt,
+                        "attempt_model_call_count": metric_hooks.started_count,
+                        "attempt_model_call_completed_count": metric_hooks.completed_count,
+                        "attempt_model_call_count_by_role": metric_hooks.role_counts,
+                    },
+                )
             with SessionLocal() as db:
                 run = db.get(NativeAgentRun, run_id)
                 model_call_count = run.model_call_count if run is not None else 0

@@ -344,6 +344,7 @@ def agent_run_span(
 def native_agent_run_span(
     *,
     native_agent_run_id: str,
+    execution_attempt: int,
     conversation_id: str,
     skill_version_id: str,
     style_id: str | None,
@@ -352,6 +353,7 @@ def native_agent_run_span(
 ) -> Iterator[Any | None]:
     attributes = {
         "native_agent_run_id": native_agent_run_id,
+        "execution_attempt": execution_attempt,
         "conversation_id": conversation_id,
         "skill_version_id": skill_version_id,
         "style_id": style_id,

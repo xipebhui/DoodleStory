@@ -22,6 +22,7 @@ from app.services.native_agent_persistence import add_native_agent_event
 ARTICLE_DRAFT = "article_draft"
 ARTICLE_REVIEW = "article_review"
 FINAL_ARTICLE = "final_article"
+COMPILED_WORKFLOW_PLAN_SCHEMA_VERSION = 1
 
 
 class NativeArticleWorkflowError(RuntimeError):
@@ -66,6 +67,84 @@ def _artifact_payload(artifact: NativeAgentArtifact) -> dict[str, object]:
         "content": json.loads(artifact.content_json),
         "content_hash": artifact.content_hash,
     }
+
+
+def load_compiled_workflow_plan(
+    run_id: str,
+    *,
+    skill_content_hash: str,
+    session_factory: sessionmaker = SessionLocal,
+) -> dict[str, object] | None:
+    with session_factory() as db:
+        run = db.get(NativeAgentRun, run_id)
+        if run is None:
+            raise NativeArticleWorkflowError("Native Agent Run 不存在")
+        checkpoint = _checkpoint(run)
+        compiled = checkpoint.get("compiled_workflow")
+        if compiled is None:
+            return None
+        if not isinstance(compiled, dict):
+            raise NativeArticleWorkflowError("文案工作流编译计划数据损坏")
+        if (
+            compiled.get("schema_version")
+            != COMPILED_WORKFLOW_PLAN_SCHEMA_VERSION
+        ):
+            raise NativeArticleWorkflowError("文案工作流编译计划版本不受支持")
+        if compiled.get("skill_content_hash") != skill_content_hash:
+            raise NativeArticleWorkflowError("文案工作流编译计划与 Skill 版本不一致")
+        plan = compiled.get("plan")
+        if not isinstance(plan, dict):
+            raise NativeArticleWorkflowError("文案工作流编译计划缺少 plan")
+        return plan
+
+
+def save_compiled_workflow_plan(
+    run_id: str,
+    *,
+    skill_content_hash: str,
+    plan: dict[str, object],
+    session_factory: sessionmaker = SessionLocal,
+) -> None:
+    plan_json = _json_dumps(plan)
+    plan_hash = _content_hash(plan_json)
+    with session_factory() as db:
+        run = db.get(NativeAgentRun, run_id)
+        if run is None:
+            raise NativeArticleWorkflowError("Native Agent Run 不存在")
+        checkpoint = _checkpoint(run)
+        existing = checkpoint.get("compiled_workflow")
+        if existing is not None:
+            if not isinstance(existing, dict):
+                raise NativeArticleWorkflowError("文案工作流编译计划数据损坏")
+            if (
+                existing.get("skill_content_hash") == skill_content_hash
+                and existing.get("plan_hash") == plan_hash
+            ):
+                return
+            raise NativeArticleWorkflowError("同一 Run 已存在不同的文案工作流编译计划")
+        checkpoint["schema_version"] = 1
+        checkpoint["compiled_workflow"] = {
+            "schema_version": COMPILED_WORKFLOW_PLAN_SCHEMA_VERSION,
+            "skill_content_hash": skill_content_hash,
+            "plan_hash": plan_hash,
+            "plan": json.loads(plan_json),
+        }
+        if not run.workflow_phase:
+            checkpoint["phase"] = "workflow_compiled"
+            checkpoint["workflow_revision"] = run.workflow_revision
+            run.workflow_phase = "workflow_compiled"
+        run.workflow_checkpoint_json = _json_dumps(checkpoint)
+        add_native_agent_event(
+            db,
+            run_id=run_id,
+            event_type="workflow.compiled",
+            payload={
+                "schema_version": COMPILED_WORKFLOW_PLAN_SCHEMA_VERSION,
+                "skill_content_hash": skill_content_hash,
+                "plan_hash": plan_hash,
+            },
+        )
+        db.commit()
 
 
 def save_article_artifact(

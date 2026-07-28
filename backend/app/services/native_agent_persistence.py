@@ -445,7 +445,7 @@ class NativeAgentStore:
         db.refresh(retry_step)
         return retry_step
 
-    def start_run(self, *, resumed: bool) -> None:
+    def start_run(self, *, resumed: bool) -> int:
         with self._session_factory() as db:
             run = db.get(NativeAgentRun, self.run_id)
             if run is None:
@@ -458,11 +458,88 @@ class NativeAgentStore:
             run.error_message = None
             run.finished_at = None
             event_type = "run.resumed" if resumed else "run.started"
+            execution_attempt = int(
+                db.scalar(
+                    select(func.count(NativeAgentEvent.id)).where(
+                        NativeAgentEvent.run_id == self.run_id,
+                        NativeAgentEvent.event_type.in_(
+                            ("run.started", "run.resumed")
+                        ),
+                    )
+                )
+                or 0
+            ) + 1
             _add_event(
                 db,
                 self.run_id,
                 event_type,
-                {"status": "running"},
+                {
+                    "status": "running",
+                    "execution_attempt": execution_attempt,
+                },
+            )
+            db.commit()
+            return execution_attempt
+
+    def record_model_request_started(
+        self,
+        *,
+        metric_call_id: str,
+        role: str,
+        phase: str,
+    ) -> int:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
+            model_call_count = db.scalar(
+                update(NativeAgentRun)
+                .where(NativeAgentRun.id == self.run_id)
+                .values(
+                    model_call_count=NativeAgentRun.model_call_count + 1
+                )
+                .returning(NativeAgentRun.model_call_count)
+            )
+            if model_call_count is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _add_event(
+                db,
+                self.run_id,
+                "model.request.started",
+                {
+                    "metric_call_id": metric_call_id,
+                    "role": role,
+                    "phase": phase,
+                    "model_call_count": int(model_call_count),
+                },
+            )
+            db.commit()
+            return int(model_call_count)
+
+    def record_model_request_completed(
+        self,
+        *,
+        metric_call_id: str,
+        role: str,
+        phase: str,
+        usage: dict[str, object] | None,
+    ) -> None:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
+            _add_event(
+                db,
+                self.run_id,
+                "model.request.completed",
+                {
+                    "metric_call_id": metric_call_id,
+                    "role": role,
+                    "phase": phase,
+                    "usage": usage,
+                },
             )
             db.commit()
 
@@ -501,7 +578,16 @@ class NativeAgentStore:
                 started_at=datetime.utcnow(),
             )
             db.add(step)
-            run.model_call_count += 1
+            response_sequence = int(
+                db.scalar(
+                    select(func.count(NativeAgentStep.id)).where(
+                        NativeAgentStep.run_id == self.run_id,
+                        NativeAgentStep.step_type
+                        == NativeAgentStepType.model_call,
+                    )
+                )
+                or 0
+            ) + 1
             _add_event(
                 db,
                 self.run_id,
@@ -509,7 +595,7 @@ class NativeAgentStore:
                 {
                     "step_sequence": step.sequence,
                     "response_id": response_id,
-                    "model_call_count": run.model_call_count,
+                    "model_call_count": response_sequence,
                 },
             )
             db.commit()
