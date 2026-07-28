@@ -142,6 +142,7 @@ class FileAssetPurpose(StrEnum):
     generated_image = "generated_image"
     audio_reference = "audio_reference"
     generated_audio = "generated_audio"
+    generated_subtitle = "generated_subtitle"
     generated_video = "generated_video"
     download_archive = "download_archive"
     douyin_media = "douyin_media"

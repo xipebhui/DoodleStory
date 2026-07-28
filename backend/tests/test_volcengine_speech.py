@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.services.volcengine_speech import (
     VolcengineSpeechClient,
     VolcengineSpeechError,
+    speech_rate_for_speed,
 )
 
 
@@ -72,6 +73,17 @@ def speech_settings() -> Settings:
 
 
 class VolcengineSpeechClientTests(unittest.TestCase):
+    def test_supported_speed_maps_to_provider_speech_rate(self) -> None:
+        self.assertEqual(
+            [-50, -25, 0, 25, 50, 100],
+            [
+                speech_rate_for_speed(speed)
+                for speed in (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+            ],
+        )
+        with self.assertRaisesRegex(VolcengineSpeechError, "只支持"):
+            speech_rate_for_speed(1.1)
+
     def test_generate_speech_uses_fixed_request_and_decodes_stream(self) -> None:
         first = b"first-audio-"
         second = b"second-audio"
@@ -125,6 +137,27 @@ class VolcengineSpeechClientTests(unittest.TestCase):
                 "loudness_rate": 0,
             },
             body["req_params"]["audio_params"],
+        )
+
+    def test_generate_speech_sends_selected_speed(self) -> None:
+        response = FakeResponse(
+            [
+                {
+                    "code": 0,
+                    "data": base64.b64encode(b"audio").decode("ascii"),
+                },
+                {"code": 20000000, "duration": 1000},
+            ]
+        )
+        session = FakeSession(response)
+        VolcengineSpeechClient(
+            settings=speech_settings(),
+            session=session,
+        ).generate_speech(text="测试", speed=1.5)
+        assert session.request is not None
+        self.assertEqual(
+            50,
+            session.request["json"]["req_params"]["audio_params"]["speech_rate"],
         )
 
     def test_generate_speech_requires_success_terminal_frame(self) -> None:

@@ -1333,6 +1333,7 @@ const agentToolDisplayNames: Record<string, string> = {
   generate_image: "生成图片",
   inspect_image: "检查图片",
   generate_speech: "生成语音",
+  generate_subtitles: "生成字幕",
   render_story_video: "生成故事视频",
 };
 
@@ -2746,7 +2747,7 @@ function NativeAgentSidebar({
           <Sparkles size={16} />
           <span>
             <strong>Skill 驱动真实 Tools</strong>
-            <small>generate_image · generate_speech · render_story_video</small>
+            <small>generate_image · generate_speech · generate_subtitles · render_story_video</small>
           </span>
         </div>
         <div className="agent-account-credit">
@@ -3163,6 +3164,7 @@ function NativeAgentView({
                   </span>
                   <span>{run.image_call_count} 次生图</span>
                   <span>{run.speech_call_count} 次语音生成</span>
+                  <span>{run.subtitle_call_count} 次字幕生成</span>
                   <span>{run.video_call_count} 次视频生成</span>
                 </div>
                 <div className="native-agent-responses" aria-label="Agent Response 与工具调用">

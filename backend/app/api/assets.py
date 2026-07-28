@@ -13,6 +13,7 @@ from app.models.entities import (
     GeneratedImage,
     NativeAgentImage,
     NativeAgentRun,
+    NativeAgentSubtitle,
     NativeAgentVideo,
     StyleReferenceImage,
     TaskCharacter,
@@ -92,9 +93,20 @@ def can_read_asset(asset: FileAsset, user: User, db: Session) -> bool:
         )
         if native_video is not None:
             return True
+    if asset.purpose == FileAssetPurpose.generated_subtitle:
+        native_subtitle = db.scalar(
+            select(NativeAgentSubtitle)
+            .join(NativeAgentRun, NativeAgentRun.id == NativeAgentSubtitle.run_id)
+            .where(
+                NativeAgentSubtitle.asset_id == asset.id,
+                NativeAgentRun.conversation.has(owner_user_id=user.id),
+            )
+        )
+        return native_subtitle is not None
     if asset.purpose in {
         FileAssetPurpose.audio_reference,
         FileAssetPurpose.generated_audio,
+        FileAssetPurpose.generated_subtitle,
         FileAssetPurpose.generated_video,
     }:
         return False

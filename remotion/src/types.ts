@@ -15,11 +15,18 @@ export const MOTION_PRESETS = [
 
 export type MotionPreset = (typeof MOTION_PRESETS)[number];
 
+export type CaptionCue = {
+  startMs: number;
+  endMs: number;
+  text: string;
+};
+
 export type NarratedScene = {
   id: string;
   image: string;
   audio: string;
-  subtitle: string;
+  subtitle: string | null;
+  captions: CaptionCue[];
   durationMs: number;
   motion: MotionPreset;
 };

@@ -18,6 +18,7 @@ const defaultProps: NarratedPanelsProps = {
       image: "preview.png",
       audio: "preview.mp3",
       subtitle: "DoodleStory 固定旁白视频模板",
+      captions: [],
       durationMs: 3000,
       motion: "zoom_in",
     },

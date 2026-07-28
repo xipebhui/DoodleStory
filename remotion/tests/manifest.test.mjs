@@ -42,7 +42,7 @@ test("rejects empty subtitle and invalid duration", () => {
         ...validManifest,
         scenes: [{...validManifest.scenes[0], subtitle: " "}],
       }),
-    /字幕不能为空/,
+    /必须且只能提供/,
   );
   assert.throws(
     () =>
@@ -51,6 +51,33 @@ test("rejects empty subtitle and invalid duration", () => {
         scenes: [{...validManifest.scenes[0], durationMs: 0}],
       }),
     /音频时长无效/,
+  );
+});
+
+test("accepts timed captions and rejects an invalid timeline", () => {
+  const captionManifest = {
+    ...validManifest,
+    scenes: [
+      {
+        ...validManifest.scenes[0],
+        subtitle: null,
+        captions: [
+          {startMs: 0, endMs: 500, text: "第一句"},
+          {startMs: 600, endMs: 1100, text: "第二句"},
+        ],
+      },
+    ],
+  };
+  assert.doesNotThrow(() => validateManifest(captionManifest));
+  assert.throws(
+    () => validateManifest({
+      ...captionManifest,
+      scenes: [{
+        ...captionManifest.scenes[0],
+        captions: [{startMs: 0, endMs: 1300, text: "越界"}],
+      }],
+    }),
+    /时间轴无效/,
   );
 });
 

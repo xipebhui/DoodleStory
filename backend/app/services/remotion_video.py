@@ -28,15 +28,23 @@ class RemotionVideoError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class RemotionCaption:
+    start_ms: int
+    end_ms: int
+    text: str
+
+
+@dataclass(frozen=True)
 class RemotionScene:
     scene_id: str
     image_path: Path
     audio_path: Path
-    subtitle: str
+    subtitle: str | None
     duration_ms: int
     motion_preset: str
     image_width: int
     image_height: int
+    captions: tuple[RemotionCaption, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -66,8 +74,10 @@ def _validate_scene(scene: RemotionScene, index: int) -> None:
         raise RemotionVideoError(f"第 {index} 个 Scene 图片文件不存在")
     if not scene.audio_path.is_file():
         raise RemotionVideoError(f"第 {index} 个 Scene 音频文件不存在")
-    if not scene.subtitle.strip():
-        raise RemotionVideoError(f"第 {index} 个 Scene 字幕不能为空")
+    if (scene.subtitle is None) == (not scene.captions):
+        raise RemotionVideoError(
+            f"第 {index} 个 Scene 必须且只能提供整段字幕或时间轴字幕"
+        )
     if scene.duration_ms <= 0:
         raise RemotionVideoError(f"第 {index} 个 Scene 音频时长无效")
     if scene.motion_preset not in REMOTION_MOTION_PRESETS:
@@ -132,7 +142,15 @@ def render_remotion_video(
                 "id": scene.scene_id,
                 "imagePath": str(scene.image_path.resolve()),
                 "audioPath": str(scene.audio_path.resolve()),
-                "subtitle": scene.subtitle.strip(),
+                "subtitle": scene.subtitle.strip() if scene.subtitle else None,
+                "captions": [
+                    {
+                        "startMs": caption.start_ms,
+                        "endMs": caption.end_ms,
+                        "text": caption.text,
+                    }
+                    for caption in scene.captions
+                ],
                 "durationMs": scene.duration_ms,
                 "motion": scene.motion_preset,
             }

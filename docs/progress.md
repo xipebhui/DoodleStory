@@ -537,6 +537,16 @@
 - Sprint 117 真实验收与 QA 闭合：隔离数据库注册真实账号并创建 `Sprint 117 清透水彩` 风格；系统 `想法转漫画 v1` 完成《雨伞的回声》2-Panel 方案确认和 2 张真实图片，UI clone 并发布的个人 `个人两格反转漫画 v1` 完成《最后一盆绿》2-Panel 方案和 2 张真实图片，四张均成功、积分 30→26。UI 新建的无 Tool `故事因果检查 v1` 使用真实文本 Provider 输出因果检查，未创建第三个任务且余额保持 26；Style-only 消息由 catalog 自动选择系统 Skill 并停在方案确认。另验证个人 Skill 发布 v2、查看历史、重新激活 v1，文字 Skill 归档后历史 Message 仍保留准确 v1 安全快照。最终 `./scripts/check.sh` 通过 252 项后端测试，QA 报告为 `docs/qa/sprint-117-pluggable-skill-management-agent-loop-report.md`；Sprint 117 标记 Complete（Closed），Evaluation 保持 Deferred。
 - 完成 Sprint 118 Skill 管理入口修正：传统工作台主侧栏新增直接进入 `/agent/skills` 的 `Skill 管理`，Skill 管理的 Agent Studio 侧栏新增 `返回传统工作台`；主侧栏导航统一通过现有稳定 URL 路由，不复制 Skill 编辑器或合并 Shell。真实浏览器完成 `/tasks → /agent/skills → /tasks` 往返并验证后退/前进恢复；Agent 路由 4 项测试、前端生产构建和完整 `./scripts/check.sh` 均通过，后者包含 252 项后端测试、compileall 和空库 migration。Evaluation 未实施。
 
+- 完成 Sprint 127 语音倍速、Whisper 字幕与 Remotion 时间轴：`generate_speech` 新增
+  0.5/0.75/1.0/1.25/1.5/2.0 六档倍速并持久化 speed/speech_rate 快照；
+  `generate_subtitles` 使用本地 faster-whisper 生成 WebVTT、全文、语言和 segment cue，
+  保存独立字幕资产、调用计数、事件与 owner 权限；视频 Scene 可通过 `subtitle_id` 消费
+  匹配音频字幕并按 cue 时间显示，仍保留显式整段字幕模式且二者必须二选一。Skill 设置页已可
+  独立选择生成语音、生成字幕和渲染故事视频。真实 4440ms 火山音频生成字幕资产
+  `3c9f32e33d1b4e0a9ca9123e06d406e5`，并渲染 1086×1448、30fps 的时间轴字幕视频
+  `1f657c883bcf4345a21e53692d0faced`；owner/其他用户权限结果为 true/false。
+  `./scripts/check.sh` 通过 282 项后端测试、空库迁移、前端构建及 5 项 Remotion 测试。
+
 ## 已知缺口
 
 - 当前 Agent 漫画创建已支持结构化 Style/Character/Task/Panel/Image Version 上下文、同任务只读续作、Panel 版本写操作、真实 VL 和 pause/resume。

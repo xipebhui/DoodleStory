@@ -291,6 +291,7 @@ class NativeAgentLoopTests(unittest.TestCase):
 
         def fake_speech_generator(**kwargs):
             self.assertEqual("你好，这是语音测试。", kwargs["text"])
+            self.assertEqual(1.0, kwargs["speed"])
             return GeneratedSpeech(
                 content=b"fake-mp3",
                 content_type="audio/mpeg",
@@ -301,9 +302,10 @@ class NativeAgentLoopTests(unittest.TestCase):
             )
 
         class FakeStore:
-            def prepare_speech_tool(inner_self, *, tool_call_id, text):
+            def prepare_speech_tool(inner_self, *, tool_call_id, text, speed):
                 self.assertEqual("speech-call-1", tool_call_id)
                 self.assertEqual("你好，这是语音测试。", text)
+                self.assertEqual(1.0, speed)
                 lifecycle.append("prepared")
                 return SimpleNamespace(id="speech-step-1")
 
@@ -330,6 +332,8 @@ class NativeAgentLoopTests(unittest.TestCase):
                     response_format="mp3",
                     sample_rate=24000,
                     duration_ms=1500,
+                    speed=kwargs["speed"],
+                    speech_rate=kwargs["speech_rate"],
                     provider_request_id="speech-request",
                 )
 

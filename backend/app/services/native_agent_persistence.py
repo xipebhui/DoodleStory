@@ -20,6 +20,7 @@ from app.models.entities import (
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentStep,
+    NativeAgentSubtitle,
     NativeAgentVideo,
 )
 from app.models.enums import (
@@ -33,6 +34,7 @@ from app.services.image_generation import GeneratedImageFile
 from app.services.remotion_video import GeneratedRemotionVideo
 from app.services.storage import save_binary_file
 from app.services.volcengine_speech import GeneratedSpeech
+from app.services.whisper_subtitles import GeneratedSubtitles
 
 
 def _json_default(value: object) -> object:
@@ -105,7 +107,24 @@ class CompletedNativeSpeech:
     response_format: str
     sample_rate: int
     duration_ms: int | None
+    speed: float
+    speech_rate: int
     provider_request_id: str | None
+
+
+@dataclass(frozen=True)
+class CompletedNativeSubtitle:
+    step_id: str
+    subtitle_id: str
+    audio_id: str
+    asset_id: str
+    content_type: str
+    byte_size: int
+    text: str
+    language: str
+    model: str
+    duration_ms: int
+    cues: tuple[dict[str, object], ...]
 
 
 @dataclass(frozen=True)
@@ -492,6 +511,7 @@ class NativeAgentStore:
         *,
         tool_call_id: str,
         text: str,
+        speed: float,
     ) -> CompletedNativeSpeech | NativeAgentStep:
         idempotency_key = f"native:{self.run_id}:generate_speech:{tool_call_id}"
         with self._session_factory() as db:
@@ -514,7 +534,7 @@ class NativeAgentStore:
                 name="generate_speech",
                 tool_call_id=tool_call_id,
                 idempotency_key=idempotency_key,
-                input_summary_json=_json_dumps({"text": text}),
+                input_summary_json=_json_dumps({"text": text, "speed": speed}),
                 attempts=0,
             )
             db.add(step)
@@ -528,6 +548,7 @@ class NativeAgentStore:
                         {
                             "tool": "generate_speech",
                             "text": text,
+                            "speed": speed,
                             "tool_call_id": tool_call_id,
                             "step_id": step.id,
                         }
@@ -542,7 +563,70 @@ class NativeAgentStore:
                     "step_sequence": step.sequence,
                     "tool": "generate_speech",
                     "tool_call_id": tool_call_id,
-                    "arguments": {"text": text},
+                    "arguments": {"text": text, "speed": speed},
+                },
+            )
+            db.commit()
+            db.refresh(step)
+            return step
+
+    def prepare_subtitle_tool(
+        self,
+        *,
+        tool_call_id: str,
+        audio_id: str,
+    ) -> CompletedNativeSubtitle | NativeAgentStep:
+        idempotency_key = f"native:{self.run_id}:generate_subtitles:{tool_call_id}"
+        with self._session_factory() as db:
+            existing = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None:
+                if existing.status == NativeAgentStepStatus.succeeded:
+                    return self._completed_subtitle(db, existing)
+                raise RuntimeError(
+                    "同一 generate_subtitles 调用已存在未确认执行，拒绝重复调用"
+                )
+            arguments = {"audio_id": audio_id}
+            step = NativeAgentStep(
+                run_id=self.run_id,
+                sequence=_next_sequence(db, NativeAgentStep, self.run_id),
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.prepared,
+                name="generate_subtitles",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                input_summary_json=_json_dumps(arguments),
+                attempts=0,
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_call,
+                    payload_json=_json_dumps(
+                        {
+                            "tool": "generate_subtitles",
+                            "tool_call_id": tool_call_id,
+                            "step_id": step.id,
+                            **arguments,
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.prepared",
+                {
+                    "step_sequence": step.sequence,
+                    "tool": "generate_subtitles",
+                    "tool_call_id": tool_call_id,
+                    "arguments": arguments,
                 },
             )
             db.commit()
@@ -736,6 +820,8 @@ class NativeAgentStore:
         resource_id: str,
         model: str,
         speaker: str,
+        speed: float,
+        speech_rate: int,
     ) -> CompletedNativeSpeech:
         suffix = (
             ".ogg"
@@ -776,6 +862,8 @@ class NativeAgentStore:
                 speaker_snapshot=speaker,
                 response_format_snapshot=generated.response_format,
                 sample_rate_snapshot=generated.sample_rate,
+                speed_snapshot=speed,
+                speech_rate_snapshot=speech_rate,
                 duration_ms=generated.duration_ms,
                 provider_request_id=generated.provider_request_id,
             )
@@ -802,6 +890,8 @@ class NativeAgentStore:
                 "byte_size": stored.byte_size,
                 "sample_rate": generated.sample_rate,
                 "duration_ms": generated.duration_ms,
+                "speed": speed,
+                "speech_rate": speech_rate,
                 "provider_request_id": generated.provider_request_id,
             }
             db.add(
@@ -823,6 +913,97 @@ class NativeAgentStore:
             )
             db.commit()
             return self._completed_speech(db, step)
+
+    def complete_subtitle_tool(
+        self,
+        step_id: str,
+        *,
+        audio_id: str,
+        generated: GeneratedSubtitles,
+    ) -> CompletedNativeSubtitle:
+        stored = save_binary_file(
+            FileAssetPurpose.generated_subtitle.value,
+            generated.content,
+            ".vtt",
+        )
+        with self._session_factory() as db:
+            step = db.get(NativeAgentStep, step_id)
+            run = db.get(NativeAgentRun, self.run_id)
+            audio = db.get(NativeAgentAudio, audio_id)
+            if step is None or run is None or audio is None:
+                raise RuntimeError("Native Agent Tool Step、Run 或 Audio 不存在")
+            if step.status != NativeAgentStepStatus.running:
+                raise RuntimeError("Native Agent Tool Step 不是 running 状态")
+            if audio.run_id != self.run_id:
+                raise RuntimeError("字幕音频不属于当前 Run")
+            asset = FileAsset(
+                purpose=FileAssetPurpose.generated_subtitle,
+                storage_backend=stored.storage_backend,
+                storage_key=stored.storage_key,
+                public_url=stored.public_url,
+                original_filename=f"{self.run_id}-{step.id}.vtt",
+                content_type="text/vtt; charset=utf-8",
+                byte_size=stored.byte_size,
+                checksum_sha256=stored.checksum_sha256,
+            )
+            db.add(asset)
+            db.flush()
+            cues = tuple(
+                {
+                    "start_ms": cue.start_ms,
+                    "end_ms": cue.end_ms,
+                    "text": cue.text,
+                }
+                for cue in generated.cues
+            )
+            subtitle = NativeAgentSubtitle(
+                run_id=self.run_id,
+                audio_id=audio_id,
+                asset_id=asset.id,
+                provider_snapshot="faster-whisper",
+                model_snapshot=generated.model,
+                language=generated.language,
+                text=generated.text,
+                cues_json=_json_dumps(cues),
+                duration_ms=generated.duration_ms,
+            )
+            db.add(subtitle)
+            db.flush()
+            step.status = NativeAgentStepStatus.succeeded
+            step.finished_at = datetime.utcnow()
+            step.output_ref_json = _json_dumps(
+                {"subtitle_id": subtitle.id, "asset_id": asset.id}
+            )
+            run.subtitle_call_count += 1
+            payload = {
+                "tool": "generate_subtitles",
+                "status": "succeeded",
+                "tool_call_id": step.tool_call_id,
+                "step_id": step.id,
+                "subtitle_id": subtitle.id,
+                "audio_id": audio_id,
+                "asset_id": asset.id,
+                "cue_count": len(cues),
+                "duration_ms": generated.duration_ms,
+                "language": generated.language,
+                "model": generated.model,
+            }
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_result,
+                    payload_json=_json_dumps(payload),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.completed",
+                {"step_sequence": step.sequence, **payload},
+            )
+            db.commit()
+            return self._completed_subtitle(db, step)
 
     def complete_video_tool(
         self,
@@ -1114,7 +1295,37 @@ class NativeAgentStore:
             response_format=audio.response_format_snapshot,
             sample_rate=audio.sample_rate_snapshot,
             duration_ms=audio.duration_ms,
+            speed=audio.speed_snapshot,
+            speech_rate=audio.speech_rate_snapshot,
             provider_request_id=audio.provider_request_id,
+        )
+
+    @staticmethod
+    def _completed_subtitle(
+        db: Session,
+        step: NativeAgentStep,
+    ) -> CompletedNativeSubtitle:
+        output = json.loads(step.output_ref_json or "{}")
+        subtitle_id = str(output.get("subtitle_id") or "")
+        subtitle = db.scalar(
+            select(NativeAgentSubtitle)
+            .where(NativeAgentSubtitle.id == subtitle_id)
+            .options(selectinload(NativeAgentSubtitle.asset))
+        )
+        if subtitle is None:
+            raise RuntimeError("成功 Tool Step 引用的字幕不存在")
+        return CompletedNativeSubtitle(
+            step_id=step.id,
+            subtitle_id=subtitle.id,
+            audio_id=subtitle.audio_id,
+            asset_id=subtitle.asset_id,
+            content_type=subtitle.asset.content_type,
+            byte_size=subtitle.asset.byte_size,
+            text=subtitle.text,
+            language=subtitle.language,
+            model=subtitle.model_snapshot,
+            duration_ms=subtitle.duration_ms,
+            cues=tuple(json.loads(subtitle.cues_json)),
         )
 
     @staticmethod

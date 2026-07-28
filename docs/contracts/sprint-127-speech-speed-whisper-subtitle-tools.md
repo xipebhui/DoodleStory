@@ -2,7 +2,7 @@
 
 ## Status
 
-Active。用户于 2026-07-28 要求确认火山引擎语速和字幕能力，并把可控语速、字幕文件生成、
+Complete。用户于 2026-07-28 要求确认火山引擎语速和字幕能力，并把可控语速、字幕文件生成、
 字幕时长及视频字幕消费集成到 Native Agent；这些方法必须可在 Skill 设置中选择。
 
 ## Goal
@@ -59,3 +59,17 @@ Active。用户于 2026-07-28 要求确认火山引擎语速和字幕能力，�
 字幕属于音频派生资产，因为时间轴由实际音频和倍速决定；视频模板只消费字幕，不负责识别。
 后续若要利用火山原生字幕，需要先对当前 Seed-TTS 2.0 HTTP 接口完成独立协议验证，再作为新的
 字幕 Provider 显式加入，不能静默替换 Whisper。
+
+## Verification result
+
+- `./scripts/check.sh` 通过：282 项后端测试、Python compileall、空 SQLite 全量 Alembic、
+  前端生产构建、Remotion TypeScript 与 5 项 manifest 测试。
+- 火山 Seed-TTS 2.0 真实调用 `speed=1.25` 成功，Provider request ID
+  `20260728123752C1927B57997560E1ACC4`，返回 24kHz MP3、2928ms。
+- 对历史真实火山音频 `9e338f06142f49e185c6f993e2ae3ad7`（4440ms）运行本地
+  Whisper tiny，生成 1 条 cue 和合法 WebVTT；字幕资产
+  `3c9f32e33d1b4e0a9ca9123e06d406e5` 已持久化，owner 可读、其他用户不可读。
+- 使用 `subtitle_id=b743f464b1954896bcf519567a3667ce` 完成真实 Remotion 时间轴字幕
+  渲染，输出视频 `1f657c883bcf4345a21e53692d0faced`，1086×1448、30fps、4440ms。
+- 当前开发配置使用 Whisper `tiny`，中文准确率仅作为链路 smoke；生产识别精度应通过
+  `LOCAL_WHISPER_MODEL` 显式选择更高质量模型，不在代码内静默切换。

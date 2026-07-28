@@ -458,6 +458,21 @@ export type NativeAgentAudio = {
   response_format: string;
   sample_rate: number;
   duration_ms: number | null;
+  speed: number;
+  speech_rate: number;
+  created_at: string;
+};
+
+export type NativeAgentSubtitle = {
+  id: string;
+  audio_id: string;
+  asset_id: string;
+  provider: string;
+  model: string;
+  language: string;
+  text: string;
+  cues: Array<Record<string, unknown>>;
+  duration_ms: number;
   created_at: string;
 };
 
@@ -511,6 +526,7 @@ export type NativeAgentRun = {
   model_call_count: number;
   image_call_count: number;
   speech_call_count: number;
+  subtitle_call_count: number;
   video_call_count: number;
   final_output: string | null;
   error_code: string | null;
@@ -518,6 +534,7 @@ export type NativeAgentRun = {
   items: NativeAgentItem[];
   images: NativeAgentImage[];
   audios: NativeAgentAudio[];
+  subtitles: NativeAgentSubtitle[];
   videos: NativeAgentVideo[];
   steps: NativeAgentStep[];
   events: NativeAgentEvent[];

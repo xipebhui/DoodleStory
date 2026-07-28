@@ -23,6 +23,7 @@ from app.models.entities import (
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentStep,
+    NativeAgentSubtitle,
     NativeAgentVideo,
     Style,
     StyleReferenceImage,
@@ -49,6 +50,7 @@ from app.schemas.native_agent import (
     NativeAgentRunCreate,
     NativeAgentRunRead,
     NativeAgentStepRead,
+    NativeAgentSubtitleRead,
     NativeAgentVideoRead,
 )
 from app.services.native_agent_worker import enqueue_native_agent_run
@@ -112,7 +114,24 @@ def _audio_to_read(audio: NativeAgentAudio) -> NativeAgentAudioRead:
         response_format=audio.response_format_snapshot,
         sample_rate=audio.sample_rate_snapshot,
         duration_ms=audio.duration_ms,
+        speed=audio.speed_snapshot,
+        speech_rate=audio.speech_rate_snapshot,
         created_at=audio.created_at,
+    )
+
+
+def _subtitle_to_read(subtitle: NativeAgentSubtitle) -> NativeAgentSubtitleRead:
+    return NativeAgentSubtitleRead(
+        id=subtitle.id,
+        audio_id=subtitle.audio_id,
+        asset_id=subtitle.asset_id,
+        provider=subtitle.provider_snapshot,
+        model=subtitle.model_snapshot,
+        language=subtitle.language,
+        text=subtitle.text,
+        cues=json.loads(subtitle.cues_json),
+        duration_ms=subtitle.duration_ms,
+        created_at=subtitle.created_at,
     )
 
 
@@ -173,6 +192,7 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
         model_call_count=run.model_call_count,
         image_call_count=run.image_call_count,
         speech_call_count=run.speech_call_count,
+        subtitle_call_count=run.subtitle_call_count,
         video_call_count=run.video_call_count,
         final_output=run.final_output,
         error_code=run.error_code,
@@ -192,6 +212,13 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
             _audio_to_read(audio)
             for audio in sorted(
                 run.audios,
+                key=lambda value: value.created_at,
+            )
+        ],
+        subtitles=[
+            _subtitle_to_read(subtitle)
+            for subtitle in sorted(
+                run.subtitles,
                 key=lambda value: value.created_at,
             )
         ],
@@ -225,6 +252,7 @@ def _load_run_for_read(db: Session, run_id: str) -> NativeAgentRun:
             selectinload(NativeAgentRun.items),
             selectinload(NativeAgentRun.images).selectinload(NativeAgentImage.asset),
             selectinload(NativeAgentRun.audios).selectinload(NativeAgentAudio.asset),
+            selectinload(NativeAgentRun.subtitles).selectinload(NativeAgentSubtitle.asset),
             selectinload(NativeAgentRun.videos).selectinload(NativeAgentVideo.asset),
             selectinload(NativeAgentRun.steps),
             selectinload(NativeAgentRun.events),
@@ -268,6 +296,7 @@ def get_native_agent_capabilities(
             tools=[
                 "generate_image",
                 "generate_speech",
+                "generate_subtitles",
                 "render_story_video",
             ],
             image_review="native_model_vision",

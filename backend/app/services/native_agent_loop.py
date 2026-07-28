@@ -23,7 +23,7 @@ from agents.model_settings import ModelRetrySettings
 from agents.models.openai_provider import OpenAIProvider
 from agents.tool_context import ToolContext
 from openai import AsyncOpenAI
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -37,6 +37,7 @@ from app.models.entities import (
     NativeAgentImage,
     NativeAgentItem,
     NativeAgentRun,
+    NativeAgentSubtitle,
 )
 from app.models.enums import (
     AgentRunStatus,
@@ -61,6 +62,7 @@ from app.services.image_generation import (
 )
 from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
+    CompletedNativeSubtitle,
     CompletedNativeTool,
     CompletedNativeVideo,
     NativeAgentDatabaseSession,
@@ -68,14 +70,18 @@ from app.services.native_agent_persistence import (
 )
 from app.services.remotion_video import (
     GeneratedRemotionVideo,
+    RemotionCaption,
     RemotionScene,
     render_remotion_video,
 )
 from app.services.storage import materialize_asset_to_local
 from app.services.volcengine_speech import (
     GeneratedSpeech,
+    SpeechSpeed,
     VolcengineSpeechClient,
+    speech_rate_for_speed,
 )
+from app.services.whisper_subtitles import GeneratedSubtitles, generate_whisper_subtitles
 
 
 MAX_NATIVE_AGENT_TURNS = 12
@@ -103,9 +109,10 @@ class NativeImageToolContext:
 
 ImageGenerator = Callable[..., GeneratedImageFile]
 SpeechGenerator = Callable[..., GeneratedSpeech]
+SubtitleGenerator = Callable[..., GeneratedSubtitles]
 VideoRenderer = Callable[..., GeneratedRemotionVideo]
 NATIVE_RUNTIME_TOOL_NAMES = frozenset(
-    {"generate_image", "generate_speech", "render_story_video"}
+    {"generate_image", "generate_speech", "generate_subtitles", "render_story_video"}
 )
 
 
@@ -114,7 +121,8 @@ class NativeVideoSceneInput(BaseModel):
 
     image_id: str = Field(min_length=1, max_length=32)
     audio_id: str = Field(min_length=1, max_length=32)
-    subtitle: str = Field(min_length=1, max_length=500)
+    subtitle: str | None = Field(default=None, min_length=1, max_length=500)
+    subtitle_id: str | None = Field(default=None, min_length=1, max_length=32)
     motion_preset: Literal[
         "static",
         "zoom_in",
@@ -124,6 +132,12 @@ class NativeVideoSceneInput(BaseModel):
         "pan_up",
         "pan_down",
     ]
+
+    @model_validator(mode="after")
+    def validate_subtitle_source(self) -> "NativeVideoSceneInput":
+        if (self.subtitle is None) == (self.subtitle_id is None):
+            raise ValueError("subtitle 和 subtitle_id 必须且只能提供一个")
+        return self
 
 
 def native_runtime_tool_names(tool_names_json: str) -> list[str]:
@@ -144,7 +158,8 @@ def _tool_description() -> str:
 def _speech_tool_description(settings: Settings) -> str:
     return (
         "把给定文本合成为一段真实语音，并保存为当前 Run 的可播放音频。"
-        "每次调用只处理 text 原文，不会改写、拆分或拼接文本。"
+        "每次调用只处理 text 原文，不会改写、拆分或拼接文本；speed 只允许 "
+        "0.5、0.75、1.0、1.25、1.5、2.0。"
         f"语音模型固定为 {settings.doubao_voice_gen_model.strip()}，"
         f"音色固定为 {settings.doubao_voice_gen_speaker.strip()}。"
         "工具返回音频资产元数据；不要声称已经听取或审核音频内容。"
@@ -154,9 +169,13 @@ def _speech_tool_description(settings: Settings) -> str:
 def generate_volcengine_speech(
     *,
     text: str,
+    speed: SpeechSpeed = 1.0,
     settings: Settings | None = None,
 ) -> GeneratedSpeech:
-    return VolcengineSpeechClient(settings=settings).generate_speech(text=text)
+    return VolcengineSpeechClient(settings=settings).generate_speech(
+        text=text,
+        speed=speed,
+    )
 
 
 def _video_tool_description() -> str:
@@ -164,7 +183,8 @@ def _video_tool_description() -> str:
         "使用固定 narrated-panel-v1 Remotion 模板，把图片和当前 Run 已生成的旁白音频"
         "按 scenes 顺序渲染为跟随首张图片比例、30fps 的 MP4。image_id 可以是当前 Run "
         "所在会话的 Native 图片 ID，也可以是当前用户已有任务中成功且 current 的图片 ID；每个 "
-        "scene 还必须提供当前 Run 的 audio_id、完整非空字幕和一个 motion_preset；可选 "
+        "scene 还必须提供当前 Run 的 audio_id、subtitle 或对应音频的 subtitle_id（二选一）"
+        "和一个 motion_preset；可选 "
         "bgm_asset_id。"
         "允许的 motion_preset 只有 static、zoom_in、zoom_out、pan_left、pan_right、"
         "pan_up、pan_down。Scene 时长严格使用对应语音的真实 duration_ms；不要编造 ID、"
@@ -370,6 +390,7 @@ def build_generate_speech_tool(
     async def generate_speech(
         tool_context: ToolContext[None],
         text: str,
+        speed: SpeechSpeed = 1.0,
     ) -> list[ToolOutputText]:
         cleaned_text = text.strip()
         if not cleaned_text:
@@ -377,6 +398,7 @@ def build_generate_speech_tool(
         prepared = store.prepare_speech_tool(
             tool_call_id=tool_context.tool_call_id,
             text=cleaned_text,
+            speed=speed,
         )
         if isinstance(prepared, CompletedNativeSpeech):
             store.append_event(
@@ -401,7 +423,7 @@ def build_generate_speech_tool(
                 "speaker": settings.doubao_voice_gen_speaker.strip(),
             },
         ) as tool_span:
-            set_span_inputs(tool_span, {"text": cleaned_text})
+            set_span_inputs(tool_span, {"text": cleaned_text, "speed": speed})
             started = time.perf_counter()
             try:
                 with agent_span(
@@ -415,11 +437,12 @@ def build_generate_speech_tool(
                         "speaker": settings.doubao_voice_gen_speaker.strip(),
                     },
                 ) as provider_span:
-                    set_span_inputs(provider_span, {"text": cleaned_text})
+                    set_span_inputs(provider_span, {"text": cleaned_text, "speed": speed})
                     try:
                         generated = await asyncio.to_thread(
                             speech_generator,
                             text=cleaned_text,
+                            speed=speed,
                         )
                     except Exception:
                         set_span_status(
@@ -456,6 +479,8 @@ def build_generate_speech_tool(
                     resource_id=settings.doubao_voice_gen_resource_id.strip(),
                     model=settings.doubao_voice_gen_model.strip(),
                     speaker=settings.doubao_voice_gen_speaker.strip(),
+                    speed=speed,
+                    speech_rate=speech_rate_for_speed(speed),
                 )
             except Exception as exc:
                 latency_ms = round((time.perf_counter() - started) * 1000)
@@ -478,6 +503,8 @@ def build_generate_speech_tool(
                     "latency_ms": latency_ms,
                     "byte_size": completed.byte_size,
                     "duration_ms": completed.duration_ms,
+                    "speed": completed.speed,
+                    "speech_rate": completed.speech_rate,
                     "provider_request_id": completed.provider_request_id,
                 },
             )
@@ -512,6 +539,92 @@ def _speech_tool_outputs(completed: CompletedNativeSpeech) -> list[ToolOutputTex
                     "response_format": completed.response_format,
                     "sample_rate": completed.sample_rate,
                     "duration_ms": completed.duration_ms,
+                    "speed": completed.speed,
+                    "speech_rate": completed.speech_rate,
+                },
+                ensure_ascii=False,
+            )
+        )
+    ]
+
+
+def build_generate_subtitles_tool(
+    run_id: str,
+    *,
+    settings: Settings,
+    subtitle_generator: SubtitleGenerator,
+    store: NativeAgentStore,
+) -> FunctionTool:
+    async def generate_subtitles(
+        tool_context: ToolContext[None],
+        audio_id: str,
+    ) -> list[ToolOutputText]:
+        prepared = store.prepare_subtitle_tool(
+            tool_call_id=tool_context.tool_call_id,
+            audio_id=audio_id,
+        )
+        if isinstance(prepared, CompletedNativeSubtitle):
+            return _subtitle_tool_outputs(prepared)
+        store.start_tool(prepared.id)
+        try:
+            with SessionLocal() as db:
+                audio = db.scalar(
+                    select(NativeAgentAudio)
+                    .where(
+                        NativeAgentAudio.id == audio_id,
+                        NativeAgentAudio.run_id == run_id,
+                    )
+                    .options(selectinload(NativeAgentAudio.asset))
+                )
+                if audio is None:
+                    raise NativeAgentLoopError("audio_id 不属于当前 Run")
+                if audio.duration_ms is None or audio.duration_ms <= 0:
+                    raise NativeAgentLoopError("音频缺少真实 duration_ms")
+                audio_path = materialize_asset_to_local(audio.asset)
+                duration_ms = audio.duration_ms
+            generated = await asyncio.to_thread(
+                subtitle_generator,
+                audio_path=audio_path,
+                duration_ms=duration_ms,
+                settings=settings,
+            )
+            completed = store.complete_subtitle_tool(
+                prepared.id,
+                audio_id=audio_id,
+                generated=generated,
+            )
+        except Exception as exc:
+            store.fail_tool(prepared.id, exc)
+            raise
+        return _subtitle_tool_outputs(completed)
+
+    return function_tool(
+        generate_subtitles,
+        name_override="generate_subtitles",
+        description_override=(
+            "使用本地 OpenAI Whisper 为当前 Run 的真实 audio_id 生成带时间轴的 WebVTT "
+            "字幕资产，返回 subtitle_id、字幕 asset_id、语言、模型、时长和 cue 数量。"
+        ),
+    )
+
+
+def _subtitle_tool_outputs(
+    completed: CompletedNativeSubtitle,
+) -> list[ToolOutputText]:
+    return [
+        ToolOutputText(
+            text=json.dumps(
+                {
+                    "status": "succeeded",
+                    "subtitle_id": completed.subtitle_id,
+                    "audio_id": completed.audio_id,
+                    "asset_id": completed.asset_id,
+                    "content_type": completed.content_type,
+                    "byte_size": completed.byte_size,
+                    "cue_count": len(completed.cues),
+                    "duration_ms": completed.duration_ms,
+                    "language": completed.language,
+                    "model": completed.model,
                 },
                 ensure_ascii=False,
             )
@@ -578,6 +691,18 @@ def _resolve_video_inputs(
                 .options(selectinload(NativeAgentAudio.asset))
             ).all()
         }
+        subtitle_ids = [
+            scene.subtitle_id for scene in scenes if scene.subtitle_id is not None
+        ]
+        subtitles = {
+            subtitle.id: subtitle
+            for subtitle in db.scalars(
+                select(NativeAgentSubtitle).where(
+                    NativeAgentSubtitle.run_id == run_id,
+                    NativeAgentSubtitle.id.in_(subtitle_ids),
+                )
+            ).all()
+        }
         resolved: list[RemotionScene] = []
         snapshots: list[dict[str, object]] = []
         for index, scene in enumerate(scenes, start=1):
@@ -608,17 +733,37 @@ def _resolve_video_inputs(
                 raise NativeAgentLoopError(
                     f"第 {index} 个 Scene 的图片缺少真实宽高"
                 )
-            subtitle = scene.subtitle.strip()
-            if not subtitle:
+            subtitle = scene.subtitle.strip() if scene.subtitle else None
+            subtitle_record = (
+                subtitles.get(scene.subtitle_id) if scene.subtitle_id else None
+            )
+            if scene.subtitle_id and subtitle_record is None:
                 raise NativeAgentLoopError(
-                    f"第 {index} 个 Scene 字幕不能为空"
+                    f"第 {index} 个 Scene 的 subtitle_id 不属于当前 Run"
                 )
+            if subtitle_record is not None and subtitle_record.audio_id != audio.id:
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 的字幕不属于对应 audio_id"
+                )
+            cues = tuple(
+                RemotionCaption(
+                    start_ms=int(cue["start_ms"]),
+                    end_ms=int(cue["end_ms"]),
+                    text=str(cue["text"]),
+                )
+                for cue in (
+                    json.loads(subtitle_record.cues_json)
+                    if subtitle_record is not None
+                    else []
+                )
+            )
             resolved.append(
                 RemotionScene(
                     scene_id=f"{index:03d}",
                     image_path=materialize_asset_to_local(image_asset),
                     audio_path=materialize_asset_to_local(audio.asset),
                     subtitle=subtitle,
+                    captions=cues,
                     duration_ms=audio.duration_ms,
                     motion_preset=scene.motion_preset,
                     image_width=image_asset.width,
@@ -641,6 +786,14 @@ def _resolve_video_inputs(
                     "audio_id": audio.id,
                     "audio_asset_id": audio.asset_id,
                     "subtitle": subtitle,
+                    "subtitle_id": (
+                        subtitle_record.id if subtitle_record is not None else None
+                    ),
+                    "subtitle_asset_id": (
+                        subtitle_record.asset_id
+                        if subtitle_record is not None
+                        else None
+                    ),
                     "duration_ms": audio.duration_ms,
                     "motion_preset": scene.motion_preset,
                 }
@@ -934,12 +1087,14 @@ async def execute_native_agent_run(
     settings: Settings | None = None,
     image_generator: ImageGenerator = generate_xg_image,
     speech_generator: SpeechGenerator | None = None,
+    subtitle_generator: SubtitleGenerator = generate_whisper_subtitles,
     video_renderer: VideoRenderer = render_remotion_video,
 ) -> None:
     resolved_settings = settings or get_settings()
     resolved_speech_generator = speech_generator or (
-        lambda *, text: generate_volcengine_speech(
+        lambda *, text, speed=1.0: generate_volcengine_speech(
             text=text,
+            speed=speed,
             settings=resolved_settings,
         )
     )
@@ -1001,6 +1156,15 @@ async def execute_native_agent_run(
                 run_id,
                 settings=resolved_settings,
                 speech_generator=resolved_speech_generator,
+                store=store,
+            )
+        )
+    if "generate_subtitles" in exposed_tool_names:
+        tools.append(
+            build_generate_subtitles_tool(
+                run_id,
+                settings=resolved_settings,
+                subtitle_generator=subtitle_generator,
                 store=store,
             )
         )

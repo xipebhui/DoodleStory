@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 import uuid
 
 import requests
@@ -18,6 +18,26 @@ from app.core.config import Settings, get_settings
 
 class VolcengineSpeechError(RuntimeError):
     pass
+
+
+SpeechSpeed = Literal[0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+SPEECH_RATE_BY_SPEED: dict[float, int] = {
+    0.5: -50,
+    0.75: -25,
+    1.0: 0,
+    1.25: 25,
+    1.5: 50,
+    2.0: 100,
+}
+
+
+def speech_rate_for_speed(speed: float) -> int:
+    try:
+        return SPEECH_RATE_BY_SPEED[speed]
+    except KeyError as exc:
+        raise VolcengineSpeechError(
+            "语音倍速只支持 0.5、0.75、1.0、1.25、1.5、2.0"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -139,7 +159,12 @@ class VolcengineSpeechClient:
         self.settings = settings or get_settings()
         self.session = session or requests.Session()
 
-    def generate_speech(self, *, text: str) -> GeneratedSpeech:
+    def generate_speech(
+        self,
+        *,
+        text: str,
+        speed: SpeechSpeed = 1.0,
+    ) -> GeneratedSpeech:
         cleaned_text = text.strip()
         if not cleaned_text:
             raise VolcengineSpeechError("语音合成文本不能为空")
@@ -150,6 +175,7 @@ class VolcengineSpeechClient:
             raise VolcengineSpeechError("DOUBAO_VOICE_GEN_APPID 未配置")
         if not access_token:
             raise VolcengineSpeechError("DOUBAO_VOICE_GEN_AK 未配置")
+        speech_rate = speech_rate_for_speed(speed)
         request_id = str(uuid.uuid4())
         try:
             response = self.session.post(
@@ -170,7 +196,7 @@ class VolcengineSpeechClient:
                         "audio_params": {
                             "format": settings.doubao_voice_gen_format.strip(),
                             "sample_rate": settings.doubao_voice_gen_sample_rate,
-                            "speech_rate": settings.doubao_voice_gen_speech_rate,
+                            "speech_rate": speech_rate,
                             "loudness_rate": settings.doubao_voice_gen_loudness_rate,
                         },
                     },

@@ -912,6 +912,7 @@ class NativeAgentRun(Base, TimestampMixin):
     model_call_count: Mapped[int] = mapped_column(Integer, default=0)
     image_call_count: Mapped[int] = mapped_column(Integer, default=0)
     speech_call_count: Mapped[int] = mapped_column(Integer, default=0)
+    subtitle_call_count: Mapped[int] = mapped_column(Integer, default=0)
     video_call_count: Mapped[int] = mapped_column(Integer, default=0)
     final_output: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -931,6 +932,10 @@ class NativeAgentRun(Base, TimestampMixin):
         cascade="all, delete-orphan",
     )
     audios: Mapped[list["NativeAgentAudio"]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    subtitles: Mapped[list["NativeAgentSubtitle"]] = relationship(
         back_populates="run",
         cascade="all, delete-orphan",
     )
@@ -1044,6 +1049,8 @@ class NativeAgentAudio(Base, TimestampMixin):
     speaker_snapshot: Mapped[str] = mapped_column(String(255))
     response_format_snapshot: Mapped[str] = mapped_column(String(20))
     sample_rate_snapshot: Mapped[int] = mapped_column(Integer)
+    speed_snapshot: Mapped[float] = mapped_column(Float)
+    speech_rate_snapshot: Mapped[int] = mapped_column(Integer)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     provider_request_id: Mapped[Optional[str]] = mapped_column(
         String(255),
@@ -1051,6 +1058,45 @@ class NativeAgentAudio(Base, TimestampMixin):
     )
 
     run: Mapped[NativeAgentRun] = relationship(back_populates="audios")
+    asset: Mapped[FileAsset] = relationship()
+    subtitle: Mapped[Optional["NativeAgentSubtitle"]] = relationship(
+        back_populates="audio",
+        uselist=False,
+    )
+
+
+class NativeAgentSubtitle(Base, TimestampMixin):
+    __tablename__ = "native_agent_subtitles"
+    __table_args__ = (
+        Index(
+            "ix_native_agent_subtitles_run_created",
+            "run_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    audio_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_audios.id", ondelete="CASCADE"),
+        unique=True,
+    )
+    asset_id: Mapped[str] = mapped_column(
+        ForeignKey("file_assets.id", ondelete="RESTRICT"),
+        unique=True,
+    )
+    provider_snapshot: Mapped[str] = mapped_column(String(80))
+    model_snapshot: Mapped[str] = mapped_column(String(160))
+    language: Mapped[str] = mapped_column(String(20))
+    text: Mapped[str] = mapped_column(Text)
+    cues_json: Mapped[str] = mapped_column(Text)
+    duration_ms: Mapped[int] = mapped_column(Integer)
+
+    run: Mapped[NativeAgentRun] = relationship(back_populates="subtitles")
+    audio: Mapped[NativeAgentAudio] = relationship(back_populates="subtitle")
     asset: Mapped[FileAsset] = relationship()
 
 

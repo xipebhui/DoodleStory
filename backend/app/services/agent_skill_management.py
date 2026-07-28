@@ -30,7 +30,11 @@ TOOL_PRESENTATION = {
     ),
     "generate_speech": (
         "生成语音",
-        "把文本合成为固定火山引擎音色的 MP3 音频，并保存到当前 Agent Run。",
+        "把文本按六档可控倍速合成为固定火山引擎音色的音频，并保存到当前 Agent Run。",
+    ),
+    "generate_subtitles": (
+        "生成字幕",
+        "使用本地 OpenAI Whisper 为当前 Run 音频生成带时间轴的 WebVTT 字幕资产。",
     ),
     "render_story_video": (
         "渲染故事视频",
@@ -40,6 +44,11 @@ TOOL_PRESENTATION = {
 NATIVE_ONLY_TOOL_CATALOG = (
     {
         "name": "generate_speech",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+    {
+        "name": "generate_subtitles",
         "has_side_effects": True,
         "may_wait": True,
     },

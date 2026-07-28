@@ -38,8 +38,26 @@ export const validateManifest = (manifest) => {
     if (!scene?.id || !scene.imagePath || !scene.audioPath) {
       throw new Error(`第 ${index + 1} 个 Scene 缺少资产路径`);
     }
-    if (!String(scene.subtitle ?? "").trim()) {
-      throw new Error(`第 ${index + 1} 个 Scene 字幕不能为空`);
+    const hasSubtitle = Boolean(String(scene.subtitle ?? "").trim());
+    const hasCaptions = Array.isArray(scene.captions) && scene.captions.length > 0;
+    if (hasSubtitle === hasCaptions) {
+      throw new Error(`第 ${index + 1} 个 Scene 必须且只能提供整段字幕或时间轴字幕`);
+    }
+    if (hasCaptions) {
+      let previousEnd = 0;
+      for (const cue of scene.captions) {
+        if (
+          !String(cue?.text ?? "").trim()
+          || !Number.isFinite(cue.startMs)
+          || !Number.isFinite(cue.endMs)
+          || cue.startMs < previousEnd
+          || cue.endMs <= cue.startMs
+          || cue.endMs > scene.durationMs
+        ) {
+          throw new Error(`第 ${index + 1} 个 Scene 字幕时间轴无效`);
+        }
+        previousEnd = cue.endMs;
+      }
     }
     if (!Number.isFinite(scene.durationMs) || scene.durationMs <= 0) {
       throw new Error(`第 ${index + 1} 个 Scene 音频时长无效`);
@@ -72,7 +90,8 @@ export const stageManifest = async (manifest, publicDir) => {
         publicDir,
         `scene-${index + 1}-audio`,
       ),
-      subtitle: String(scene.subtitle).trim(),
+      subtitle: scene.subtitle ? String(scene.subtitle).trim() : null,
+      captions: Array.isArray(scene.captions) ? scene.captions : [],
       durationMs: Number(scene.durationMs),
       motion: scene.motion,
     });

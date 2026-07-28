@@ -70,6 +70,21 @@ class NativeAgentAudioRead(BaseModel):
     response_format: str
     sample_rate: int
     duration_ms: int | None
+    speed: float
+    speech_rate: int
+    created_at: datetime
+
+
+class NativeAgentSubtitleRead(BaseModel):
+    id: str
+    audio_id: str
+    asset_id: str
+    provider: str
+    model: str
+    language: str
+    text: str
+    cues: list[dict[str, object]]
+    duration_ms: int
     created_at: datetime
 
 
@@ -123,6 +138,7 @@ class NativeAgentRunRead(BaseModel):
     model_call_count: int
     image_call_count: int
     speech_call_count: int
+    subtitle_call_count: int
     video_call_count: int
     final_output: str | None
     error_code: str | None
@@ -130,6 +146,7 @@ class NativeAgentRunRead(BaseModel):
     items: list[NativeAgentItemRead] = Field(default_factory=list)
     images: list[NativeAgentImageRead] = Field(default_factory=list)
     audios: list[NativeAgentAudioRead] = Field(default_factory=list)
+    subtitles: list[NativeAgentSubtitleRead] = Field(default_factory=list)
     videos: list[NativeAgentVideoRead] = Field(default_factory=list)
     steps: list[NativeAgentStepRead] = Field(default_factory=list)
     events: list[NativeAgentEventRead] = Field(default_factory=list)
@@ -159,6 +176,7 @@ class NativeAgentCapabilityRead(BaseModel):
         Literal[
             "generate_image",
             "generate_speech",
+            "generate_subtitles",
             "render_story_video",
         ]
     ]

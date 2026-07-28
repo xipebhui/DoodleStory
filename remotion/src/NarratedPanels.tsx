@@ -11,6 +11,7 @@ import {
 
 import {
   compositionDurationInFrames,
+  FPS,
   type MotionPreset,
   type NarratedPanelsProps,
   type NarratedScene,
@@ -63,6 +64,11 @@ const Scene: React.FC<{scene: NarratedScene}> = ({scene}) => {
       {extrapolateLeft: "clamp", extrapolateRight: "clamp"},
     ),
   );
+  const currentMs = (frame / FPS) * 1000;
+  const caption = scene.captions.find(
+    (cue) => currentMs >= cue.startMs && currentMs < cue.endMs,
+  );
+  const visibleSubtitle = caption?.text ?? scene.subtitle;
 
   return (
     <AbsoluteFill style={{backgroundColor: "#080808", overflow: "hidden"}}>
@@ -79,7 +85,7 @@ const Scene: React.FC<{scene: NarratedScene}> = ({scene}) => {
         />
       </AbsoluteFill>
       <Html5Audio src={staticFile(scene.audio)} volume={1} />
-      <AbsoluteFill
+      {visibleSubtitle ? <AbsoluteFill
         style={{
           justifyContent: "flex-end",
           alignItems: "center",
@@ -104,9 +110,9 @@ const Scene: React.FC<{scene: NarratedScene}> = ({scene}) => {
               "0 3px 5px rgba(0,0,0,.95), 0 0 12px rgba(0,0,0,.9), 2px 2px 0 rgba(0,0,0,.8)",
           }}
         >
-          {scene.subtitle}
+          {visibleSubtitle}
         </div>
-      </AbsoluteFill>
+      </AbsoluteFill> : null}
     </AbsoluteFill>
   );
 };

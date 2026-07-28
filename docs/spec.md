@@ -296,6 +296,13 @@
   中成功且 current 的图片，不能读取其他用户资产。火山语音在 Provider 未返回 duration 时
   必须使用本地 `ffprobe` 读取真实 MP3/WAV/OGG 时长，探测失败则语音 Tool 明确失败，不能把
   空时长或估算时长交给视频 Tool。
+- Sprint 127 把 Native 多媒体链路拆为三个可组合 Tool：
+  `generate_speech(text, speed)` 只接受 0.5、0.75、1.0、1.25、1.5、2.0 六档倍速，并映射到
+  Seed-TTS 2.0 的 `speech_rate=-50/-25/0/25/50/100`；`generate_subtitles(audio_id)`
+  使用本地 faster-whisper 生成带 segment 起止时间的 WebVTT 资产；`render_story_video`
+  允许每个 Scene 在整段 `subtitle` 与匹配音频的 `subtitle_id` 之间二选一，引用字幕资产时
+  Remotion 只在 cue 时间窗口显示对应文本。字幕属于音频派生层并保存 provider、模型、语言、
+  全文、cue JSON、时长和 owner 权限；Skill 发布版本可独立勾选这三个方法。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。
