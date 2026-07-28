@@ -37,6 +37,18 @@ from app.services.volcengine_speech import GeneratedSpeech
 from app.services.whisper_subtitles import GeneratedSubtitles
 
 
+class NativeAgentRunCancelled(RuntimeError):
+    pass
+
+
+def _require_run_writable(run: NativeAgentRun) -> None:
+    if run.status in {
+        AgentRunStatus.cancel_requested,
+        AgentRunStatus.cancelled,
+    }:
+        raise NativeAgentRunCancelled("Native Agent Run 已请求取消")
+
+
 def _json_default(value: object) -> object:
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
@@ -259,6 +271,7 @@ class NativeAgentStore:
             run = db.get(NativeAgentRun, self.run_id)
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             run.status = AgentRunStatus.running
             if run.started_at is None:
                 run.started_at = datetime.utcnow()
@@ -276,6 +289,10 @@ class NativeAgentStore:
 
     def start_model_step(self, response_id: str) -> NativeAgentStep:
         with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             previous = db.scalar(
                 select(NativeAgentStep)
                 .where(
@@ -305,9 +322,6 @@ class NativeAgentStore:
                 started_at=datetime.utcnow(),
             )
             db.add(step)
-            run = db.get(NativeAgentRun, self.run_id)
-            if run is None:
-                raise RuntimeError("Native Agent Run 不存在")
             run.model_call_count += 1
             _add_event(
                 db,
@@ -330,6 +344,10 @@ class NativeAgentStore:
         usage: dict[str, object] | None,
     ) -> None:
         with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             step = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.run_id == self.run_id,
@@ -358,6 +376,12 @@ class NativeAgentStore:
 
     def fail_active_model_step(self, exc: Exception) -> None:
         with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is not None and run.status in {
+                AgentRunStatus.cancel_requested,
+                AgentRunStatus.cancelled,
+            }:
+                return
             step = db.scalar(
                 select(NativeAgentStep)
                 .where(
@@ -452,6 +476,10 @@ class NativeAgentStore:
             f"native:{self.run_id}:generate_image:{tool_call_id}"
         )
         with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -515,6 +543,10 @@ class NativeAgentStore:
     ) -> CompletedNativeSpeech | NativeAgentStep:
         idempotency_key = f"native:{self.run_id}:generate_speech:{tool_call_id}"
         with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -578,6 +610,10 @@ class NativeAgentStore:
     ) -> CompletedNativeSubtitle | NativeAgentStep:
         idempotency_key = f"native:{self.run_id}:generate_subtitles:{tool_call_id}"
         with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -648,6 +684,10 @@ class NativeAgentStore:
             "bgm_asset_id": bgm_asset_id,
         }
         with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             existing = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.idempotency_key == idempotency_key
@@ -705,8 +745,10 @@ class NativeAgentStore:
     def start_tool(self, step_id: str) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
-            if step is None:
-                raise RuntimeError("Native Agent Tool Step 不存在")
+            run = db.get(NativeAgentRun, self.run_id)
+            if step is None or run is None:
+                raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            _require_run_writable(run)
             if step.status != NativeAgentStepStatus.prepared:
                 raise RuntimeError("Native Agent Tool Step 不是 prepared 状态")
             step.status = NativeAgentStepStatus.running
@@ -739,6 +781,7 @@ class NativeAgentStore:
             run = db.get(NativeAgentRun, self.run_id)
             if step is None or run is None:
                 raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            _require_run_writable(run)
             if step.status != NativeAgentStepStatus.running:
                 raise RuntimeError("Native Agent Tool Step 不是 running 状态")
             asset = FileAsset(
@@ -823,6 +866,11 @@ class NativeAgentStore:
         speed: float,
         speech_rate: int,
     ) -> CompletedNativeSpeech:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
         suffix = (
             ".ogg"
             if generated.response_format == "ogg_opus"
@@ -838,6 +886,7 @@ class NativeAgentStore:
             run = db.get(NativeAgentRun, self.run_id)
             if step is None or run is None:
                 raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            _require_run_writable(run)
             if step.status != NativeAgentStepStatus.running:
                 raise RuntimeError("Native Agent Tool Step 不是 running 状态")
             asset = FileAsset(
@@ -921,6 +970,11 @@ class NativeAgentStore:
         audio_id: str,
         generated: GeneratedSubtitles,
     ) -> CompletedNativeSubtitle:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
         stored = save_binary_file(
             FileAssetPurpose.generated_subtitle.value,
             generated.content,
@@ -932,6 +986,7 @@ class NativeAgentStore:
             audio = db.get(NativeAgentAudio, audio_id)
             if step is None or run is None or audio is None:
                 raise RuntimeError("Native Agent Tool Step、Run 或 Audio 不存在")
+            _require_run_writable(run)
             if step.status != NativeAgentStepStatus.running:
                 raise RuntimeError("Native Agent Tool Step 不是 running 状态")
             if audio.run_id != self.run_id:
@@ -1013,6 +1068,11 @@ class NativeAgentStore:
         bgm_asset_id: str | None,
         generated: GeneratedRemotionVideo,
     ) -> CompletedNativeVideo:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
         stored = save_binary_file(
             FileAssetPurpose.generated_video.value,
             generated.content,
@@ -1023,6 +1083,7 @@ class NativeAgentStore:
             run = db.get(NativeAgentRun, self.run_id)
             if step is None or run is None:
                 raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            _require_run_writable(run)
             if step.status != NativeAgentStepStatus.running:
                 raise RuntimeError("Native Agent Tool Step 不是 running 状态")
             asset = FileAsset(
@@ -1101,8 +1162,23 @@ class NativeAgentStore:
     def fail_tool(self, step_id: str, exc: Exception) -> None:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
+            run = db.get(NativeAgentRun, self.run_id)
             if step is None:
                 raise RuntimeError("Native Agent Tool Step 不存在")
+            if run is not None and run.status in {
+                AgentRunStatus.cancel_requested,
+                AgentRunStatus.cancelled,
+            }:
+                if step.status in {
+                    NativeAgentStepStatus.prepared,
+                    NativeAgentStepStatus.running,
+                }:
+                    step.status = NativeAgentStepStatus.cancelled
+                    step.finished_at = datetime.utcnow()
+                    step.error_code = "NativeAgentRunCancelled"
+                    step.error_message = "用户已终止本轮任务"
+                    db.commit()
+                return
             step.status = NativeAgentStepStatus.failed
             step.finished_at = datetime.utcnow()
             step.error_code = type(exc).__name__
@@ -1143,6 +1219,7 @@ class NativeAgentStore:
             run = db.get(NativeAgentRun, self.run_id)
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
             step = NativeAgentStep(
                 run_id=self.run_id,
                 sequence=_next_sequence(db, NativeAgentStep, self.run_id),
@@ -1186,6 +1263,11 @@ class NativeAgentStore:
             run = db.get(NativeAgentRun, self.run_id)
             if run is None:
                 return
+            if run.status in {
+                AgentRunStatus.cancel_requested,
+                AgentRunStatus.cancelled,
+            }:
+                return
             error_code = type(exc).__name__
             error_message = str(exc)[:500]
             run.status = AgentRunStatus.failed
@@ -1214,6 +1296,59 @@ class NativeAgentStore:
                     "error_code": error_code,
                     "error_message": error_message,
                 },
+            )
+            db.commit()
+
+    def cancel_run(self) -> None:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            if run.status == AgentRunStatus.cancelled:
+                return
+            if run.status in {
+                AgentRunStatus.succeeded,
+                AgentRunStatus.failed,
+            }:
+                raise RuntimeError("已结束的 Native Agent Run 不能取消")
+            now = datetime.utcnow()
+            active_steps = db.scalars(
+                select(NativeAgentStep)
+                .where(
+                    NativeAgentStep.run_id == self.run_id,
+                    NativeAgentStep.status.in_(
+                        [
+                            NativeAgentStepStatus.prepared,
+                            NativeAgentStepStatus.running,
+                        ]
+                    ),
+                )
+                .order_by(NativeAgentStep.sequence.asc())
+            ).all()
+            for step in active_steps:
+                step.status = NativeAgentStepStatus.cancelled
+                step.finished_at = now
+                step.error_code = "NativeAgentRunCancelled"
+                step.error_message = "用户已终止本轮任务"
+                _add_event(
+                    db,
+                    self.run_id,
+                    "tool.cancelled",
+                    {
+                        "step_sequence": step.sequence,
+                        "tool": step.name,
+                        "tool_call_id": step.tool_call_id,
+                    },
+                )
+            run.status = AgentRunStatus.cancelled
+            run.finished_at = now
+            run.error_code = None
+            run.error_message = None
+            _add_event(
+                db,
+                self.run_id,
+                "run.cancelled",
+                {"status": AgentRunStatus.cancelled.value},
             )
             db.commit()
 

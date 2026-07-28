@@ -11,11 +11,13 @@
   见“最近完成的工作”；未调用真实图片生成 Provider，也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 116–126 均已 Complete（Closed）；Sprint 127 Active；正式
-  Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 130 Complete；Sprint 127 仍为 Active；正式 Evaluation 保持
+  Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-130-native-agent-run-cancellation.md`
+- Complete：`docs/contracts/sprint-129-native-speech-ffprobe-executable.md`
 - Active：`docs/contracts/sprint-127-speech-speed-whisper-subtitle-tools.md`
 - Complete：`docs/contracts/sprint-126-remotion-source-image-ratio-real-task-smoke.md`
 - Complete：`docs/contracts/sprint-125-native-agent-remotion-video-tool.md`
@@ -552,6 +554,15 @@
   新增 `FFPROBE_EXECUTABLE`，本地启动脚本解析并校验
   `/opt/homebrew/bin/ffprobe` 后显式传给后端。真实火山语音 smoke 成功返回 32301 bytes
   MP3 和 4032ms 时长，重启后无 active Native Run。
+
+- 完成 Sprint 130 Native Agent Run 可终止执行：新增 owner 隔离、幂等的
+  `POST /agent-loop/runs/{run_id}/cancel`，使用 `cancel_requested → cancelled` 状态机；
+  队列中 Run 直接取消，执行中 Run 取消独立 asyncio Agent Task，prepared/running Tool Step
+  统一落为 `cancelled`。所有 Tool 完成和 Run 成功持久化入口都会拒绝取消后的迟到写入，服务
+  恢复也会把遗留取消请求收敛为终态而不重新执行。Native composer 在有活动 Run 时将提交按钮
+  改为“终止任务”，终止完成前禁用输入、Skill/Style 选择和按钮。新增测试覆盖取消持久化、
+  API 幂等、运行中 Task 取消和迟到结果拒绝；`./scripts/check.sh` 通过 286 项后端测试、空库
+  Alembic 升级、前端生产构建、Remotion 类型检查及 5 项测试，`git diff --check` 通过。
 
 ## 已知缺口
 

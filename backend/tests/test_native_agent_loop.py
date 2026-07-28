@@ -45,6 +45,7 @@ from app.models.enums import (
     StyleStatus,
 )
 from app.api.native_agent import (
+    cancel_native_run,
     create_native_agent_run,
     stream_native_agent_run_events,
 )
@@ -69,6 +70,7 @@ from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
     CompletedNativeTool,
     NativeAgentDatabaseSession,
+    NativeAgentRunCancelled,
     NativeAgentStore,
 )
 from app.services.storage import StoredFile
@@ -1412,6 +1414,118 @@ class NativeAgentLoopTests(unittest.TestCase):
 
         execute = asyncio.run(exercise_worker())
         execute.assert_awaited_once_with("run-queued")
+
+    def test_cancel_run_marks_active_steps_cancelled_and_rejects_late_result(self) -> None:
+        run_id = self.create_durable_run(status=AgentRunStatus.running)
+        with self.Session() as db:
+            step = NativeAgentStep(
+                run_id=run_id,
+                sequence=1,
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.running,
+                name="generate_speech",
+                tool_call_id="speech-call",
+                idempotency_key=f"native:{run_id}:generate_speech:speech-call",
+                attempts=1,
+                started_at=datetime.utcnow(),
+            )
+            db.add(step)
+            db.commit()
+            step_id = step.id
+
+        store = NativeAgentStore(run_id, session_factory=self.Session)
+        store.cancel_run()
+
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            step = db.get(NativeAgentStep, step_id)
+            event_types = db.scalars(
+                select(NativeAgentEvent.event_type)
+                .where(NativeAgentEvent.run_id == run_id)
+                .order_by(NativeAgentEvent.sequence.asc())
+            ).all()
+            self.assertEqual(AgentRunStatus.cancelled, run.status)
+            self.assertEqual(NativeAgentStepStatus.cancelled, step.status)
+            self.assertEqual(
+                ["tool.cancelled", "run.cancelled"],
+                event_types,
+            )
+
+        with self.assertRaises(NativeAgentRunCancelled):
+            store.start_tool(step_id)
+
+    def test_cancel_api_requests_owner_run_cancellation_and_is_idempotent(self) -> None:
+        run_id = self.create_durable_run(status=AgentRunStatus.running)
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            conversation = db.get(NativeAgentConversation, run.conversation_id)
+            user = db.get(User, conversation.owner_user_id)
+            cancel_signal = AsyncMock()
+            with patch(
+                "app.api.native_agent.cancel_native_agent_run",
+                cancel_signal,
+            ):
+                first = asyncio.run(cancel_native_run(run_id, user, db))
+                second = asyncio.run(cancel_native_run(run_id, user, db))
+
+            self.assertEqual(AgentRunStatus.cancel_requested, first.data.status)
+            self.assertEqual(AgentRunStatus.cancel_requested, second.data.status)
+            self.assertEqual(2, cancel_signal.await_count)
+            cancel_events = db.scalars(
+                select(NativeAgentEvent).where(
+                    NativeAgentEvent.run_id == run_id,
+                    NativeAgentEvent.event_type == "run.cancel_requested",
+                )
+            ).all()
+            self.assertEqual(1, len(cancel_events))
+
+    def test_native_worker_cancels_active_run_before_later_work(self) -> None:
+        run_id = self.create_durable_run(status=AgentRunStatus.queued)
+
+        async def exercise_worker() -> AsyncMock:
+            started = asyncio.Event()
+
+            async def wait_until_cancelled(active_run_id: str) -> None:
+                self.assertEqual(run_id, active_run_id)
+                started.set()
+                await asyncio.Future()
+
+            execute = AsyncMock(side_effect=wait_until_cancelled)
+            store_factory = lambda active_run_id: NativeAgentStore(
+                active_run_id,
+                session_factory=self.Session,
+            )
+            with (
+                patch.object(native_agent_worker, "SessionLocal", self.Session),
+                patch.object(native_agent_worker, "NativeAgentStore", store_factory),
+                patch.object(
+                    native_agent_worker,
+                    "execute_native_agent_run",
+                    execute,
+                ),
+            ):
+                native_agent_worker.init_native_agent_queue()
+                try:
+                    await native_agent_worker.enqueue_native_agent_run(run_id)
+                    await asyncio.wait_for(started.wait(), timeout=1)
+                    with self.Session() as db:
+                        run = db.get(NativeAgentRun, run_id)
+                        run.status = AgentRunStatus.cancel_requested
+                        db.commit()
+                    await native_agent_worker.cancel_native_agent_run(run_id)
+                    await asyncio.wait_for(
+                        native_agent_worker._queue.join(),
+                        timeout=1,
+                    )
+                finally:
+                    await native_agent_worker.shutdown_native_agent_queue()
+            return execute
+
+        execute = asyncio.run(exercise_worker())
+        execute.assert_awaited_once_with(run_id)
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            self.assertEqual(AgentRunStatus.cancelled, run.status)
 
     def test_run_sse_streams_incremental_owned_snapshot_until_terminal(self) -> None:
         with self.Session() as db:

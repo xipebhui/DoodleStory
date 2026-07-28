@@ -72,6 +72,7 @@ class NativeAgentStepStatus(StrEnum):
     running = "running"
     succeeded = "succeeded"
     failed = "failed"
+    cancelled = "cancelled"
     unknown = "unknown"
 
 

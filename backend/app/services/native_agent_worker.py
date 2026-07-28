@@ -16,6 +16,7 @@ from app.models.enums import (
 from app.services.native_agent_loop import execute_native_agent_run
 from app.services.native_agent_persistence import (
     NativeAgentDatabaseSession,
+    NativeAgentRunCancelled,
     NativeAgentStore,
 )
 
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 _queue: asyncio.Queue[str] | None = None
 _worker_task: asyncio.Task[None] | None = None
 _accepting = False
+_active_run_tasks: dict[str, asyncio.Task[None]] = {}
 
 
 class NativeAgentRecoveryBlocked(RuntimeError):
@@ -42,6 +44,7 @@ def _mark_interrupted_run_failed(
         if run is None or run.status in {
             AgentRunStatus.succeeded,
             AgentRunStatus.failed,
+            AgentRunStatus.cancel_requested,
             AgentRunStatus.cancelled,
         }:
             return
@@ -58,10 +61,38 @@ async def _worker_loop() -> None:
     while True:
         run_id = await _queue.get()
         try:
-            await execute_native_agent_run(run_id)
+            with SessionLocal() as db:
+                run = db.get(NativeAgentRun, run_id)
+                run_status = run.status if run is not None else None
+            if run_status in {
+                AgentRunStatus.cancel_requested,
+                AgentRunStatus.cancelled,
+            }:
+                if run_status == AgentRunStatus.cancel_requested:
+                    NativeAgentStore(run_id).cancel_run()
+                continue
+            run_task = asyncio.create_task(
+                execute_native_agent_run(run_id),
+                name=f"native-agent-run-{run_id}",
+            )
+            _active_run_tasks[run_id] = run_task
+            try:
+                await run_task
+            except asyncio.CancelledError:
+                current_task = asyncio.current_task()
+                if current_task is not None and current_task.cancelling():
+                    run_task.cancel()
+                    await asyncio.gather(run_task, return_exceptions=True)
+                    raise
+                NativeAgentStore(run_id).cancel_run()
+            finally:
+                _active_run_tasks.pop(run_id, None)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            if isinstance(exc, NativeAgentRunCancelled):
+                NativeAgentStore(run_id).cancel_run()
+                continue
             logger.exception(
                 "native agent worker failed before run terminal state run_id=%s",
                 run_id,
@@ -96,6 +127,16 @@ async def enqueue_native_agent_run(run_id: str) -> None:
     )
 
 
+async def cancel_native_agent_run(run_id: str) -> None:
+    run_task = _active_run_tasks.get(run_id)
+    if run_task is not None:
+        run_task.cancel()
+        logger.info("native agent active run cancellation signalled run_id=%s", run_id)
+        return
+    NativeAgentStore(run_id).cancel_run()
+    logger.info("native agent queued run cancelled run_id=%s", run_id)
+
+
 async def recover_native_agent_runs() -> None:
     if _queue is None:
         raise RuntimeError("Native Agent 队列尚未初始化")
@@ -115,9 +156,16 @@ async def recover_native_agent_runs() -> None:
             .where(NativeAgentRun.status == AgentRunStatus.queued)
             .order_by(NativeAgentRun.created_at.asc())
         ).all()
+        cancel_requested_ids = db.scalars(
+            select(NativeAgentRun.id).where(
+                NativeAgentRun.status == AgentRunStatus.cancel_requested
+            )
+        ).all()
 
     recovered_count = 0
     blocked_count = 0
+    for run_id in cancel_requested_ids:
+        NativeAgentStore(run_id).cancel_run()
     for run_id in interrupted_ids:
         sdk_session = NativeAgentDatabaseSession(
             run_id,
@@ -203,6 +251,7 @@ async def shutdown_native_agent_queue() -> None:
     if _worker_task is not None:
         _worker_task.cancel()
         await asyncio.gather(_worker_task, return_exceptions=True)
+    _active_run_tasks.clear()
     _worker_task = None
     _queue = None
     logger.info("native agent queue shutdown complete")

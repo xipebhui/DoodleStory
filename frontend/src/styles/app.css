@@ -8320,6 +8320,17 @@ textarea {
   background: #ffad69;
 }
 
+.native-agent-composer-footer button.is-cancel {
+  border-color: #c85f52;
+  background: #8f3f37;
+  color: #fff4f1;
+}
+
+.native-agent-composer-footer button.is-cancel:not(:disabled):hover {
+  border-color: #e0786b;
+  background: #a94b41;
+}
+
 .native-agent-composer-footer button:focus-visible {
   outline: 2px solid #ffb77d;
   outline-offset: 2px;

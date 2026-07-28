@@ -696,6 +696,7 @@ const activeAgentRunStatuses = new Set<AgentRunStatus>([
   "waiting_for_tool",
   "retrying",
   "waiting_for_input",
+  "cancel_requested",
 ]);
 
 function agentRunStatusLabel(status: AgentRunStatus) {
@@ -2782,7 +2783,7 @@ type NativeFunctionCallProjection = {
   name: string;
   argumentsText: string;
   argumentsComplete: boolean;
-  toolStatus: "pending" | "prepared" | "running" | "completed" | "failed" | "unknown" | "reused";
+  toolStatus: "pending" | "prepared" | "running" | "completed" | "failed" | "cancelled" | "unknown" | "reused";
   toolResult: Record<string, unknown> | null;
 };
 
@@ -2870,6 +2871,7 @@ function nativeAgentResponseProjection(events: NativeAgentEvent[]): NativeRespon
         "tool.started": "running",
         "tool.completed": "completed",
         "tool.failed": "failed",
+        "tool.cancelled": "cancelled",
         "tool.unknown": "unknown",
         "tool.reused": "reused",
       };
@@ -2919,6 +2921,7 @@ function NativeAgentView({
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [eventConnectionError, setEventConnectionError] = useState("");
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
@@ -2973,6 +2976,26 @@ function NativeAgentView({
     [...(detail?.runs || [])]
       .reverse()
       .find((run) => activeAgentRunStatuses.has(run.status)) || null;
+  const cancellationPending = Boolean(
+    activeRun
+    && (
+      activeRun.status === "cancel_requested"
+      || cancellingRunId === activeRun.id
+    ),
+  );
+
+  useEffect(() => {
+    if (
+      cancellingRunId
+      && !detail?.runs.some(
+        (run) =>
+          run.id === cancellingRunId
+          && activeAgentRunStatuses.has(run.status),
+      )
+    ) {
+      setCancellingRunId(null);
+    }
+  }, [cancellingRunId, detail?.runs]);
 
   useEffect(() => {
     if (!activeRun) {
@@ -3076,7 +3099,7 @@ function NativeAgentView({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!content.trim() || !skillVersionId || sending) return;
+    if (!content.trim() || !skillVersionId || sending || activeRun) return;
     setSending(true);
     setError("");
     try {
@@ -3106,6 +3129,31 @@ function NativeAgentView({
       setError(submitError instanceof Error ? submitError.message : "Agent Loop 执行失败");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function cancelActiveRun() {
+    if (!activeRun || cancellationPending) return;
+    setCancellingRunId(activeRun.id);
+    setError("");
+    try {
+      const nextRun = await api.cancelNativeAgentRun(activeRun.id);
+      setDetail((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          runs: current.runs.map((run) =>
+            run.id === nextRun.id ? nextRun : run
+          ),
+        };
+      });
+    } catch (cancelError) {
+      setCancellingRunId(null);
+      setError(
+        cancelError instanceof Error
+          ? cancelError.message
+          : "终止 Native Agent 任务失败",
+      );
     }
   }
 
@@ -3182,7 +3230,9 @@ function NativeAgentView({
                         <div className="native-agent-response-text">{response.text}</div>
                       ) : null}
                       {response.functionCalls.map((call) => {
-                        const failed = call.toolStatus === "failed" || call.toolStatus === "unknown";
+                        const failed = call.toolStatus === "failed"
+                          || call.toolStatus === "cancelled"
+                          || call.toolStatus === "unknown";
                         const active = call.toolStatus === "pending"
                           || call.toolStatus === "prepared"
                           || call.toolStatus === "running";
@@ -3192,6 +3242,7 @@ function NativeAgentView({
                           running: "执行中",
                           completed: "已完成",
                           failed: "执行失败",
+                          cancelled: "已终止",
                           unknown: "结果不确定",
                           reused: "复用已有结果",
                         };
@@ -3359,23 +3410,34 @@ function NativeAgentView({
             value={content}
             onChange={(event) => setContent(event.target.value)}
             placeholder="输入故事或图片创作目标…"
-            disabled={sending}
+            disabled={sending || Boolean(activeRun)}
           />
           <div className="native-agent-composer-footer">
-            <span>Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。</span>
+            <span>
+              {activeRun
+                ? "终止后不会再启动新的 Tool；已被 Provider 接收的请求可能仍会计费。"
+                : "Tool 由发布版 Skill 决定；语音结果会保存并可直接播放。"}
+            </span>
             <button
-              type="submit"
-              disabled={
-                !content.trim() ||
-                !skillVersionId ||
-                sending ||
-                Boolean(activeRun)
-              }
+              type={activeRun ? "button" : "submit"}
+              className={activeRun ? "is-cancel" : undefined}
+              onClick={activeRun ? () => void cancelActiveRun() : undefined}
+              disabled={activeRun
+                ? cancellationPending
+                : !content.trim() || !skillVersionId || sending}
             >
-              {sending || activeRun
+              {sending || cancellationPending
                 ? <Loader2 className="spin" size={17} />
-                : <Sparkles size={17} />}
-              {sending ? "正在提交…" : activeRun ? "本轮执行中…" : "运行 Agent"}
+                : activeRun
+                  ? <X size={17} />
+                  : <Sparkles size={17} />}
+              {sending
+                ? "正在提交…"
+                : cancellationPending
+                  ? "正在终止…"
+                  : activeRun
+                    ? "终止任务"
+                    : "运行 Agent"}
             </button>
           </div>
           {error ? <div className="native-agent-run-error"><AlertCircle size={16} />{error}</div> : null}

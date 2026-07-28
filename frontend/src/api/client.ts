@@ -480,7 +480,7 @@ export type NativeAgentStep = {
   id: string;
   sequence: number;
   step_type: "model_call" | "tool_call" | "final";
-  status: "prepared" | "running" | "succeeded" | "failed" | "unknown";
+  status: "prepared" | "running" | "succeeded" | "failed" | "cancelled" | "unknown";
   name: string;
   tool_call_id: string | null;
   attempts: number;
@@ -1096,6 +1096,11 @@ export const api = {
     request<ApiData<NativeAgentRun>>(
       `/agent-loop/conversations/${encodeURIComponent(conversationId)}/runs`,
       { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  cancelNativeAgentRun: (runId: string) =>
+    request<ApiData<NativeAgentRun>>(
+      `/agent-loop/runs/${encodeURIComponent(runId)}/cancel`,
+      { method: "POST" },
     ).then((result) => result.data),
   agentSkills: (params?: {
     scope?: "mine" | "system";

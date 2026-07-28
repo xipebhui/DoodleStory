@@ -307,6 +307,13 @@
   `FFPROBE_EXECUTABLE`。本地启动脚本必须在启动后端前解析并校验可执行文件绝对路径，再将其
   传入服务进程；容器继续由 `ffmpeg` 包提供 `ffprobe`。不得依赖不确定的子进程 PATH，也不得
   用文本长度估算音频时长。
+- Sprint 130 为 Native Agent Run 增加 owner 隔离且幂等的终止能力。Run 使用
+  `cancel_requested → cancelled` 持久化状态；排队任务直接取消，执行中任务取消本地
+  asyncio Agent Task，所有 prepared/running Tool Step 标记为 `cancelled`。取消请求提交后
+  不得再开始新的图片、语音、字幕或视频 Tool，Provider 返回后的迟到结果不得保存或覆盖取消
+  状态；同一 Conversation 在取消收敛前不得提交下一轮。Native composer 在活动 Run 时把提交
+  按钮切换为“终止任务”，点击后显示“正在终止…”并禁用输入、选择器和按钮，直到 SSE 返回
+  `cancelled`。已经被第三方同步 HTTP Provider 接收的请求无法由本地强制撤销或保证不计费。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。

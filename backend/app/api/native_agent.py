@@ -6,7 +6,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
@@ -53,7 +53,10 @@ from app.schemas.native_agent import (
     NativeAgentSubtitleRead,
     NativeAgentVideoRead,
 )
-from app.services.native_agent_worker import enqueue_native_agent_run
+from app.services.native_agent_worker import (
+    cancel_native_agent_run,
+    enqueue_native_agent_run,
+)
 
 
 router = APIRouter(prefix="/agent-loop", tags=["native-agent-loop"])
@@ -481,6 +484,7 @@ async def create_native_agent_run(
                     AgentRunStatus.queued,
                     AgentRunStatus.running,
                     AgentRunStatus.waiting_for_tool,
+                    AgentRunStatus.cancel_requested,
                 ]
             ),
         )
@@ -578,6 +582,104 @@ async def create_native_agent_run(
     db.commit()
 
     await enqueue_native_agent_run(run.id)
+    return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=ApiData[NativeAgentRunRead],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def cancel_native_run(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[NativeAgentRunRead]:
+    run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == run_id,
+            NativeAgentConversation.owner_user_id == user.id,
+        )
+    )
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Native Agent Run 不存在",
+        )
+    if run.status == AgentRunStatus.cancelled:
+        return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+    if run.status in {
+        AgentRunStatus.succeeded,
+        AgentRunStatus.failed,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="已结束的 Native Agent Run 不能终止",
+        )
+    if run.status != AgentRunStatus.cancel_requested:
+        cancel_update = db.execute(
+            update(NativeAgentRun)
+            .where(
+                NativeAgentRun.id == run.id,
+                NativeAgentRun.status.notin_(
+                    [
+                        AgentRunStatus.succeeded,
+                        AgentRunStatus.failed,
+                        AgentRunStatus.cancelled,
+                        AgentRunStatus.cancel_requested,
+                    ]
+                ),
+            )
+            .values(status=AgentRunStatus.cancel_requested)
+            .execution_options(synchronize_session=False)
+        )
+        if cancel_update.rowcount == 0:
+            db.expire_all()
+            current_run = db.get(NativeAgentRun, run.id)
+            if current_run is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Native Agent Run 不存在",
+                )
+            if current_run.status == AgentRunStatus.cancelled:
+                return ApiData(
+                    data=_run_to_read(_load_run_for_read(db, current_run.id))
+                )
+            if current_run.status in {
+                AgentRunStatus.succeeded,
+                AgentRunStatus.failed,
+            }:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="已结束的 Native Agent Run 不能终止",
+                )
+        next_sequence = int(
+            db.scalar(
+                select(func.max(NativeAgentEvent.sequence)).where(
+                    NativeAgentEvent.run_id == run.id
+                )
+            )
+            or 0
+        ) + 1
+        db.add(
+            NativeAgentEvent(
+                run_id=run.id,
+                sequence=next_sequence,
+                event_type="run.cancel_requested",
+                payload_json=json.dumps(
+                    {"status": AgentRunStatus.cancel_requested.value},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+            )
+        )
+        db.commit()
+    await cancel_native_agent_run(run.id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
 
 
