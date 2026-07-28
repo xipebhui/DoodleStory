@@ -11,17 +11,19 @@
   见“最近完成的工作”；未调用真实图片生成 Provider，也未实施 Deferred Evaluation。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 133、Sprint 132 Complete；Sprint 127 仍为 Active；正式
-  Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 134 Active（Ready for implementation），Sprint 135 Planned；
+  Sprint 127、Sprint 132、Sprint 133 Complete；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Active：`docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md`
+- Planned：`docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md`
 - Complete：`docs/contracts/sprint-133-native-subtitle-source-alignment.md`
 - Complete：`docs/contracts/sprint-132-native-agent-latest-run-retry.md`
 - Complete：`docs/contracts/sprint-131-api-utc-shanghai-display.md`
 - Complete：`docs/contracts/sprint-130-native-agent-run-cancellation.md`
 - Complete：`docs/contracts/sprint-129-native-speech-ffprobe-executable.md`
-- Active：`docs/contracts/sprint-127-speech-speed-whisper-subtitle-tools.md`
+- Complete：`docs/contracts/sprint-127-speech-speed-whisper-subtitle-tools.md`
 - Complete：`docs/contracts/sprint-126-remotion-source-image-ratio-real-task-smoke.md`
 - Complete：`docs/contracts/sprint-125-native-agent-remotion-video-tool.md`
 - Complete：`docs/contracts/sprint-124-native-agent-volcengine-speech-tool.md`
@@ -65,6 +67,19 @@
 - `docs/contracts/sprint-89-aliyun-oss-storage.md`
 - `docs/contracts/sprint-80-image-result-aspect-ratio-retry.md`
 - `docs/contracts/sprint-87-video-resolution-follow-style-aspect-ratio.md`
+
+## 最新规划
+
+- 用户于 2026-07-28 确认 YouTube 能力最多拆为两次交付。Sprint 134 先完成管理员频道账号、
+  频道别名与 AI 定义、对标账号、Native Agent 可发布视频登记，以及频道/分析/已发布视频的
+  按钮式手动同步；不调用真实发布接口。
+- Sprint 135 在 Sprint 134 事实来源上增加页面与 Native Agent 共用的异步发布服务、结构化
+  `@频道`、发布确认、按钮式任务状态获取和永久已发布视频关联。发布成功必须保存
+  `NativeAgentVideo.id → PublishTask.id → youtube_video_id`，供后续内容分析和迭代闭环使用。
+- 真实接口只读探测已确认：频道列表返回 17 个频道；频道分析和视频分析 HTTP 200；随机频道
+  `UCBC_-h9spHLqy23bAeYcPzg` 有 79 条已上传视频。无过滤视频列表返回 2005 条全局数据，因此
+  正式同步必须使用服务端实际接受的 `where.one.channel_id`，不能照搬文档中缺少 `one`
+  包装的示例。
 
 ## 最近完成的工作
 
