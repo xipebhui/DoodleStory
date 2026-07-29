@@ -8,11 +8,13 @@ test("parses the Agent root and conversation routes", () => {
     conversationId: null,
     taskId: null,
     skillPage: null,
+    channelPage: null,
   });
   assert.deepEqual(parseAgentRoute("/agent/conversation-1/"), {
     conversationId: "conversation-1",
     taskId: null,
     skillPage: null,
+    channelPage: null,
   });
 });
 
@@ -21,6 +23,22 @@ test("parses the Agent task inspector route", () => {
     conversationId: "conversation 1",
     taskId: "task 2",
     skillPage: null,
+    channelPage: null,
+  });
+});
+
+test("parses channel management routes before conversation ids", () => {
+  assert.deepEqual(parseAgentRoute("/agent/channels"), {
+    conversationId: null,
+    taskId: null,
+    skillPage: null,
+    channelPage: { mode: "list" },
+  });
+  assert.deepEqual(parseAgentRoute("/agent/channels/channel%201"), {
+    conversationId: null,
+    taskId: null,
+    skillPage: null,
+    channelPage: { mode: "detail", channelId: "channel 1" },
   });
 });
 
@@ -29,21 +47,25 @@ test("parses skill management routes before conversation ids", () => {
     conversationId: null,
     taskId: null,
     skillPage: { mode: "list" },
+    channelPage: null,
   });
   assert.deepEqual(parseAgentRoute("/agent/skills/new"), {
     conversationId: null,
     taskId: null,
     skillPage: { mode: "new" },
+    channelPage: null,
   });
   assert.deepEqual(parseAgentRoute("/agent/skills/skill-1"), {
     conversationId: null,
     taskId: null,
     skillPage: { mode: "detail", skillId: "skill-1" },
+    channelPage: null,
   });
   assert.deepEqual(parseAgentRoute("/agent/skills/skill%201/edit"), {
     conversationId: null,
     taskId: null,
     skillPage: { mode: "edit", skillId: "skill 1" },
+    channelPage: null,
   });
   assert.deepEqual(parseAgentRoute("/agent/skills/skill-1/versions/version-2"), {
     conversationId: null,
@@ -53,6 +75,7 @@ test("parses skill management routes before conversation ids", () => {
       skillId: "skill-1",
       versionId: "version-2",
     },
+    channelPage: null,
   });
 });
 

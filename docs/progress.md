@@ -726,3 +726,9 @@
   `waiting_for_input`。数据库和 MLflow 均为 7 次真实模型调用：Compiler 1、Director 4、
   Writer 1、Reviewer 1；started/completed 各 7 条，三个文案 Artifact 齐全，四类媒体调用均
   为 0。MLflow 仅 1 个根 Trace，Writer/Reviewer 各自只注入自己的局部 instructions。
+- 修复 Agent 对话运行期间强制追底的问题：会话首次打开或用户仍停留在底部 80px 内时继续
+  自动跟随；用户向上翻阅后立即停止追底，返回底部后再恢复。新增 3 项滚动位置判断回归测试，
+  并将前端单元测试纳入 `scripts/check.sh`；同步更新频道路由新增字段的旧测试断言。真实页面
+  Conversation `5244309e9b3046739d78e69504f09c6d`
+  在纯文案持续生成、内容高度从 4634px 增长至 6232px 的过程中，手动上翻后始终保持距底部
+  约 1800–1900px，未再被拉回底部；图片、语音、字幕和视频均未生成。

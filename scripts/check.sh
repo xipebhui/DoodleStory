@@ -40,6 +40,7 @@ if [ -x "$ROOT_DIR/backend/.venv/bin/alembic" ]; then
   rm -rf "$tmp_dir"
 fi
 
+run_if_present "frontend unit tests" "$ROOT_DIR/frontend/package.json" npm test
 run_if_present "frontend build" "$ROOT_DIR/frontend/package.json" npm run build
 
 if [ -f "$ROOT_DIR/remotion/package.json" ]; then

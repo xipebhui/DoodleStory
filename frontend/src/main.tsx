@@ -101,6 +101,7 @@ import {
   type VideoTaskSummary,
 } from "./api/client";
 import { parseAgentRoute } from "./agentRoutes";
+import { shouldFollowNativeAgentThread } from "./nativeAgentScroll";
 import "./styles/app.css";
 
 type View = "agent" | "tasks" | "videoTasks" | "audioReferences" | "content" | "styles" | "characters" | "users" | "creditUsage" | "settings";
@@ -3593,6 +3594,7 @@ function NativeAgentView({
   const [eventConnectionError, setEventConnectionError] = useState("");
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
   const threadRef = useRef<HTMLElement | null>(null);
+  const shouldFollowThreadRef = useRef(true);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -3759,15 +3761,27 @@ function NativeAgentView({
     .find((video) => video.id === registeringVideoId) || null;
 
   useEffect(() => {
-    if (!threadRef.current || !threadSignature) return;
+    shouldFollowThreadRef.current = true;
+  }, [routeConversationId]);
+
+  useEffect(() => {
+    if (
+      !threadRef.current
+      || !threadSignature
+      || !shouldFollowThreadRef.current
+    ) return;
     const frame = window.requestAnimationFrame(() => {
-      threadRef.current?.scrollTo({
-        top: threadRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+      const thread = threadRef.current;
+      if (!thread || !shouldFollowThreadRef.current) return;
+      thread.scrollTop = thread.scrollHeight;
     });
     return () => window.cancelAnimationFrame(frame);
   }, [threadSignature]);
+
+  function handleThreadScroll(event: React.UIEvent<HTMLElement>) {
+    const thread = event.currentTarget;
+    shouldFollowThreadRef.current = shouldFollowNativeAgentThread(thread);
+  }
 
   useEffect(() => {
     if (!previewImageId) return;
@@ -3959,7 +3973,12 @@ function NativeAgentView({
           <code>model → Skill tools → persisted assets → model</code>
         </header>
 
-        <section className="native-agent-thread" aria-live="polite" ref={threadRef}>
+        <section
+          className="native-agent-thread"
+          aria-live="polite"
+          ref={threadRef}
+          onScroll={handleThreadScroll}
+        >
           {loading ? (
             <div className="native-agent-empty"><Loader2 className="spin" size={24} />正在加载…</div>
           ) : null}
