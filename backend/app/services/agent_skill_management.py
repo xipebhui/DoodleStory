@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core import database
 from app.models.entities import AgentRun, AgentSkill, AgentSkillVersion, User, new_id
-from app.models.enums import AgentSkillStatus
+from app.models.enums import AgentSkillStatus, UserRole
 from app.services.agent_skill_registry import DEFAULT_SKILL_ROOT, SkillRegistry
 from app.services.agent_tool_runtime import create_default_tool_registry
 
@@ -294,6 +294,20 @@ def load_owned_skill(db: Session, *, skill_id: str, user_id: str) -> AgentSkill:
     return skill
 
 
+def load_manageable_skill(
+    db: Session,
+    *,
+    skill_id: str,
+    user: User,
+) -> AgentSkill:
+    skill = load_visible_skill(db, skill_id=skill_id, user_id=user.id)
+    if skill.owner_user_id == user.id:
+        return skill
+    if skill.owner_user_id is None and user.role == UserRole.admin:
+        return skill
+    raise AgentSkillForbiddenError("只有管理员可以改变系统 Skill 状态")
+
+
 def list_skills(
     db: Session,
     *,
@@ -533,9 +547,16 @@ def activate_skill_version(
     return skill
 
 
-def archive_skill(db: Session, *, skill: AgentSkill) -> AgentSkill:
-    if skill.owner_user_id is None:
-        raise AgentSkillForbiddenError("系统 Skill 不能归档")
+def archive_skill(
+    db: Session,
+    *,
+    skill: AgentSkill,
+    user: User,
+) -> AgentSkill:
+    if skill.owner_user_id != user.id and not (
+        skill.owner_user_id is None and user.role == UserRole.admin
+    ):
+        raise AgentSkillForbiddenError("没有权限 Disable 这个 Skill")
     if skill.status != AgentSkillStatus.archived:
         skill.status = AgentSkillStatus.archived
         skill.archived_at = datetime.utcnow()
@@ -544,9 +565,16 @@ def archive_skill(db: Session, *, skill: AgentSkill) -> AgentSkill:
     return skill
 
 
-def restore_skill(db: Session, *, skill: AgentSkill) -> AgentSkill:
-    if skill.owner_user_id is None:
-        raise AgentSkillForbiddenError("系统 Skill 不需要恢复")
+def restore_skill(
+    db: Session,
+    *,
+    skill: AgentSkill,
+    user: User,
+) -> AgentSkill:
+    if skill.owner_user_id != user.id and not (
+        skill.owner_user_id is None and user.role == UserRole.admin
+    ):
+        raise AgentSkillForbiddenError("没有权限 Enable 这个 Skill")
     if skill.status == AgentSkillStatus.archived:
         skill.status = (
             AgentSkillStatus.published

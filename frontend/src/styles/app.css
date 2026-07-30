@@ -6181,6 +6181,12 @@ textarea {
   border-color: #51472d;
 }
 
+.agent-skill-status.is-archived {
+  color: #a9adb3;
+  border-color: #4b4f55;
+  background: rgba(255, 255, 255, 0.035);
+}
+
 .agent-skill-tools {
   display: flex;
   flex-wrap: wrap;
@@ -6216,6 +6222,11 @@ textarea {
 
 .agent-skill-row-action:last-child:not(:first-child) {
   color: #d8d4cd;
+}
+
+.agent-skill-row-action:disabled {
+  cursor: wait;
+  opacity: 0.5;
 }
 
 .agent-skill-list-footer {

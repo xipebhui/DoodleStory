@@ -9,9 +9,10 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
 from app.models.entities import AgentRun, AgentSkill, AgentSkillVersion, User
-from app.models.enums import AgentSkillStatus
+from app.models.enums import AgentSkillStatus, UserRole
 from app.services.agent_skill_management import (
     AgentSkillConflictError,
+    AgentSkillForbiddenError,
     AgentSkillNotFoundError,
     activate_skill_version,
     archive_skill,
@@ -19,6 +20,7 @@ from app.services.agent_skill_management import (
     create_skill,
     delete_unpublished_skill,
     list_skills,
+    load_manageable_skill,
     load_owned_skill,
     publish_skill,
     restore_skill,
@@ -71,7 +73,12 @@ class AgentSkillManagementTests(unittest.TestCase):
         self.db = self.Session()
         self.owner = User(email="skill-owner@example.com", password_hash="hash")
         self.other = User(email="skill-other@example.com", password_hash="hash")
-        self.db.add_all([self.owner, self.other])
+        self.admin = User(
+            email="skill-admin@example.com",
+            password_hash="hash",
+            role=UserRole.admin,
+        )
+        self.db.add_all([self.owner, self.other, self.admin])
         self.db.commit()
 
     def tearDown(self) -> None:
@@ -237,9 +244,9 @@ class AgentSkillManagementTests(unittest.TestCase):
         )
         with self.assertRaises(AgentSkillConflictError):
             delete_unpublished_skill(self.db, skill=source)
-        archive_skill(self.db, skill=source)
+        archive_skill(self.db, skill=source, user=self.owner)
         self.assertEqual(AgentSkillStatus.archived, source.status)
-        restored = restore_skill(self.db, skill=source)
+        restored = restore_skill(self.db, skill=source, user=self.owner)
         self.assertEqual(AgentSkillStatus.published, restored.status)
 
         cloned = clone_skill_version(
@@ -287,6 +294,36 @@ class AgentSkillManagementTests(unittest.TestCase):
             self.db.commit()
         self.db.rollback()
 
+    def test_only_admin_can_disable_and_enable_system_skill(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_system_skill(root)
+            system_skill = seed_system_skills(self.db, skill_root=root)
+
+        with self.assertRaises(AgentSkillForbiddenError):
+            load_manageable_skill(
+                self.db,
+                skill_id=system_skill.id,
+                user=self.owner,
+            )
+
+        manageable = load_manageable_skill(
+            self.db,
+            skill_id=system_skill.id,
+            user=self.admin,
+        )
+        archive_skill(self.db, skill=manageable, user=self.admin)
+        self.assertEqual(AgentSkillStatus.archived, manageable.status)
+        self.assertIsNotNone(manageable.archived_at)
+
+        seeded_again = seed_system_skills(self.db, skill_root=root)
+        self.assertEqual(system_skill.id, seeded_again.id)
+        self.assertEqual(AgentSkillStatus.archived, seeded_again.status)
+
+        restore_skill(self.db, skill=manageable, user=self.admin)
+        self.assertEqual(AgentSkillStatus.published, manageable.status)
+        self.assertIsNone(manageable.archived_at)
+
     def test_run_pinned_version_survives_active_switch_and_archive(self) -> None:
         skill = self.create_draft()
         first = publish_skill(
@@ -323,7 +360,7 @@ class AgentSkillManagementTests(unittest.TestCase):
             expected_draft_revision=2,
             idempotency_key="pin-version-second",
         )
-        archive_skill(self.db, skill=skill)
+        archive_skill(self.db, skill=skill, user=self.owner)
         self.db.refresh(run)
         self.assertEqual(first.id, run.skill_version_id)
         self.assertNotEqual(second.id, run.skill_version_id)

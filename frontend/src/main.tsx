@@ -1382,7 +1382,7 @@ const agentSkillTemplate = `# 目标
 const agentSkillStatusLabels: Record<AgentSkillStatus, string> = {
   draft: "草稿",
   published: "已发布",
-  archived: "已归档",
+  archived: "Disabled",
 };
 
 const agentToolDisplayNames: Record<string, string> = {
@@ -1540,8 +1540,10 @@ function AgentStudioSidebar({
 }
 
 function AgentSkillListView({
+  user,
   onNavigatePath,
 }: {
+  user: User;
   onNavigatePath: (path: string) => void;
 }) {
   const storedScope = window.sessionStorage.getItem("doodlestory.agentSkillScope");
@@ -1568,6 +1570,7 @@ function AgentSkillListView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
+  const [changingSkillId, setChangingSkillId] = useState("");
 
   useEffect(() => {
     window.sessionStorage.setItem("doodlestory.agentSkillScope", scope);
@@ -1604,6 +1607,41 @@ function AgentSkillListView({
     setScope(next);
     setPage(1);
     setStatusFilter("");
+  }
+
+  async function changeSystemSkillState(skill: AgentSkillSummary) {
+    const disabling = skill.status !== "archived";
+    const confirmed = window.confirm(
+      disabling
+        ? `Disable“${skill.name}”？\n它会立即从新的 @Skill 引用中消失，历史版本和历史 Run 保留。`
+        : `Enable“${skill.name}”？\n它会重新出现在新的 @Skill 引用中。`,
+    );
+    if (!confirmed) return;
+    setChangingSkillId(skill.id);
+    setError("");
+    try {
+      const updated = disabling
+        ? await api.archiveAgentSkill(skill.id)
+        : await api.restoreAgentSkill(skill.id);
+      setResult((current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((item) =>
+                item.id === updated.id ? updated : item
+              ),
+            }
+          : current,
+      );
+    } catch (changeError) {
+      setError(
+        changeError instanceof Error
+          ? changeError.message
+          : `${disabling ? "Disable" : "Enable"} Skill 失败`,
+      );
+    } finally {
+      setChangingSkillId("");
+    }
   }
 
   return (
@@ -1651,24 +1689,22 @@ function AgentSkillListView({
             placeholder="搜索名称或适用场景"
           />
         </label>
-        {scope === "mine" ? (
-          <label className="agent-skill-status-filter">
-            <Filter size={16} />
-            <select
-              aria-label="Skill 状态"
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value as AgentSkillStatus | "");
-                setPage(1);
-              }}
-            >
-              <option value="">可用状态</option>
-              <option value="draft">草稿</option>
-              <option value="published">已发布</option>
-              <option value="archived">已归档</option>
-            </select>
-          </label>
-        ) : null}
+        <label className="agent-skill-status-filter">
+          <Filter size={16} />
+          <select
+            aria-label="Skill 状态"
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as AgentSkillStatus | "");
+              setPage(1);
+            }}
+          >
+            <option value="">全部状态</option>
+            <option value="draft">草稿</option>
+            <option value="published">Enabled</option>
+            <option value="archived">Disabled</option>
+          </select>
+        </label>
       </div>
       <div className="agent-skill-table-head" aria-hidden="true">
         <span>名称 / 描述</span>
@@ -1750,6 +1786,23 @@ function AgentSkillListView({
                     编辑
                   </button>
                 ) : null}
+                {skill.scope === "system" && user.role === "admin" ? (
+                  <button
+                    type="button"
+                    className="agent-skill-row-action"
+                    disabled={changingSkillId === skill.id}
+                    onClick={() => void changeSystemSkillState(skill)}
+                  >
+                    {changingSkillId === skill.id ? (
+                      <Loader2 className="spin" size={15} />
+                    ) : skill.status === "archived" ? (
+                      <RefreshCw size={15} />
+                    ) : (
+                      <Archive size={15} />
+                    )}
+                    {skill.status === "archived" ? "Enable" : "Disable"}
+                  </button>
+                ) : null}
               </div>
               <MoreHorizontal size={17} aria-hidden="true" />
             </article>
@@ -1789,9 +1842,11 @@ type AgentSkillFormState = {
 };
 
 function AgentSkillDetailView({
+  user,
   skillId,
   onNavigatePath,
 }: {
+  user: User;
   skillId: string;
   onNavigatePath: (path: string) => void;
 }) {
@@ -1800,7 +1855,7 @@ function AgentSkillDetailView({
   const [versions, setVersions] = useState<AgentSkillVersionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [cloning, setCloning] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  const [changingState, setChangingState] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -1851,6 +1906,34 @@ function AgentSkillDetailView({
 
   const toolLabels = new Map(tools.map((tool) => [tool.name, tool.display_name]));
   const canEdit = !skill.is_read_only && skill.status !== "archived";
+  const canChangeState = skill.scope === "mine" || user.role === "admin";
+
+  async function changeSkillState() {
+    const disabling = skill!.status !== "archived";
+    const confirmed = window.confirm(
+      disabling
+        ? `Disable“${skill!.name}”？\n它会立即从新的 @Skill 引用中消失，历史版本和历史 Run 保留。`
+        : `Enable“${skill!.name}”？\n有启用版本的 Skill 会重新出现在新的 @Skill 引用中。`,
+    );
+    if (!confirmed) return;
+    setChangingState(true);
+    setError("");
+    try {
+      setSkill(
+        disabling
+          ? await api.archiveAgentSkill(skill!.id)
+          : await api.restoreAgentSkill(skill!.id),
+      );
+    } catch (changeError) {
+      setError(
+        changeError instanceof Error
+          ? changeError.message
+          : `${disabling ? "Disable" : "Enable"} Skill 失败`,
+      );
+    } finally {
+      setChangingState(false);
+    }
+  }
 
   return (
     <section className="agent-skill-detail-page">
@@ -1880,27 +1963,21 @@ function AgentSkillDetailView({
               编辑 Skill
             </button>
           ) : null}
-          {!skill.is_read_only && skill.status === "archived" ? (
+          {canChangeState ? (
             <button
               type="button"
-              disabled={restoring}
-              onClick={async () => {
-                if (!window.confirm(`恢复“${skill.name}”？恢复后可以继续编辑。`)) return;
-                setRestoring(true);
-                setError("");
-                try {
-                  setSkill(await api.restoreAgentSkill(skill.id));
-                } catch (restoreError) {
-                  setError(
-                    restoreError instanceof Error ? restoreError.message : "恢复 Skill 失败",
-                  );
-                } finally {
-                  setRestoring(false);
-                }
-              }}
+              className="secondary"
+              disabled={changingState}
+              onClick={() => void changeSkillState()}
             >
-              {restoring ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-              恢复 Skill
+              {changingState ? (
+                <Loader2 className="spin" size={16} />
+              ) : skill.status === "archived" ? (
+                <RefreshCw size={16} />
+              ) : (
+                <Archive size={16} />
+              )}
+              {skill.status === "archived" ? "Enable" : "Disable"}
             </button>
           ) : null}
           {skill.is_read_only ? (
@@ -2016,9 +2093,9 @@ function AgentSkillDetailView({
               </button>
             ) : null}
           </section>
-          {skill.status === "archived" && !skill.is_read_only ? (
+          {skill.status === "archived" ? (
             <p className="agent-skill-detail-note">
-              已归档 Skill 只能查看。恢复后才可继续编辑或发布。
+              Disabled Skill 仍保留正文、版本和历史 Run，但不能被新的对话引用。
             </p>
           ) : null}
         </aside>
@@ -2417,13 +2494,13 @@ function AgentSkillEditorView({
           {skill && !skill.is_read_only ? (
             skill.status === "archived" ? (
               <button type="button" onClick={() => setConfirmAction("restore")}>
-                恢复 Skill
+                Enable
               </button>
             ) : (
               <>
                 <button type="button" onClick={() => setConfirmAction("archive")}>
                   <Archive size={16} />
-                  归档
+                  Disable
                 </button>
                 {!skill.active_version ? (
                   <button type="button" onClick={() => setConfirmAction("delete")}>
@@ -2504,18 +2581,18 @@ function AgentSkillEditorView({
               {confirmAction === "publish"
                 ? `发布 v${(skill?.active_version?.version || 0) + 1}？`
                 : confirmAction === "archive"
-                  ? "归档这个 Skill？"
+                  ? "Disable 这个 Skill？"
                   : confirmAction === "restore"
-                    ? "恢复这个 Skill？"
+                    ? "Enable 这个 Skill？"
                     : "永久删除未发布草稿？"}
             </h2>
             <p>
               {confirmAction === "publish"
                 ? `将创建不可修改的新版本；允许的 Tools：${form.toolNames.join("、") || "无"}。`
                 : confirmAction === "archive"
-                  ? "归档后不会出现在新的 @Skill 菜单，已经开始的任务不受影响。"
+                  ? "Disable 后不会出现在新的 @Skill 菜单，历史版本和已经开始的任务不受影响。"
                   : confirmAction === "restore"
-                    ? "恢复后，有启用版本的 Skill 会重新用于新对话。"
+                    ? "Enable 后，有启用版本的 Skill 会重新用于新对话。"
                     : "这个操作只适用于从未发布且未被引用的草稿。"}
             </p>
             <footer>
@@ -2733,10 +2810,16 @@ function AgentSkillManagementView({
         onLogout={onLogout}
       />
       <main>
-        {route.mode === "list" ? <AgentSkillListView onNavigatePath={onNavigatePath} /> : null}
+        {route.mode === "list" ? (
+          <AgentSkillListView user={user} onNavigatePath={onNavigatePath} />
+        ) : null}
         {route.mode === "new" ? <AgentSkillEditorView mode="new" onNavigatePath={onNavigatePath} /> : null}
         {route.mode === "detail" ? (
-          <AgentSkillDetailView skillId={route.skillId} onNavigatePath={onNavigatePath} />
+          <AgentSkillDetailView
+            user={user}
+            skillId={route.skillId}
+            onNavigatePath={onNavigatePath}
+          />
         ) : null}
         {route.mode === "edit" ? (
           <AgentSkillEditorView mode="edit" skillId={route.skillId} onNavigatePath={onNavigatePath} />

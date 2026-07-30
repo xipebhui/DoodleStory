@@ -1,5 +1,17 @@
 # 进度记录
 
+## Sprint 142（已完成）
+
+- Skill 软归档已统一呈现为 Disable / Enable。管理员可在系统 Skill 列表和详情中改变状态，
+  普通用户不能改变系统 Skill 状态；个人 Skill 继续使用同一套可恢复状态操作。
+- Disabled Skill 保留正文、不可变版本、当前版本引用和历史 Run，但从 Native Agent 与旧
+  Agent 的 `@Skill` 查询及新 Run 创建中排除；系统 Skill 的启动种子不会在重启时覆盖
+  Disabled 状态。
+- 真实浏览器逐项 Disable 当前三个系统 Skill，服务重启后仍全部显示 Disabled 和 Enable
+  操作，Native Agent 的 `@` 菜单不再显示 Skill 分组，控制台 0 error / 0 warning。
+- 定向后端 44 项测试、前端 14 项测试和生产构建通过；统一检查结果见当前基线。合同见
+  `docs/contracts/sprint-142-system-skill-disable.md`。
+
 ## Sprint 141（已完成）
 
 - Native Agent 输入区已从 Skill、创作账号、Style、YouTube 频道和审核视频的常驻下拉框，
@@ -36,17 +48,18 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 141 已完成；Native Agent 的 Skill、账号、Style、发布频道和审核视频
-  已统一改为每轮可编辑的 `@` 资源引用。`./scripts/check.sh` 已通过 338 项后端测试、空库
-  迁移、14 项前端测试、前端生产构建和 Remotion 检查；未调用收费模型或真实 YouTube 发布，
-  真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
+- 最近验证状态：Sprint 142 已完成；当前三个系统 Skill 均已 Disabled，服务重启后状态保持，
+  且不会出现在新的 `@Skill` 引用或新 Run 中。`./scripts/check.sh` 已通过 339 项后端测试、
+  空库迁移、14 项前端测试、前端生产构建和 Remotion 检查；未调用收费模型或真实 YouTube
+  发布，真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 134–Sprint 138 Complete；Sprint 135 真实外部发布 smoke 待用户授权；
-  Sprint 127、Sprint 132、Sprint 133 Complete；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 142、Sprint 141 Complete；Sprint 135 真实外部发布 smoke 待用户
+  授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-142-system-skill-disable.md`
 - Complete：`docs/contracts/sprint-141-native-agent-resource-mentions.md`
 - Complete：`docs/contracts/sprint-140-youtube-account-style-binding.md`
 - Complete：`docs/contracts/sprint-138-youtube-channel-research-tool.md`
@@ -118,6 +131,10 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 142 系统 Skill Disable / Enable：复用现有 `archived` 状态软删除 Skill，
+  管理员可改变系统 Skill 状态，普通用户越权请求明确失败；Disabled Skill 保留全部历史，
+  但不会进入新的资源引用和 Run。真实浏览器 Disable 三个系统 Skill 后完成服务重启验证，
+  `@` 菜单不再出现 Skill，控制台无错误。
 - 完成 Sprint 141 Native Agent 对话式资源引用：删除输入区顶部常驻的 Skill、创作账号、
   Style、频道和视频下拉框，改为统一 `@` 菜单、搜索、键盘选择和可移除标签。账号与直接 Style
   双向替换，账号标签展示绑定 Style 且后端仍按账号唯一推导；发布频道和审核视频按上下文出现，

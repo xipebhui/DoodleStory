@@ -34,6 +34,7 @@ from app.services.agent_skill_management import (
     delete_unpublished_skill,
     list_skill_versions,
     list_skills,
+    load_manageable_skill,
     load_owned_skill,
     load_skill_version,
     load_visible_skill,
@@ -392,8 +393,8 @@ def post_archive_skill(
     db: Session = Depends(get_db),
 ) -> ApiData[AgentSkillDetail]:
     try:
-        skill = load_owned_skill(db, skill_id=skill_id, user_id=user.id)
-        skill = archive_skill(db, skill=skill)
+        skill = load_manageable_skill(db, skill_id=skill_id, user=user)
+        skill = archive_skill(db, skill=skill, user=user)
     except AgentSkillManagementError as exc:
         _raise_service_error(exc)
     return ApiData(data=_skill_detail(skill))
@@ -406,8 +407,8 @@ def post_restore_skill(
     db: Session = Depends(get_db),
 ) -> ApiData[AgentSkillDetail]:
     try:
-        skill = load_owned_skill(db, skill_id=skill_id, user_id=user.id)
-        skill = restore_skill(db, skill=skill)
+        skill = load_manageable_skill(db, skill_id=skill_id, user=user)
+        skill = restore_skill(db, skill=skill, user=user)
     except AgentSkillManagementError as exc:
         _raise_service_error(exc)
     return ApiData(data=_skill_detail(skill))

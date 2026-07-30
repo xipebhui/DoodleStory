@@ -272,6 +272,11 @@
 - Sprint 117 已实现用户 Skill CRUD、不可变发布版本、`@Skill` 与由数据库发布版本驱动的通用内容创作 Agent Loop；每个 Run 第一版最多使用一个纯文本 Skill。Tool 必须先由 Runtime 代码注册；Native Agent 再按本轮固定 Skill Version 的 `tool_names_json` 构造实际函数列表，未勾选的已注册 Tool 不传给模型。旧 Agent Runtime 的历史 Tool 语义不因此增加新能力。不支持脚本、MCP、多 Skill、Workflow DSL 或用户自定义 Tool。漫画方案继续使用最小 ComicPlan control action 和既有 Artifact/Approval adapter，但正式路径不再按 Skill 名称或 `style → create_comic` 资源路由编排。用户 Memory 与抠图继续顺延；多媒体能力必须先新增原子 Tool，再由 Skill 组合，不预建通用媒体 Workflow。正式 Evaluation 推迟到用户确认功能路线冻结后的最后阶段，届时重新编号并确定 `GO_INTERNAL/NO_GO` 门槛。
 - Sprint 118 已补齐 Skill 管理的产品导航闭环：传统工作台主侧栏直接提供 `/agent/skills` 入口，独立 Agent Studio 的 Skill 管理侧栏提供返回 `/tasks` 的入口；两端继续使用稳定 URL，不复制 Skill 编辑器，也不重新合并两套 Shell。
 - Skill 管理使用明确的列表、详情和编辑路径：`/agent/skills/{skill_id}` 只读展示完整正文、状态、权限、Tools、revision、当前版本和更新时间，`/agent/skills/{skill_id}/edit` 只用于个人且未归档 Skill 的修改。列表对所有 Skill 提供“查看详情”，对可编辑的个人 Skill 额外提供“编辑”；系统 Skill 详情只读且可复制，已归档个人 Skill 需先恢复才能编辑。
+- Sprint 142 将 Skill 软归档统一呈现为 Disable / Enable：`archived` 表示 Disabled，
+  定义、不可变版本、`active_version_id` 和历史 Run 全部保留，但它不能进入新的 `@Skill`
+  查询或创建新 Run。管理员可以 Disable / Enable 系统 Skill，普通用户只能改变自己的
+  Skill 状态；系统 Skill 正文和版本仍只读。启动种子不得把已 Disabled 的系统 Skill
+  自动恢复为 `published`。
 - Sprint 119 已完成用独立数据模型重建正常 `/agent` 执行入口：当前最小 Runtime 直接使用 Agents SDK
   `Agent(tools=[generate_image])` 和 SDK 自带 Loop，Skill 负责故事改写、分镜、完整图片 Prompt、
   真实图片 Review 与是否重画。`generate_image` 返回 `ToolOutputImage` 给同一个多模态模型；
