@@ -176,6 +176,20 @@ def _resolved_payload(
     }
 
 
+def build_account_creation_context_snapshot(
+    db: Session,
+    *,
+    channel: YoutubeChannel,
+) -> dict[str, Any]:
+    """Build the authoritative context for an explicitly selected account."""
+    return _resolved_payload(
+        db,
+        channel=channel,
+        query=channel.alias or channel.title,
+        matched_by="selected_account_id",
+    )
+
+
 def get_account_creation_context(
     account_name: str,
     *,

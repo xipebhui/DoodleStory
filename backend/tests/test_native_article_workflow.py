@@ -294,6 +294,21 @@ class NativeArticleWorkflowTests(unittest.TestCase):
         with self.Session() as db:
             run = db.get(NativeAgentRun, run_id)
             self.assertIsNotNone(run)
+            run.creation_channel_context_json = json.dumps(
+                {
+                    "status": "resolved",
+                    "matched_by": "selected_account_id",
+                    "account": {
+                        "account_id": "account-1",
+                        "alias": "历史商业取证",
+                    },
+                    "content_strategy": {
+                        "account_positioning": "从历史事实解释商业选择",
+                        "target_audience": "商业史观众",
+                    },
+                },
+                ensure_ascii=False,
+            )
             run.skill_version
             store = NativeAgentStore(run_id, session_factory=self.Session)
             tools = build_article_agent_tools(
@@ -314,6 +329,9 @@ class NativeArticleWorkflowTests(unittest.TestCase):
             {tool.name for tool in tools},
         )
         self.assertIn("写出完整正文", writer_instructions)
+        self.assertIn("<creation_account_context>", writer_instructions)
+        self.assertIn("历史商业取证", writer_instructions)
+        self.assertIn("从历史事实解释商业选择", writer_instructions)
         self.assertNotIn("协调文案工作流", writer_instructions)
         self.assertNotIn("独立审稿", writer_instructions)
 

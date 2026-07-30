@@ -914,6 +914,9 @@ class NativeAgentRun(Base, TimestampMixin):
         nullable=True,
         index=True,
     )
+    creation_channel_context_json: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
     youtube_channel_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("youtube_channels.id", ondelete="RESTRICT"),
         nullable=True,

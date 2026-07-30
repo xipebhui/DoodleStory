@@ -1468,6 +1468,11 @@ class NativeAgentLoopTests(unittest.TestCase):
                 title="History Account",
                 alias="历史商业取证",
                 remote_status="normal",
+                account_positioning="用真实商业史解释当代选择",
+                target_audience="关注商业与历史的中文观众",
+                stage_goal="验证历史商业选题",
+                ai_definition="可信、克制、引用事实",
+                operation_notes="先给三个可选题，再展开正文",
                 default_style=bound_style,
                 style_bound_at=datetime.utcnow(),
             )
@@ -1504,6 +1509,38 @@ class NativeAgentLoopTests(unittest.TestCase):
             run = db.get(NativeAgentRun, response.data.id)
             self.assertEqual("历史纪录片风格", run.style_prompt_snapshot)
             self.assertEqual("9:16", run.aspect_ratio_snapshot)
+            account_context = json.loads(run.creation_channel_context_json)
+            self.assertEqual("selected_account_id", account_context["matched_by"])
+            self.assertEqual(channel.id, account_context["account"]["account_id"])
+            self.assertEqual(
+                "用真实商业史解释当代选择",
+                account_context["content_strategy"]["account_positioning"],
+            )
+            self.assertEqual(
+                "关注商业与历史的中文观众",
+                account_context["content_strategy"]["target_audience"],
+            )
+            self.assertEqual(
+                "先给三个可选题，再展开正文",
+                account_context["content_strategy"]["operation_notes"],
+            )
+            self.assertIn(
+                "<creation_account_context>",
+                native_agent_instructions(run),
+            )
+            self.assertIn(
+                "用真实商业史解释当代选择",
+                native_agent_instructions(run),
+            )
+            channel.account_positioning = "后续修改不应覆盖旧 Run"
+            db.commit()
+            db.refresh(run)
+            self.assertEqual(
+                "用真实商业史解释当代选择",
+                json.loads(run.creation_channel_context_json)[
+                    "content_strategy"
+                ]["account_positioning"],
+            )
             run.status = AgentRunStatus.succeeded
             db.commit()
 

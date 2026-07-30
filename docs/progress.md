@@ -1,5 +1,20 @@
 # 进度记录
 
+## Sprint 143（已完成）
+
+- 修复 `@创作账号` 只推导绑定 Style、没有进入 Agent Context 的断链。Run 现在按准确账号 ID
+  持久化账号定位、受众、阶段目标、AI 定义、运营备注、频道指标、对标账号和近期视频的有界
+  JSON 快照，账号后续修改不会改变旧 Run。
+- 普通 Native Agent 以及多 Agent 文案 Director、Writer、Reviewer 都会直接收到同一
+  `<creation_account_context>`；不再依赖 Skill 是否开放 `get_account_creation_context`
+  或模型是否主动调用 Tool。
+- 开发库真实“中国文明长纪录片”账号已解析出完整策略和 1 个对标账号，instructions 实测包含
+  账号定位与目标受众。真实浏览器完成 `@创作账号` 选择和绑定 Style 标签验收；未调用收费
+  模型、未创建新 Run。
+- 新迁移已应用到开发库和空库链路。定向 44 项后端测试及 `./scripts/check.sh` 全部通过，
+  完整检查覆盖 339 项后端测试、14 项前端测试、前端生产构建和 Remotion 检查。合同见
+  `docs/contracts/sprint-143-native-agent-account-context.md`。
+
 ## Sprint 142（已完成）
 
 - Skill 软归档已统一呈现为 Disable / Enable。管理员可在系统 Skill 列表和详情中改变状态，
@@ -48,17 +63,18 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 142 已完成；当前三个系统 Skill 均已 Disabled，服务重启后状态保持，
-  且不会出现在新的 `@Skill` 引用或新 Run 中。`./scripts/check.sh` 已通过 339 项后端测试、
-  空库迁移、14 项前端测试、前端生产构建和 Remotion 检查；未调用收费模型或真实 YouTube
-  发布，真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
+- 最近验证状态：Sprint 143 已完成；`@创作账号` 的完整资料快照已进入普通 Agent 和多 Agent
+  文案 Context。`./scripts/check.sh` 已通过 339 项后端测试、空库迁移、14 项前端测试、
+  前端生产构建和 Remotion 检查；未调用收费模型或真实 YouTube 发布，真实发布 smoke 等待
+  用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 142、Sprint 141 Complete；Sprint 135 真实外部发布 smoke 待用户
-  授权；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 143、Sprint 142、Sprint 141 Complete；Sprint 135 真实外部发布
+  smoke 待用户授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-143-native-agent-account-context.md`
 - Complete：`docs/contracts/sprint-142-system-skill-disable.md`
 - Complete：`docs/contracts/sprint-141-native-agent-resource-mentions.md`
 - Complete：`docs/contracts/sprint-140-youtube-account-style-binding.md`
@@ -131,6 +147,9 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 143 Native Agent 创作账号 Context 修复：选择 `@创作账号` 后，后端不再只
+  推导绑定 Style，而是持久化完整账号安全快照，并注入普通 Agent 与文案 Director、Writer、
+  Reviewer。真实账号数据、浏览器标签、开发库迁移、定向测试和完整检查均已验证。
 - 完成 Sprint 142 系统 Skill Disable / Enable：复用现有 `archived` 状态软删除 Skill，
   管理员可改变系统 Skill 状态，普通用户越权请求明确失败；Disabled Skill 保留全部历史，
   但不会进入新的资源引用和 Run。真实浏览器 Disable 三个系统 Skill 后完成服务重启验证，

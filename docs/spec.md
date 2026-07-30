@@ -411,6 +411,13 @@
   最多 10 个对标账号和最多 10 条近期视频；部分匹配或同优先级重名只返回最多 5 个候选，
   不静默选择。Tool 不返回账号邮箱、原始 Analytics JSON，并且只在固定 Skill Version
   白名单包含该能力时暴露。
+- Sprint 143 修复结构化 `@创作账号` 的 Context 断链：前端提交准确
+  `creation_channel_id` 后，Run 创建必须在同一事务内把账号定位、目标受众、阶段目标、
+  AI 定义、运营备注、频道指标、最多 10 个对标账号和最多 10 条近期视频保存为
+  `creation_channel_context_json` 安全快照。普通 Agent 与多 Agent 文案的 Director、
+  Writer、Reviewer instructions 必须直接注入该快照，不依赖模型调用
+  `get_account_creation_context`；账号后续编辑不得改变旧 Run。未选择账号时不注入，
+  快照解析失败时明确失败，不能静默退化成只有绑定 Style。
 - Sprint 134 为 Native Agent 增加单 Skill 驱动的多 Agent 文案链路。系统
   `article-creation-team` Skill 在一份 instructions 中定义 Director、Writer、Reviewer
   的职责与固定协作顺序；每个 Run 首次执行时由一次 Workflow Compiler 模型调用理解完整

@@ -78,6 +78,10 @@ from app.services.native_article_workflow import (
     NativeArticleWorkflowError,
     decide_article_approval,
 )
+from app.services.account_creation_context import (
+    AccountCreationContextError,
+    build_account_creation_context_snapshot,
+)
 
 
 router = APIRouter(prefix="/agent-loop", tags=["native-agent-loop"])
@@ -675,6 +679,7 @@ async def create_native_agent_run(
             detail="当前 Skill Version 未授权 publish_youtube_video",
         )
     creation_channel = None
+    creation_channel_context_json = None
     style = None
     if payload.creation_channel_id is not None:
         if user.role != UserRole.admin:
@@ -712,6 +717,20 @@ async def create_native_agent_run(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Style 与创作账号绑定风格不一致，不能在单次创作中覆盖账号风格",
             )
+        try:
+            creation_channel_context_json = json.dumps(
+                build_account_creation_context_snapshot(
+                    db,
+                    channel=creation_channel,
+                ),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        except AccountCreationContextError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"创作账号 Context 无法读取：{exc}",
+            ) from exc
     elif payload.style_id is not None:
         style = db.scalar(
             select(Style)
@@ -780,6 +799,7 @@ async def create_native_agent_run(
         creation_channel_id=(
             creation_channel.id if creation_channel is not None else None
         ),
+        creation_channel_context_json=creation_channel_context_json,
         youtube_channel_id=(
             youtube_channel.id if youtube_channel is not None else None
         ),

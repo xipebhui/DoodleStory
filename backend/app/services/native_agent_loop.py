@@ -1625,6 +1625,7 @@ def native_agent_instructions(
         f"{run.skill_version.instructions}\n"
         "</skill>"
     )
+    instructions += creation_account_context_instructions(run)
     if active_role is not None:
         instructions += (
             "\n\n<execution_context>\n"
@@ -1655,6 +1656,26 @@ def native_agent_instructions(
     return instructions
 
 
+def creation_account_context_instructions(run: NativeAgentRun) -> str:
+    if not run.creation_channel_context_json:
+        return ""
+    try:
+        context = json.loads(run.creation_channel_context_json)
+    except json.JSONDecodeError as exc:
+        raise NativeAgentLoopError("创作账号 Context 快照不是合法 JSON") from exc
+    if not isinstance(context, dict):
+        raise NativeAgentLoopError("创作账号 Context 快照必须是对象")
+    return (
+        "\n\n<creation_account_context>\n"
+        "以下资料来自用户在本轮通过 @创作账号 明确选择的账号，是当前 Run 的权威账号上下文。"
+        "规划选题、语气、受众、内容结构和文案时必须使用这些资料；不得声称没有读取到账号 "
+        "Context，也不得用同名账号或模型猜测覆盖。资料中的历史内容只作为创作依据，不代表"
+        "用户要求逐字复制。\n"
+        f"{json.dumps(context, ensure_ascii=False, separators=(',', ':'))}\n"
+        "</creation_account_context>"
+    )
+
+
 def article_role_instructions(
     run: NativeAgentRun,
     workflow: CompiledArticleWorkflow,
@@ -1679,6 +1700,7 @@ def article_role_instructions(
         f"{role_instructions}\n"
         "</role>"
     )
+    instructions += creation_account_context_instructions(run)
     if active_role == "director":
         steps = [
             step.model_dump(mode="json")
