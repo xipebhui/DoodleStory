@@ -268,6 +268,12 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
         skill_version=run.skill_version_snapshot,
         style_id=run.style_id,
         style_name=run.style_name_snapshot,
+        creation_channel_id=run.creation_channel_id,
+        creation_channel_name=(
+            (run.creation_channel.alias or run.creation_channel.title)
+            if run.creation_channel is not None
+            else None
+        ),
         youtube_channel_id=run.youtube_channel_id,
         youtube_channel_name=(
             (run.youtube_channel.alias or run.youtube_channel.title)
@@ -385,6 +391,7 @@ def _load_run_for_read(db: Session, run_id: str) -> NativeAgentRun:
             selectinload(NativeAgentRun.artifacts).selectinload(
                 NativeAgentArtifact.approval
             ),
+            selectinload(NativeAgentRun.creation_channel),
             selectinload(NativeAgentRun.youtube_channel),
             selectinload(NativeAgentRun.youtube_publishable_video),
         )
@@ -588,6 +595,7 @@ def get_native_agent_conversation(
             selectinload(NativeAgentRun.artifacts).selectinload(
                 NativeAgentArtifact.approval
             ),
+            selectinload(NativeAgentRun.creation_channel),
             selectinload(NativeAgentRun.youtube_channel),
             selectinload(NativeAgentRun.youtube_publishable_video),
         )
@@ -666,9 +674,45 @@ async def create_native_agent_run(
             status_code=status.HTTP_409_CONFLICT,
             detail="当前 Skill Version 未授权 publish_youtube_video",
         )
+    creation_channel = None
     style = None
-    reference_urls: list[str] = []
-    if payload.style_id is not None:
+    if payload.creation_channel_id is not None:
+        if user.role != UserRole.admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="只有管理员可以在 Agent 中选择创作账号",
+            )
+        creation_channel = db.scalar(
+            select(YoutubeChannel)
+            .where(YoutubeChannel.id == payload.creation_channel_id)
+            .options(
+                selectinload(YoutubeChannel.default_style)
+                .selectinload(Style.reference_images)
+                .selectinload(StyleReferenceImage.asset)
+            )
+        )
+        if creation_channel is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="创作账号不存在",
+            )
+        if creation_channel.default_style is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="所选创作账号尚未绑定风格，请先前往账号管理完成绑定",
+            )
+        style = creation_channel.default_style
+        if style.status != StyleStatus.active or style.deleted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="所选创作账号绑定的风格当前不可用，请先更换账号风格",
+            )
+        if payload.style_id is not None and payload.style_id != style.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Style 与创作账号绑定风格不一致，不能在单次创作中覆盖账号风格",
+            )
+    elif payload.style_id is not None:
         style = db.scalar(
             select(Style)
             .where(
@@ -687,7 +731,7 @@ async def create_native_agent_run(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Style 不存在或未启用",
             )
-        reference_urls = _reference_urls(style)
+    reference_urls = _reference_urls(style) if style is not None else []
 
     youtube_channel = None
     youtube_publishable_video = None
@@ -733,6 +777,9 @@ async def create_native_agent_run(
         image_model_snapshot=style.image_model_name if style is not None else None,
         aspect_ratio_snapshot=style.aspect_ratio if style is not None else None,
         style_reference_urls_json=json.dumps(reference_urls, ensure_ascii=False),
+        creation_channel_id=(
+            creation_channel.id if creation_channel is not None else None
+        ),
         youtube_channel_id=(
             youtube_channel.id if youtube_channel is not None else None
         ),

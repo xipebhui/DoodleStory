@@ -541,6 +541,14 @@ export type YoutubeChannelSummary = {
   remote_status: string;
   alias: string | null;
   account_positioning: string | null;
+  bound_style: {
+    id: string;
+    name: string;
+    status: string;
+    aspect_ratio: string;
+    image_model_name: string;
+  } | null;
+  style_bound_at: string | null;
   total_subscribers: number | null;
   total_views: number | null;
   total_watch_time_hours: number | null;
@@ -629,6 +637,8 @@ export type NativeAgentRun = {
   skill_version: number;
   style_id: string | null;
   style_name: string | null;
+  creation_channel_id: string | null;
+  creation_channel_name: string | null;
   youtube_channel_id: string | null;
   youtube_channel_name: string | null;
   youtube_publishable_video_id: string | null;
@@ -1232,6 +1242,7 @@ export const api = {
       content: string;
       skill_version_id: string;
       style_id: string | null;
+      creation_channel_id: string | null;
       youtube_channel_id: string | null;
       youtube_publishable_video_id: string | null;
       youtube_publish_confirmation: {
@@ -1297,6 +1308,14 @@ export const api = {
     request<ApiData<YoutubeChannelDetail>>(
       `/youtube/channels/${encodeURIComponent(channelId)}/profile`,
       { method: "PATCH", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  updateYoutubeChannelStyleBinding: (
+    channelId: string,
+    styleId: string,
+  ) =>
+    request<ApiData<YoutubeChannelDetail>>(
+      `/youtube/channels/${encodeURIComponent(channelId)}/style-binding`,
+      { method: "PUT", body: JSON.stringify({ style_id: styleId }) },
     ).then((result) => result.data),
   syncYoutubeChannelAnalytics: (channelId: string) =>
     request<ApiData<YoutubeChannelDetail>>(

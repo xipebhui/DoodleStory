@@ -14,18 +14,24 @@ from app.api.youtube_channels import (
     sync_channel_analytics,
     sync_channels,
     update_channel_profile,
+    update_channel_style_binding,
 )
+from app.api.styles import delete_style
 from app.api.pagination import Pagination
 from app.core.database import Base
 from app.models.entities import (
     PublishableVideo,
+    Style,
     User,
     YoutubeChannel,
     YoutubePublishTask,
     YoutubeUploadedVideo,
 )
-from app.models.enums import UserRole
-from app.schemas.youtube import YoutubeChannelProfileUpdate
+from app.models.enums import StyleStatus, UserRole
+from app.schemas.youtube import (
+    YoutubeChannelProfileUpdate,
+    YoutubeChannelStyleBindingUpdate,
+)
 from app.services.youtube_publisher import (
     YoutubePublisherClient,
     YoutubePublisherError,
@@ -160,6 +166,98 @@ class YoutubeChannelApiTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as caught:
                 sync_channels(user=user, db=db)
             self.assertEqual(403, caught.exception.status_code)
+
+    def test_admin_can_bind_active_style_and_sync_preserves_binding(self) -> None:
+        with self.Session() as db:
+            admin = User(
+                email="admin@example.com",
+                password_hash="hash",
+                role=UserRole.admin,
+            )
+            style = Style(
+                name="历史档案风",
+                status=StyleStatus.active,
+                image_model_name="gpt-image-2",
+                aspect_ratio="9:16",
+                style_prompt="纪录片档案画面",
+            )
+            channel = YoutubeChannel(
+                channel_id="UC1",
+                title="History Channel",
+                remote_status="normal",
+            )
+            db.add_all([admin, style, channel])
+            db.commit()
+
+            response = update_channel_style_binding(
+                channel.id,
+                YoutubeChannelStyleBindingUpdate(style_id=style.id),
+                user=admin,
+                db=db,
+            )
+
+            self.assertEqual(style.id, response.data.bound_style.id)
+            self.assertEqual("历史档案风", response.data.bound_style.name)
+            self.assertIsNotNone(response.data.style_bound_at)
+
+            with patch(
+                "app.api.youtube_channels.YoutubePublisherClient.list_channels",
+                return_value=[
+                    {
+                        "channel_id": "UC1",
+                        "title": "Updated History Channel",
+                        "status": "normal",
+                    }
+                ],
+            ):
+                sync_channels(user=admin, db=db)
+            db.refresh(channel)
+            self.assertEqual(style.id, channel.default_style_id)
+
+    def test_style_binding_rejects_inactive_style_and_bound_style_cannot_delete(self) -> None:
+        with self.Session() as db:
+            admin = User(
+                email="admin@example.com",
+                password_hash="hash",
+                role=UserRole.admin,
+            )
+            inactive_style = Style(
+                name="停用风格",
+                status=StyleStatus.disabled,
+                image_model_name="gpt-image-2",
+                aspect_ratio="9:16",
+                style_prompt="不可使用",
+            )
+            active_style = Style(
+                name="账号主风格",
+                status=StyleStatus.active,
+                image_model_name="gpt-image-2",
+                aspect_ratio="9:16",
+                style_prompt="稳定风格",
+            )
+            channel = YoutubeChannel(
+                channel_id="UC1",
+                title="Channel",
+                remote_status="normal",
+                default_style=active_style,
+                style_bound_at=datetime.utcnow(),
+            )
+            db.add_all([admin, inactive_style, active_style, channel])
+            db.commit()
+
+            with self.assertRaises(HTTPException) as caught:
+                update_channel_style_binding(
+                    channel.id,
+                    YoutubeChannelStyleBindingUpdate(style_id=inactive_style.id),
+                    user=admin,
+                    db=db,
+                )
+            self.assertEqual(409, caught.exception.status_code)
+
+            with self.assertRaises(HTTPException) as caught:
+                delete_style(active_style.id, admin, db)
+            self.assertEqual(409, caught.exception.status_code)
+            self.assertIn("仍绑定 1 个频道账号", caught.exception.detail)
 
     def test_channel_list_uses_bounded_server_pagination(self) -> None:
         with self.Session() as db:

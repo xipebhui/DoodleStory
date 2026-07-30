@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import current_user
 from app.api.pagination import Pagination, build_page, get_pagination
 from app.core.database import SessionLocal, get_db
-from app.models.entities import CreditTransaction, FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, TaskStyleReferenceImage, User
+from app.models.entities import CreditTransaction, FileAsset, GenerationTask, Style, StyleReferenceImage, StyleTest, TaskStyleReferenceImage, User, YoutubeChannel
 from app.models.enums import CreditTransactionType, FileAssetPurpose, StyleStatus, WorkflowStatus
 from app.schemas.common import ApiData, ApiList
 from app.schemas.style import (
@@ -367,6 +367,16 @@ def delete_style(style_id: str, _: User = Depends(current_user), db: Session = D
 
     task_count = db.query(GenerationTask).filter(GenerationTask.style_id == style_id).count()
     test_count = db.query(StyleTest).filter(StyleTest.style_id == style_id).count()
+    bound_channel_count = (
+        db.query(YoutubeChannel)
+        .filter(YoutubeChannel.default_style_id == style_id)
+        .count()
+    )
+    if bound_channel_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"该风格仍绑定 {bound_channel_count} 个频道账号，请先更换账号风格",
+        )
     if task_count > 0 or test_count > 0:
         style.deleted_at = datetime.utcnow()
         style.status = StyleStatus.disabled

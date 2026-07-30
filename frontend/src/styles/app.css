@@ -2174,12 +2174,21 @@ textarea {
 .youtube-channel-row {
   display: grid;
   min-height: 92px;
-  grid-template-columns: minmax(245px, 1.35fr) 110px minmax(180px, 1fr) minmax(190px, 1fr) minmax(150px, 0.8fr) 60px;
+  grid-template-columns: minmax(225px, 1.25fr) 90px minmax(150px, 0.8fr) minmax(170px, 1fr) minmax(180px, 1fr) minmax(140px, 0.75fr) 54px;
   align-items: center;
   gap: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   color: #a8afb9;
   font-size: 13px;
+}
+
+.youtube-bound-style {
+  color: #d6b08f;
+  line-height: 1.5;
+}
+
+.youtube-bound-style.is-missing {
+  color: #d48678;
 }
 
 .youtube-channel-row:not(.youtube-channel-head) {
@@ -2478,6 +2487,36 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
   padding-top: 24px;
+}
+
+.youtube-style-binding {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(220px, 0.8fr) auto;
+  align-items: end;
+  gap: 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 24px 0;
+}
+
+.youtube-style-binding > div,
+.youtube-style-binding label {
+  display: grid;
+  gap: 7px;
+}
+
+.youtube-style-binding span,
+.youtube-style-binding small {
+  color: #858d97;
+  font-size: 12px;
+}
+
+.youtube-style-binding strong {
+  color: #f0d0b5;
+  font-size: 17px;
+}
+
+.youtube-style-binding select {
+  min-height: 40px;
 }
 
 .youtube-profile-form label {
@@ -2802,11 +2841,17 @@ textarea {
   }
 
   .youtube-channel-row {
-    grid-template-columns: minmax(220px, 1.3fr) 90px minmax(160px, 1fr) minmax(160px, 1fr) 54px;
+    grid-template-columns: minmax(220px, 1.3fr) 90px minmax(150px, 0.8fr) minmax(160px, 1fr) 54px;
   }
 
-  .youtube-channel-row > :nth-child(5) {
+  .youtube-channel-row > :nth-child(5),
+  .youtube-channel-row > :nth-child(6) {
     display: none;
+  }
+
+  .youtube-style-binding {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .youtube-publish-row {

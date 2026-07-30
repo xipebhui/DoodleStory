@@ -40,6 +40,7 @@ class NativeAgentRunCreate(BaseModel):
     content: str = Field(min_length=1, max_length=20_000)
     skill_version_id: str = Field(min_length=1, max_length=32)
     style_id: str | None = Field(default=None, max_length=32)
+    creation_channel_id: str | None = Field(default=None, max_length=32)
     youtube_channel_id: str | None = Field(default=None, max_length=32)
     youtube_publishable_video_id: str | None = Field(default=None, max_length=32)
     youtube_publish_confirmation: NativeAgentYoutubePublishConfirmation | None = None
@@ -234,6 +235,8 @@ class NativeAgentRunRead(BaseModel):
     skill_version: int
     style_id: str | None
     style_name: str | None
+    creation_channel_id: str | None
+    creation_channel_name: str | None
     youtube_channel_id: str | None
     youtube_channel_name: str | None
     youtube_publishable_video_id: str | None

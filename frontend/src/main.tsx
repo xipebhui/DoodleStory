@@ -2907,7 +2907,7 @@ function YoutubeChannelListView({
       {!loading && channels.length > 0 ? (
         <div className="youtube-channel-table">
           <div className="youtube-channel-row youtube-channel-head">
-            <span>频道 / 别名</span><span>状态</span><span>账号定位</span><span>频道数据</span><span>最近同步</span><span>操作</span>
+            <span>频道 / 别名</span><span>状态</span><span>绑定风格</span><span>账号定位</span><span>频道数据</span><span>最近同步</span><span>操作</span>
           </div>
           {channels.map((channel) => (
             <div className="youtube-channel-row" key={channel.id}>
@@ -2922,6 +2922,9 @@ function YoutubeChannelListView({
                 </span>
               </div>
               <span><i className={`youtube-status is-${channel.remote_status}`}>{channel.remote_status === "normal" ? "正常" : channel.remote_status === "manual" ? "手动" : "需检查"}</i></span>
+              <span className={channel.bound_style ? "youtube-bound-style" : "youtube-bound-style is-missing"}>
+                {channel.bound_style ? `${channel.bound_style.name} · ${channel.bound_style.aspect_ratio}` : "尚未绑定"}
+              </span>
               <span className="youtube-positioning">{channel.account_positioning || "尚未定义账号定位"}</span>
               <span className="youtube-data">{youtubeMetric(channel.total_subscribers)} 订阅 · {youtubeMetric(channel.total_views)} 观看 · {youtubeMetric(channel.total_videos)} 视频</span>
               <span className="youtube-sync-time">
@@ -2957,6 +2960,8 @@ function YoutubeChannelDetailView({
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [profile, setProfile] = useState({ alias: "", account_positioning: "", target_audience: "", stage_goal: "", ai_definition: "", operation_notes: "" });
+  const [styleOptions, setStyleOptions] = useState<StyleSelectOption[]>([]);
+  const [styleBindingId, setStyleBindingId] = useState("");
   const [benchmark, setBenchmark] = useState({ name: "", profile_url: "", notes: "" });
   const [publishableVideos, setPublishableVideos] = useState<PublishableVideo[]>([]);
   const [uploadedVideos, setUploadedVideos] = useState<YoutubeUploadedVideo[]>([]);
@@ -2983,6 +2988,7 @@ function YoutubeChannelDetailView({
         ai_definition: result.ai_definition || "",
         operation_notes: result.operation_notes || "",
       });
+      setStyleBindingId(result.bound_style?.id || "");
       setError("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "频道加载失败");
@@ -3010,6 +3016,11 @@ function YoutubeChannelDetailView({
 
   useEffect(() => {
     void loadChannel();
+    void api.styleSelectOptions({ status: "active", limit: 100 })
+      .then((result) => setStyleOptions(result.items))
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : "风格选项加载失败");
+      });
     void api.youtubePublishableVideos("approved")
       .then((result) => setPublishableVideos(result.items))
       .catch((loadError) => {
@@ -3052,6 +3063,28 @@ function YoutubeChannelDetailView({
     }
   }
 
+  async function saveStyleBinding() {
+    if (!channel) return;
+    if (!styleBindingId) {
+      setError("请选择一个启用风格");
+      return;
+    }
+    const nextStyle = styleOptions.find((style) => style.id === styleBindingId);
+    if (
+      channel.bound_style
+      && channel.bound_style.id !== styleBindingId
+      && !window.confirm(
+        `确认把“${channel.alias || channel.title}”的创作风格从“${channel.bound_style.name}”更换为“${nextStyle?.name || styleBindingId}”？\n只影响之后创建的新内容。`,
+      )
+    ) {
+      return;
+    }
+    await runAction(
+      "style-binding",
+      () => api.updateYoutubeChannelStyleBinding(channel.id, styleBindingId),
+    );
+  }
+
   if (!channel) {
     return <div className="youtube-empty">{error || "正在加载频道…"}</div>;
   }
@@ -3087,6 +3120,10 @@ function YoutubeChannelDetailView({
       {error ? <div className="youtube-inline-error"><AlertCircle size={16} />{error}</div> : null}
       {tab === "overview" ? (
         <div className="youtube-overview-grid">
+          <section>
+            <span>账号创作风格</span>
+            <p>{channel.bound_style ? `${channel.bound_style.name} · ${channel.bound_style.aspect_ratio}` : "尚未绑定，不能按账号创建正式内容"}</p>
+          </section>
           <section><span>账号定位</span><p>{channel.account_positioning || "尚未填写"}</p></section>
           <section><span>目标受众</span><p>{channel.target_audience || "尚未填写"}</p></section>
           <section><span>阶段目标</span><p>{channel.stage_goal || "尚未填写"}</p></section>
@@ -3094,18 +3131,37 @@ function YoutubeChannelDetailView({
         </div>
       ) : null}
       {tab === "profile" ? (
-        <form className="youtube-profile-form" onSubmit={(event) => {
-          event.preventDefault();
-          void runAction("profile", () => api.updateYoutubeChannelProfile(channel.id, Object.fromEntries(Object.entries(profile).map(([key, value]) => [key, value.trim() || null])) as Parameters<typeof api.updateYoutubeChannelProfile>[1]));
-        }}>
-          <label>频道别名<input value={profile.alias} onChange={(event) => setProfile({ ...profile, alias: event.target.value })} placeholder="例如：英文动画主号" /></label>
-          <label>账号定位<textarea value={profile.account_positioning} onChange={(event) => setProfile({ ...profile, account_positioning: event.target.value })} /></label>
-          <label>目标受众<textarea value={profile.target_audience} onChange={(event) => setProfile({ ...profile, target_audience: event.target.value })} /></label>
-          <label>阶段目标<textarea value={profile.stage_goal} onChange={(event) => setProfile({ ...profile, stage_goal: event.target.value })} /></label>
-          <label className="wide">AI 账号定义<textarea value={profile.ai_definition} onChange={(event) => setProfile({ ...profile, ai_definition: event.target.value })} /></label>
-          <label className="wide">运营备注<textarea value={profile.operation_notes} onChange={(event) => setProfile({ ...profile, operation_notes: event.target.value })} /></label>
-          <div className="youtube-form-actions"><button className="primary-button" disabled={busy === "profile"}>保存账号定义</button></div>
-        </form>
+        <>
+          <section className="youtube-style-binding">
+            <div>
+              <span>账号创作风格</span>
+              <strong>{channel.bound_style?.name || "尚未绑定"}</strong>
+              <small>绑定决定该账号后续新内容的生图风格；历史任务快照不会改变。</small>
+            </div>
+            <label>
+              <span>选择启用风格</span>
+              <select value={styleBindingId} onChange={(event) => setStyleBindingId(event.target.value)} disabled={busy === "style-binding"}>
+                <option value="">选择风格</option>
+                {styleOptions.map((style) => <option value={style.id} key={style.id}>{style.name}</option>)}
+              </select>
+            </label>
+            <button className="secondary-button" type="button" disabled={!styleBindingId || busy === "style-binding"} onClick={() => void saveStyleBinding()}>
+              {busy === "style-binding" ? "正在保存" : channel.bound_style ? "更换绑定风格" : "绑定风格"}
+            </button>
+          </section>
+          <form className="youtube-profile-form" onSubmit={(event) => {
+            event.preventDefault();
+            void runAction("profile", () => api.updateYoutubeChannelProfile(channel.id, Object.fromEntries(Object.entries(profile).map(([key, value]) => [key, value.trim() || null])) as Parameters<typeof api.updateYoutubeChannelProfile>[1]));
+          }}>
+            <label>频道别名<input value={profile.alias} onChange={(event) => setProfile({ ...profile, alias: event.target.value })} placeholder="例如：英文动画主号" /></label>
+            <label>账号定位<textarea value={profile.account_positioning} onChange={(event) => setProfile({ ...profile, account_positioning: event.target.value })} /></label>
+            <label>目标受众<textarea value={profile.target_audience} onChange={(event) => setProfile({ ...profile, target_audience: event.target.value })} /></label>
+            <label>阶段目标<textarea value={profile.stage_goal} onChange={(event) => setProfile({ ...profile, stage_goal: event.target.value })} /></label>
+            <label className="wide">AI 账号定义<textarea value={profile.ai_definition} onChange={(event) => setProfile({ ...profile, ai_definition: event.target.value })} /></label>
+            <label className="wide">运营备注<textarea value={profile.operation_notes} onChange={(event) => setProfile({ ...profile, operation_notes: event.target.value })} /></label>
+            <div className="youtube-form-actions"><button className="primary-button" disabled={busy === "profile"}>保存账号定义</button></div>
+          </form>
+        </>
       ) : null}
       {tab === "tasks" ? (
         <section className="youtube-publish-section">
@@ -3574,6 +3630,7 @@ function NativeAgentView({
   const [publishableVideos, setPublishableVideos] = useState<PublishableVideo[]>([]);
   const [skillVersionId, setSkillVersionId] = useState("");
   const [styleId, setStyleId] = useState("");
+  const [creationChannelId, setCreationChannelId] = useState("");
   const [youtubeChannelId, setYoutubeChannelId] = useState("");
   const [youtubePublishableVideoId, setYoutubePublishableVideoId] = useState("");
   const [youtubeVisibility, setYoutubeVisibility] = useState<"public" | "private" | "unlisted">("public");
@@ -3812,7 +3869,12 @@ function NativeAgentView({
       return;
     }
     const selectedYoutubeChannel = youtubeChannels.find((item) => item.id === youtubeChannelId);
+    const selectedCreationChannel = youtubeChannels.find((item) => item.id === creationChannelId);
     const selectedPublishableVideo = publishableVideos.find((item) => item.id === youtubePublishableVideoId);
+    if (creationChannelId && !selectedCreationChannel?.bound_style) {
+      setError("所选创作账号尚未绑定风格，请先前往频道账号管理完成绑定");
+      return;
+    }
     if (youtubeChannelId && !selectedPublishableVideo) {
       setError("选择 @频道后，还需要选择一个审核通过的视频");
       return;
@@ -3844,7 +3906,8 @@ function NativeAgentView({
         : await api.createNativeAgentRun(conversation.id, {
             content,
             skill_version_id: skillVersionId,
-            style_id: styleId || null,
+            style_id: creationChannelId ? null : styleId || null,
+            creation_channel_id: selectedCreationChannel?.id || null,
             youtube_channel_id: selectedYoutubeChannel?.id || null,
             youtube_publishable_video_id: selectedPublishableVideo?.id || null,
             youtube_publish_confirmation:
@@ -4012,6 +4075,7 @@ function NativeAgentView({
                 <div className="native-agent-run-meta">
                   <span>{run.skill_name} · v{run.skill_version}</span>
                   <span>{run.style_name}</span>
+                  {run.creation_channel_id ? <span>创作账号：@{run.creation_channel_name}</span> : null}
                   {run.youtube_channel_id ? <span>@{run.youtube_channel_name}</span> : null}
                   {run.youtube_publishable_video_id ? <span>发布：{run.youtube_publishable_video_title}</span> : null}
                   <span>
@@ -4366,12 +4430,34 @@ function NativeAgentView({
                 ))}
               </select>
             </label>
+            {user.role === "admin" ? (
+              <label>
+                <span>创作账号</span>
+                <select
+                  value={creationChannelId}
+                  onChange={(event) => {
+                    const channelId = event.target.value;
+                    const channel = youtubeChannels.find((item) => item.id === channelId);
+                    setCreationChannelId(channelId);
+                    setStyleId(channel?.bound_style?.id || "");
+                  }}
+                  disabled={sending || Boolean(activeRun)}
+                >
+                  <option value="">不绑定创作账号</option>
+                  {youtubeChannels.map((channel) => (
+                    <option value={channel.id} key={channel.id}>
+                      @{channel.alias || channel.title} · {channel.bound_style?.name || "尚未绑定风格"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label>
-              <span>Style</span>
+              <span>{creationChannelId ? "Style（由账号绑定）" : "Style"}</span>
               <select
                 value={styleId}
                 onChange={(event) => setStyleId(event.target.value)}
-                disabled={sending || Boolean(activeRun)}
+                disabled={sending || Boolean(activeRun) || Boolean(creationChannelId)}
               >
                 <option value="">不使用 Style（仅生图 Tool 需要）</option>
                 {styles.map((style) => (

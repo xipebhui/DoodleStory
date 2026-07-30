@@ -909,6 +909,11 @@ class NativeAgentRun(Base, TimestampMixin):
     image_model_snapshot: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     aspect_ratio_snapshot: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     style_reference_urls_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    creation_channel_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("youtube_channels.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     youtube_channel_id: Mapped[Optional[str]] = mapped_column(
         ForeignKey("youtube_channels.id", ondelete="RESTRICT"),
         nullable=True,
@@ -947,7 +952,12 @@ class NativeAgentRun(Base, TimestampMixin):
     conversation: Mapped[NativeAgentConversation] = relationship(back_populates="runs")
     skill_version: Mapped[AgentSkillVersion] = relationship()
     style: Mapped[Optional[Style]] = relationship()
-    youtube_channel: Mapped[Optional["YoutubeChannel"]] = relationship()
+    creation_channel: Mapped[Optional["YoutubeChannel"]] = relationship(
+        foreign_keys=[creation_channel_id]
+    )
+    youtube_channel: Mapped[Optional["YoutubeChannel"]] = relationship(
+        foreign_keys=[youtube_channel_id]
+    )
     youtube_publishable_video: Mapped[Optional["PublishableVideo"]] = relationship()
     items: Mapped[list["NativeAgentItem"]] = relationship(
         back_populates="run",
@@ -1230,6 +1240,12 @@ class YoutubeChannel(Base, TimestampMixin):
     stage_goal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ai_definition: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     operation_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    default_style_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("styles.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    style_bound_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     total_subscribers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     total_views: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     total_watch_time_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
@@ -1239,6 +1255,7 @@ class YoutubeChannel(Base, TimestampMixin):
     last_sync_success_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    default_style: Mapped[Optional[Style]] = relationship()
     benchmarks: Mapped[list["YoutubeChannelBenchmark"]] = relationship(
         back_populates="channel", cascade="all, delete-orphan"
     )

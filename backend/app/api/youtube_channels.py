@@ -13,21 +13,24 @@ from app.core.database import get_db
 from app.models.entities import (
     NativeAgentVideo,
     PublishableVideo,
+    Style,
     User,
     YoutubeChannel,
     YoutubeChannelBenchmark,
     YoutubePublishTask,
     YoutubeUploadedVideo,
 )
-from app.models.enums import UserRole
+from app.models.enums import StyleStatus, UserRole
 from app.schemas.common import ApiData, ApiList
 from app.schemas.youtube import (
     PublishableVideoCreate,
     PublishableVideoRead,
     YoutubeBenchmarkCreate,
     YoutubeBenchmarkRead,
+    YoutubeBoundStyleRead,
     YoutubeChannelDetailRead,
     YoutubeChannelProfileUpdate,
+    YoutubeChannelStyleBindingUpdate,
     YoutubeChannelSummaryRead,
     YoutubePublishTaskCreate,
     YoutubePublishTaskRead,
@@ -72,6 +75,18 @@ def channel_summary(channel: YoutubeChannel) -> YoutubeChannelSummaryRead:
         remote_status=channel.remote_status,
         alias=channel.alias,
         account_positioning=channel.account_positioning,
+        bound_style=(
+            YoutubeBoundStyleRead(
+                id=channel.default_style.id,
+                name=channel.default_style.name,
+                status=channel.default_style.status.value,
+                aspect_ratio=channel.default_style.aspect_ratio,
+                image_model_name=channel.default_style.image_model_name,
+            )
+            if channel.default_style is not None
+            else None
+        ),
+        style_bound_at=channel.style_bound_at,
         total_subscribers=channel.total_subscribers,
         total_views=channel.total_views,
         total_watch_time_hours=channel.total_watch_time_hours,
@@ -171,6 +186,7 @@ def load_channel(db: Session, channel_id: str) -> YoutubeChannel:
     channel = db.scalar(
         select(YoutubeChannel)
         .options(
+            selectinload(YoutubeChannel.default_style),
             selectinload(YoutubeChannel.benchmarks),
             selectinload(YoutubeChannel.publish_tasks),
         )
@@ -199,6 +215,7 @@ def list_channels(
     total = db.scalar(select(func.count()).select_from(YoutubeChannel).where(*filters)) or 0
     rows = db.scalars(
         select(YoutubeChannel)
+        .options(selectinload(YoutubeChannel.default_style))
         .where(*filters)
         .order_by(YoutubeChannel.updated_at.desc(), YoutubeChannel.id)
         .offset(pagination.offset)
@@ -291,6 +308,36 @@ def update_channel_profile(channel_pk: str, payload: YoutubeChannelProfileUpdate
     channel = load_channel(db, channel_pk)
     for key, value in payload.model_dump().items():
         setattr(channel, key, value)
+    db.commit()
+    return ApiData(data=channel_detail(load_channel(db, channel_pk)))
+
+
+@router.put(
+    "/channels/{channel_pk}/style-binding",
+    response_model=ApiData[YoutubeChannelDetailRead],
+)
+def update_channel_style_binding(
+    channel_pk: str,
+    payload: YoutubeChannelStyleBindingUpdate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[YoutubeChannelDetailRead]:
+    require_admin(user)
+    channel = load_channel(db, channel_pk)
+    style = db.scalar(
+        select(Style).where(
+            Style.id == payload.style_id,
+            Style.status == StyleStatus.active,
+            Style.deleted_at.is_(None),
+        )
+    )
+    if style is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="只能绑定已启用且未删除的风格",
+        )
+    channel.default_style_id = style.id
+    channel.style_bound_at = datetime.utcnow()
     db.commit()
     return ApiData(data=channel_detail(load_channel(db, channel_pk)))
 

@@ -23,6 +23,20 @@ class YoutubeChannelProfileUpdate(BaseModel):
         return normalized or None
 
 
+class YoutubeChannelStyleBindingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    style_id: str = Field(min_length=1, max_length=32)
+
+
+class YoutubeBoundStyleRead(BaseModel):
+    id: str
+    name: str
+    status: str
+    aspect_ratio: str
+    image_model_name: str
+
+
 class YoutubeBenchmarkCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -66,6 +80,8 @@ class YoutubeChannelSummaryRead(BaseModel):
     remote_status: str
     alias: str | None
     account_positioning: str | None
+    bound_style: YoutubeBoundStyleRead | None
+    style_bound_at: datetime | None
     total_subscribers: int | None
     total_views: int | None
     total_watch_time_hours: float | None

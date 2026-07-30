@@ -49,6 +49,7 @@ from app.models.enums import (
     NativeAgentStepType,
     StorageBackend,
     StyleStatus,
+    UserRole,
 )
 from app.api.native_agent import (
     cancel_native_run,
@@ -1416,6 +1417,171 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual(1, db.query(NativeAgentRun).count())
             self.assertEqual(0, db.query(AgentRun).count())
             self.assertEqual(0, db.query(GenerationTask).count())
+
+    def test_creation_account_uniquely_derives_style_snapshot(self) -> None:
+        with self.Session() as db:
+            admin = User(
+                email="native-account@example.com",
+                password_hash="hash",
+                role=UserRole.admin,
+            )
+            db.add(admin)
+            db.flush()
+            skill = AgentSkill(
+                owner_user_id=admin.id,
+                slug="account-style-skill",
+                name="账号风格 Skill",
+                description="按账号风格创作。",
+                draft_instructions="# 方法\n按账号风格生成内容。",
+                draft_tool_names_json='["generate_image"]',
+                draft_revision=1,
+                status=AgentSkillStatus.published,
+            )
+            db.add(skill)
+            db.flush()
+            version = AgentSkillVersion(
+                skill_id=skill.id,
+                version=1,
+                name_snapshot=skill.name,
+                description_snapshot=skill.description,
+                instructions=skill.draft_instructions,
+                tool_names_json=skill.draft_tool_names_json,
+                content_hash="sha256:account-style",
+                published_by_user_id=admin.id,
+            )
+            bound_style = Style(
+                name="账号绑定风格",
+                status=StyleStatus.active,
+                image_model_name="gpt-image-2",
+                aspect_ratio="9:16",
+                style_prompt="历史纪录片风格",
+            )
+            other_style = Style(
+                name="不允许覆盖的风格",
+                status=StyleStatus.active,
+                image_model_name="gpt-image-2",
+                aspect_ratio="1:1",
+                style_prompt="卡通风格",
+            )
+            channel = YoutubeChannel(
+                channel_id="UC-creation",
+                title="History Account",
+                alias="历史商业取证",
+                remote_status="normal",
+                default_style=bound_style,
+                style_bound_at=datetime.utcnow(),
+            )
+            conversation = NativeAgentConversation(
+                owner_user_id=admin.id,
+                title="账号风格",
+            )
+            db.add_all([version, bound_style, other_style, channel, conversation])
+            db.flush()
+            skill.active_version_id = version.id
+            db.commit()
+
+            with patch(
+                "app.api.native_agent.enqueue_native_agent_run",
+                new=AsyncMock(),
+            ):
+                response = asyncio.run(
+                    create_native_agent_run(
+                        conversation.id,
+                        NativeAgentRunCreate(
+                            content="按账号风格生成开场图",
+                            skill_version_id=version.id,
+                            creation_channel_id=channel.id,
+                        ),
+                        admin,
+                        db,
+                    )
+                )
+
+            self.assertEqual(channel.id, response.data.creation_channel_id)
+            self.assertEqual("历史商业取证", response.data.creation_channel_name)
+            self.assertEqual(bound_style.id, response.data.style_id)
+            self.assertEqual("账号绑定风格", response.data.style_name)
+            run = db.get(NativeAgentRun, response.data.id)
+            self.assertEqual("历史纪录片风格", run.style_prompt_snapshot)
+            self.assertEqual("9:16", run.aspect_ratio_snapshot)
+            run.status = AgentRunStatus.succeeded
+            db.commit()
+
+            with self.assertRaises(HTTPException) as caught:
+                asyncio.run(
+                    create_native_agent_run(
+                        conversation.id,
+                        NativeAgentRunCreate(
+                            content="尝试覆盖账号风格",
+                            skill_version_id=version.id,
+                            style_id=other_style.id,
+                            creation_channel_id=channel.id,
+                        ),
+                        admin,
+                        db,
+                    )
+                )
+            self.assertEqual(409, caught.exception.status_code)
+            self.assertIn("不能在单次创作中覆盖", caught.exception.detail)
+
+    def test_creation_account_requires_bound_active_style(self) -> None:
+        with self.Session() as db:
+            admin = User(
+                email="native-unbound@example.com",
+                password_hash="hash",
+                role=UserRole.admin,
+            )
+            skill = AgentSkill(
+                owner_user_id=admin.id,
+                slug="unbound-account-skill",
+                name="未绑定账号 Skill",
+                description="测试未绑定账号。",
+                draft_instructions="# 方法",
+                draft_tool_names_json="[]",
+                draft_revision=1,
+                status=AgentSkillStatus.published,
+            )
+            db.add_all([admin, skill])
+            db.flush()
+            version = AgentSkillVersion(
+                skill_id=skill.id,
+                version=1,
+                name_snapshot=skill.name,
+                description_snapshot=skill.description,
+                instructions=skill.draft_instructions,
+                tool_names_json=skill.draft_tool_names_json,
+                content_hash="sha256:unbound-account",
+                published_by_user_id=admin.id,
+            )
+            channel = YoutubeChannel(
+                channel_id="UC-unbound",
+                title="Unbound Account",
+                remote_status="normal",
+            )
+            conversation = NativeAgentConversation(
+                owner_user_id=admin.id,
+                title="未绑定账号",
+            )
+            db.add_all([version, channel, conversation])
+            db.flush()
+            skill.active_version_id = version.id
+            db.commit()
+
+            with self.assertRaises(HTTPException) as caught:
+                asyncio.run(
+                    create_native_agent_run(
+                        conversation.id,
+                        NativeAgentRunCreate(
+                            content="创建内容",
+                            skill_version_id=version.id,
+                            creation_channel_id=channel.id,
+                        ),
+                        admin,
+                        db,
+                    )
+                )
+            self.assertEqual(409, caught.exception.status_code)
+            self.assertIn("尚未绑定风格", caught.exception.detail)
 
     def test_retry_latest_reuses_same_run_snapshots_and_failed_tool(self) -> None:
         run_id = self.create_durable_run(status=AgentRunStatus.succeeded)
