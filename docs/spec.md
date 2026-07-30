@@ -209,6 +209,11 @@
 - 频道以远程 `channel_id` 为稳定标识，保存远程名称、Handle、状态和同步数据；频道别名、
   账号定位、目标受众、阶段目标、AI 说明、运营备注和对标账号属于 DoodleStory 本地知识，
   远程同步不能覆盖。
+- 管理员 Native Agent 可以通过只读
+  `get_account_creation_context(account_name)` Tool 按账号别名、频道标题、Handle 或远程
+  `channel_id` 读取上述本地创作知识，不要求用户知道内部账号 ID。只有唯一精确匹配才能返回
+  完整策略、统计、对标账号和最多 10 条近期视频；重名或部分匹配只返回最多 5 个候选并等待
+  确认。结果不得包含账号邮箱或原始 Analytics JSON。
 - 频道、频道分析和频道已发布视频均由用户点击按钮手动同步；第一版不增加定时循环、隐藏轮询或
   Webhook。已发布视频列表必须显式按 `channel_id` 过滤，不能读取无频道约束的全局视频池。
 - 频道账号列表和单频道已发布视频列表均使用服务端分页，每页默认显示 10 条并返回准确总数；
@@ -381,6 +386,13 @@
   `publish_youtube_video` 也必须同时满足 Skill 白名单和已确认的结构化发布上下文，不能因
   对话携带发布参数而绕过白名单。公开研究不写频道快照，不包含 OAuth、YouTube Analytics、
   私有账号指标、视频下载、字幕或定时同步。
+- Sprint 139 为 Native Agent 新增 `get_account_creation_context(account_name)` 只读
+  Function Tool。用户只需说账号别名、频道标题或 `@Handle`，模型自行调用 Tool；Runtime
+  根据当前 Run 找到 Conversation owner，并保持既有频道资源的管理员权限边界。匹配优先级为
+  别名、Handle、频道标题、远程频道 ID，只有唯一精确命中才返回账号创作策略、频道汇总指标、
+  最多 10 个对标账号和最多 10 条近期视频；部分匹配或同优先级重名只返回最多 5 个候选，
+  不静默选择。Tool 不返回账号邮箱、原始 Analytics JSON，并且只在固定 Skill Version
+  白名单包含该能力时暴露。
 - Sprint 134 为 Native Agent 增加单 Skill 驱动的多 Agent 文案链路。系统
   `article-creation-team` Skill 在一份 instructions 中定义 Director、Writer、Reviewer
   的职责与固定协作顺序；每个 Run 首次执行时由一次 Workflow Compiler 模型调用理解完整

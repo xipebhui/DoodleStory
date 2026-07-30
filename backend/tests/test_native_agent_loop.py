@@ -745,6 +745,10 @@ class NativeAgentLoopTests(unittest.TestCase):
             ["inspect_youtube_channel"],
             native_runtime_tool_names('["inspect_youtube_channel"]'),
         )
+        self.assertEqual(
+            ["get_account_creation_context"],
+            native_runtime_tool_names('["get_account_creation_context"]'),
+        )
 
     def test_generate_speech_persists_audio_and_owner_can_read_asset(self) -> None:
         run_id = self.create_durable_run()

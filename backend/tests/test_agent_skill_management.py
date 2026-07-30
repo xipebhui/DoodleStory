@@ -112,6 +112,15 @@ class AgentSkillManagementTests(unittest.TestCase):
         )
         self.assertTrue(tools["inspect_youtube_channel"]["has_side_effects"])
         self.assertTrue(tools["inspect_youtube_channel"]["may_wait"])
+        self.assertIn("get_account_creation_context", tools)
+        self.assertEqual(
+            "读取账号创作上下文",
+            tools["get_account_creation_context"]["display_name"],
+        )
+        self.assertFalse(
+            tools["get_account_creation_context"]["has_side_effects"]
+        )
+        self.assertFalse(tools["get_account_creation_context"]["may_wait"])
 
     def create_draft(self, *, owner: User | None = None) -> AgentSkill:
         return create_skill(

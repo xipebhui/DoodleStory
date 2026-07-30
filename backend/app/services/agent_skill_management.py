@@ -53,6 +53,10 @@ TOOL_PRESENTATION = {
         "读取 YouTube 频道",
         "YouTube · 读取频道与近期视频统计、标题、描述和评论，并下载头像与视频封面。",
     ),
+    "get_account_creation_context": (
+        "读取账号创作上下文",
+        "根据账号别名、频道名或 Handle 读取本地账号定位、目标受众、阶段目标、AI 定义、运营备注、对标账号和近期视频。",
+    ),
     "write_article": (
         "文案写作子 Agent",
         "把当前文案任务交给同一 Skill 中的 Writer 角色，返回并保存完整草稿。",
@@ -96,6 +100,11 @@ NATIVE_ONLY_TOOL_CATALOG = (
         "name": "inspect_youtube_channel",
         "has_side_effects": True,
         "may_wait": True,
+    },
+    {
+        "name": "get_account_creation_context",
+        "has_side_effects": False,
+        "may_wait": False,
     },
     {
         "name": "write_article",

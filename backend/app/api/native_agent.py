@@ -431,6 +431,7 @@ def get_native_agent_capabilities(
                 "render_story_video",
                 "publish_youtube_video",
                 "capture_wechat_article",
+                "get_account_creation_context",
                 "inspect_youtube_channel",
             ],
             image_review="native_model_vision",

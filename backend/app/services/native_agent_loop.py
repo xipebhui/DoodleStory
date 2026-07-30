@@ -60,6 +60,10 @@ from app.services.agent_observability import (
     set_span_result,
     set_span_status,
 )
+from app.services.account_creation_context import (
+    AccountCreationContextError,
+    get_account_creation_context,
+)
 from app.services.agent_skill_management import parse_tool_names
 from app.services.image_generation import (
     GeneratedImageFile,
@@ -165,6 +169,7 @@ NATIVE_RUNTIME_TOOL_NAMES = frozenset(
         "render_story_video",
         "publish_youtube_video",
         "capture_wechat_article",
+        "get_account_creation_context",
         "inspect_youtube_channel",
         "write_article",
         "review_article",
@@ -1443,6 +1448,39 @@ def build_inspect_youtube_channel_tool(
     )
 
 
+def build_get_account_creation_context_tool(
+    run_id: str,
+    *,
+    session_factory: sessionmaker = SessionLocal,
+) -> FunctionTool:
+    async def read_account_creation_context(
+        tool_context: ToolContext[None],
+        account_name: str,
+    ) -> list[ToolOutputText]:
+        del tool_context
+        try:
+            payload = await asyncio.to_thread(
+                get_account_creation_context,
+                account_name,
+                run_id=run_id,
+                session_factory=session_factory,
+            )
+        except AccountCreationContextError as exc:
+            raise NativeAgentLoopError(str(exc)) from exc
+        return [ToolOutputText(text=json.dumps(payload, ensure_ascii=False))]
+
+    return function_tool(
+        read_account_creation_context,
+        name_override="get_account_creation_context",
+        description_override=(
+            "根据用户说出的账号名称读取平台数据库中的账号创作上下文。account_name 直接传"
+            "用户使用的账号别名、频道标题或 @Handle，不要要求用户提供内部账号 ID。唯一精确"
+            "命中时返回账号定位、目标受众、阶段目标、AI 定义、运营备注、对标账号、频道统计"
+            "和近期视频；模糊或重名时只返回候选，必须让用户确认后再继续。"
+        ),
+    )
+
+
 def build_publish_youtube_video_tool(
     run_id: str,
     *,
@@ -2016,6 +2054,10 @@ async def execute_native_agent_run(
                         run_id,
                         store=store,
                     )
+                )
+            if "get_account_creation_context" in exposed_tool_names:
+                tools.append(
+                    build_get_account_creation_context_tool(run_id)
                 )
             if "inspect_youtube_channel" in exposed_tool_names:
                 tools.append(build_inspect_youtube_channel_tool())

@@ -293,6 +293,7 @@ class NativeAgentCapabilityRead(BaseModel):
             "render_story_video",
             "publish_youtube_video",
             "capture_wechat_article",
+            "get_account_creation_context",
             "inspect_youtube_channel",
             "write_article",
             "review_article",

@@ -676,6 +676,22 @@
 1. 保持 Sprint 117 已关闭状态，不自动扩展多 Skill、脚本/MCP、Memory、TTS、Remotion 或视频能力。
 2. 等用户明确确认功能路线冻结并授权后，再重新编号并激活 Deferred Evaluation。
 3. 当前不要宣告 `GO_INTERNAL` 或 `NO_GO`。
+
+# Sprint 139 账号创作上下文 Tool（已完成）
+
+- 新增只读 `get_account_creation_context(account_name)` Native Function Tool。用户不需要输入
+  内部账号 ID；模型可把自然语言中的账号别名、频道标题、`@Handle` 或远程频道 ID 直接传给
+  Tool。精确匹配按别名、Handle、标题、远程 ID 的顺序执行，只有唯一命中才返回完整上下文；
+  重名和部分匹配只返回最多 5 个候选，不静默选中。
+- Tool 从现有 YouTube 账号、对标账号和已发布视频表读取账号定位、目标受众、阶段目标、
+  AI 定义、运营备注、汇总指标、最多 10 个对标账号和最多 10 条近期视频。结果明确排除账号
+  邮箱和原始 Analytics JSON；视频长描述和标签使用显式上下文边界并标记是否截断。
+- 当前频道是管理员共享资源，Tool 通过 Run → Conversation owner 校验管理员权限；能力只有
+  在固定 Skill Version 勾选后才向模型暴露。Skill 管理目录、能力接口和前端名称均已接入。
+- 40 项聚焦测试通过；`./scripts/check.sh` 通过 334 项后端测试、空库 Alembic 全量升级、
+  8 项前端测试、前端生产构建、Remotion typecheck 与 5 项测试。真实本地数据库 smoke 使用
+  “历史商业取证”唯一命中，定位资料完整并返回 1 个对标账号。
+
 # Sprint 137（已完成）
 
 - 已确定将同级多平台导入服务中调通的微信公众号文章抓取能力封装为
