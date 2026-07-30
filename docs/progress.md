@@ -1,15 +1,14 @@
 # 进度记录
 
-## Sprint 144（规划中）
+## Sprint 144–146 Agent Durable Runtime 全量替换（规划完成，待连续实施）
 
 - 已根据 2026-07-30 真实事故建立 Native Agent 稳定任务控制面合同。事故链路确认：阶段性选题
   Approve 把旧 Run 直接结束；用户随后输入“继续”创建缺少旧 Artifact 和恢复位置的新 Run；
   三次 Writer 子 Agent 超时后根 Run 仍被标成 succeeded，前端则因没有统一 Tool 终态事件持续
   显示“等待执行”。
-- Sprint 144 第一阶段将建立 Conversation → Workflow Run → Task → Attempt → Checkpoint 的
-  权威身份和状态模型，拆分阶段审批与最终审批，增加有界 Conversation Memory、Follow-up Run、
-  Attempt worker lease、后端权威 Projection 和前端状态收敛，并只重建现有文章团队作为首条
-  可恢复纵向链路。
+- 用户要求一次定义并完成完整改造，不接受把 Task、Memory、局部恢复、并行 DAG 或 Probe 留到
+  未定义的后续阶段。合同已升级为 Sprint 144–146 连续交付总计划：每个 Sprint 验证、记录和
+  Commit 后自动进入下一段，不再逐段等待确认。
 - 用户进一步确认当前没有真实用户，允许删除本地测试数据和错误设计。仓库审计已确认未挂载旧
   Agent Runtime、当前 Native Agent Runtime 和不可达旧前端并存；Sprint 144 改为替换式重构，
   整体删除旧控制面、替换当前 Native 链路中错误的控制层，再重建唯一 Agent schema、Worker、
@@ -21,10 +20,16 @@
   保留，且禁止通过兼容包装回调旧链路。
 - 传统 `generation_tasks`、图片/视频 Worker、Skill、Style、账号、频道和领域资产能力不属于
   删除范围；它们只通过新 Durable Runtime 的明确 adapter 接入。
-- 通用并行 DAG、任意 Probe 执行器、媒体全链路 Task 化和外部工作流引擎不进入第一阶段；
-  先通过 Writer → Reviewer → Approval 的强制中断、跨重启和前后端一致性验收。
-- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。当前仅完成规划，
-  尚未授权实施，也未新增数据库表或修改 Runtime。
+- Sprint 144 将一次建全 Conversation、Run、Branch、Task/Dependency/Task State、Attempt、
+  Model Session/Context、Checkpoint、Memory、Artifact Version、Approval、Tool Effect、
+  Command 和 Event 表族，同时重接 YouTube 发布来源外键并删除旧表；Sprint 145、146 不再按
+  功能进度追加核心状态表。该 Sprint 同时用新 Repository、Command、Projection、`/agent`
+  API 和基础 Workspace 完成当前文案链 Cutover，验证后仓库仍保持可启动、可使用状态。
+- Sprint 145 完成 Durable Worker、Session Context Replay、Memory、Checkpoint、Retry、
+  Resume、Follow-up、局部 Rerun/Probe Branch、Tool Effect 和多 Agent DAG；Sprint 146 完成
+  统一 `/agent` API、SSE、单一 Workspace、前后端状态收敛及强制中断/真实模型端到端验收。
+- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。当前已完成全量
+  计划，尚未新增数据库表或修改 Runtime。
 
 ## Sprint 143（已完成）
 

@@ -435,6 +435,38 @@
   必须由 SDK LLM 生命周期覆盖 Compiler、Director 和所有子 Agent 的真实请求开始事件，
   不能再用父 Agent `response.created` 数量代替；每个 MLflow 根 Trace 标记
   `execution_attempt`、本次调用总数、完成数和角色拆分。
+- Sprint 144–146 将以替换式重构建立唯一 Agent Durable Runtime。当前 `/agent-loop` 与此前
+  旧 Agent Runtime 是两条独立链路；旧 `agent_runner`、`agent_tool_runtime`、`agent_hitl`、
+  旧 `/agent/conversations`、不可达 `AgentView` 及其 ORM、表和测试必须整体删除，不允许新
+  Runtime 回调旧控制链，也不保留兼容 API、双写或 Feature Flag。当前 Native 链路的 Skill、
+  业务 Tool、账号、Style、频道、FileAsset、Provider Client 和领域执行器继续保留，只替换
+  Run、Worker、Persistence、Checkpoint、Projection 和前端状态控制层。
+- Agent 的持久化身份固定为
+  `Conversation → Run → Branch → Task State → Attempt → Model Session`。Conversation 是用户
+  Session；Run 是一次用户目标；Branch 隔离主线、Retry、局部 Rerun 和 Probe；Task 是不可变
+  DAG 节点；同一 Task 在不同 Branch 有独立 Task State；每次模型、子 Agent、重试或恢复均创建
+  不覆盖历史的 Attempt。数据库是这些状态、Approval、Tool Effect 和完成判定的唯一事实来源，
+  OpenAI Agents SDK 只执行模型/Tool Loop，MLflow 只做观测。
+- Sprint 144 必须用一次破坏性 Migration 建全最终核心表，包括 Conversation/Message/Run、
+  Run Resource、Branch、Task/Dependency/Task State、Attempt、Model Session/Context Item、
+  Checkpoint、Memory Snapshot/Item、Artifact/Version、Approval、Tool Call/Effect、
+  Command 和 Event；不得按后续功能进度再逐批补核心表。旧
+  `native_agent_images/audios/subtitles/videos/external_contents` 统一迁为版本化 Agent
+  Artifact 语义，YouTube 发布来源改为引用视频 Artifact Version。传统
+  `generation_tasks/video_tasks/generated_images/file_assets` 继续作为独立产品域能力。
+- Conversation History、Memory Snapshot 和 Attempt Model Session 是三层不同上下文。新 Run
+  只能显式继承已确认的 Memory Snapshot 与 Artifact Version，不能复用上一 Run 的可变 SDK
+  Session；Resume Attempt 从 Checkpoint 固定的 Context Sequence 创建新 Model Session。
+  Memory Item 必须保留 Message、Artifact 或 Approval 来源，模型摘要不能覆盖用户原文和决定。
+- 用户可以对失败节点安全 Retry、在进程中断后 Resume，或从任意允许的局部 Task 创建 Candidate
+  Branch 重新执行。局部 Rerun 复用安全上游结果，将依赖旧输出的下游标记 stale 并按 DAG 重跑；
+  Candidate 验证通过后才原子提升为 Active Branch，失败或 Probe 未通过不能污染主线。外部
+  Tool Effect 结果为 unknown 时必须阻止自动重放并等待人工命令。
+- Agent API 和前端只使用数据库权威 Projection。Approve、Request Changes、Retry、Resume、
+  Rerun、Promote/Discard Branch、Cancel 和 Follow-up 都是带幂等键与 expected state version
+  的结构化 Command。SSE 使用 Run 内递增 sequence 和 state version；断线或发现缺口时重新读取
+  Projection。Run 终态时所有 Task、Attempt 和 Function Call 必须有明确终态，不能继续显示
+  “等待执行”。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。

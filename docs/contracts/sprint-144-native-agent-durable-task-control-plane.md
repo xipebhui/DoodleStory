@@ -1,615 +1,800 @@
-# Sprint 144：Native Agent 稳定任务控制面与可恢复单纵向链路
+# Sprint 144–146：Agent Durable Runtime 全量替换计划
 
 ## Status
 
-Draft。用户已明确确认当前没有真实用户和需要保留的生产 Agent 数据，允许删除错误设计并进行
-替换式重构；正式实施仍需按本合同逐步验证。
+Ready for implementation。全量计划已定义，实施后按 Sprint 144–146 连续推进。
 
-本文是稳定任务改造的第一阶段合同。当前 `/agent-loop` 是独立链路，不允许调用或依赖此前的
-旧 Agent 控制链。实施时先完整删除不可达旧链路，再替换当前 Native Agent 中错误的编排与持久化
-控制层，建立唯一的 Durable Task Runtime；当前链路已有的业务 Tool、Skill 和领域能力通过明确
-接口接回。通用并行 DAG、任意 Probe 分支和外部工作流引擎留给后续 Sprint。
+用户已明确：
 
-## Goal
+- 当前没有需要兼容的真实 Agent 用户和生产 Agent 数据。
+- 允许删除错误设计、旧表、旧 API、旧前端和本地测试数据。
+- 必须一次定义并完成全部核心数据库结构，不能每个 Sprint 再补一部分核心表。
+- 可以拆成多个连续 Sprint，每个 Sprint 验证并提交后直接继续，不需要用户逐段确认。
+- 最终目标不是修复单一事故，而是完整实现 Task 管理、Chat/Run 恢复、Session Memory、
+  多 Agent Task 切分、错误重试和任意局部节点重新执行。
 
-用替换式重构把当前“两个并存且语义冲突的 Agent 控制面”收敛为“一个具有权威任务状态、明确
-续用语义和可恢复执行边界的 Agent 工作流基础”：
+当前编号已经进入 Sprint 144，因此本计划使用 Sprint 144、145、146；不复用历史
+Sprint 114–116 编号。
 
-1. 删除未挂载的旧 Agent Runtime、不可达前端和错误恢复入口，不保留兼容 API 或双写。
-2. 后端数据库成为 Conversation、Workflow Run、Task、Attempt、Checkpoint、Approval 和 Tool
-   副作用的唯一状态事实来源。
-3. Approve、继续、修改、重试和新目标不再依赖前端猜测或自然语言特判，而是执行明确的控制命令。
-4. 前端只展示后端权威投影；Run 已结束时不能继续显示 Function Call“等待执行”。
-5. 同一 Conversation 内的新 Run 可以有界继承经过验证的 Memory、Artifact 和父 Run 关系，
-   但不能直接复用或污染已结束 Run 的 SDK Session。
-6. Writer、Reviewer 和最终审批形成可中断恢复的持久化 Task/Attempt 链；单个子 Agent 失败不能
-   被根模型的一段说明文字掩盖成 Workflow 成功。
+## Program Goal
+
+删除旧 Agent 控制链和当前 Native Agent 的错误控制层，建立一套由数据库驱动的 Durable
+Runtime。系统必须把以下状态从聊天历史或进程内存中剥离出来，作为可查询、可校验、可恢复的
+持久化事实：
+
+```text
+User
+└─ Conversation（用户 Session）
+   ├─ Message / Memory Snapshot
+   └─ Run（一次用户目标）
+      └─ Branch（主线或局部重跑候选分支）
+         └─ Task State（该分支中的任务状态）
+            └─ Attempt（一次真实执行）
+               ├─ Model Session / Context Items
+               ├─ Tool Call / Tool Effect
+               └─ Artifact Version
+      ├─ Checkpoint
+      ├─ Approval
+      └─ Event / Command
+```
+
+最终必须支持：
+
+1. 浏览器刷新、SSE 断开、后端重启后恢复同一 Conversation、Run、Task 和等待状态。
+2. 用户批准阶段性结果时继续同一 Run，而不是误结束或丢失上下文。
+3. 已结束 Run 的后续目标创建新 Run，并有界继承已确认 Memory 和 Artifact。
+4. 模型、子 Agent、只读 Tool 或幂等 Tool 失败后，从安全 Checkpoint 创建新 Attempt。
+5. 用户可从一个已完成或失败的局部 Task 重新执行；新结果在候选 Branch 验证通过后再原子提升，
+   不直接破坏当前主线。
+6. 多 Agent 由持久化 Task DAG 调度；每个 Agent 调用都是可定位、可恢复的 Attempt。
+7. 前端只展示后端权威 Projection；数据库 Run 已结束时不可能仍显示“等待执行”。
 
 ## Incident Baseline
 
-本 Sprint 必须以 2026-07-30 的真实故障作为回归基线：
+必须把 2026-07-30 事故固化为自动化 fixture：
 
 - Conversation：`b547d1eff60e47698ae0a0d40db1172a`
 - 已批准 Run：`ed979081ea33489ab17d44eaa280aafb`
-  - 用户批准选题后，后端把 Run 直接置为 `succeeded/article_approved`。
-  - Approval 反馈为“使用第一个选题就可以”，但该决定没有推进后续文案 Task。
-- “继续”创建的新 Run：`ddca2d7d76fd45968a0e8820a9514e42`
-  - 新 Run 只保存“继续”作为用户输入，没有继承已批准选题 Artifact 或上一 Run 的任务恢复位置。
-  - 三次 `write_article` 子 Agent 调用均超时，未生成任何 Artifact。
-  - 根模型输出“请重试”后，Runtime 仍把 Run 标记为 `succeeded`。
-  - MLflow Trace 正常结束，但前端 Function Call 因没有 Tool 终态事件而持续显示“等待执行”。
+  - 阶段性选题 Approve 被错误实现为 `run=succeeded`。
+- “继续”后 Run：`ddca2d7d76fd45968a0e8820a9514e42`
+  - 新 Run 没有继承选题 Artifact、Memory 或恢复位置。
+  - Writer 三次超时且无 Artifact，根模型的说明文本却让 Run 成功。
+  - MLflow Tree 已结束，前端 Function Call 仍显示“等待执行”。
 
-本 Sprint 完成后，上述状态组合必须无法再次出现。
+这些 ID 只用于本地取证。保存必要时间线后，可以删除原始 Agent 数据。
 
-这些 ID 只作为本地事故证据。实施前把必要状态时间线保存进测试 fixture 或 QA 记录后，允许在
-开发数据库重建时删除原始 Agent Run、Context、Artifact 和 Approval 数据，不为本地测试数据
-增加兼容迁移。
+## Non-Negotiable Decisions
 
-## Replacement Decision
+### 一套控制面
 
-仓库当前并存两套 Agent 控制面：
+- 旧 `agent_runner`、`agent_tool_runtime`、`agent_hitl`、`agent_comic_creation`、
+  `agent_panel_versions`、`agent_conversations` 整体删除。
+- 当前 `/agent-loop` 的业务 Tool、Skill 和领域 adapter 保留；Run、Worker、Persistence、
+  Checkpoint、API Projection 和前端状态控制层替换。
+- 最终只有 `/agent` 一套 API、一套 ORM、一套 Worker、一套状态机和一个 Agent Workspace。
+- 不保留旧 API 代理、双写、兼容 Model、compatibility alias、feature flag 或数据搬迁。
 
-1. 旧 Agent 控制面：
-   - `AgentConversation/AgentRun/AgentStep/AgentArtifact/AgentApprovalRequest/AgentEvent`
-   - `agent_runner`、`agent_tool_runtime`、`agent_hitl`、`agent_comic_creation`、
-     `agent_panel_versions`
-   - 未挂载的 `agent_conversations` API
-   - 前端不可达的 `AgentView` 和对应 API client/type
-2. 当前 Native Agent 控制面：
-   - `NativeAgentConversation/NativeAgentRun/NativeAgentStep/NativeAgentEvent`
-   - `native_agent_worker`、`native_agent_persistence`、覆盖式
-     `workflow_checkpoint_json`
-   - `/agent-loop` API 和前端基于 Artifact 猜 Tool 终态的投影
+### 数据库一次换模
 
-两套实现使用同一组状态枚举却有不同的 Session、Checkpoint、恢复和 UI 语义。Sprint 144 不选择
-旧控制面继续打补丁：旧 Agent 链路整体删除；当前 Native 链路保留业务 Tool 和领域 adapter，
-只替换其 Run、Task、Checkpoint、恢复、API 投影和前端状态控制层，最终收敛为唯一实现。
+Sprint 144 必须一次创建最终核心 Schema，并在同一个破坏性迁移中：
 
-保留边界：
+1. 重接跨域外键。
+2. 删除旧 `agent_*` 和 `native_agent_*` 控制表。
+3. 创建本计划列出的全部新表、索引、唯一约束和外键。
+4. 删除不再使用的旧 ORM、Enum 和关系。
 
-- `agent_skills/agent_skill_versions` 是产品级 Skill 数据，不属于待删除旧控制面。
-- `generation_tasks`、图片 Task Worker 和 Video Task Worker 是传统产品域执行器，继续保留。
-- 图片、音频、字幕、视频、外部内容和发布结果仍是领域资产；第一阶段只改变 Agent 如何引用和
-  调度它们，不删除传统任务产品能力。
-- MLflow 继续是可观测性系统，不成为恢复数据库。
+Sprint 145、146 不再以“功能做到哪里”为理由追加核心状态表。实施中若发现目标 Schema
+无法表达已在本计划范围内的状态，应先修正 Sprint 144 Schema 和测试，再继续，而不是留下
+临时 JSON、第二套表或兼容层。
 
-不保留边界：
+允许在后续 Sprint 修正字段、约束或索引缺陷，但不允许重新引入第二套身份模型。
 
-- 不保留旧 `/agent/conversations` 或当前 `/agent-loop` 的兼容代理。
-- 不对旧 Run、Context、Checkpoint 或测试 Artifact 做数据搬迁。
-- 不让旧 Worker 与新 Durable Worker 双跑。
-- 不通过 feature flag 长期维持两套控制面。
+### 数据库是状态事实来源
+
+- 进程内 Queue 只运输 `attempt_id`，不保存任务事实。
+- OpenAI Agents SDK 负责模型和 Tool Loop，不负责业务状态、恢复或完成判定。
+- MLflow 只负责观测，不决定 Run 是否成功，也不作为恢复存储。
+- 前端状态、浏览器 Local State 和模型说明文本都不能覆盖数据库状态。
+
+### 没有默认兜底
+
+- 不能在找不到 Checkpoint 时静默创建新 Run。
+- 不能在 Tool 结果未知时自动重放。
+- 不能在 Memory 构建失败时退回整段聊天历史继续执行。
+- 不能因为模型输出“完成”就把未通过 Completion Contract 的 Task/Run 标成功。
 
 ## Independent Chain Boundary
 
-2026-07-30 静态引用和应用挂载审计结论：
+静态引用和应用挂载审计结论：
 
-- 当前生效的 `/agent-loop` 后端和 `NativeAgentView` 没有直接调用
-  `agent_runner`、`agent_tool_runtime`、`agent_hitl`、`agent_comic_creation`、
-  `agent_panel_versions` 或 `agent_conversations`。
-- 旧 `agent_conversations` Router 未挂载到应用，旧 `AgentView` 未进入当前 `/agent` 页面；
-  旧链路当前没有运行时价值。
-- 旧链路仍以 ORM 表、后端模块、前端 API/type、不可达组件和测试的形式存在。这些残留会制造
-  两套状态语义，必须删除，不能被新 Runtime 调用、包装或适配。
-- 当前 Native 链路直接复用的 Skill 解析、账号、Style、频道、资产、Provider client 和
-  Observability 属于共享产品/基础设施能力，不等于旧 Agent 控制链。
-
-改造后的依赖规则采用明确 allowlist。
+- 生效的 `/agent-loop` 和 `NativeAgentView` 没有调用旧 Agent 控制链。
+- 旧 Router 未挂载，旧 `AgentView` 不可达。
+- 旧链路仍以 ORM、Migration、后端模块、前端 API/type 和测试残留，必须删除。
+- Skill、账号、Style、频道、FileAsset、Provider Client、Observability 和传统媒体执行器属于
+  共享产品能力，不属于旧控制链。
 
 允许共享：
 
-- `agent_skills/agent_skill_versions` 及其 Skill 管理、解析和版本固定能力。
-- 账号、Style、频道、文件资产、外部内容和 Provider client 等领域服务。
-- 传统图片、音频、字幕、视频、发布执行器，但只能通过新 Runtime 的明确 adapter 调用。
-- 通用日志、Metric、Trace 基础设施；其中 Agent Span 必须使用新 Run/Task/Attempt 身份。
+- `agent_skills/agent_skill_versions`。
+- 用户、账号、Style、频道、文件资产、外部内容和 Provider Client。
+- 图片、语音、字幕、视频、发布等领域执行器，通过明确 Tool Adapter 接入。
+- 通用日志、Metric 和 Trace 基础设施。
 
-禁止依赖：
+禁止共享：
 
-- 旧 `agent_runner`、`agent_tool_runtime`、`agent_hitl`、`agent_comic_creation`、
-  `agent_panel_versions` 和 `agent_conversations` 的任何 import、调用或兼容包装。
-- 旧 Agent ORM Model、数据库表、状态枚举专用分支和恢复函数。
-- 旧 `/agent/conversations` API、旧前端 `AgentView`、client/type 和状态推断。
-- 为保住旧测试而留下的桥接层、双写、compatibility alias 或 feature flag。
+- 旧 Agent Run/Step/Artifact/Approval/Event Model 或 Service。
+- 旧 `/agent/conversations` API 和旧前端 Agent 类型。
+- 从新 Runtime 回调旧 Worker、旧恢复逻辑或旧 Tool Executor。
+- 为保留旧测试而存在的桥接和双写。
 
-若实施中发现当前 Native 链路对禁止项存在间接依赖，处理方式是把仍有价值的纯领域能力抽到
-中立模块并让新 Runtime 显式依赖它，然后删除旧入口；不得保留从新链路回调旧控制链的路径。
+发现间接依赖时，只允许把有价值的纯领域能力提取到中立模块，再删除旧入口。
 
 ## Authoritative Identity Model
 
-### Conversation
+### Conversation = 用户 Session
 
-新统一 `AgentConversation` 是长期用户会话和 Memory 所属容器，不直接表示一次执行。
+Conversation 是长期用户会话容器：
 
-- 一个 Conversation 可以包含多个 Workflow Run。
-- Conversation 保存用户可见消息、结构化资源引用和有界 Memory Snapshot。
-- Conversation Memory 不能直接等同于任意一个 Run 的 SDK Session。
+- 一个 Conversation 包含多条 Message、多个 Run 和多个 Memory Snapshot。
+- Conversation 不直接表示一次执行，也不持有可变 SDK Session。
+- 同一用户可以有多个 Conversation；不同 Conversation 默认不共享 Memory。
+- Conversation 归档不删除 Run、Artifact 或 Memory。
 
-### Workflow Run
+### Run = 一次用户目标
 
-新统一 `AgentRun` 表示一次完整用户目标的根工作流，不继承旧 `AgentRun` 或
-`NativeAgentRun` 的可变恢复语义。
+Run 是完整 Workflow 实例：
 
-- 一个 Run 固定 Skill Version、模型、Style、账号和发布上下文快照。
-- Run 可以包含多个 Task 和多次执行 Attempt。
-- Run 只有在所有必需 Task 达到成功终态、所有 Completion Gate 通过且没有未解决副作用时，
-  才能进入 `succeeded`。
-- Run 进入 `succeeded/failed/cancelled` 后保持不可变；后续工作创建带来源关系的新 Run，不能
-  把已结束 Run 改回 `queued/running`。
+- 创建时固定 Skill Version、模型、账号、Style、频道、资源引用和安全快照。
+- `root_run_id` 表示工作族根；`parent_run_id` 表示 Follow-up 来源。
+- `continued_from_checkpoint_id` 和 `memory_snapshot_id` 明确继承边界。
+- `state_version` 每次权威状态变化递增，用于 CAS 和前端收敛。
+- 终态 `succeeded/failed/cancelled` 不可重新打开；后续工作必须创建新 Run。
+- Run 成功只能由所有 Required Task、Approval Gate 和 Tool Effect 共同计算。
 
-新增关系：
+### Branch = 主线与局部重跑隔离
 
-- `root_run_id`：根工作流 ID；第一层 Run 等于自身 ID。
-- `parent_run_id`：从哪个已结束或父级 Run 派生。
-- `continued_from_checkpoint_id`：新 Run 从哪个已确认 Checkpoint 读取上下文。
-- `state_version`：每次权威状态变更递增，用于前端投影和乐观并发。
+每个 Run 创建一个初始主 Branch。局部重跑、Probe 或替代方案创建 Candidate Branch：
 
-### Task
+- Candidate 固定 `base_checkpoint_id`、`parent_branch_id` 和重跑起点 Task。
+- Candidate 执行不会覆盖当前 Active Branch 的 Task State 或 Artifact Version。
+- Candidate 验证通过后，通过单事务更新 `run.active_branch_id` 并发布新 Checkpoint。
+- Candidate 失败或被用户放弃时标记 discarded，主线不变。
+- 已产生未知外部副作用的 Candidate 不能自动提升或重放。
 
-Task 是 Runtime 可以独立调度、等待、重试、取消和验证的最小工作单元。
+### Task = 不可变任务定义
 
-第一条纵向链路至少产生：
+Task 表示 Workflow DAG 中的逻辑节点：
 
-```text
-compile_workflow
-→ write_article
-→ review_article
-→ approve_topic_or_final
-→ complete_workflow
-```
+- `task_key` 在 Run 内唯一。
+- 保存 Task Type、负责人/Agent Role、输入输出契约、Completion Contract 和 Required 标志。
+- 依赖使用关系表，不用 JSON 保存核心 DAG。
+- Task 定义发布后不可原地改变；重编译 Workflow 必须创建新 Run。
+- Runtime 校验 DAG 无环、依赖可达、Tool/Role 属于固定 Skill Version 的能力范围。
 
-每个 Task 必须保存：
+### Task State = Branch 内任务状态
 
-- 稳定 Task ID、Run ID 和可选父 Task ID。
-- `task_key`，在同一 Run 内稳定且唯一。
-- `task_type`、负责角色和 Skill 自定义业务标签。
-- 状态、依赖、输入 Artifact 引用、输出 Artifact 引用。
-- `completion_contract_json`：机器可检查的完成条件。
-- 当前 Attempt、最大 Attempt、错误和时间。
-- `required`：是否阻塞根 Run 成功。
+同一 Task 在不同 Branch 有独立 Task State：
 
-模型可以建议 Task 拆分和业务顺序，但 Runtime 必须验证：
+- 保存状态、当前 Attempt、输入 Artifact Version、输出 Artifact Version和失效原因。
+- 上游 Artifact 被新 Branch 替换时，下游 Task State 标为 `stale`，并按依赖顺序重跑。
+- Active Branch 的 Task State 才进入默认前端 Projection。
 
-- Task 类型和角色在固定 Skill Version 允许范围内。
-- 依赖形成无环且可执行的图。
-- 必需输入 Artifact 已存在且 hash 有效。
-- Completion Contract 已满足后才能将 Task 标成成功。
-- 必需 Task 未完成时不能提交根 Run 成功。
+### Attempt = 一次真实执行
 
-### Attempt
+每次模型调用、子 Agent 调用、重试、恢复和局部重跑都创建新的 Attempt：
 
-Attempt 是 Task 的一次真实执行，不覆盖历史执行。
+- 历史 Attempt 永不覆盖。
+- 保存 Attempt Kind、Checkpoint、Model Session、租约、心跳、Trace、Usage、错误和终态。
+- Worker 只能原子领取一个 Attempt。
+- `unknown` 表示外部结果无法确认，必须停止自动推进。
 
-每次模型调用、子 Agent 调用、人工修改后的重做和安全重试都创建新 Attempt，并保存：
+## Complete Target Database Schema
 
-- `task_id`
-- `attempt_number`
-- `attempt_kind`：`normal`、`retry`、`resume` 或后续使用的 `probe`
-- `base_checkpoint_id`
-- 独立 SDK Session namespace
-- 状态、开始/结束时间、模型、usage、Trace ID
-- 输入摘要、输出 Artifact、错误
-- Worker claim、lease 和 heartbeat
+以下是 Sprint 144 必须一次建完的最终核心表族。
 
-子 Agent 必须先创建 Attempt，再发出模型请求。超时或服务重启后，Attempt 有明确的
-`failed/interrupted/unknown` 事实，不能只把错误文本交给 Director 后消失。
+### 会话和输入
+
+#### `agent_conversations`
+
+- `id`, `owner_user_id`, `title`, `status`
+- `current_run_id`, `memory_head_snapshot_id`
+- `last_message_at`, `created_at`, `updated_at`
+- owner + last message 索引
+
+#### `agent_messages`
+
+- `id`, `conversation_id`, 可选 `run_id`, `role`, `content`
+- `client_message_id`，用于用户重复提交幂等
+- `command_id`, `sequence`, `created_at`
+- 唯一 `(conversation_id, sequence)` 和 `(conversation_id, client_message_id)`
+
+#### `agent_run_resources`
+
+- `id`, `run_id`, `resource_type`, `resource_id`
+- `snapshot_json`, `content_hash`, `ordinal`
+- 固定 Skill、Style、账号、频道、用户引用和输入 Artifact 的创建时事实
+
+### Run、Branch 和 Task
+
+#### `agent_runs`
+
+- `id`, `conversation_id`, `root_run_id`, `parent_run_id`
+- `continued_from_checkpoint_id`, `memory_snapshot_id`, `active_branch_id`
+- `skill_version_id`, `status`, `state_version`, `event_sequence`
+- `expected_input_kind`, `allowed_actions_json`
+- `completion_reason`, `error_code`, `error_message`
+- `created_at`, `started_at`, `finished_at`, `updated_at`
+
+#### `agent_run_branches`
+
+- `id`, `run_id`, `parent_branch_id`, `base_checkpoint_id`
+- `branch_kind`: `main/retry/rerun/probe`
+- `status`: `active/candidate/promoted/discarded/failed/blocked`
+- `rerun_from_task_id`, `created_by_user_id`, `reason`
+- `created_at`, `resolved_at`
+- 每个 Run 最多一个 active Branch
+
+#### `agent_tasks`
+
+- `id`, `run_id`, `task_key`, `task_type`, `agent_role`
+- `required`, `input_contract_json`, `output_contract_json`
+- `completion_contract_json`, `max_attempts`, `timeout_seconds`
+- `created_at`
+- 唯一 `(run_id, task_key)`
+
+#### `agent_task_dependencies`
+
+- `task_id`, `depends_on_task_id`, `dependency_kind`
+- 复合主键；禁止自依赖
+
+#### `agent_task_states`
+
+- `id`, `task_id`, `branch_id`, `status`, `state_version`
+- `current_attempt_id`, `input_manifest_hash`, `output_manifest_hash`
+- `blocked_reason`, `stale_reason`, `started_at`, `finished_at`, `updated_at`
+- 唯一 `(task_id, branch_id)`
+
+#### `agent_attempts`
+
+- `id`, `task_state_id`, `attempt_number`, `attempt_kind`
+- `base_checkpoint_id`, `model_session_id`
+- `status`, `lease_owner`, `lease_expires_at`, `heartbeat_at`
+- `model`, `provider`, `trace_id`, `usage_json`
+- `input_hash`, `output_hash`, `error_code`, `error_message`
+- `created_at`, `started_at`, `finished_at`
+- 唯一 `(task_state_id, attempt_number)`
+
+### Model Session 和恢复上下文
+
+#### `agent_model_sessions`
+
+- `id`, `conversation_id`, `run_id`, `branch_id`, `attempt_id`
+- `parent_session_id`, `base_checkpoint_id`
+- `provider`, `model`, `status`, `context_version`
+- `through_context_sequence`, `created_at`, `closed_at`
+- 每个 Attempt 使用独立 Session；恢复 Attempt 从已提交 Context 派生，不共享可变 Session
+
+#### `agent_context_items`
+
+- `id`, `model_session_id`, `attempt_id`, `sequence`
+- `item_type`, `role`, `content_json`, `content_hash`
+- 可选 `provider_item_id`, `created_at`
+- 唯一 `(model_session_id, sequence)`
+- 只保存安全重放所需的 Responses Context，不使用 Provider remote conversation 作为事实来源
+
+### Checkpoint、Memory 和分支提升
+
+#### `agent_checkpoints`
+
+- `id`, `run_id`, `branch_id`, 可选 `task_state_id`, `attempt_id`
+- `revision`, `parent_checkpoint_id`, `checkpoint_kind`
+- `through_event_sequence`, `through_context_sequence`
+- `schema_version`, `skill_version_id`
+- `state_json`, `state_hash`, `reason`, `created_at`
+- 唯一 `(run_id, branch_id, revision)`
+- append-only；Run/Branch 只保存当前指针
+
+#### `agent_memory_snapshots`
+
+- `id`, `conversation_id`, `source_run_id`, `source_checkpoint_id`
+- `parent_snapshot_id`, `revision`, `summary`, `content_hash`
+- `created_at`
+- append-only；不能原地修改
+
+#### `agent_memory_items`
+
+- `id`, `snapshot_id`, `memory_type`
+- `content_json`, `content_hash`
+- `source_message_id`, `source_artifact_version_id`, `source_approval_id`
+- `scope`, `confidence`, `ordinal`
+- 事实、偏好、约束、用户决定和 Artifact 引用必须保留来源
+
+### Artifact、审批和副作用
+
+#### `agent_artifacts`
+
+- `id`, `conversation_id`, `run_id`, `task_id`
+- `artifact_key`, `artifact_type`, `current_version_id`
+- `created_at`, `updated_at`
+- 唯一 `(run_id, artifact_key)`
+
+#### `agent_artifact_versions`
+
+- `id`, `artifact_id`, `branch_id`, `attempt_id`, `version`
+- `status`, `content_json`, 可选 `file_asset_id`
+- `content_hash`, `schema_version`, `created_at`
+- 唯一 `(artifact_id, version)`；版本不可覆盖
+
+图片、语音、字幕、视频、文案和外部素材统一表示为 Artifact Version。类型专用信息进入版本化
+`content_json`，二进制文件继续使用 `file_assets`。
+
+#### `agent_approvals`
+
+- `id`, `conversation_id`, `run_id`, `branch_id`, `task_state_id`
+- `artifact_version_id`, `approval_purpose`, `on_approve_action`
+- `status`, `requested_hash`, `feedback`
+- `requested_at`, `resolved_at`, `resolved_by_user_id`
+- 只能批准请求时固定的 Artifact hash
+
+#### `agent_tool_calls`
+
+- `id`, `attempt_id`, `task_state_id`, `tool_name`, `call_key`
+- `status`, `arguments_json`, `arguments_hash`
+- `result_json`, `result_hash`, `started_at`, `finished_at`
+- 唯一 `call_key`；前端 Function Call 状态直接来自这里
+
+#### `agent_tool_effects`
+
+- `id`, `tool_call_id`, `effect_kind`, `idempotency_key`
+- `status`: `prepared/submitted/succeeded/failed/unknown/reconciled`
+- `provider_request_id`, `provider_receipt_json`, `result_artifact_version_id`
+- `created_at`, `updated_at`
+- 唯一 `idempotency_key`
+
+### 命令、事件和同步
+
+#### `agent_commands`
+
+- `id`, `conversation_id`, `run_id`, 可选 `task_id`
+- `command_type`, `idempotency_key`, `expected_state_version`
+- `payload_json`, `status`, `result_projection_json`
+- `created_by_user_id`, `created_at`, `completed_at`
+- Approve、修改、Retry、Resume、Rerun、Cancel、Promote Branch 都通过命令执行
+
+#### `agent_events`
+
+- `id`, `conversation_id`, `run_id`, `branch_id`
+- 可选 `task_state_id`, `attempt_id`, `tool_call_id`
+- `sequence`, `event_type`, `state_version`, `payload_json`, `created_at`
+- 唯一 `(run_id, sequence)`
+- 作为 SSE 可重放日志；不存 chain-of-thought、密钥、内部路径或 Provider 原始敏感响应
+
+### Database Invariants
+
+- 所有核心 ID 使用现有固定长度字符串 ID 规范；时间统一保存 UTC。
+- Conversation、Run、Branch、Task、Attempt、Artifact Version 和 Memory 的来源链必须有真实
+  FK，不允许只保存无约束字符串。
+- `current_*`、`active_branch_id`、`memory_head_snapshot_id` 等反向指针初始允许为空，在依赖表
+  建好后补 FK；指针和被指向对象必须在同一事务更新。
+- Event sequence 通过 Run 行原子递增分配，禁止 `MAX(sequence) + 1`。
+- 所有 revision、version、sequence 和 attempt number 都有正数 Check Constraint。
+- Run、Branch、Task State、Attempt、Approval、Tool Call/Effect 的状态值有数据库 Check；
+  状态转换只允许通过唯一 Transition/Command Service。
+- Durable Runtime 对象不提供普通硬删除 API；用户删除 Conversation 使用归档。测试清理和本次
+  破坏性 Migration 按明确 FK 顺序执行。
+- Artifact/Memory/Checkpoint/Context/Event 使用 append-only Repository；更新当前指针不修改
+  已提交历史行。
+- JSON 只保存版本化 Payload、Contract、Snapshot 或 Projection，不保存可被覆盖的唯一任务状态；
+  JSON 写入前必须通过对应 Pydantic Schema 校验并保存 schema version/hash。
+
+## Cross-Domain Foreign-Key Rewrite
+
+不能只删除 `native_agent_runs`，必须同时处理当前跨域引用：
+
+- 删除 `native_agent_images/audios/subtitles/videos/external_contents`，对应数据统一进入
+  `agent_artifacts/agent_artifact_versions`。
+- `youtube_publish_tasks.source_native_agent_video_id` 改为
+  `source_agent_artifact_version_id`。
+- `youtube_uploaded_videos.source_native_agent_video_id` 同样改为
+  `source_agent_artifact_version_id`。
+- 发布服务必须验证引用的 Artifact Version 类型为视频且属于当前用户允许的 Conversation。
+- Run 上的媒体调用计数字段删除，改从 Tool Call/Attempt 聚合。
+- Skill、Style、频道等外键和创建时快照写入 `agent_run_resources`；需要高频过滤的
+  `skill_version_id` 保留为 Run 直接外键。
+- 传统 `generation_tasks/video_tasks/generated_images/file_assets` 继续保留，不并入 Agent
+  控制表。
+
+由于用户授权清理本地 Agent 数据，迁移不搬运旧 Run/Context/Artifact/Approval；YouTube
+发布测试数据若引用旧 Native Video，一并清理并重建 fixture，不制造虚假映射。
 
 ## State Machines
 
-### Workflow Run
+### Run
 
 ```text
 queued
 → running
-→ waiting_for_input | waiting_for_task | retrying
+→ waiting_for_input | waiting_for_tasks | retrying
 → running
-→ succeeded | failed | cancelled
+→ succeeded | failed | cancel_requested → cancelled
 ```
 
-规则：
+- `waiting_for_input` 必须有 `expected_input_kind` 和 `allowed_actions`。
+- Required Task 未完成、Approval 未解决或 Tool Effect 为 unknown 时不能成功。
+- 终态不可逆。
 
-- `waiting_for_input` 不是终态，必须同时保存 `expected_input_kind` 和 `allowed_actions`。
-- `succeeded` 必须由 Runtime 根据 Task/Gate 计算，不能由模型 final output 直接决定。
-- 子 Agent Tool 返回失败时，关联 Task 必须失败或重试；根模型的解释性输出不能覆盖这个事实。
-- `workflow_phase` 只是展示字段，不能替代 Task 状态。
-
-### Task
+### Task State
 
 ```text
-pending
-→ ready
-→ running
+pending → ready → running
 → waiting_for_input | retrying
-→ succeeded | failed | cancelled | blocked
+→ succeeded | failed | blocked | stale | cancelled
 ```
 
 ### Attempt
 
 ```text
-prepared
-→ running
+prepared → running
 → succeeded | failed | interrupted | unknown | cancelled
 ```
 
-`unknown` 表示无法确认外部副作用，只能人工解决或通过 Provider receipt 对账，不允许自动重放。
+### Branch
 
-## Continue、Approve、Retry 与新 Run 判定
-
-后端返回每个 Run 当前允许的结构化操作，前端只能提交其中之一：
-
-```json
-{
-  "expected_input_kind": "approval_decision",
-  "allowed_actions": [
-    "approve_and_advance",
-    "request_changes",
-    "cancel"
-  ]
-}
+```text
+main: active
+candidate: candidate → promoted | discarded | failed | blocked
 ```
 
-判定矩阵：
+## Run ID Decision Rules
 
-| 场景 | 行为 | Run ID |
+| 用户动作/系统状态 | 行为 | Run ID |
 | --- | --- | --- |
-| 新 Conversation 的第一个目标 | 创建根 Workflow Run | 新 Run |
-| Run 正在等待某个 Gate，用户批准 | 解决 Gate，推进下一 Task | 同一 Run |
-| Run 等待修改意见，用户提交意见 | 保存输入，创建新 Task Attempt | 同一 Run |
-| Task 明确失败且可安全重试 | 创建 retry Attempt | 同一 Run |
-| Run 因进程中断但 Checkpoint 可恢复 | 创建 resume Attempt | 同一 Run |
-| Run 已成功，用户提出同一成果的后续制作 | 创建带 `parent_run_id` 的 Follow-up Run | 新 Run |
-| 用户提出不同目标或更换固定 Skill/Style | 创建新根 Run | 新 Run |
-| Run 存在 `unknown` Tool Effect | 阻止自动继续，要求人工处理 | 不创建 Run |
+| 新 Conversation 第一个目标 | 创建根 Run | 新 |
+| Run 等待阶段审批，用户批准 | 解决 Gate，推进 Task | 原 Run |
+| Run 等待修改意见 | 保存 Message，创建新 Attempt | 原 Run |
+| 失败 Task 可安全重试 | 创建 Retry Attempt | 原 Run |
+| 服务中断且 Checkpoint 安全 | 创建 Resume Attempt | 原 Run |
+| 用户重跑局部 Task | 创建 Candidate Branch 和 Rerun Attempt | 原 Run |
+| 已成功 Run 的后续制作 | 创建 Follow-up Run | 新 |
+| 用户更换目标、Skill 或固定资源 | 创建根 Run | 新 |
+| Tool Effect unknown | 阻止自动执行，等待人工命令 | 不创建 |
 
-本 Sprint 禁止继续以输入内容是否精确等于“重试”决定核心恢复语义。自然语言输入可以由模型或
-命令解析器提出建议，但最终必须映射为后端当前 `allowed_actions` 中的结构化命令。
+“继续”“重试”等自然语言只能被解析成建议命令；后端必须根据当前 `allowed_actions` 验证，不能
+再通过字符串特判决定恢复。
 
-审批必须增加明确的 `approval_purpose` 和 `on_approve_action`：
-
-- `stage_gate` + `advance_task`
-- `artifact_revision` + `resume_task`
-- `final_result` + `complete_run`
-
-不能再把所有 Approve 都实现为 `run.status=succeeded`。
-
-## Conversation Memory 与 SDK Session
+## Chat、Model Session 和 Memory
 
 ### 三层上下文
 
-1. Conversation History：用户可见的长期消息事实。
-2. Workflow Memory：经过验证、可继承的摘要、决定和 Artifact 引用。
-3. Attempt SDK Session：某次模型/子 Agent 执行的原生 Responses Context。
+1. Conversation History：用户可见 Message，长期保存。
+2. Memory Snapshot：经过验证且可继承的事实、偏好、决定和 Artifact 引用。
+3. Model Session：单个 Attempt 的完整 SDK 重放上下文。
 
-约束：
+规则：
 
-- SDK Session 继续隔离在 Run/Attempt 范围，不能简单改成全 Conversation 共用，否则并行
-  Task、失败重试和不同 Skill 会相互污染。
-- 新 Run 不直接复制上一 Run 的全部 SDK Context。
-- Run 在稳定 Checkpoint 或终态生成不可变 Memory Snapshot，保存来源 Run、事件范围、
-  Artifact ID/hash、用户决定和有界摘要。
-- 创建 Follow-up Run 时显式选择 Memory Snapshot，并在 Run 创建事务中固化引用。
-- 用户原文、批准决定和 Artifact 是事实；模型摘要不能覆盖它们。
-- Compact 只用于控制模型 Context 大小，不作为任务完成或恢复事实。
+- 新 Run 不能直接复用上一 Run 的可变 SDK Session。
+- Resume Attempt 从 Checkpoint 固定的 Context Sequence 创建新 Model Session。
+- Follow-up Run 只继承显式 Memory Snapshot 和 Artifact Version。
+- 用户原文、批准决定和 Artifact hash 是事实；模型摘要不能覆盖。
+- Memory Item 必须有来源和 Scope；跨 Conversation Memory 不在本计划中自动发生。
+- Compact 只减少模型输入大小，不代表任务完成，也不能删除恢复所需的 Context Item。
+- Memory 构建失败必须明确阻止需要该 Memory 的 Follow-up，不得退回整段历史静默执行。
 
-## Checkpoint
+## Checkpoint and Recovery
 
-新增 append-only `agent_checkpoints`，删除覆盖式 `workflow_checkpoint_json`。
+自动保存边界：
 
-最小字段：
-
-- `id`
-- `run_id`
-- 可选 `task_id`、`attempt_id`
-- `revision`
-- `parent_checkpoint_id`
-- `through_event_sequence`
-- `schema_version`
-- `skill_version_id`
-- `phase`
-- `state_json` 或 `state_artifact_id`
-- `state_hash`
-- `reason`
-- `created_at`
-
-Run 保存 `current_checkpoint_id/current_checkpoint_revision`。发布新 Checkpoint 时使用
-`expected_revision` 乐观锁；revision 冲突必须重新读取合并，不能静默覆盖。
-
-第一阶段自动保存边界：
-
-- Workflow Plan 编译并校验后。
-- 每个必需 Task 成功或明确失败后。
-- 创建人工 Gate 前。
-- 人工 Gate 解决后。
+- Workflow 编译并验证后。
+- 每个 Required Task 成功、失败或进入等待前。
+- Tool Effect 提交前和结果确认后。
+- Approval 创建前和解决后。
+- Branch 创建、提升或废弃时。
 - Run 进入终态前。
-- 服务优雅关闭且当前 Attempt 可以安全中断时。
+- 服务优雅关闭且 Attempt 可安全中断时。
 
-`checkpoint.saved` Event 必须包含 Checkpoint ID、revision、parent ID、state hash 和
-`through_event_sequence`，使事件、快照和恢复游标可以互相校验。
+恢复矩阵：
 
-## Probe Target Semantics
+| 中断位置 | 恢复行为 |
+| --- | --- |
+| Attempt prepared，未调用 Provider | 原 Attempt 可领取 |
+| 纯模型调用中断 | 旧 Attempt=interrupted；从 Checkpoint 创建 Resume Attempt |
+| 只读 Tool 中断 | 用相同 call key 对账后安全重试 |
+| 幂等副作用 Tool 已提交 | 先按 Provider receipt 查询，不重复提交 |
+| 非幂等 Tool 结果不明 | Tool Effect=unknown，Run blocked，等待人工 |
+| Artifact 已提交、下游未开始 | 复用 Artifact，只调度下游 |
+| Approval 等待期间重启 | 保持 waiting，不占 Worker |
+| SSE 断线 | 按最后 sequence 补发；缺口时读取 Projection |
 
-本 Sprint 只固化数据语义和接口边界，不实现通用 Probe 调度器。
+Worker 使用 Attempt Lease：
 
-后续 Probe 必须是从不可变 Checkpoint 分叉的特殊 Attempt：
+- Queue 只传 `attempt_id`。
+- 原子写 `lease_owner/lease_expires_at/heartbeat_at` 后才能执行。
+- 启动只扫描 `prepared/interrupted/retrying` 且副作用安全的 Attempt。
+- waiting、terminal、unknown 不入队。
+- Cancel 每个模型/Tool 边界检查，不能把取消后的 Provider 结果提交为成功。
+
+## Local Rerun and Probe
+
+用户可选择一个 Task 执行 `rerun_task`：
+
+1. Runtime 找到该 Task 之前最近的安全 Checkpoint。
+2. 创建 Candidate Branch，复制必要的 Task State 引用，不复制可变 Attempt。
+3. 目标 Task 创建 `rerun` Attempt。
+4. 依赖目标输出的下游 Task 在 Candidate Branch 标记 stale，并按拓扑顺序重跑。
+5. 无关上游和旁支直接复用已验证 Artifact Version。
+6. Candidate 全部 Completion Contract 和 Gate 通过后，用户或自动策略执行
+   `promote_branch`。
+7. 提升事务同时更新 Active Branch、Artifact current version、Memory 和 Checkpoint。
+8. Candidate 失败时主线保持不变。
+
+Probe 使用相同 Branch 机制，但 `branch_kind=probe`：
+
+- 纯验证 Probe 通过后生成新的 Gate-passed Checkpoint。
+- 有状态 Probe 的结果只有提升后才能成为主线事实。
+- Probe 失败或 unknown 时不得污染 Active Branch。
+
+## Multi-Agent Task Management
+
+- Workflow Compiler 产生结构化 Task DAG，而不是只输出自然语言步骤。
+- Runtime 校验 Task Type、Role、Tool、依赖、最大节点数、最大并行度和无环性。
+- Director、Writer、Reviewer 等每个角色对应 Task；每次 `agent.as_tool()` 调用对应 Attempt。
+- 子 Agent 使用独立 Model Session，只接收任务所需 Memory 和 Artifact，不继承 Director 的
+  全量可变 Context。
+- 子 Agent 输出必须先提交 Artifact、Attempt 终态、Checkpoint 和 Event，再返回给上游。
+- 并行 Task 只允许写各自 Artifact；共享状态通过依赖节点合并，不能并发覆盖 Run JSON。
+- 任一 Required 子 Task 失败，根 Run 只能 retry/wait/fail，不能被 Director 文本改成成功。
+- 第一条验收链为 Compiler → Writer → Reviewer → Approval；同时增加两个独立 Writer
+  并行后由 Reviewer 合并的 DAG 测试，证明 Task 模型不是硬编码单链。
+- 子 Agent 递归创建无界孙 Agent 不在范围内；需要新节点时由受控 Compiler/Director 请求并由
+  Runtime 校验后持久化。
+
+## Backend API and Projection
+
+统一 API：
 
 ```text
-base checkpoint C12
-→ create probe attempt(base_checkpoint_id=C12)
-→ persist evidence artifact
-
-pass:
-  创建或提升 C13，记录 gate passed 和 evidence hash
-
-fail:
-  废弃 Probe 分支，主线仍指向 C12
-
-unknown side effect:
-  停止自动推进，等待人工处理
+POST /api/v1/agent/conversations
+GET  /api/v1/agent/conversations
+GET  /api/v1/agent/conversations/{conversation_id}
+POST /api/v1/agent/conversations/{conversation_id}/messages
+POST /api/v1/agent/runs/{run_id}/commands
+GET  /api/v1/agent/runs/{run_id}
+GET  /api/v1/agent/runs/{run_id}/events
+GET  /api/v1/agent/runs/{run_id}/checkpoints
+GET  /api/v1/agent/runs/{run_id}/branches
 ```
 
-Probe 通过后不能简单恢复到 C12；纯验证 Probe 应创建新的 Gate-passed Snapshot，有状态 Probe
-应把经过验证的结果提升为新 Snapshot。只有 Probe 失败或被废弃时才回到 base checkpoint。
+Command 至少包括：
 
-## Database Replacement
+- `approve_and_advance`
+- `request_changes`
+- `retry_task`
+- `resume_run`
+- `rerun_task`
+- `promote_branch`
+- `discard_branch`
+- `cancel_run`
+- `create_follow_up`
 
-删除旧 Agent 控制面表：
+每个 Command 必须携带 idempotency key 和 expected state version，并返回提交后的完整
+Projection。
 
-- `agent_conversations`
-- `agent_messages`
-- `agent_runs`
-- `agent_steps`
-- `agent_artifacts`
-- `agent_approval_requests`
-- `agent_events`
-- `native_agent_conversations`
-- `native_agent_runs`
-- `native_agent_items`
-- `native_agent_steps`
-- `native_agent_events`
-- `native_agent_context_items`
-- `native_agent_artifacts`
-- `native_agent_article_approvals`
+Projection 同时用于详情 API 和 SSE `run.updated`：
 
-与 Native Run 强绑定的本地测试媒体关联表允许清空并按新外键重建；传统
-`generation_tasks/video_tasks/file_assets` 不在删除范围。
+- Run、Branch、Task State、Attempt、Tool Call 的权威状态。
+- Checkpoint、Memory、Artifact 和 Approval 引用。
+- `expected_input_kind`、`allowed_actions`、完成/阻塞原因。
+- `state_version` 和 Event sequence。
 
-重建唯一表族：
+SSE 最终规则：
 
-- `agent_conversations`
-- `agent_messages`
-- `agent_runs`
-- `agent_tasks`
-- `agent_task_attempts`
-- `agent_checkpoints`
-- `agent_memory_snapshots`
-- `agent_context_items`
-- `agent_events`
-- `agent_artifacts`
-- `agent_approvals`
-- `agent_tool_effects`
+- 每次状态事务提交后发布递增 Event。
+- 终态前必须发送最终 `run.updated`。
+- 前端忽略旧 state version。
+- 发现 sequence 缺口、断线或终态时重新读取一次详情 Projection。
 
-`agent_tool_effects` 第一阶段即进入统一模型，保存稳定幂等键、Task/Attempt、Provider request
-ID、prepared/submitted/succeeded/failed/unknown 状态和结果引用。Checkpoint 不能替代副作用
-账本。
+## Frontend Agent Workspace
 
-数据库变更采用显式破坏性 forward migration，并在应用前备份当前本地数据库文件供事故取证。
-迁移后允许重建开发数据库和 Agent 测试 fixture；不编写旧 Agent 数据搬迁、兼容 view 或双读。
+- 删除旧 `AgentView`、旧 API client/type 和 `/agent-loop` 调用。
+- 只保留一个 `/agent` Workspace。
+- Conversation 列表、Message、Run、Task DAG、Attempt、Artifact、Approval、Branch 和
+  Checkpoint 全部使用统一 Projection。
+- Function Call 状态直接来自 `agent_tool_calls`，不通过 Artifact 猜测。
+- Run 终态时所有 Task/Attempt/Tool Call 必须显示明确终态，不得继续旋转。
+- 用户可以查看失败节点、错误、已复用的上游结果和将被重跑的下游范围。
+- Retry 当前失败节点、从任意节点重跑、提升/放弃 Candidate Branch 都使用明确按钮和后果说明。
+- 阶段审批按钮显示“批准并继续下一步”；最终审批显示“批准并结束任务”。
+- 刷新页面、关闭浏览器再打开或 SSE 重连后，界面从数据库恢复相同状态。
+- MLflow 链接只用于排查，不参与页面业务状态计算。
 
-## Legacy Code Removal
+## Destructive Migration Strategy
 
-实施时先基于静态引用和测试清单确认边界，然后删除：
+Sprint 144 执行顺序：
 
-- 后端旧 Agent API、Runner、HITL、Tool Runtime、Comic Creation、Panel Version 编排代码，
-  以及它们独占的 Model、Enum、Schema 和测试。
-- 前端不可达 `AgentView`、旧 `/agent/conversations` API client/type、旧事件文案和旧 Task
-  Inspector。
-- 当前 Native Agent Worker、Persistence、覆盖式文章 Workflow Checkpoint 和 `/agent-loop`
-  控制 API；当前业务 Tool 实现与领域 adapter 不因控制层替换而删除。
-- 当前 `NativeAgentView` 中依赖 Artifact 猜 Function Call 完成状态、精确“重试”字符串路由和
-  本地 active Run 推断的逻辑。
-- 只覆盖被删除 Runtime 的测试。
+1. 保存事故 fixture，并复制当前本地 SQLite 文件作为只读取证备份。
+2. 写一条最终替换 Migration；Migration 中按外键逆序删除旧关联和旧表。
+3. 一次创建全部目标表、约束、索引和 FK。
+4. 重接 YouTube Publish/Uploaded Video 的来源外键。
+5. 删除旧 Model/Enum/Schema 引用并更新 ORM metadata。
+6. 新建空库跑全量 Alembic upgrade。
+7. 现有结构库跑 replacement upgrade。
+8. downgrade 只保证恢复旧空 Schema，不承诺恢复已删除的本地 Agent 数据。
+9. 再次 upgrade，并比较最终 Schema inventory。
 
-随后用新的统一 `/agent` API、Durable Worker、权威 Projection 和一个 Agent Workspace 重建。
-共享 Skill 管理、账号、Style、频道和领域资产能力通过明确 adapter 接回，不能复制第二套状态，
-也不能把旧链路作为 adapter 的下游。
+不允许：
 
-## Worker、Lease 与恢复
+- 先保留旧表，后续 Sprint 再“慢慢迁”。
+- 新旧表双写。
+- 用 View 或 Alias 伪装兼容。
+- 把核心状态塞进一个可覆盖的 `checkpoint_json`。
 
-第一阶段继续使用当前进程内队列调度 ID，不引入 Redis、Celery、Temporal 或其它外部组件。
+## Continuous Delivery Plan
 
-但 Worker 必须以 Task Attempt 为领取单位，并把数据库作为调度事实来源：
+用户授权的是完整目标。开始实施后，以下三个 Sprint 连续执行：每段完成后验证、记录
+`docs/progress.md`、创建中文 Commit，然后自动进入下一段。除非触发安全、生产数据或不可逆外部
+副作用阻塞，不因“一个 Sprint 完成”暂停等待确认。
 
-- 队列只传 `attempt_id`。
-- 领取时原子写入 `lease_owner/lease_expires_at/heartbeat_at`。
-- Worker 加载 Task、Run、Checkpoint 和 Tool Effect 后再执行。
-- 已成功、已取消或 lease 属于其它有效 Worker 的 Attempt 不执行。
-- 启动恢复只重新入队安全的 `prepared/interrupted/retrying` Attempt。
-- `waiting_for_input` 不占 Worker，也不在启动时自动入队。
-- lease 过期不能覆盖 `unknown` 外部副作用。
+### Sprint 144：一次性 Schema 与旧链路清除
 
-## Multi-Agent Task Mapping
+交付：
 
-本 Sprint 把文章团队作为唯一重建样本：
+- 最终 Migration、全部新 ORM/Enum/Repository。
+- 旧 Agent 和 Native Agent 控制表、代码、API、前端旧组件和测试删除。
+- 跨域媒体/发布外键重接。
+- Run/Task/Attempt/Branch/Checkpoint 状态机和数据库约束。
+- 用新 Repository、Command、Projection 和 `/agent` API 跑通当前单纵向文案链的最小完整
+  Cutover；当前业务 Tool Adapter 一次接到新身份，不留下无法启动的中间提交。
+- 前端在同一 Sprint 切换到 `/agent` 基础 Projection，保证 Conversation、Run、Task、
+  Approval 和终态可用；Branch/Checkpoint 的高级操作界面在 Sprint 146 补齐。
+- Schema inventory、迁移往返和零旧引用测试。
 
-- Director 保持根 Workflow Run 的用户会话控制权。
-- Writer、Reviewer 分别对应持久化 Task。
-- 每次 `agent.as_tool()` 调用对应一个 Task Attempt 和独立 SDK Session namespace。
-- 子 Agent 成功先原子保存 Artifact、Attempt 终态和 Event，再把 Artifact 引用作为 Tool
-  Output 交回 Director。
-- 子 Agent 超时先保存失败 Attempt；Director 可以请求受控重试，但不能把根 Run 标成功。
-- 服务重启后，已成功 Task 直接复用 Artifact；未完成纯模型 Attempt 根据状态创建 resume/retry
-  Attempt，不重复覆盖历史 Attempt。
+验收后自动进入 Sprint 145。
 
-本 Sprint 不允许子 Agent 创建孙 Agent，不实现任意 Skill 动态生成无限 Task，也不实现并行
-Writer/Reviewer。后续并行化必须先基于本阶段的 Task、Attempt、Checkpoint 和 lease 语义。
+### Sprint 145：Durable Runtime、Memory 与局部恢复
 
-## Backend Projection Contract
+交付：
 
-Conversation 详情和 SSE `run.updated` 必须返回相同的权威投影：
+- Command Service、Projection Service、Event Writer。
+- Task DAG 调度、Attempt Lease、启动恢复和取消。
+- Model Session/Context Replay、Checkpoint CAS、Memory Snapshot。
+- Tool Call/Tool Effect Ledger。
+- Retry、Resume、Follow-up Run、Candidate Branch、局部 Rerun、Probe 和 Branch Promotion。
+- 多 Agent Writer/Reviewer 及并行 DAG 适配。
+- 扩充统一 `/agent` API 的 Retry、Resume、Rerun、Probe、Promote/Discard 和 Follow-up
+  Command；基础 API 不等到 Sprint 146 才出现。
 
-- Run 状态、`state_version`、当前 Checkpoint。
-- `expected_input_kind` 和 `allowed_actions`。
-- Task 列表、依赖、当前 Attempt 和 Completion 状态。
-- Function Call 与 Task Attempt 的稳定关联。
-- Run 成功、失败或等待的机器原因。
-- 最后事件 sequence。
+验收后自动进入 Sprint 146。
 
-每次控制命令返回提交后的完整权威 Run Projection。SSE 事件携带递增 sequence 和
-`state_version`；前端收到较旧版本时忽略，发现 sequence 缺口时重新拉取详情。
+### Sprint 146：统一 API、前端状态收敛与故障演练
 
-SSE 进入终态前必须发送最终 `run.updated`。前端收到终态或 SSE 关闭时再执行一次有界详情读取，
-以数据库事实收敛，不依赖本地推断终态。
+交付：
 
-## Frontend State Rules
-
-- 不再通过“存在某种 Artifact”猜 Function Call 是否完成。
-- `等待执行/执行中/失败/完成/结果不确定` 直接来自 Task Attempt 或 Tool Step 投影。
-- 根 Run 终态时，任何非终态 Function Call 必须显示后端给出的
-  `failed/interrupted/unknown`，不能继续旋转。
-- Approve 按钮使用后端 `approval_purpose/on_approve_action` 展示真实后果，例如：
-  - “批准选题并继续写作”
-  - “批准最终稿并结束任务”
-- Composer 在存在等待输入的 Run 时，展示该 Run 的 `expected_input_kind` 和允许操作；不能
-  静默创建新 Run。
-- 新 Run、继续当前 Run和从已完成 Run 创建后续任务必须在界面上有可区分的状态反馈。
-
-## MLflow Semantics
-
-MLflow 只负责可观测性，不驱动恢复。
-
-- `workflow_run_id` 标识持久化根工作流。
-- `task_id/attempt_id` 标识一次可恢复工作。
-- 每次 Worker execution attempt 可以产生独立 Trace 或独立根 Span。
-- Trace 结束只表示本次执行 Attempt 已结束，不等于 Workflow Run 已成功。
-- `waiting_for_input` 可以结束当前 Trace，但数据库 Run 仍保持非终态。
-- 页面不能根据 MLflow Tree 状态推断业务任务状态。
-- Trace 必须记录最终数据库状态、Checkpoint ID、Task/Attempt ID 和结束原因，便于交叉定位。
+- 完整统一 `/agent` API 和 SSE 契约，删除 Sprint 144 基础 Projection 中不再需要的字段。
+- 完整单一 Agent Workspace、Task/Attempt/Branch/Checkpoint UI。
+- Approve、Retry、Rerun、Promote、Discard、Cancel、Follow-up 交互。
+- 浏览器刷新、断线重连、后端重启和真实模型故障注入回归。
+- 再次静态确认所有 `/agent-loop` 和旧 Agent 前端引用为零。
+- 更新 Spec、设计文档、运维说明和最终 QA 记录。
 
 ## In Scope
 
-- 上述身份、状态机、控制命令和投影契约。
-- 删除两套旧 Agent 控制面、不可达前端和对应测试。
-- 重建统一 Task、Attempt、Checkpoint、Memory Snapshot、Tool Effect 表和破坏性 migration。
-- 文章团队单纵向链路重建。
-- Approve 推进/结束语义拆分。
-- 同一 Conversation 的 Follow-up Run 与有界 Memory 继承。
-- Task Attempt 级 Worker lease、启动恢复和取消检查。
-- 前端权威状态投影和“等待执行”事故修复。
-- 数据库、SSE、API、前端和 MLflow 关联测试。
-- 更新 `docs/spec.md`、相关设计文档和 `docs/progress.md`。
+- 本文全部目标 Schema 和破坏性迁移。
+- Task DAG、Attempt、Lease、Checkpoint、Branch、Probe 和局部重跑。
+- Conversation Session、Model Session 和 Session Memory。
+- 新 Run/旧 Run 判定及 Follow-up Memory 继承。
+- 多 Agent Task 切分、并行、恢复和完成判定。
+- Tool 幂等与 unknown 副作用边界。
+- 统一 API/SSE/Frontend Projection。
+- 旧链路、旧数据和兼容代码清理。
+- 文章团队端到端真实验收。
 
 ## Out of Scope
 
-- 通用并行 Task DAG 和动态 fan-out/fan-in。
-- 通用 Probe 执行器、Probe UI 和 Snapshot 分支提升工具。
-- 子 Agent 创建孙 Agent。
-- 多 Skill 组合、Workflow DSL 或可视化工作流编辑器。
-- LangGraph、Temporal、Celery、Redis、外部消息队列或独立 Worker 服务。
-- 把现有图片、语音、字幕、视频和 YouTube 发布全部迁移为新 Task Graph。
-- 多实例生产调度、分布式锁和跨服务事务。
-- 自动重放结果不确定的 Provider 副作用。
-- Deferred Evaluation 和内容质量评分发布门槛。
-- 旧 Agent/Native Agent API、数据库记录、前端和测试的兼容保留。
-- 旧本地 Agent Run、Context、Artifact 和 Approval 数据搬迁。
+- Redis、Celery、Temporal、LangGraph 或其它外部 Workflow 引擎。
+- 多实例生产 Worker、分布式一致性和跨服务事务。
+- 自动重放结果未知的非幂等外部副作用。
+- 跨 Conversation、跨用户自动 Memory 共享。
+- 无界递归 Agent、自修改 Workflow 和无限动态 fan-out。
+- 将传统 `generation_tasks/video_tasks` 内部状态机整体迁入 Agent Runtime。
+- 旧 Agent/Native Agent 数据兼容或生产数据迁移。
 
-## Delivery Sequence
-
-1. 把真实事故时间线固化为 QA 记录和失败测试，备份本地数据库。
-2. 建立旧链路禁止引用清单和共享能力 allowlist，先用静态检查锁定边界。
-3. 删除未挂载旧 Agent 后端、不可达前端、旧表和只服务旧 Runtime 的测试，并验证仓库零引用。
-4. 删除当前 Native Agent 控制 API、Worker、覆盖式 Checkpoint 和前端状态猜测，但保留业务
-   Tool 与领域 adapter。
-5. 建立统一 schema、状态机、Tool Effect 和权威 Projection。
-6. 重建结构化控制命令及前端 allowed actions。
-7. 重建 Workflow Compiler、Writer、Reviewer、Approval 的持久化 Task/Attempt 链。
-8. 增加不可变 Checkpoint、Memory Snapshot、Follow-up Run、Worker lease 和启动恢复。
-9. 运行自动化、强制中断、空库迁移和真实浏览器回归。
-
-每一步完成后更新 `docs/progress.md`。任何一步若需要改变安全副作用边界，必须暂停并单独评审，
-不能加入自动兜底或静默降级。
-
-## Deliverables
-
-- 删除清单、破坏性数据库 migration、新 ORM model 和约束。
-- Durable Task Runtime service。
-- 结构化 Run command API 和权威 Projection API/SSE。
-- 文章团队 Task/Attempt adapter。
-- Conversation Memory Snapshot builder。
-- Checkpoint save/load/CAS 和恢复服务。
-- Attempt worker lease 与启动恢复。
-- Agent 页面 Task、Attempt、Approval 和终态展示。
-- 自动化测试、真实事故回归记录和文档更新。
+这些项目不影响本计划在单进程 SQLite 环境中完成完整的用户级持久化和恢复能力。
 
 ## Done Means
 
-- 批准阶段性选题时，同一 Workflow Run 从 Gate 推进到下一 Task，不被误标为成功。
-- 批准真正最终稿时，全部必需 Task 完成后 Run 才进入成功终态。
-- 用户在等待输入时回复“继续”不会静默创建缺少上下文的新 Run。
-- 已完成 Run 的后续制作会创建带 parent/checkpoint/memory 引用的新 Run，并能读取经过确认的
-  Artifact。
-- Writer/Reviewer 超时或失败时，Task Attempt 有明确失败事实，Run 不会因 Director 返回说明
-  文本而成功。
-- 服务在 Writer 成功、Reviewer 未开始时重启，恢复后复用 Writer Artifact，只执行 Reviewer。
-- 服务在等待用户审批时重启，不占 Worker、不自动推进；用户操作后从同一 Checkpoint 继续。
-- Run 终态时前端没有仍显示“等待执行”的 Function Call。
-- API 详情、SSE 最终 Snapshot、数据库状态和前端展示一致。
-- MLflow Trace 结束不改变数据库 Workflow Run；数据库可以通过 Run/Task/Attempt 定位 Trace。
-- 仓库只剩一套 Agent Conversation、Run、Task、Checkpoint、Worker、API 和前端状态实现。
-- 新 Runtime 对旧 Agent 控制模块、Model、表、API 和前端类型的静态引用为零。
-- 当前独立 Workflow 的业务 Tool、Skill 和领域 adapter 仍可用，但调用路径不经过旧控制链。
-- 旧 Agent 和 Native Agent 的本地测试数据已按合同删除，不存在兼容层或双写路径。
+### 数据和代码
+
+- 目标核心表一次建全；仓库只剩一套 Agent ORM、状态机和 API。
+- `agent_*` 新 Runtime 对旧控制模块、旧 Model、旧表和旧前端类型零引用。
+- `native_agent_*` 控制表和运行模块全部删除。
+- YouTube 发布和媒体来源不再依赖 `native_agent_video_id`。
+
+### Task 与恢复
+
+- Writer 成功、Reviewer 未开始时杀进程，重启后只执行 Reviewer。
+- 模型调用中断产生 interrupted Attempt 和新的 Resume Attempt，不覆盖历史。
+- Tool unknown 时停止自动推进。
+- Approval 等待期间重启不占 Worker，批准后继续同一 Run。
+- Required 子 Task 失败时根 Run 不会成功。
+
+### Session 与 Memory
+
+- 刷新或重新打开 Conversation 能恢复 Message、Run、Task、Approval 和允许操作。
+- Follow-up Run 继承固定 Memory Snapshot 和 Artifact Version，不复用旧可变 SDK Session。
+- Memory Item 可追溯到 Message、Artifact 或 Approval。
+
+### 局部重跑
+
+- 用户可从任一允许的 Task 创建 Candidate Branch。
+- 上游安全结果被复用，目标及受影响下游重跑。
+- Candidate 失败不污染主线；成功提升后主线、Artifact、Memory 和 Checkpoint 原子切换。
+
+### 前后端一致性
+
+- API、SSE、数据库和页面对同一 Run 的状态一致。
+- Run 终态时没有仍显示“等待执行”的 Function Call。
+- MLflow Trace 结束不会改变数据库 Run 状态。
 
 ## Verification
+
+每个 Sprint：
 
 ```bash
 ./scripts/check.sh
 git diff --check
 ```
 
-必须新增自动化场景：
+Sprint 144 必测：
 
-1. 静态检查确认旧 Agent 控制模块、Model、路由、前端 API/type、不可达组件和对应测试已经
-   删除，当前 Workflow 对禁止清单为零引用。
-2. 空数据库迁移后只存在一套 Agent Conversation/Run/Task/Checkpoint 表族。
-3. `stage_gate` Approve 推进下一 Task，Run 不结束。
-4. `final_result` Approve 在所有必需 Task 完成后结束 Run。
-5. waiting Run 的继续命令复用同一 Run 和 Checkpoint。
-6. terminal Run 的 follow-up 创建新 Run，并固定 parent、Checkpoint 和 Memory Snapshot。
-7. Writer 超时产生 failed Attempt，根模型说明不能把 Run 改成 succeeded。
-8. Writer 成功后的进程中断恢复不重复生成 Artifact。
-9. Checkpoint revision 冲突明确失败并重新合并，不丢更新。
-10. lease 过期恢复只领取安全 Attempt。
-11. unknown Tool Effect 阻止自动恢复。
-12. SSE sequence/state_version 缺口触发详情收敛。
-13. Run 终态时所有前端 Task/Function Call 均为终态。
-14. Conversation owner 隔离和跨 Run Artifact/Memory 引用权限。
-15. 当前 Workflow 的 Skill、账号、Style、资产和业务 Tool 冒烟测试通过，且依赖图不经过旧
-    Agent 控制模块。
+1. 空库 Alembic 全量 upgrade。
+2. 旧结构库 replacement upgrade。
+3. replacement downgrade → upgrade。
+4. Schema inventory 与本文目标表一致。
+5. 所有 FK、唯一约束、状态 Check 和级联行为。
+6. `rg` 检查旧模块、旧 Router、旧前端类型和旧表名零引用。
+7. YouTube 发布来源 FK 指向 Artifact Version。
 
-真实回归：
+Sprint 145 必测：
 
-- 使用独立测试 Conversation 复现“先给选题 → 批准其中一个 → 继续写作”。
-- 在批准后确认数据库仍是同一 Workflow Run，下一 Task 已创建。
-- 在 Writer 和 Reviewer 之间重启后端，确认只恢复未完成 Task。
-- 在审批等待期间关闭浏览器和后端，再启动并完成审批。
-- 对比数据库、API、SSE、页面和 MLflow 中的 Run/Task/Attempt/Trace 关系。
-- 保存测试 ID、状态时间线和截图，不修改 2026-07-30 原始事故记录。
+1. Run、Task State、Attempt 和 Branch 状态机非法跳转被拒绝。
+2. Command idempotency 和 state version 冲突。
+3. DAG 无环校验、依赖调度和 bounded parallel。
+4. Lease 领取、过期、Heartbeat、取消和启动恢复。
+5. Checkpoint append-only、hash、revision CAS。
+6. Model Context 顺序和 Resume Session 派生。
+7. Memory 来源、Scope、Follow-up 继承。
+8. Retry/Resume/Rerun/Probe/Promote/Discard。
+9. Tool Call 幂等、Provider receipt 对账和 unknown 阻塞。
+10. 多 Agent 任一 Required Task 失败时 Run 不成功。
 
-## Risks / Notes
+Sprint 146 必测：
 
-- 这是跨数据库、Worker、SDK Session、API、SSE 和前端投影的控制面改造，实施期间不能与其它
-  Native Agent Runtime 重写并行合并。
-- 用户已确认当前没有真实用户，允许删除本地 Agent 测试数据和错误设计；传统任务、Skill、
-  Style、账号、频道和领域资产能力不因此获得删除授权。
-- SQLite 可以支撑本阶段单进程纵向验证，但 lease、并行合并和生产多实例能力不能据此宣称完成。
-- Agents SDK 继续负责模型 Tool Loop；Durable Task、Memory、Checkpoint、恢复和业务终态由
-  DoodleStory Runtime 负责。
-- 不引入“发生异常就创建新 Run”“找不到状态就重新执行 Tool”之类兜底。
+1. 事故 fixture：“批准选题 → 继续写作”保持同一 Run。
+2. SSE sequence 缺口和断线后的 Projection 收敛。
+3. 前端刷新、重新登录和后端重启恢复。
+4. Writer/Reviewer 之间强制杀进程。
+5. Approval 等待期间关闭浏览器和后端。
+6. 局部重跑 Candidate 成功提升和失败回滚。
+7. 并行 Writer → Reviewer 合并。
+8. Run 终态下 Task、Attempt、Tool Call 全部终态。
+9. Owner 隔离、跨 Run Memory/Artifact 权限。
+10. 真实模型 Smoke，并保存 Run/Task/Attempt/Checkpoint/Trace ID 与截图。
+
+## Risks and Guardrails
+
+- 这是一次破坏性控制面替换；实施期间不能并行合并其它 Agent Runtime 改造。
+- 用户授权删除的是本地 Agent 测试数据和错误控制设计，不包括用户、Skill、Style、频道、
+  FileAsset 和传统生成任务数据。
+- 迁移前必须创建明确路径的数据库备份；不能对宽泛目录执行删除。
+- SQLite 足以完成当前单进程 Durable Runtime；不能据此宣称已支持生产多实例。
+- 任何需要自动处理 unknown 外部副作用的需求都必须单独评审，不能静默兜底。
 
 ## Handoff
 
-本 Sprint 完成后再评审第二阶段：
+Sprint 146 完成后交付：
 
-1. 通用多 Agent Task DAG、并行 fan-out/fan-in 和全局 Provider 并发。
-2. Probe Attempt、Snapshot 分支、证据 Gate 和通过后的 Snapshot 提升。
-3. 图片、语音、字幕、视频和发布 Tool 的 Task 化。
-4. PostgreSQL、多实例 Worker 或 Temporal/LangGraph 等持久化编排方案的成本收益。
+- 最终 Schema 图和 Migration 记录。
+- Agent Runtime 状态机与恢复矩阵。
+- API/Projection/SSE 契约。
+- 故障注入、真实浏览器和真实模型 QA 报告。
+- 已知限制只允许保留在 Out of Scope 中，本文 In Scope 不得以“后续 Sprint”名义顺延。
