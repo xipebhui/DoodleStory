@@ -5,10 +5,10 @@
 Draft。用户已明确确认当前没有真实用户和需要保留的生产 Agent 数据，允许删除错误设计并进行
 替换式重构；正式实施仍需按本合同逐步验证。
 
-本文是稳定任务改造的第一阶段合同。它不在现有两套 Agent Run/恢复实现上继续叠加，而是先删除
-不可达旧控制面和错误 Native Agent 编排层，再建立唯一的 Durable Task Runtime，并把多 Agent
-文案链路重建为第一条真实纵向样本。通用并行 DAG、任意 Probe 分支和外部工作流引擎留给后续
-Sprint。
+本文是稳定任务改造的第一阶段合同。当前 `/agent-loop` 是独立链路，不允许调用或依赖此前的
+旧 Agent 控制链。实施时先完整删除不可达旧链路，再替换当前 Native Agent 中错误的编排与持久化
+控制层，建立唯一的 Durable Task Runtime；当前链路已有的业务 Tool、Skill 和领域能力通过明确
+接口接回。通用并行 DAG、任意 Probe 分支和外部工作流引擎留给后续 Sprint。
 
 ## Goal
 
@@ -62,7 +62,8 @@ Sprint。
    - `/agent-loop` API 和前端基于 Artifact 猜 Tool 终态的投影
 
 两套实现使用同一组状态枚举却有不同的 Session、Checkpoint、恢复和 UI 语义。Sprint 144 不选择
-其中一套继续打补丁，目标是删除两套控制面代码后重建唯一实现。
+旧控制面继续打补丁：旧 Agent 链路整体删除；当前 Native 链路保留业务 Tool 和领域 adapter，
+只替换其 Run、Task、Checkpoint、恢复、API 投影和前端状态控制层，最终收敛为唯一实现。
 
 保留边界：
 
@@ -78,6 +79,40 @@ Sprint。
 - 不对旧 Run、Context、Checkpoint 或测试 Artifact 做数据搬迁。
 - 不让旧 Worker 与新 Durable Worker 双跑。
 - 不通过 feature flag 长期维持两套控制面。
+
+## Independent Chain Boundary
+
+2026-07-30 静态引用和应用挂载审计结论：
+
+- 当前生效的 `/agent-loop` 后端和 `NativeAgentView` 没有直接调用
+  `agent_runner`、`agent_tool_runtime`、`agent_hitl`、`agent_comic_creation`、
+  `agent_panel_versions` 或 `agent_conversations`。
+- 旧 `agent_conversations` Router 未挂载到应用，旧 `AgentView` 未进入当前 `/agent` 页面；
+  旧链路当前没有运行时价值。
+- 旧链路仍以 ORM 表、后端模块、前端 API/type、不可达组件和测试的形式存在。这些残留会制造
+  两套状态语义，必须删除，不能被新 Runtime 调用、包装或适配。
+- 当前 Native 链路直接复用的 Skill 解析、账号、Style、频道、资产、Provider client 和
+  Observability 属于共享产品/基础设施能力，不等于旧 Agent 控制链。
+
+改造后的依赖规则采用明确 allowlist。
+
+允许共享：
+
+- `agent_skills/agent_skill_versions` 及其 Skill 管理、解析和版本固定能力。
+- 账号、Style、频道、文件资产、外部内容和 Provider client 等领域服务。
+- 传统图片、音频、字幕、视频、发布执行器，但只能通过新 Runtime 的明确 adapter 调用。
+- 通用日志、Metric、Trace 基础设施；其中 Agent Span 必须使用新 Run/Task/Attempt 身份。
+
+禁止依赖：
+
+- 旧 `agent_runner`、`agent_tool_runtime`、`agent_hitl`、`agent_comic_creation`、
+  `agent_panel_versions` 和 `agent_conversations` 的任何 import、调用或兼容包装。
+- 旧 Agent ORM Model、数据库表、状态枚举专用分支和恢复函数。
+- 旧 `/agent/conversations` API、旧前端 `AgentView`、client/type 和状态推断。
+- 为保住旧测试而留下的桥接层、双写、compatibility alias 或 feature flag。
+
+若实施中发现当前 Native 链路对禁止项存在间接依赖，处理方式是把仍有价值的纯领域能力抽到
+中立模块并让新 Runtime 显式依赖它，然后删除旧入口；不得保留从新链路回调旧控制链的路径。
 
 ## Authoritative Identity Model
 
@@ -363,16 +398,19 @@ ID、prepared/submitted/succeeded/failed/unknown 状态和结果引用。Checkpo
 
 实施时先基于静态引用和测试清单确认边界，然后删除：
 
-- 后端旧 Agent API、Runner、HITL、Tool Runtime、Comic Creation 和 Panel Version 编排代码。
+- 后端旧 Agent API、Runner、HITL、Tool Runtime、Comic Creation、Panel Version 编排代码，
+  以及它们独占的 Model、Enum、Schema 和测试。
+- 前端不可达 `AgentView`、旧 `/agent/conversations` API client/type、旧事件文案和旧 Task
+  Inspector。
 - 当前 Native Agent Worker、Persistence、覆盖式文章 Workflow Checkpoint 和 `/agent-loop`
-  控制 API。
-- 前端不可达 `AgentView`、旧 Agent API client/type、旧事件文案和旧 Task Inspector。
+  控制 API；当前业务 Tool 实现与领域 adapter 不因控制层替换而删除。
 - 当前 `NativeAgentView` 中依赖 Artifact 猜 Function Call 完成状态、精确“重试”字符串路由和
   本地 active Run 推断的逻辑。
 - 只覆盖被删除 Runtime 的测试。
 
 随后用新的统一 `/agent` API、Durable Worker、权威 Projection 和一个 Agent Workspace 重建。
-共享 Skill 管理、账号、Style、频道和领域资产能力通过明确 adapter 接回，不能复制第二套状态。
+共享 Skill 管理、账号、Style、频道和领域资产能力通过明确 adapter 接回，不能复制第二套状态，
+也不能把旧链路作为 adapter 的下游。
 
 ## Worker、Lease 与恢复
 
@@ -476,13 +514,15 @@ MLflow 只负责可观测性，不驱动恢复。
 ## Delivery Sequence
 
 1. 把真实事故时间线固化为 QA 记录和失败测试，备份本地数据库。
-2. 删除未挂载旧 Agent 后端、不可达前端、旧表和只服务旧 Runtime 的测试。
-3. 删除当前 Native Agent 控制 API、Worker、覆盖式 Checkpoint 和前端状态猜测。
-4. 建立统一 schema、状态机、Tool Effect 和权威 Projection。
-5. 重建结构化控制命令及前端 allowed actions。
-6. 重建 Workflow Compiler、Writer、Reviewer、Approval 的持久化 Task/Attempt 链。
-7. 增加不可变 Checkpoint、Memory Snapshot、Follow-up Run、Worker lease 和启动恢复。
-8. 运行自动化、强制中断、空库迁移和真实浏览器回归。
+2. 建立旧链路禁止引用清单和共享能力 allowlist，先用静态检查锁定边界。
+3. 删除未挂载旧 Agent 后端、不可达前端、旧表和只服务旧 Runtime 的测试，并验证仓库零引用。
+4. 删除当前 Native Agent 控制 API、Worker、覆盖式 Checkpoint 和前端状态猜测，但保留业务
+   Tool 与领域 adapter。
+5. 建立统一 schema、状态机、Tool Effect 和权威 Projection。
+6. 重建结构化控制命令及前端 allowed actions。
+7. 重建 Workflow Compiler、Writer、Reviewer、Approval 的持久化 Task/Attempt 链。
+8. 增加不可变 Checkpoint、Memory Snapshot、Follow-up Run、Worker lease 和启动恢复。
+9. 运行自动化、强制中断、空库迁移和真实浏览器回归。
 
 每一步完成后更新 `docs/progress.md`。任何一步若需要改变安全副作用边界，必须暂停并单独评审，
 不能加入自动兜底或静默降级。
@@ -514,6 +554,8 @@ MLflow 只负责可观测性，不驱动恢复。
 - API 详情、SSE 最终 Snapshot、数据库状态和前端展示一致。
 - MLflow Trace 结束不改变数据库 Workflow Run；数据库可以通过 Run/Task/Attempt 定位 Trace。
 - 仓库只剩一套 Agent Conversation、Run、Task、Checkpoint、Worker、API 和前端状态实现。
+- 新 Runtime 对旧 Agent 控制模块、Model、表、API 和前端类型的静态引用为零。
+- 当前独立 Workflow 的业务 Tool、Skill 和领域 adapter 仍可用，但调用路径不经过旧控制链。
 - 旧 Agent 和 Native Agent 的本地测试数据已按合同删除，不存在兼容层或双写路径。
 
 ## Verification
@@ -525,7 +567,8 @@ git diff --check
 
 必须新增自动化场景：
 
-1. 静态检查确认旧 Agent/Native Agent 控制模块、路由和不可达前端已经删除。
+1. 静态检查确认旧 Agent 控制模块、Model、路由、前端 API/type、不可达组件和对应测试已经
+   删除，当前 Workflow 对禁止清单为零引用。
 2. 空数据库迁移后只存在一套 Agent Conversation/Run/Task/Checkpoint 表族。
 3. `stage_gate` Approve 推进下一 Task，Run 不结束。
 4. `final_result` Approve 在所有必需 Task 完成后结束 Run。
@@ -539,6 +582,8 @@ git diff --check
 12. SSE sequence/state_version 缺口触发详情收敛。
 13. Run 终态时所有前端 Task/Function Call 均为终态。
 14. Conversation owner 隔离和跨 Run Artifact/Memory 引用权限。
+15. 当前 Workflow 的 Skill、账号、Style、资产和业务 Tool 冒烟测试通过，且依赖图不经过旧
+    Agent 控制模块。
 
 真实回归：
 

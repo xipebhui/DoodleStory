@@ -12,7 +12,13 @@
   可恢复纵向链路。
 - 用户进一步确认当前没有真实用户，允许删除本地测试数据和错误设计。仓库审计已确认未挂载旧
   Agent Runtime、当前 Native Agent Runtime 和不可达旧前端并存；Sprint 144 改为替换式重构，
-  删除两套控制面后重建唯一 Agent schema、Worker、API 和 Workspace，不保留兼容层或双写。
+  整体删除旧控制面、替换当前 Native 链路中错误的控制层，再重建唯一 Agent schema、Worker、
+  API 和 Workspace，不保留兼容层或双写。
+- 进一步完成两条链路的依赖审计：当前生效的 `/agent-loop` 与 `NativeAgentView` 没有调用旧
+  `agent_runner`、`agent_tool_runtime`、`agent_hitl` 等控制链；旧 Router 未挂载、旧
+  `AgentView` 不可达，但旧 Model、模块、前端 client/type 和测试仍残留。合同现要求把旧链路
+  整体删除并加入零引用验收；当前独立链路仅替换错误控制层，已有业务 Tool 与领域 adapter
+  保留，且禁止通过兼容包装回调旧链路。
 - 传统 `generation_tasks`、图片/视频 Worker、Skill、Style、账号、频道和领域资产能力不属于
   删除范围；它们只通过新 Durable Runtime 的明确 adapter 接入。
 - 通用并行 DAG、任意 Probe 执行器、媒体全链路 Task 化和外部工作流引擎不进入第一阶段；
