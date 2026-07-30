@@ -1,5 +1,19 @@
 # 进度记录
 
+## Sprint 141（已完成）
+
+- Native Agent 输入区已从 Skill、创作账号、Style、YouTube 频道和审核视频的常驻下拉框，
+  改为统一的 `@` 资源引用交互。输入 `@` 或点击资源按钮即可搜索，支持键盘上下选择、Enter
+  确认、Escape 关闭和可移除标签；每一轮对话都能重新组合当前上下文。
+- 创作账号与直接 Style 保持互斥，账号标签显示绑定 Style，提交仍只发送账号 ID 并由后端唯一
+  推导风格；发布频道和审核视频也作为资源加入，频道存在时才展示可见性和计划时间，移除频道
+  会同步清理发布上下文。
+- 新增纯函数和 6 项资源规则测试。真实浏览器完成 `@` 打开、键盘选择、账号/Style 双向替换、
+  发布参数显示与移除，控制台 0 error / 0 warning；未运行收费模型或触发真实发布。
+- `./scripts/check.sh` 通过 338 项后端测试、空库迁移、14 项前端测试、前端生产构建、Remotion
+  TypeScript 与 5 项模板测试。合同见
+  `docs/contracts/sprint-141-native-agent-resource-mentions.md`。
+
 ## Sprint 138（已完成）
 
 - 已把官方 YouTube Data API v3 公开频道研究接入同级 `douyin-import-service`，新增
@@ -22,9 +36,9 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 138 已完成；YouTube 公开频道研究使用官方 Data API v3，包含频道与
-  视频完整包装信息、基础数据、顶级评论、头像和封面视觉输入。`./scripts/check.sh` 已通过
-  328 项后端测试、空库迁移、前端生产构建和 Remotion 检查；未调用真实 YouTube 发布接口，
+- 最近验证状态：Sprint 141 已完成；Native Agent 的 Skill、账号、Style、发布频道和审核视频
+  已统一改为每轮可编辑的 `@` 资源引用。`./scripts/check.sh` 已通过 338 项后端测试、空库
+  迁移、14 项前端测试、前端生产构建和 Remotion 检查；未调用收费模型或真实 YouTube 发布，
   真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
@@ -33,6 +47,8 @@
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-141-native-agent-resource-mentions.md`
+- Complete：`docs/contracts/sprint-140-youtube-account-style-binding.md`
 - Complete：`docs/contracts/sprint-138-youtube-channel-research-tool.md`
 - Complete：`docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md`
 - Complete：`docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md`
@@ -102,6 +118,11 @@
 
 ## 最近完成的工作
 
+- 完成 Sprint 141 Native Agent 对话式资源引用：删除输入区顶部常驻的 Skill、创作账号、
+  Style、频道和视频下拉框，改为统一 `@` 菜单、搜索、键盘选择和可移除标签。账号与直接 Style
+  双向替换，账号标签展示绑定 Style 且后端仍按账号唯一推导；发布频道和审核视频按上下文出现，
+  频道移除时级联清理发布参数。真实浏览器验收控制台无错误；完整检查覆盖 338 项后端测试、
+  14 项前端测试和 Remotion 检查，未运行收费模型或真实发布。
 - 完成 Sprint 140 YouTube 账号绑定风格：频道账号新增当前 Style 外键和绑定时间，列表、详情及
   独立绑定 API 展示和维护启用风格；远程频道同步保留本地绑定，被账号引用的 Style 删除请求会
   明确冲突。Native Agent 新增与真实发布目标分离的“创作账号”上下文，选中账号后由后端唯一

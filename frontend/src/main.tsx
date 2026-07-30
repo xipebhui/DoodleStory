@@ -101,6 +101,15 @@ import {
   type VideoTaskSummary,
 } from "./api/client";
 import { parseAgentRoute } from "./agentRoutes";
+import {
+  clearNativeAgentPublishingResources,
+  filterNativeAgentResources,
+  nativeAgentResourceId,
+  removeNativeAgentResource,
+  selectNativeAgentResource,
+  type NativeAgentResource,
+  type NativeAgentResourceKind,
+} from "./nativeAgentResources";
 import { shouldFollowNativeAgentThread } from "./nativeAgentScroll";
 import "./styles/app.css";
 
@@ -3607,6 +3616,14 @@ function formattedFunctionArguments(value: string) {
   }
 }
 
+const nativeAgentResourceKindLabels: Record<NativeAgentResourceKind, string> = {
+  skill: "Skill",
+  creation_channel: "创作账号",
+  style: "Style",
+  youtube_channel: "发布频道",
+  publishable_video: "审核视频",
+};
+
 function NativeAgentView({
   user,
   creditOverview,
@@ -3628,11 +3645,10 @@ function NativeAgentView({
   const [styles, setStyles] = useState<AgentResourceOption[]>([]);
   const [youtubeChannels, setYoutubeChannels] = useState<YoutubeChannelSummary[]>([]);
   const [publishableVideos, setPublishableVideos] = useState<PublishableVideo[]>([]);
-  const [skillVersionId, setSkillVersionId] = useState("");
-  const [styleId, setStyleId] = useState("");
-  const [creationChannelId, setCreationChannelId] = useState("");
-  const [youtubeChannelId, setYoutubeChannelId] = useState("");
-  const [youtubePublishableVideoId, setYoutubePublishableVideoId] = useState("");
+  const [selectedResources, setSelectedResources] = useState<NativeAgentResource[]>([]);
+  const [resourceMenuOpen, setResourceMenuOpen] = useState(false);
+  const [resourceSearch, setResourceSearch] = useState("");
+  const [activeResourceIndex, setActiveResourceIndex] = useState(0);
   const [youtubeVisibility, setYoutubeVisibility] = useState<"public" | "private" | "unlisted">("public");
   const [youtubePlannedAt, setYoutubePlannedAt] = useState("");
   const [registeringVideoId, setRegisteringVideoId] = useState<string | null>(null);
@@ -3656,6 +3672,8 @@ function NativeAgentView({
   const shouldFollowThreadRef = useRef(true);
   const previewCloseRef = useRef<HTMLButtonElement | null>(null);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const nativeComposerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const nativeResourceMenuRef = useRef<HTMLDivElement | null>(null);
 
   async function loadConversations() {
     const result = await api.nativeAgentConversations(50);
@@ -3818,6 +3836,176 @@ function NativeAgentView({
   const videoToRegister = detail?.runs
     .flatMap((run) => run.videos)
     .find((video) => video.id === registeringVideoId) || null;
+  const skillVersionId = nativeAgentResourceId(selectedResources, "skill");
+  const styleId = nativeAgentResourceId(selectedResources, "style");
+  const creationChannelId = nativeAgentResourceId(
+    selectedResources,
+    "creation_channel",
+  );
+  const youtubeChannelId = nativeAgentResourceId(
+    selectedResources,
+    "youtube_channel",
+  );
+  const youtubePublishableVideoId = nativeAgentResourceId(
+    selectedResources,
+    "publishable_video",
+  );
+  const selectedCreationChannel =
+    youtubeChannels.find((channel) => channel.id === creationChannelId) || null;
+  const selectedYoutubeChannel =
+    youtubeChannels.find((channel) => channel.id === youtubeChannelId) || null;
+  const selectedPublishableVideo =
+    publishableVideos.find((video) => video.id === youtubePublishableVideoId) || null;
+  const nativeAgentResources = useMemo<NativeAgentResource[]>(() => {
+    const skillResources = skills.map((skill) => ({
+      kind: "skill" as const,
+      id: skill.id,
+      displayName: skill.display_name,
+      secondaryText: skill.secondary_text || "已发布创作方法",
+      searchText: `${skill.display_name} ${skill.secondary_text || ""}`,
+    }));
+    const creationChannelResources =
+      user.role === "admin"
+        ? youtubeChannels.map((channel) => ({
+            kind: "creation_channel" as const,
+            id: channel.id,
+            displayName: channel.alias || channel.title,
+            secondaryText: channel.bound_style
+              ? `绑定 Style · ${channel.bound_style.name}`
+              : "尚未绑定 Style",
+            searchText: `${channel.alias || ""} ${channel.title} ${channel.handle || ""} ${channel.channel_id}`,
+            disabledReason: channel.bound_style
+              ? undefined
+              : "该账号尚未绑定 Style，请先到频道账号管理完成绑定",
+          }))
+        : [];
+    const styleResources = styles.map((style) => ({
+      kind: "style" as const,
+      id: style.id,
+      displayName: style.display_name,
+      secondaryText: style.secondary_text || "直接使用此 Style",
+      searchText: `${style.display_name} ${style.secondary_text || ""}`,
+    }));
+    const youtubeChannelResources =
+      user.role === "admin"
+        ? youtubeChannels.map((channel) => ({
+            kind: "youtube_channel" as const,
+            id: channel.id,
+            displayName: channel.alias || channel.title,
+            secondaryText: `YouTube 发布频道 · ${channel.title}`,
+            searchText: `${channel.alias || ""} ${channel.title} ${channel.handle || ""} ${channel.channel_id}`,
+          }))
+        : [];
+    const videoResources =
+      user.role === "admin" && youtubeChannelId
+        ? publishableVideos.map((video) => ({
+            kind: "publishable_video" as const,
+            id: video.id,
+            displayName: video.title,
+            secondaryText: `审核通过 · ${video.source_native_agent_video_id}`,
+            searchText: `${video.title} ${video.source_native_agent_video_id}`,
+          }))
+        : [];
+    return [
+      ...skillResources,
+      ...creationChannelResources,
+      ...styleResources,
+      ...youtubeChannelResources,
+      ...videoResources,
+    ];
+  }, [
+    publishableVideos,
+    skills,
+    styles,
+    user.role,
+    youtubeChannelId,
+    youtubeChannels,
+  ]);
+  const filteredNativeAgentResources = useMemo(
+    () => filterNativeAgentResources(nativeAgentResources, resourceSearch),
+    [nativeAgentResources, resourceSearch],
+  );
+
+  useEffect(() => {
+    setActiveResourceIndex((current) =>
+      Math.min(current, Math.max(filteredNativeAgentResources.length - 1, 0)),
+    );
+  }, [filteredNativeAgentResources.length]);
+
+  useEffect(() => {
+    if (!resourceMenuOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (
+        nativeResourceMenuRef.current
+        && !nativeResourceMenuRef.current.contains(event.target as Node)
+      ) {
+        setResourceMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [resourceMenuOpen]);
+
+  function openNativeResourceMenu() {
+    setResourceSearch("");
+    setActiveResourceIndex(0);
+    setResourceMenuOpen(true);
+  }
+
+  function chooseNativeResource(resource: NativeAgentResource) {
+    if (resource.disabledReason) return;
+    setSelectedResources((current) =>
+      selectNativeAgentResource(current, resource),
+    );
+    if (resource.kind === "youtube_channel") {
+      setYoutubeVisibility("public");
+      setYoutubePlannedAt("");
+    }
+    setResourceMenuOpen(false);
+    window.setTimeout(() => nativeComposerInputRef.current?.focus(), 0);
+  }
+
+  function removeSelectedNativeResource(resource: NativeAgentResource) {
+    setSelectedResources((current) =>
+      removeNativeAgentResource(current, resource),
+    );
+    if (resource.kind === "youtube_channel") {
+      setYoutubeVisibility("public");
+      setYoutubePlannedAt("");
+    }
+  }
+
+  function handleNativeResourceMenuKeyDown(
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setResourceMenuOpen(false);
+      nativeComposerInputRef.current?.focus();
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (filteredNativeAgentResources.length === 0) return;
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      setActiveResourceIndex((current) =>
+        (
+          current
+          + direction
+          + filteredNativeAgentResources.length
+        ) % filteredNativeAgentResources.length,
+      );
+      return;
+    }
+    if (event.key === "Enter") {
+      const activeResource = filteredNativeAgentResources[activeResourceIndex];
+      if (activeResource) {
+        event.preventDefault();
+        if (activeResource.disabledReason) return;
+        chooseNativeResource(activeResource);
+      }
+    }
+  }
 
   useEffect(() => {
     shouldFollowThreadRef.current = true;
@@ -3858,19 +4046,15 @@ function NativeAgentView({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const retryingLatestRun = content.trim() === "重试";
-    if (
-      !content.trim()
-      || (!retryingLatestRun && !skillVersionId)
-      || sending
-      || activeRun
-    ) return;
+    if (!content.trim() || sending || activeRun) return;
     if (retryingLatestRun && !detail) {
       setError("当前会话还没有可重试的任务");
       return;
     }
-    const selectedYoutubeChannel = youtubeChannels.find((item) => item.id === youtubeChannelId);
-    const selectedCreationChannel = youtubeChannels.find((item) => item.id === creationChannelId);
-    const selectedPublishableVideo = publishableVideos.find((item) => item.id === youtubePublishableVideoId);
+    if (!retryingLatestRun && !skillVersionId) {
+      setError("请先输入 @ 并添加一个已发布的 Skill");
+      return;
+    }
     if (creationChannelId && !selectedCreationChannel?.bound_style) {
       setError("所选创作账号尚未绑定风格，请先前往频道账号管理完成绑定");
       return;
@@ -3923,8 +4107,9 @@ function NativeAgentView({
                 : null,
           });
       setContent("");
-      setYoutubeChannelId("");
-      setYoutubePublishableVideoId("");
+      setSelectedResources((current) =>
+        clearNativeAgentPublishingResources(current),
+      );
       setYoutubePlannedAt("");
       setDetail((current) =>
         current?.id === conversation.id
@@ -4415,115 +4600,215 @@ function NativeAgentView({
         </section>
 
         <form className="native-agent-composer" onSubmit={submit}>
-          <div className="native-agent-context-controls">
-            <label>
-              <span>Skill</span>
-              <select
-                value={skillVersionId}
-                onChange={(event) => setSkillVersionId(event.target.value)}
-                disabled={sending || Boolean(activeRun)}
-                required={content.trim() !== "重试"}
-              >
-                <option value="">选择已发布的 Skill</option>
-                {skills.map((skill) => (
-                  <option value={skill.id} key={skill.id}>{skill.display_name}</option>
-                ))}
-              </select>
-            </label>
-            {user.role === "admin" ? (
-              <label>
-                <span>创作账号</span>
-                <select
-                  value={creationChannelId}
-                  onChange={(event) => {
-                    const channelId = event.target.value;
-                    const channel = youtubeChannels.find((item) => item.id === channelId);
-                    setCreationChannelId(channelId);
-                    setStyleId(channel?.bound_style?.id || "");
-                  }}
-                  disabled={sending || Boolean(activeRun)}
+          {selectedResources.length > 0 ? (
+            <div className="native-agent-context-row" aria-label="本轮已引用资源">
+              {selectedResources.map((resource) => (
+                <span
+                  className={`is-${resource.kind}`}
+                  key={`${resource.kind}-${resource.id}`}
                 >
-                  <option value="">不绑定创作账号</option>
-                  {youtubeChannels.map((channel) => (
-                    <option value={channel.id} key={channel.id}>
-                      @{channel.alias || channel.title} · {channel.bound_style?.name || "尚未绑定风格"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <label>
-              <span>{creationChannelId ? "Style（由账号绑定）" : "Style"}</span>
-              <select
-                value={styleId}
-                onChange={(event) => setStyleId(event.target.value)}
-                disabled={sending || Boolean(activeRun) || Boolean(creationChannelId)}
-              >
-                <option value="">不使用 Style（仅生图 Tool 需要）</option>
-                {styles.map((style) => (
-                  <option value={style.id} key={style.id}>{style.display_name}</option>
-                ))}
-              </select>
-            </label>
-            {user.role === "admin" ? (
-              <label>
-                <span>@频道</span>
-                <select
-                  value={youtubeChannelId}
-                  onChange={(event) => {
-                    setYoutubeChannelId(event.target.value);
-                    if (!event.target.value) setYoutubePublishableVideoId("");
-                  }}
-                  disabled={sending || Boolean(activeRun)}
-                >
-                  <option value="">不发布到 YouTube</option>
-                  {youtubeChannels.map((channel) => (
-                    <option value={channel.id} key={channel.id}>
-                      @{channel.alias || channel.title} · {channel.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            {user.role === "admin" && youtubeChannelId ? (
-              <>
-                <label>
-                  <span>审核视频</span>
-                  <select
-                    value={youtubePublishableVideoId}
-                    onChange={(event) => setYoutubePublishableVideoId(event.target.value)}
+                  <small>@{nativeAgentResourceKindLabels[resource.kind]}</small>
+                  <strong>{resource.displayName}</strong>
+                  {resource.kind === "creation_channel" ? (
+                    <em>{resource.secondaryText}</em>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label={`移除${nativeAgentResourceKindLabels[resource.kind]} ${resource.displayName}`}
                     disabled={sending || Boolean(activeRun)}
-                    required
+                    onClick={() => removeSelectedNativeResource(resource)}
                   >
-                    <option value="">选择审核通过的视频</option>
-                    {publishableVideos.map((video) => (
-                      <option value={video.id} key={video.id}>
-                        {video.title} · {video.source_native_agent_video_id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>可见性</span>
-                  <select value={youtubeVisibility} onChange={(event) => setYoutubeVisibility(event.target.value as typeof youtubeVisibility)} disabled={sending || Boolean(activeRun)}>
-                    <option value="public">公开</option>
-                    <option value="unlisted">不公开列出</option>
-                    <option value="private">私密</option>
-                  </select>
-                </label>
-                <label>
-                  <span>计划时间（上海时区）</span>
-                  <input type="datetime-local" value={youtubePlannedAt} onChange={(event) => setYoutubePlannedAt(event.target.value)} disabled={sending || Boolean(activeRun)} />
-                </label>
-              </>
-            ) : null}
+                    <X size={13} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="native-agent-input-row">
+            <div
+              className="native-agent-resource-menu-wrap"
+              ref={nativeResourceMenuRef}
+            >
+              <button
+                type="button"
+                className="native-agent-resource-trigger"
+                aria-label="添加本轮资源"
+                aria-haspopup="listbox"
+                aria-expanded={resourceMenuOpen}
+                disabled={sending || Boolean(activeRun)}
+                onClick={() => {
+                  if (resourceMenuOpen) {
+                    setResourceMenuOpen(false);
+                  } else {
+                    openNativeResourceMenu();
+                  }
+                }}
+              >
+                @
+              </button>
+              {resourceMenuOpen ? (
+                <div className="native-agent-resource-menu">
+                  <header>
+                    <strong>添加到本轮对话</strong>
+                    <small>选择真实资源，提交时保存不可变快照</small>
+                  </header>
+                  <label>
+                    <Search size={15} aria-hidden="true" />
+                    <input
+                      autoFocus
+                      type="search"
+                      aria-label="搜索可引用资源"
+                      aria-controls="native-agent-resource-list"
+                      aria-activedescendant={
+                        filteredNativeAgentResources[activeResourceIndex]
+                          ? `native-resource-${filteredNativeAgentResources[activeResourceIndex].kind}-${filteredNativeAgentResources[activeResourceIndex].id}`
+                          : undefined
+                      }
+                      value={resourceSearch}
+                      placeholder="搜索 Skill、账号、Style、频道或视频"
+                      onChange={(event) => {
+                        setResourceSearch(event.target.value);
+                        setActiveResourceIndex(0);
+                      }}
+                      onKeyDown={handleNativeResourceMenuKeyDown}
+                    />
+                  </label>
+                  <div
+                    id="native-agent-resource-list"
+                    className="native-agent-resource-list"
+                    role="listbox"
+                    aria-label="可引用资源"
+                  >
+                    {([
+                      "skill",
+                      "creation_channel",
+                      "style",
+                      "youtube_channel",
+                      "publishable_video",
+                    ] as NativeAgentResourceKind[]).map((kind) => {
+                      const groupResources = filteredNativeAgentResources.filter(
+                        (resource) => resource.kind === kind,
+                      );
+                      if (groupResources.length === 0) return null;
+                      return (
+                        <section key={kind}>
+                          <h3>{nativeAgentResourceKindLabels[kind]}</h3>
+                          {groupResources.map((resource) => {
+                            const resourceIndex =
+                              filteredNativeAgentResources.indexOf(resource);
+                            const selected = selectedResources.some(
+                              (item) =>
+                                item.kind === resource.kind
+                                && item.id === resource.id,
+                            );
+                            return (
+                              <button
+                                id={`native-resource-${resource.kind}-${resource.id}`}
+                                type="button"
+                                role="option"
+                                aria-selected={selected}
+                                className={
+                                  resourceIndex === activeResourceIndex
+                                    ? "is-active"
+                                    : undefined
+                                }
+                                disabled={Boolean(resource.disabledReason)}
+                                title={resource.disabledReason}
+                                key={`${resource.kind}-${resource.id}`}
+                                onMouseEnter={() =>
+                                  setActiveResourceIndex(resourceIndex)
+                                }
+                                onClick={() => chooseNativeResource(resource)}
+                              >
+                                <span>
+                                  {kind === "skill" ? <Sparkles size={16} /> : null}
+                                  {kind === "creation_channel" ? <UserRound size={16} /> : null}
+                                  {kind === "style" ? <Box size={16} /> : null}
+                                  {kind === "youtube_channel" ? <Upload size={16} /> : null}
+                                  {kind === "publishable_video" ? <Film size={16} /> : null}
+                                </span>
+                                <span>
+                                  <strong>{resource.displayName}</strong>
+                                  <small>
+                                    {resource.disabledReason || resource.secondaryText}
+                                  </small>
+                                </span>
+                                {selected ? <CheckCircle2 size={15} /> : null}
+                              </button>
+                            );
+                          })}
+                        </section>
+                      );
+                    })}
+                    {filteredNativeAgentResources.length === 0 ? (
+                      <p>没有匹配的可用资源</p>
+                    ) : null}
+                  </div>
+                  {!youtubeChannelId && user.role === "admin" ? (
+                    <footer>先添加发布频道，菜单中才会出现审核视频。</footer>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <textarea
+              ref={nativeComposerInputRef}
+              aria-label="输入 Agent 对话内容"
+              value={content}
+              onChange={(event) => {
+                const nextContent = event.target.value;
+                if (nextContent.endsWith("@")) {
+                  setContent(nextContent.slice(0, -1));
+                  openNativeResourceMenu();
+                  return;
+                }
+                setContent(nextContent);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && resourceMenuOpen) {
+                  event.preventDefault();
+                  setResourceMenuOpen(false);
+                }
+              }}
+              placeholder="输入内容，键入 @ 添加 Skill、账号、Style 或其它资源…"
+              disabled={sending || Boolean(activeRun)}
+            />
           </div>
-          <textarea
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            placeholder="输入文案目标，例如受众、主题、长度和语气…"
-            disabled={sending || Boolean(activeRun)}
-          />
+          {youtubeChannelId ? (
+            <div className="native-agent-publish-options">
+              <div>
+                <span>发布可见性</span>
+                <div role="group" aria-label="YouTube 发布可见性">
+                  {([
+                    ["public", "公开"],
+                    ["unlisted", "不公开列出"],
+                    ["private", "私密"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={youtubeVisibility === value}
+                      disabled={sending || Boolean(activeRun)}
+                      onClick={() => setYoutubeVisibility(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label>
+                <span>计划时间（上海时区）</span>
+                <input
+                  type="datetime-local"
+                  value={youtubePlannedAt}
+                  onChange={(event) => setYoutubePlannedAt(event.target.value)}
+                  disabled={sending || Boolean(activeRun)}
+                />
+              </label>
+              {!youtubePublishableVideoId ? (
+                <p>再次输入 @，添加一个审核通过的视频。</p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="native-agent-composer-footer">
             <span>
               {activeRun
@@ -4543,7 +4828,6 @@ function NativeAgentView({
               disabled={activeRun
                 ? cancellationPending
                 : !content.trim()
-                  || (content.trim() !== "重试" && !skillVersionId)
                   || sending}
             >
               {sending || cancellationPending
@@ -4612,7 +4896,17 @@ function NativeAgentView({
                     review_status: "approved",
                   });
                   setPublishableVideos((current) => [created, ...current]);
-                  setYoutubePublishableVideoId(created.id);
+                  if (youtubeChannelId) {
+                    setSelectedResources((current) =>
+                      selectNativeAgentResource(current, {
+                        kind: "publishable_video",
+                        id: created.id,
+                        displayName: created.title,
+                        secondaryText: `审核通过 · ${created.source_native_agent_video_id}`,
+                        searchText: `${created.title} ${created.source_native_agent_video_id}`,
+                      }),
+                    );
+                  }
                   setRegisteringVideoId(null);
                   setError("");
                 } catch (registerError) {
