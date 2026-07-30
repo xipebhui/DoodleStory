@@ -49,6 +49,10 @@ TOOL_PRESENTATION = {
         "微信公众号文章",
         "微信公众号 · 抓取文章正文、图片引用和来源元数据，并保存为可追踪素材。",
     ),
+    "inspect_youtube_channel": (
+        "读取 YouTube 频道",
+        "YouTube · 读取频道与近期视频统计、标题、描述和评论，并下载头像与视频封面。",
+    ),
     "write_article": (
         "文案写作子 Agent",
         "把当前文案任务交给同一 Skill 中的 Writer 角色，返回并保存完整草稿。",
@@ -85,6 +89,11 @@ NATIVE_ONLY_TOOL_CATALOG = (
     },
     {
         "name": "capture_wechat_article",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+    {
+        "name": "inspect_youtube_channel",
         "has_side_effects": True,
         "may_wait": True,
     },

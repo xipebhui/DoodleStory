@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 import inspect
 import json
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -68,6 +69,7 @@ from app.services.native_agent_loop import (
     build_generate_image_tool,
     build_generate_speech_tool,
     build_capture_wechat_article_tool,
+    build_inspect_youtube_channel_tool,
     build_publish_youtube_video_tool,
     build_render_story_video_tool,
     execute_native_agent_run,
@@ -421,6 +423,122 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertIn("只接受 https://mp.weixin.qq.com/", str(output))
         importer.assert_not_called()
 
+    def test_inspect_youtube_channel_exposes_model_selected_parameters_and_images(
+        self,
+    ) -> None:
+        payload = {
+            "observed_at": "2026-07-30T00:00:00+00:00",
+            "output_dir": "/shared/youtube/job",
+            "request": {
+                "channel": "@HistoryEagle-u9d",
+                "video_limit": 3,
+                "comments_per_video": 4,
+                "comment_order": "time",
+            },
+            "channel": {
+                "id": "UCe39qjiOYSfAhkir-WLafGA",
+                "title": "History Eagle",
+                "avatar": {
+                    "url": "https://img.example/avatar.jpg",
+                    "file_path": "/shared/youtube/job/avatar.jpg",
+                },
+            },
+            "videos": [
+                {
+                    "id": "2XtwNq0G7Tk",
+                    "title": "The Most POWERFUL Military Units",
+                    "description": "Full video description",
+                    "thumbnail": {
+                        "url": "https://img.example/cover.jpg",
+                        "file_path": "/shared/youtube/job/cover.jpg",
+                    },
+                    "comments": [],
+                }
+            ],
+        }
+        result = SimpleNamespace(
+            model_dump=lambda mode: deepcopy(payload),
+            channel=SimpleNamespace(
+                avatar=SimpleNamespace(
+                    url="https://img.example/avatar.jpg"
+                )
+            ),
+            videos=[
+                SimpleNamespace(
+                    thumbnail=SimpleNamespace(
+                        url="https://img.example/cover.jpg"
+                    )
+                )
+            ],
+        )
+        fetcher = Mock(return_value=result)
+        tool = build_inspect_youtube_channel_tool(fetcher=fetcher)
+        output = asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="inspect_youtube_channel",
+                    tool_call_id="youtube-insights-1",
+                    tool_arguments=(
+                        '{"channel":"@HistoryEagle-u9d","video_limit":3,'
+                        '"comments_per_video":4,"comment_order":"time"}'
+                    ),
+                ),
+                (
+                    '{"channel":"@HistoryEagle-u9d","video_limit":3,'
+                    '"comments_per_video":4,"comment_order":"time"}'
+                ),
+            )
+        )
+
+        fetcher.assert_called_once_with(
+            "@HistoryEagle-u9d",
+            video_limit=3,
+            comments_per_video=4,
+            comment_order="time",
+        )
+        self.assertEqual(3, len(output))
+        text_payload = json.loads(output[0].text)
+        self.assertNotIn("output_dir", text_payload)
+        self.assertNotIn(
+            "file_path",
+            text_payload["videos"][0]["thumbnail"],
+        )
+        self.assertEqual(
+            "Full video description",
+            text_payload["videos"][0]["description"],
+        )
+        self.assertEqual(
+            "https://img.example/avatar.jpg",
+            output[1].image_url,
+        )
+        self.assertEqual(
+            "https://img.example/cover.jpg",
+            output[2].image_url,
+        )
+
+    def test_inspect_youtube_channel_rejects_unbounded_model_parameters(
+        self,
+    ) -> None:
+        fetcher = Mock()
+        tool = build_inspect_youtube_channel_tool(fetcher=fetcher)
+        output = asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="inspect_youtube_channel",
+                    tool_call_id="youtube-insights-invalid",
+                    tool_arguments=(
+                        '{"channel":"@HistoryEagle-u9d","video_limit":6}'
+                    ),
+                ),
+                '{"channel":"@HistoryEagle-u9d","video_limit":6}',
+            )
+        )
+
+        self.assertIn("video_limit 必须在 1–5", str(output))
+        fetcher.assert_not_called()
+
     def test_capture_wechat_article_persists_markdown_and_reuses_call(self) -> None:
         run_id = self.create_durable_run()
         importer_calls = 0
@@ -622,6 +740,10 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertNotIn(
             "generate_speech",
             native_runtime_tool_names('["generate_image"]'),
+        )
+        self.assertEqual(
+            ["inspect_youtube_channel"],
+            native_runtime_tool_names('["inspect_youtube_channel"]'),
         )
 
     def test_generate_speech_persists_audio_and_owner_can_read_asset(self) -> None:

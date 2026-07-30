@@ -1,21 +1,39 @@
 # 进度记录
 
+## Sprint 138（已完成）
+
+- 已把官方 YouTube Data API v3 公开频道研究接入同级 `douyin-import-service`，新增
+  `/api/v1/youtube/channel-insights`；支持频道 URL、Handle 和 Channel ID，返回频道资料、
+  最近视频标题、完整描述、标签、发布时间、时长、基础统计和可配置排序的顶级评论。
+- Import 服务会真实下载频道头像与每条视频最高可用分辨率封面；任一官方 API 或图片下载
+  失败时整次请求明确失败。DoodleStory 新增“读取 YouTube 频道”
+  `inspect_youtube_channel` Tool，模型可在受控边界内选择视频数、评论数和排序，并把头像与
+  封面作为视觉 Tool Output 一起分析，不暴露服务端文件路径。
+- Tool 严格服从固定 Skill Version 白名单；同时修正已有 `publish_youtube_video` 只凭
+  发布上下文即可暴露的旁路，现在必须同时满足 Skill 白名单和发布确认上下文。
+- 真实频道 `@HistoryEagle-u9d` smoke 已取得频道信息、最新视频完整包装信息和 2 条评论，
+  下载 `800×800` 头像与 `1280×720` 封面；完整 Agent Tool 输出为 1 份文字和 2 份视觉结果。
+- Import 服务 17 项测试通过；DoodleStory `./scripts/check.sh` 通过 328 项后端测试、空库
+  迁移、8 项前端测试、前端生产构建、Remotion 类型检查与 5 项测试。合同见
+  `docs/contracts/sprint-138-youtube-channel-research-tool.md`。
+
 ## 当前基线
 
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 136 已完成；YouTube 频道账号和单频道已发布视频均使用每页 10 条的
-  服务端分页，频道详情不再嵌套加载完整视频关系，频道管理文字层级整体上调约 1–2px。
-  `./scripts/check.sh` 已通过 312 项后端测试、空库迁移、前端生产构建和 Remotion 检查；
-  未调用真实 YouTube 发布接口，真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
+- 最近验证状态：Sprint 138 已完成；YouTube 公开频道研究使用官方 Data API v3，包含频道与
+  视频完整包装信息、基础数据、顶级评论、头像和封面视觉输入。`./scripts/check.sh` 已通过
+  328 项后端测试、空库迁移、前端生产构建和 Remotion 检查；未调用真实 YouTube 发布接口，
+  真实发布 smoke 等待用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 134、Sprint 135、Sprint 136 Complete；Sprint 135 真实外部发布 smoke 待用户授权；
+- 当前合同状态：Sprint 134–Sprint 138 Complete；Sprint 135 真实外部发布 smoke 待用户授权；
   Sprint 127、Sprint 132、Sprint 133 Complete；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-138-youtube-channel-research-tool.md`
 - Complete：`docs/contracts/sprint-134-youtube-channel-account-and-video-registry.md`
 - Complete：`docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md`
 - Complete：`docs/contracts/sprint-136-youtube-list-pagination-and-readability.md`

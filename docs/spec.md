@@ -368,6 +368,19 @@
   `native_agent_external_contents` 记录。Tool 只向模型返回稳定素材 ID、来源摘要和最多
   1600 字预览，不无条件注入完整长文。该 Tool 只有在固定 Skill Version 的白名单包含
   `capture_wechat_article` 时才暴露，Skill 管理页显示名称“微信公众号文章”。
+- Sprint 138 为 Native Agent 新增 `inspect_youtube_channel` 只读 Function Tool，通过同级
+  多平台导入服务调用官方 YouTube Data API v3。频道输入支持完整频道 URL、`@handle`、
+  handle 文本和 `UC...` Channel ID；模型可按任务选择最近视频数、每条评论数以及
+  `relevance` / `time` 评论顺序。Agent 边界为 1–5 条视频和每条 0–10 条评论，Import
+  服务边界为 1–10 条视频和每条 0–20 条评论。
+- YouTube 研究结果必须包含频道资料与统计，以及视频标题、完整描述、标签、发布时间、时长、
+  播放量、点赞数、评论数和所请求的顶级评论。Import 服务真实下载频道头像和每条视频最高
+  可用分辨率封面；Tool 向模型提供结构化文字与视觉输出，但不暴露 Import 服务端本地路径。
+  任一官方 API 请求或图片下载失败时整次调用明确失败，不返回部分结果。
+- `inspect_youtube_channel` 仅在固定 Skill Version 白名单包含该 Tool 时暴露。已有
+  `publish_youtube_video` 也必须同时满足 Skill 白名单和已确认的结构化发布上下文，不能因
+  对话携带发布参数而绕过白名单。公开研究不写频道快照，不包含 OAuth、YouTube Analytics、
+  私有账号指标、视频下载、字幕或定时同步。
 - Sprint 134 为 Native Agent 增加单 Skill 驱动的多 Agent 文案链路。系统
   `article-creation-team` Skill 在一份 instructions 中定义 Director、Writer、Reviewer
   的职责与固定协作顺序；每个 Run 首次执行时由一次 Workflow Compiler 模型调用理解完整

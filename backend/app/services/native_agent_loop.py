@@ -108,6 +108,11 @@ from app.services.youtube_publishing import (
     create_youtube_publish_task,
 )
 from app.services.youtube_publisher import YoutubePublisherClient
+from app.services.youtube_channel_insights import (
+    YoutubeChannelInsightsResult,
+    YoutubeCommentOrder,
+    fetch_youtube_channel_insights,
+)
 
 
 MAX_NATIVE_AGENT_TURNS = 12
@@ -151,6 +156,7 @@ SpeechGenerator = Callable[..., GeneratedSpeech]
 SubtitleGenerator = Callable[..., GeneratedSubtitles]
 VideoRenderer = Callable[..., GeneratedRemotionVideo]
 SocialContentImporter = Callable[[str], SocialContentImportResult]
+YoutubeInsightsFetcher = Callable[..., YoutubeChannelInsightsResult]
 NATIVE_RUNTIME_TOOL_NAMES = frozenset(
     {
         "generate_image",
@@ -159,6 +165,7 @@ NATIVE_RUNTIME_TOOL_NAMES = frozenset(
         "render_story_video",
         "publish_youtube_video",
         "capture_wechat_article",
+        "inspect_youtube_channel",
         "write_article",
         "review_article",
         "submit_final_article",
@@ -1344,6 +1351,98 @@ def build_capture_wechat_article_tool(
     )
 
 
+def _youtube_insights_tool_outputs(
+    result: YoutubeChannelInsightsResult,
+) -> list[ToolOutputText | ToolOutputImage]:
+    payload = result.model_dump(mode="json")
+    payload.pop("output_dir", None)
+    channel = payload["channel"]
+    if isinstance(channel, dict):
+        avatar = channel.get("avatar")
+        if isinstance(avatar, dict):
+            avatar.pop("file_path", None)
+    videos = payload["videos"]
+    if isinstance(videos, list):
+        for video in videos:
+            if not isinstance(video, dict):
+                continue
+            thumbnail = video.get("thumbnail")
+            if isinstance(thumbnail, dict):
+                thumbnail.pop("file_path", None)
+    outputs: list[ToolOutputText | ToolOutputImage] = [
+        ToolOutputText(text=json.dumps(payload, ensure_ascii=False))
+    ]
+    outputs.append(
+        ToolOutputImage(
+            image_url=result.channel.avatar.url,
+            detail="high",
+        )
+    )
+    outputs.extend(
+        ToolOutputImage(
+            image_url=video.thumbnail.url,
+            detail="high",
+        )
+        for video in result.videos
+    )
+    return outputs
+
+
+def build_inspect_youtube_channel_tool(
+    *,
+    fetcher: YoutubeInsightsFetcher = fetch_youtube_channel_insights,
+) -> FunctionTool:
+    async def inspect_youtube_channel(
+        tool_context: ToolContext[None],
+        channel: str,
+        video_limit: int = 1,
+        comments_per_video: int = 2,
+        comment_order: YoutubeCommentOrder = "relevance",
+    ) -> list[ToolOutputText | ToolOutputImage]:
+        del tool_context
+        normalized_channel = channel.strip()
+        if not normalized_channel:
+            raise NativeAgentLoopError(
+                "inspect_youtube_channel channel 不能为空"
+            )
+        if len(normalized_channel) > 500:
+            raise NativeAgentLoopError(
+                "inspect_youtube_channel channel 不能超过 500 字符"
+            )
+        if not 1 <= video_limit <= 5:
+            raise NativeAgentLoopError(
+                "inspect_youtube_channel video_limit 必须在 1–5 之间"
+            )
+        if not 0 <= comments_per_video <= 10:
+            raise NativeAgentLoopError(
+                "inspect_youtube_channel comments_per_video 必须在 0–10 之间"
+            )
+        if comment_order not in {"relevance", "time"}:
+            raise NativeAgentLoopError(
+                "inspect_youtube_channel comment_order 只允许 relevance 或 time"
+            )
+        result = await asyncio.to_thread(
+            fetcher,
+            normalized_channel,
+            video_limit=video_limit,
+            comments_per_video=comments_per_video,
+            comment_order=comment_order,
+        )
+        return _youtube_insights_tool_outputs(result)
+
+    return function_tool(
+        inspect_youtube_channel,
+        name_override="inspect_youtube_channel",
+        description_override=(
+            "使用 YouTube Data API v3 读取公开频道资料、订阅/播放/视频数、最近视频的"
+            "标题、完整描述、标签、发布时间、时长、播放/点赞/评论数和顶级评论，同时实际"
+            "下载频道头像与视频封面，并把图片交给你查看。channel 可传频道 URL、@handle、"
+            "handle 或 UC Channel ID。快速看最新表现时 video_limit=1；比较近期内容时可选"
+            " 3–5。comments_per_video 可选 0–10；热门评论用 relevance，最新评论用 time。"
+        ),
+    )
+
+
 def build_publish_youtube_video_tool(
     run_id: str,
     *,
@@ -1918,7 +2017,12 @@ async def execute_native_agent_run(
                         store=store,
                     )
                 )
-            if has_youtube_publish_context:
+            if "inspect_youtube_channel" in exposed_tool_names:
+                tools.append(build_inspect_youtube_channel_tool())
+            if (
+                has_youtube_publish_context
+                and "publish_youtube_video" in exposed_tool_names
+            ):
                 tools.append(build_publish_youtube_video_tool(run_id))
             if workflow is not None:
                 article_tools = build_article_agent_tools(

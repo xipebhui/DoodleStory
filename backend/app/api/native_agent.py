@@ -69,6 +69,7 @@ from app.services.native_agent_worker import (
     cancel_native_agent_run,
     enqueue_native_agent_run,
 )
+from app.services.agent_skill_management import parse_tool_names
 from app.services.native_agent_persistence import (
     NativeAgentStore,
     add_native_agent_event,
@@ -430,6 +431,7 @@ def get_native_agent_capabilities(
                 "render_story_video",
                 "publish_youtube_video",
                 "capture_wechat_article",
+                "inspect_youtube_channel",
             ],
             image_review="native_model_vision",
         )
@@ -653,6 +655,15 @@ async def create_native_agent_run(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="发布版 Skill 不存在或不可用",
+        )
+    selected_tool_names = set(parse_tool_names(skill_version.tool_names_json))
+    if (
+        payload.youtube_channel_id is not None
+        and "publish_youtube_video" not in selected_tool_names
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前 Skill Version 未授权 publish_youtube_video",
         )
     style = None
     reference_urls: list[str] = []

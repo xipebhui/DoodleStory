@@ -1380,6 +1380,7 @@ const agentToolDisplayNames: Record<string, string> = {
   capture_wechat_article: "微信公众号文章",
   generate_image: "生成图片",
   inspect_image: "检查图片",
+  inspect_youtube_channel: "读取 YouTube 频道",
   generate_speech: "生成语音",
   generate_subtitles: "生成字幕",
   render_story_video: "生成故事视频",

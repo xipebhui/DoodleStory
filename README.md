@@ -17,6 +17,9 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
   真实音频时间轴显示。
 - 微信公众号素材：Skill 可选择“微信公众号文章” Tool，Agent 通过同级多平台导入服务
   抓取正文并保存 Markdown 素材、标题、作者、发布时间和来源链接。
+- YouTube 公开研究：Skill 可选择“读取 YouTube 频道” Tool，Agent 通过官方 Data API v3
+  按需读取频道资料、近期视频标题与完整描述、标签、基础数据和顶级评论，并下载频道头像与
+  每条视频的最高可用分辨率封面供模型一起分析。
 - 多 Agent 文案：系统先用 Workflow Compiler 模型调用把完整“文案创作团队” Skill 编译为
   持久化执行计划，再由 Director 通过 OpenAI Agents SDK `agent.as_tool()` 调用只注入局部
   instructions 的 Writer 与 Reviewer；草稿、审稿和最终文案均持久化，最终稿可长期等待用户
@@ -252,6 +255,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 135 YouTube 异步发布与 Agent 频道引用](docs/contracts/sprint-135-youtube-publishing-and-agent-channel-mention.md)
 - [Complete：Sprint 136 YouTube 列表分页与可读性](docs/contracts/sprint-136-youtube-list-pagination-and-readability.md)
 - [Complete：Sprint 137 微信公众号文章 Agent Tool](docs/contracts/sprint-137-wechat-article-agent-tool.md)
+- [Complete：Sprint 138 YouTube 频道研究 Tool](docs/contracts/sprint-138-youtube-channel-research-tool.md)
 - [Deferred：Agent Evaluation 与内部开放门槛](docs/contracts/deferred-agent-evaluation-internal-release-gate.md)
 - [已完成：Sprint 106 对话创建两格真实漫画](docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md)
 - [已完成：Sprint 107 传统构建与 AI 构建前端整合](docs/contracts/sprint-107-agent-frontend-workspace-integration.md)

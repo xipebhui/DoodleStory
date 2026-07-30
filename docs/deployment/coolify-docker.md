@@ -15,7 +15,8 @@ DoodleStory 应用镜像本身是单容器应用：
 当前 `docker-compose.coolify.yml` 会同时编排两个服务：
 
 - `doodlestory`：对外提供 Web/API，容器端口 `8000`。
-- `douyin-import-service`：由同级 `douyin-downloader` fork 构建出的 DoodleStory 抖音素材导入依赖，只在 Compose 内部网络提供 `8010`，不配置公网域名。
+- `douyin-import-service`：同级多平台素材导入服务，负责抖音、微信公众号、小红书导入与
+  YouTube 公开频道研究，只在 Compose 内部网络提供 `8010`，不配置公网域名。
 
 Coolify / Traefik 只需要把 HTTPS 域名流量转发到 `doodlestory` 容器端口 `8000`。
 
@@ -194,6 +195,15 @@ DOUYIN_COOKIE=
 DOUYIN_DOWNLOAD_TIMEOUT_SECONDS=180
 ```
 
+启用 YouTube 公开频道研究时，还必须配置官方 Data API v3 Key：
+
+```env
+YTB_DATA_API_V3_KEY=
+YTB_DATA_API_TIMEOUT_SECONDS=30
+```
+
+该 Key 只注入 `douyin-import-service`，健康检查仅返回是否已配置，不回显 Key。
+
 如果不想把 Cookie 放入环境变量，也可以把 `cookies.json` 放入 `douyin-import-cache` volume 中的：
 
 ```text
@@ -259,14 +269,15 @@ COMIC_VIDEO_SERVICE_API_KEY=
 
 如果使用本地存储，图片、音频、下载包和缩略图都依赖这个目录。迁移节点时需要一并备份。
 
-抖音导入服务还需要持久化：
+多平台导入服务还需要持久化：
 
 ```text
-/app/douyin-downloader/storage
-/app/douyin-downloader/.cache/douyin
+/app/douyin-import-service/storage
+/app/douyin-import-service/.cache/douyin
 ```
 
-`storage` volume 同时以只读方式挂载到 DoodleStory 容器的相同路径。这样 DoodleStory 能读取抖音导入服务返回的本地媒体路径，并登记为自己的文件资产。
+`storage` volume 同时以只读方式挂载到 DoodleStory 容器的相同路径。这样 DoodleStory
+能读取素材导入服务返回的本地媒体、频道头像和视频封面。
 
 ## 健康检查
 

@@ -82,6 +82,8 @@ services:
       DOUYIN_DOWNLOAD_TIMEOUT_SECONDS: ${DOUYIN_DOWNLOAD_TIMEOUT_SECONDS:-180}
       WECHAT_CRAWLER_ROOT: /app/wechat-article-crawler
       WECHAT_CRAWLER_PYTHON: /opt/wechat-venv/bin/python
+      YTB_DATA_API_V3_KEY: ${YTB_DATA_API_V3_KEY:-}
+      YTB_DATA_API_TIMEOUT_SECONDS: ${YTB_DATA_API_TIMEOUT_SECONDS:-30}
     healthcheck:
       test:
         - CMD
