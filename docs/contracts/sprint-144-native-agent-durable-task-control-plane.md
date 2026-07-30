@@ -2,23 +2,27 @@
 
 ## Status
 
-Draft，等待用户确认后实施。
+Draft。用户已明确确认当前没有真实用户和需要保留的生产 Agent 数据，允许删除错误设计并进行
+替换式重构；正式实施仍需按本合同逐步验证。
 
-本文是稳定任务改造的第一阶段合同。它先建立可验证的持久化控制面，并把现有多 Agent 文案链路
-迁移为第一条真实纵向样本；通用并行 DAG、任意 Probe 分支和外部工作流引擎留给后续 Sprint。
+本文是稳定任务改造的第一阶段合同。它不在现有两套 Agent Run/恢复实现上继续叠加，而是先删除
+不可达旧控制面和错误 Native Agent 编排层，再建立唯一的 Durable Task Runtime，并把多 Agent
+文案链路重建为第一条真实纵向样本。通用并行 DAG、任意 Probe 分支和外部工作流引擎留给后续
+Sprint。
 
 ## Goal
 
-把当前“一个可持久化的 Agents SDK Loop”升级为“一个具有权威任务状态、明确续用语义和可恢复
-执行边界的 Agent 工作流基础”：
+用替换式重构把当前“两个并存且语义冲突的 Agent 控制面”收敛为“一个具有权威任务状态、明确
+续用语义和可恢复执行边界的 Agent 工作流基础”：
 
-1. 后端数据库成为 Conversation、Workflow Run、Task、Attempt、Checkpoint、Approval 和 Tool
+1. 删除未挂载的旧 Agent Runtime、不可达前端和错误恢复入口，不保留兼容 API 或双写。
+2. 后端数据库成为 Conversation、Workflow Run、Task、Attempt、Checkpoint、Approval 和 Tool
    副作用的唯一状态事实来源。
-2. Approve、继续、修改、重试和新目标不再依赖前端猜测或自然语言特判，而是执行明确的控制命令。
-3. 前端只展示后端权威投影；Run 已结束时不能继续显示 Function Call“等待执行”。
-4. 同一 Conversation 内的新 Run 可以有界继承经过验证的 Memory、Artifact 和父 Run 关系，
+3. Approve、继续、修改、重试和新目标不再依赖前端猜测或自然语言特判，而是执行明确的控制命令。
+4. 前端只展示后端权威投影；Run 已结束时不能继续显示 Function Call“等待执行”。
+5. 同一 Conversation 内的新 Run 可以有界继承经过验证的 Memory、Artifact 和父 Run 关系，
    但不能直接复用或污染已结束 Run 的 SDK Session。
-5. Writer、Reviewer 和最终审批形成可中断恢复的持久化 Task/Attempt 链；单个子 Agent 失败不能
+6. Writer、Reviewer 和最终审批形成可中断恢复的持久化 Task/Attempt 链；单个子 Agent 失败不能
    被根模型的一段说明文字掩盖成 Workflow 成功。
 
 ## Incident Baseline
@@ -37,11 +41,49 @@ Draft，等待用户确认后实施。
 
 本 Sprint 完成后，上述状态组合必须无法再次出现。
 
+这些 ID 只作为本地事故证据。实施前把必要状态时间线保存进测试 fixture 或 QA 记录后，允许在
+开发数据库重建时删除原始 Agent Run、Context、Artifact 和 Approval 数据，不为本地测试数据
+增加兼容迁移。
+
+## Replacement Decision
+
+仓库当前并存两套 Agent 控制面：
+
+1. 旧 Agent 控制面：
+   - `AgentConversation/AgentRun/AgentStep/AgentArtifact/AgentApprovalRequest/AgentEvent`
+   - `agent_runner`、`agent_tool_runtime`、`agent_hitl`、`agent_comic_creation`、
+     `agent_panel_versions`
+   - 未挂载的 `agent_conversations` API
+   - 前端不可达的 `AgentView` 和对应 API client/type
+2. 当前 Native Agent 控制面：
+   - `NativeAgentConversation/NativeAgentRun/NativeAgentStep/NativeAgentEvent`
+   - `native_agent_worker`、`native_agent_persistence`、覆盖式
+     `workflow_checkpoint_json`
+   - `/agent-loop` API 和前端基于 Artifact 猜 Tool 终态的投影
+
+两套实现使用同一组状态枚举却有不同的 Session、Checkpoint、恢复和 UI 语义。Sprint 144 不选择
+其中一套继续打补丁，目标是删除两套控制面代码后重建唯一实现。
+
+保留边界：
+
+- `agent_skills/agent_skill_versions` 是产品级 Skill 数据，不属于待删除旧控制面。
+- `generation_tasks`、图片 Task Worker 和 Video Task Worker 是传统产品域执行器，继续保留。
+- 图片、音频、字幕、视频、外部内容和发布结果仍是领域资产；第一阶段只改变 Agent 如何引用和
+  调度它们，不删除传统任务产品能力。
+- MLflow 继续是可观测性系统，不成为恢复数据库。
+
+不保留边界：
+
+- 不保留旧 `/agent/conversations` 或当前 `/agent-loop` 的兼容代理。
+- 不对旧 Run、Context、Checkpoint 或测试 Artifact 做数据搬迁。
+- 不让旧 Worker 与新 Durable Worker 双跑。
+- 不通过 feature flag 长期维持两套控制面。
+
 ## Authoritative Identity Model
 
 ### Conversation
 
-`NativeAgentConversation` 是长期用户会话和 Memory 所属容器，不直接表示一次执行。
+新统一 `AgentConversation` 是长期用户会话和 Memory 所属容器，不直接表示一次执行。
 
 - 一个 Conversation 可以包含多个 Workflow Run。
 - Conversation 保存用户可见消息、结构化资源引用和有界 Memory Snapshot。
@@ -49,7 +91,8 @@ Draft，等待用户确认后实施。
 
 ### Workflow Run
 
-现有 `NativeAgentRun` 在本 Sprint 中明确为一次完整用户目标的根工作流。
+新统一 `AgentRun` 表示一次完整用户目标的根工作流，不继承旧 `AgentRun` 或
+`NativeAgentRun` 的可变恢复语义。
 
 - 一个 Run 固定 Skill Version、模型、Style、账号和发布上下文快照。
 - Run 可以包含多个 Task 和多次执行 Attempt。
@@ -214,8 +257,7 @@ prepared
 
 ## Checkpoint
 
-新增 append-only `native_agent_checkpoints`，不再只依赖覆盖式
-`NativeAgentRun.workflow_checkpoint_json`。
+新增 append-only `agent_checkpoints`，删除覆盖式 `workflow_checkpoint_json`。
 
 最小字段：
 
@@ -272,40 +314,65 @@ unknown side effect:
 Probe 通过后不能简单恢复到 C12；纯验证 Probe 应创建新的 Gate-passed Snapshot，有状态 Probe
 应把经过验证的结果提升为新 Snapshot。只有 Probe 失败或被废弃时才回到 base checkpoint。
 
-## Database Changes
+## Database Replacement
 
-新增：
+删除旧 Agent 控制面表：
 
-- `native_agent_tasks`
-- `native_agent_task_attempts`
-- `native_agent_checkpoints`
-- `native_agent_memory_snapshots`
-
-扩展：
-
+- `agent_conversations`
+- `agent_messages`
+- `agent_runs`
+- `agent_steps`
+- `agent_artifacts`
+- `agent_approval_requests`
+- `agent_events`
+- `native_agent_conversations`
 - `native_agent_runs`
-  - `root_run_id`
-  - `parent_run_id`
-  - `continued_from_checkpoint_id`
-  - `current_checkpoint_id`
-  - `current_checkpoint_revision`
-  - `state_version`
-  - `expected_input_kind`
+- `native_agent_items`
+- `native_agent_steps`
+- `native_agent_events`
+- `native_agent_context_items`
+- `native_agent_artifacts`
 - `native_agent_article_approvals`
-  - `task_id`
-  - `approval_purpose`
-  - `on_approve_action`
 
-复用并加强：
+与 Native Run 强绑定的本地测试媒体关联表允许清空并按新外键重建；传统
+`generation_tasks/video_tasks/file_assets` 不在删除范围。
 
-- `native_agent_events`：追加执行事实。
-- `native_agent_artifacts`：保存不可变业务结果。
-- `native_agent_steps`：保存 Responses/Function Tool 低层执行事实。
-- 现有媒体 Tool Step 幂等键和 `prepared/running/succeeded/unknown` 边界。
+重建唯一表族：
 
-外部副作用第一阶段继续使用现有 Tool Step；后续若出现跨 Task 的发布、支付或多 Provider
-副作用，再评审独立 `native_agent_tool_effects` 表。本 Sprint 不用 Checkpoint JSON 代替副作用
+- `agent_conversations`
+- `agent_messages`
+- `agent_runs`
+- `agent_tasks`
+- `agent_task_attempts`
+- `agent_checkpoints`
+- `agent_memory_snapshots`
+- `agent_context_items`
+- `agent_events`
+- `agent_artifacts`
+- `agent_approvals`
+- `agent_tool_effects`
+
+`agent_tool_effects` 第一阶段即进入统一模型，保存稳定幂等键、Task/Attempt、Provider request
+ID、prepared/submitted/succeeded/failed/unknown 状态和结果引用。Checkpoint 不能替代副作用
 账本。
+
+数据库变更采用显式破坏性 forward migration，并在应用前备份当前本地数据库文件供事故取证。
+迁移后允许重建开发数据库和 Agent 测试 fixture；不编写旧 Agent 数据搬迁、兼容 view 或双读。
+
+## Legacy Code Removal
+
+实施时先基于静态引用和测试清单确认边界，然后删除：
+
+- 后端旧 Agent API、Runner、HITL、Tool Runtime、Comic Creation 和 Panel Version 编排代码。
+- 当前 Native Agent Worker、Persistence、覆盖式文章 Workflow Checkpoint 和 `/agent-loop`
+  控制 API。
+- 前端不可达 `AgentView`、旧 Agent API client/type、旧事件文案和旧 Task Inspector。
+- 当前 `NativeAgentView` 中依赖 Artifact 猜 Function Call 完成状态、精确“重试”字符串路由和
+  本地 active Run 推断的逻辑。
+- 只覆盖被删除 Runtime 的测试。
+
+随后用新的统一 `/agent` API、Durable Worker、权威 Projection 和一个 Agent Workspace 重建。
+共享 Skill 管理、账号、Style、频道和领域资产能力通过明确 adapter 接回，不能复制第二套状态。
 
 ## Worker、Lease 与恢复
 
@@ -323,7 +390,7 @@ Probe 通过后不能简单恢复到 C12；纯验证 Probe 应创建新的 Gate-
 
 ## Multi-Agent Task Mapping
 
-本 Sprint 把现有文章团队作为唯一迁移样本：
+本 Sprint 把文章团队作为唯一重建样本：
 
 - Director 保持根 Workflow Run 的用户会话控制权。
 - Writer、Reviewer 分别对应持久化 Task。
@@ -382,8 +449,9 @@ MLflow 只负责可观测性，不驱动恢复。
 ## In Scope
 
 - 上述身份、状态机、控制命令和投影契约。
-- Task、Attempt、Checkpoint、Memory Snapshot 表和 migration。
-- 文章团队单纵向链路迁移。
+- 删除两套旧 Agent 控制面、不可达前端和对应测试。
+- 重建统一 Task、Attempt、Checkpoint、Memory Snapshot、Tool Effect 表和破坏性 migration。
+- 文章团队单纵向链路重建。
 - Approve 推进/结束语义拆分。
 - 同一 Conversation 的 Follow-up Run 与有界 Memory 继承。
 - Task Attempt 级 Worker lease、启动恢复和取消检查。
@@ -402,23 +470,26 @@ MLflow 只负责可观测性，不驱动恢复。
 - 多实例生产调度、分布式锁和跨服务事务。
 - 自动重放结果不确定的 Provider 副作用。
 - Deferred Evaluation 和内容质量评分发布门槛。
+- 旧 Agent/Native Agent API、数据库记录、前端和测试的兼容保留。
+- 旧本地 Agent Run、Context、Artifact 和 Approval 数据搬迁。
 
 ## Delivery Sequence
 
-1. 建立状态机、迁移和只读 Projection，不改变现有执行路径。
-2. 增加结构化控制命令及前端 allowed actions，修复 Approve/继续误路由。
-3. 把 Workflow Compiler、Writer、Reviewer、Approval 迁移为持久化 Task/Attempt。
-4. 增加不可变 Checkpoint、Memory Snapshot 和 Follow-up Run 创建。
-5. 把 Worker 改为 Attempt ID 调度并完成重启恢复。
-6. 删除文章链路对 Artifact 猜 Tool 状态的前端逻辑。
-7. 运行自动化、强制中断和真实浏览器回归。
+1. 把真实事故时间线固化为 QA 记录和失败测试，备份本地数据库。
+2. 删除未挂载旧 Agent 后端、不可达前端、旧表和只服务旧 Runtime 的测试。
+3. 删除当前 Native Agent 控制 API、Worker、覆盖式 Checkpoint 和前端状态猜测。
+4. 建立统一 schema、状态机、Tool Effect 和权威 Projection。
+5. 重建结构化控制命令及前端 allowed actions。
+6. 重建 Workflow Compiler、Writer、Reviewer、Approval 的持久化 Task/Attempt 链。
+7. 增加不可变 Checkpoint、Memory Snapshot、Follow-up Run、Worker lease 和启动恢复。
+8. 运行自动化、强制中断、空库迁移和真实浏览器回归。
 
 每一步完成后更新 `docs/progress.md`。任何一步若需要改变安全副作用边界，必须暂停并单独评审，
 不能加入自动兜底或静默降级。
 
 ## Deliverables
 
-- 数据库 migration、ORM model 和约束。
+- 删除清单、破坏性数据库 migration、新 ORM model 和约束。
 - Durable Task Runtime service。
 - 结构化 Run command API 和权威 Projection API/SSE。
 - 文章团队 Task/Attempt adapter。
@@ -442,7 +513,8 @@ MLflow 只负责可观测性，不驱动恢复。
 - Run 终态时前端没有仍显示“等待执行”的 Function Call。
 - API 详情、SSE 最终 Snapshot、数据库状态和前端展示一致。
 - MLflow Trace 结束不改变数据库 Workflow Run；数据库可以通过 Run/Task/Attempt 定位 Trace。
-- 旧 Run 和 Artifact 保持可读，迁移不伪造历史 Task 成功状态。
+- 仓库只剩一套 Agent Conversation、Run、Task、Checkpoint、Worker、API 和前端状态实现。
+- 旧 Agent 和 Native Agent 的本地测试数据已按合同删除，不存在兼容层或双写路径。
 
 ## Verification
 
@@ -453,18 +525,20 @@ git diff --check
 
 必须新增自动化场景：
 
-1. `stage_gate` Approve 推进下一 Task，Run 不结束。
-2. `final_result` Approve 在所有必需 Task 完成后结束 Run。
-3. waiting Run 的继续命令复用同一 Run 和 Checkpoint。
-4. terminal Run 的 follow-up 创建新 Run，并固定 parent、Checkpoint 和 Memory Snapshot。
-5. Writer 超时产生 failed Attempt，根模型说明不能把 Run 改成 succeeded。
-6. Writer 成功后的进程中断恢复不重复生成 Artifact。
-7. Checkpoint revision 冲突明确失败并重新合并，不丢更新。
-8. lease 过期恢复只领取安全 Attempt。
-9. unknown Tool Effect 阻止自动恢复。
-10. SSE sequence/state_version 缺口触发详情收敛。
-11. Run 终态时所有前端 Task/Function Call 均为终态。
-12. Conversation owner 隔离和跨 Run Artifact/Memory 引用权限。
+1. 静态检查确认旧 Agent/Native Agent 控制模块、路由和不可达前端已经删除。
+2. 空数据库迁移后只存在一套 Agent Conversation/Run/Task/Checkpoint 表族。
+3. `stage_gate` Approve 推进下一 Task，Run 不结束。
+4. `final_result` Approve 在所有必需 Task 完成后结束 Run。
+5. waiting Run 的继续命令复用同一 Run 和 Checkpoint。
+6. terminal Run 的 follow-up 创建新 Run，并固定 parent、Checkpoint 和 Memory Snapshot。
+7. Writer 超时产生 failed Attempt，根模型说明不能把 Run 改成 succeeded。
+8. Writer 成功后的进程中断恢复不重复生成 Artifact。
+9. Checkpoint revision 冲突明确失败并重新合并，不丢更新。
+10. lease 过期恢复只领取安全 Attempt。
+11. unknown Tool Effect 阻止自动恢复。
+12. SSE sequence/state_version 缺口触发详情收敛。
+13. Run 终态时所有前端 Task/Function Call 均为终态。
+14. Conversation owner 隔离和跨 Run Artifact/Memory 引用权限。
 
 真实回归：
 
@@ -479,6 +553,8 @@ git diff --check
 
 - 这是跨数据库、Worker、SDK Session、API、SSE 和前端投影的控制面改造，实施期间不能与其它
   Native Agent Runtime 重写并行合并。
+- 用户已确认当前没有真实用户，允许删除本地 Agent 测试数据和错误设计；传统任务、Skill、
+  Style、账号、频道和领域资产能力不因此获得删除授权。
 - SQLite 可以支撑本阶段单进程纵向验证，但 lease、并行合并和生产多实例能力不能据此宣称完成。
 - Agents SDK 继续负责模型 Tool Loop；Durable Task、Memory、Checkpoint、恢复和业务终态由
   DoodleStory Runtime 负责。

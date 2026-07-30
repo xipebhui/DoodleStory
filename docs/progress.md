@@ -8,8 +8,13 @@
   显示“等待执行”。
 - Sprint 144 第一阶段将建立 Conversation → Workflow Run → Task → Attempt → Checkpoint 的
   权威身份和状态模型，拆分阶段审批与最终审批，增加有界 Conversation Memory、Follow-up Run、
-  Attempt worker lease、后端权威 Projection 和前端状态收敛，并只迁移现有文章团队作为首条
+  Attempt worker lease、后端权威 Projection 和前端状态收敛，并只重建现有文章团队作为首条
   可恢复纵向链路。
+- 用户进一步确认当前没有真实用户，允许删除本地测试数据和错误设计。仓库审计已确认未挂载旧
+  Agent Runtime、当前 Native Agent Runtime 和不可达旧前端并存；Sprint 144 改为替换式重构，
+  删除两套控制面后重建唯一 Agent schema、Worker、API 和 Workspace，不保留兼容层或双写。
+- 传统 `generation_tasks`、图片/视频 Worker、Skill、Style、账号、频道和领域资产能力不属于
+  删除范围；它们只通过新 Durable Runtime 的明确 adapter 接入。
 - 通用并行 DAG、任意 Probe 执行器、媒体全链路 Task 化和外部工作流引擎不进入第一阶段；
   先通过 Writer → Reviewer → Approval 的强制中断、跨重启和前后端一致性验收。
 - 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。当前仅完成规划，
