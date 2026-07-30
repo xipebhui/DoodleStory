@@ -1,5 +1,20 @@
 # 进度记录
 
+## Sprint 144（规划中）
+
+- 已根据 2026-07-30 真实事故建立 Native Agent 稳定任务控制面合同。事故链路确认：阶段性选题
+  Approve 把旧 Run 直接结束；用户随后输入“继续”创建缺少旧 Artifact 和恢复位置的新 Run；
+  三次 Writer 子 Agent 超时后根 Run 仍被标成 succeeded，前端则因没有统一 Tool 终态事件持续
+  显示“等待执行”。
+- Sprint 144 第一阶段将建立 Conversation → Workflow Run → Task → Attempt → Checkpoint 的
+  权威身份和状态模型，拆分阶段审批与最终审批，增加有界 Conversation Memory、Follow-up Run、
+  Attempt worker lease、后端权威 Projection 和前端状态收敛，并只迁移现有文章团队作为首条
+  可恢复纵向链路。
+- 通用并行 DAG、任意 Probe 执行器、媒体全链路 Task 化和外部工作流引擎不进入第一阶段；
+  先通过 Writer → Reviewer → Approval 的强制中断、跨重启和前后端一致性验收。
+- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。当前仅完成规划，
+  尚未授权实施，也未新增数据库表或修改 Runtime。
+
 ## Sprint 143（已完成）
 
 - 修复 `@创作账号` 只推导绑定 Style、没有进入 Agent Context 的断链。Run 现在按准确账号 ID
@@ -69,11 +84,12 @@
   用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 143、Sprint 142、Sprint 141 Complete；Sprint 135 真实外部发布
-  smoke 待用户授权；正式 Evaluation 保持 Deferred。
+- 当前合同状态：Sprint 144 Draft；Sprint 143、Sprint 142、Sprint 141 Complete；
+  Sprint 135 真实外部发布 smoke 待用户授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Draft：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
 - Complete：`docs/contracts/sprint-143-native-agent-account-context.md`
 - Complete：`docs/contracts/sprint-142-system-skill-disable.md`
 - Complete：`docs/contracts/sprint-141-native-agent-resource-mentions.md`
