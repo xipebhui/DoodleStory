@@ -2,29 +2,18 @@
 
 ## Sprint 144（规划中）
 
-- 已根据 2026-07-30 真实事故建立 Native Agent 稳定任务控制面合同。事故链路确认：阶段性选题
-  Approve 把旧 Run 直接结束；用户随后输入“继续”创建缺少旧 Artifact 和恢复位置的新 Run；
-  三次 Writer 子 Agent 超时后根 Run 仍被标成 succeeded，前端则因没有统一 Tool 终态事件持续
-  显示“等待执行”。
-- Sprint 144 第一阶段将建立 Conversation → Workflow Run → Task → Attempt → Checkpoint 的
-  权威身份和状态模型，拆分阶段审批与最终审批，增加有界 Conversation Memory、Follow-up Run、
-  Attempt worker lease、后端权威 Projection 和前端状态收敛，并只重建现有文章团队作为首条
-  可恢复纵向链路。
-- 用户进一步确认当前没有真实用户，允许删除本地测试数据和错误设计。仓库审计已确认未挂载旧
-  Agent Runtime、当前 Native Agent Runtime 和不可达旧前端并存；Sprint 144 改为替换式重构，
-  整体删除旧控制面、替换当前 Native 链路中错误的控制层，再重建唯一 Agent schema、Worker、
-  API 和 Workspace，不保留兼容层或双写。
-- 进一步完成两条链路的依赖审计：当前生效的 `/agent-loop` 与 `NativeAgentView` 没有调用旧
-  `agent_runner`、`agent_tool_runtime`、`agent_hitl` 等控制链；旧 Router 未挂载、旧
-  `AgentView` 不可达，但旧 Model、模块、前端 client/type 和测试仍残留。合同现要求把旧链路
-  整体删除并加入零引用验收；当前独立链路仅替换错误控制层，已有业务 Tool 与领域 adapter
-  保留，且禁止通过兼容包装回调旧链路。
-- 传统 `generation_tasks`、图片/视频 Worker、Skill、Style、账号、频道和领域资产能力不属于
-  删除范围；它们只通过新 Durable Runtime 的明确 adapter 接入。
-- 通用并行 DAG、任意 Probe 执行器、媒体全链路 Task 化和外部工作流引擎不进入第一阶段；
-  先通过 Writer → Reviewer → Approval 的强制中断、跨重启和前后端一致性验收。
-- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。当前仅完成规划，
-  尚未授权实施，也未新增数据库表或修改 Runtime。
+- 已根据 2026-07-30 的真实事故与用户确认的产品交互重写 Sprint 144 合同。核心是聊天优先：
+  用户只看到对话、阶段摘要、产物与确认卡；Task、依赖、Attempt 与 Checkpoint 是后端事实，只在
+  “查看本次计划”中渐进披露，不能把 `/agent` 做成传统任务后台。
+- 首条链路固定为：初始计划 → 选题研究/确认 → 正文撰写/确认 → Review/确认 → 完成。非终态
+  Gate 的批准必须在同一 Run 内推进后继 Task；“继续/重试”不再依赖精确自然语言。
+- Runtime 将采用 Run → 动态 Task 图 → Attempt → append-only Checkpoint → Artifact/Gate 的
+  权威模型。初始计划仅固定当前阶段与近端 Gate；上游产物、用户决定与 Review 结果可以受控调整
+  后续计划，已终态事实不可覆盖。
+- 本 Sprint 不实施图片并行、图片质量 Gate、局部图片重跑或 Probe；这些留给后续 Sprint 接入
+  同一 Runtime。仍不引入外部工作流引擎。
+- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。目前只完成方案，
+  未修改运行代码或数据库。
 
 ## Sprint 143（已完成）
 

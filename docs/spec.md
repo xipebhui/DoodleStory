@@ -49,7 +49,7 @@
 0. 进入工作台。
    - 已登录用户访问根路径 `/` 时进入任务页 `/tasks`。
    - 传统构建继续使用旧工作台 `/tasks`；Agent 创作使用独立模块 `/agent`。两者共享用户、积分、风格、角色、任务、Panel、图片版本和资产数据，但不共享页面 Shell，也不在 Agent 页面常驻旧后台导航。
-   - `/agent` 的主导航是新建对话、搜索和历史会话；页面保留 DoodleStory 品牌、用户、积分和一个低层级“返回传统工作台”入口，不显示旧 `图文任务/内容提取/风格/角色` 导航或 `传统构建 / AI 构建` 分段切换。
+   - `/agent` 的主导航是新建对话、搜索和历史会话；页面保留 DoodleStory 品牌、用户、积分和一个低层级“返回传统工作台”入口，不显示旧 `图文任务/内容提取/风格/角色` 导航或 `传统构建 / AI 构建` 分段切换。Agent 的 Task、Attempt、依赖和 Checkpoint 是后端执行事实，但用户主界面仍是聊天：只在对话中展示可读阶段摘要、产物、确认卡和可展开的“本次计划”，不把页面做成传统任务后台、DAG 画布或原始模型 Response/Tool 参数查看器。
    - `/agent/{conversation_id}` 稳定恢复指定 Agent 会话；`/agent/{conversation_id}/tasks/{task_id}` 在同一 Agent 上下文中打开 AI 专属任务检查器。Agent 任务检查器不复用旧 Pipeline 任务抽屉，旧 `/tasks/{task_id}` 继续服务传统工作台。
    - `/agent` 以 Sprint 103 已调试 Demo 的会话优先交互为视觉事实来源，但正式页面的 Conversation、Message、Run、Style、Character、Task、Panel、Image Version、Artifact、Approval 和 Event 必须来自真实 API/数据库，不得包含 Mock、占位成功或未接通假操作。
    - 传统工作台页面保持稳定二级路径：`/tasks`、`/video-tasks`、`/audio-references`、`/content-extractions`、`/styles`、`/characters`、`/users`、`/credit-usage`、`/settings`。
