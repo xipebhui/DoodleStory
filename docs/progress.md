@@ -15,6 +15,28 @@
 - 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。目前只完成方案，
   未修改运行代码或数据库。
 
+## Sprint 145（规划中）
+
+- 在 Sprint 144 的 Task / Attempt / Checkpoint 基础上，增加固定 Skill Version 约束下的动态计划
+  修订：上游 Artifact、用户决定和 Review 可追加、替换或取消未执行的后续 Task，但不能覆盖
+  已终态事实。
+- `/agent` 仍是聊天；计划修订通过“本次计划”、阶段摘要和 Gate 卡渐进呈现，不提供传统任务后台、
+  用户可编辑 DAG 或原始模型执行记录。
+- 合同：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`。
+
+## Sprint 146（规划中）
+
+- 将图片方案、并行 Panel 图片 Task、逐图质量检查、图片质量 Gate 和局部重跑接入同一 Runtime；
+  用户在聊天中处理方案与质量，系统只重跑不合格 Panel。
+- 传统 GenerationTask、积分、图片版本和资产继续是领域事实，Agent 通过明确 adapter 调用，
+  并由 Tool Effect 防止未知结果和重复扣费。
+- 合同：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`。
+
+## Sprint 147（规划中）
+
+- 收敛统一控制命令、Follow-up Run、受控 Probe、取消、重启恢复、SSE 收敛和完整故障验收。
+- 合同：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`。
+
 ## Sprint 143（已完成）
 
 - 修复 `@创作账号` 只推导绑定 Style、没有进入 Agent Context 的断链。Run 现在按准确账号 ID
@@ -84,12 +106,15 @@
   用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 144 Draft；Sprint 143、Sprint 142、Sprint 141 Complete；
+- 当前合同状态：Sprint 144、145、146、147 Draft；Sprint 143、Sprint 142、Sprint 141 Complete；
   Sprint 135 真实外部发布 smoke 待用户授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
 - Draft：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
+- Draft：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`
+- Draft：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`
+- Draft：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`
 - Complete：`docs/contracts/sprint-143-native-agent-account-context.md`
 - Complete：`docs/contracts/sprint-142-system-skill-disable.md`
 - Complete：`docs/contracts/sprint-141-native-agent-resource-mentions.md`
@@ -128,6 +153,7 @@
 - Complete：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
 - Complete：`docs/contracts/sprint-105-agent-runtime-foundation.md`
 - 全局路线：`docs/implementation/agent-v1-implementation-roadmap.md`
+- Durable Runtime 路线：`docs/implementation/agent-durable-chat-runtime-roadmap.md`
 - `docs/contracts/sprint-104-agent-foundation-and-provider-spike.md`
 - `docs/contracts/sprint-103-agent-conversation-demo.md`
 - `docs/contracts/sprint-102-single-image-content-extraction-lio-fallback.md`

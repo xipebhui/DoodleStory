@@ -235,5 +235,5 @@ Browser QA:
 
 ## Handoff
 
-下一 Sprint：把图片方案、图片生成和逐图质量检查接入同一 Runtime，支持并行图片 Task、局部
-重跑、图片质量 Gate 与从 Checkpoint 分叉的受控 Probe。
+下一 Sprint：在此 Runtime 上增加受控动态计划修订、聊天中的计划演进投影和更多业务阶段；图片
+计划、并行生成和质量 Gate 继续留待 Sprint 146。
