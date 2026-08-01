@@ -2,13 +2,15 @@
 
 ## Status
 
-Draft。依赖 Sprint 144 的 Durable Runtime 和 Sprint 145 的受控计划修订与聊天式 Projection。
+Complete。依赖 Sprint 144 的 Durable Runtime 和 Sprint 145 的受控计划修订。按 2026-08-01 的
+最新决定，本 Sprint 只实现后端媒体任务、质量 Gate 和局部重跑；现有 Agent 页面、Skill、账号和
+`@` 资源交互保持不变。
 
 ## Goal
 
-把“图片方案 → 多张图片生成 → 图像检查 → 用户质量确认/局部修订”接入同一聊天优先的
-Task Runtime。用户仍在会话中确认方案和质量，系统在后台按依赖并行执行安全的图片 Task，并只
-重跑不合格的局部节点。
+把“图片方案 → 多张图片生成 → 图像检查 → 用户质量确认/局部修订”接入同一 Durable
+Task Runtime。现有页面继续展示已有图片与审批容器；后端先完成领域绑定、并行状态、质量结论和
+Panel 级局部重跑事实。
 
 ## In Scope
 
@@ -47,14 +49,11 @@ Task Runtime。用户仍在会话中确认方案和质量，系统在后台按�
 - 指定 Panel 重做只能失效其图片 Task、该图片检查 Task 和下游汇总，不重跑正文、Review、其它
   图片或已接受图片。
 
-### 4. 聊天式媒体呈现
+### 4. 现有页面兼容边界
 
-- 聊天展示“图片方案等待确认”“正在生成 2/6 张图片”“第 3 张需要处理”“图片质量等待确认”等
-  阶段摘要和可点击图片预览。
-- 图片质量 Gate 在聊天中提供针对 Panel 的操作，不以任务表格、进度 dashboard 或工作流画布替代
-  对话。
-- “查看本次计划”可以显示图片并行组、已完成数和待处理数，但不暴露 Worker、lease、Tool 参数或
-  原始质量推理。
+- 不修改现有页面组件、导航、Skill 管理、账号管理、`@` 资源交互或图片展示布局。
+- 后端通过 Durable Task、Tool Effect、领域图片 ID 和质量结论建立权威映射；后续前端 Sprint 才
+  将这些数据呈现为质量摘要和 Panel 级操作。
 
 ## Out of Scope
 
@@ -67,26 +66,27 @@ Task Runtime。用户仍在会话中确认方案和质量，系统在后台按�
 
 - 视觉方案、图片生成、图像检查、质量汇总和 Panel 级修订的 Task 类型与 Artifact/Gate 契约。
 - 新 Runtime 到现有图片领域服务的 adapter 与 Tool Effect 幂等链路。
-- 图片并行领取、质量 Gate、Panel 级局部重跑和聊天 Projection。
+- 图片并行领取、质量 Gate、Panel 级局部重跑后端状态。
 - 积分、幂等、unknown 结果、局部失效、SSE 和浏览器测试。
 
 ## Done Means
 
-- 用户确认视觉方案后，同一 Run 创建多个可并行图片 Task；聊天准确展示完成进度与待处理质量项。
+- 用户确认视觉方案后，同一 Run 创建多个可并行图片 Task；现有图片领域对象与 Durable Task
+  映射可追溯。
 - 每张图片都绑定其 Task、Attempt、Tool Effect、视觉方案版本、图片版本和检查结论。
 - 指定 Panel 的质量退回只重跑该 Panel 及其检查/汇总；其它 Panel、正文、Review 和已接受图片
   保持不变。
-- 服务重启、SSE 重连或页面刷新后，图片进度、质量 Gate、已接受状态和局部重跑目标准确恢复。
-- Provider 结果未知时不会自动二次调用或扣费；用户在聊天中能看到明确、可处理的状态。
+- 服务重启后，图片进度、质量 Gate、已接受状态和局部重跑目标可从后端恢复。
+- Provider 结果未知时不会自动二次调用或扣费；现有页面仍按既有错误呈现，新的用户控制界面不在
+  本 Sprint 实施。
 
 ## Verification
 
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python -m unittest \
-  backend.tests.test_agent_runtime \
-  backend.tests.test_agent_media_tasks \
-  backend.tests.test_agent_image_quality \
-  backend.tests.test_image_generation
+  backend.tests.test_durable_agent_runtime \
+  backend.tests.test_native_agent_loop \
+  backend.tests.test_task_worker_recovery
 npm --prefix frontend test
 npm --prefix frontend run build
 ./scripts/check.sh
@@ -95,10 +95,8 @@ git diff --check
 
 Browser QA:
 
-- 从已批准正文启动视觉方案，确认方案后观察多张图片并行执行。
-- 对一张图片退回并提供意见，验证只创建目标 Panel 的新 Attempt/图片版本。
-- 接受其余图片，刷新并 SSE 重连；在一张图片运行中重启后端，验证 Tool Effect 和积分不重复。
-- 保存 Conversation、Run、Task、Attempt、Tool Effect、图片版本、质量 Gate ID 与必要截图。
+- 打开保留的原 Agent 页面，确认 Skill/账号/`@` 资源和图片相关原页面交互未回归。
+- 后端迁移副本验证 Durable 媒体映射、质量结论和 Panel 局部重跑状态可恢复。
 
 ## Handoff
 

@@ -779,6 +779,15 @@ class NativeAgentStore:
             )
             db.add(step)
             db.flush()
+            from app.services.durable_agent_runtime import (
+                prepare_native_image_effect,
+            )
+
+            prepare_native_image_effect(
+                db,
+                native_run_id=self.run_id,
+                native_step=step,
+            )
             db.add(
                 NativeAgentItem(
                     run_id=self.run_id,
@@ -1146,6 +1155,15 @@ class NativeAgentStore:
                     "attempt": step.attempts,
                 },
             )
+            from app.services.durable_agent_runtime import (
+                update_native_image_effect,
+            )
+
+            update_native_image_effect(
+                db,
+                native_step_id=step.id,
+                status="submitted",
+            )
             db.commit()
 
     def complete_tool(
@@ -1234,6 +1252,21 @@ class NativeAgentStore:
                     "height": generated.height,
                 },
             )
+            from app.services.durable_agent_runtime import (
+                bind_native_agent_image,
+                media_runtime_enabled,
+                workflow_for_native_run,
+            )
+
+            if media_runtime_enabled(db, native_run_id=self.run_id):
+                workflow = workflow_for_native_run(db, self.run_id)
+                assert workflow is not None
+                bind_native_agent_image(
+                    db,
+                    workflow=workflow,
+                    native_image=image,
+                    native_step=step,
+                )
             db.commit()
             return self._completed_tool(db, step)
 
@@ -1705,6 +1738,19 @@ class NativeAgentStore:
                     "error_message": step.error_message,
                 },
             )
+            from app.services.durable_agent_runtime import (
+                update_native_image_effect,
+            )
+
+            update_native_image_effect(
+                db,
+                native_step_id=step.id,
+                status="failed",
+                result={
+                    "error_code": step.error_code,
+                    "error_message": step.error_message,
+                },
+            )
             db.commit()
 
     def complete_run(self, final_output: str) -> None:
@@ -1834,6 +1880,42 @@ class NativeAgentStore:
             )
             db.commit()
 
+    def pause_for_media_quality(self, final_output: str) -> None:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            if run.status in {
+                AgentRunStatus.cancel_requested,
+                AgentRunStatus.cancelled,
+            }:
+                raise NativeAgentRunCancelled("Native Agent Run 已请求取消")
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.assistant_output,
+                    payload_json=_json_dumps({"content": final_output}),
+                )
+            )
+            run.status = AgentRunStatus.waiting_for_input
+            run.workflow_phase = "image_quality_pending"
+            run.final_output = final_output
+            run.finished_at = None
+            _add_event(
+                db,
+                self.run_id,
+                "checkpoint.saved",
+                {"phase": "waiting_for_image_quality"},
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "run.waiting_for_input",
+                {"status": "waiting_for_input", "kind": "image_quality"},
+            )
+            db.commit()
+
     def fail_run(self, exc: Exception) -> None:
         with self._session_factory() as db:
             run = db.get(NativeAgentRun, self.run_id)
@@ -1948,6 +2030,16 @@ class NativeAgentStore:
                     "error_code": step.error_code,
                     "error_message": message,
                 },
+            )
+            from app.services.durable_agent_runtime import (
+                update_native_image_effect,
+            )
+
+            update_native_image_effect(
+                db,
+                native_step_id=step.id,
+                status="unknown",
+                result={"error_message": message},
             )
             db.commit()
 

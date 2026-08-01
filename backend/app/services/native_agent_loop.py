@@ -1845,6 +1845,8 @@ def build_article_agent_tools(
     hooks: NativeModelMetricHooks,
     durable_task_key: str | None = None,
 ) -> list[FunctionTool]:
+    if durable_task_key and durable_task_key.startswith("image:"):
+        return []
     model_settings = ModelSettings(
         retry=ModelRetrySettings(max_retries=0),
         store=False,
@@ -2098,6 +2100,24 @@ async def execute_native_agent_run(
                     active_role="director",
                     durable_task_key=durable_task_key,
                 )
+                if durable_task_key and durable_task_key.startswith("image:"):
+                    from app.services.durable_agent_runtime import (
+                        pending_media_context,
+                    )
+
+                    with SessionLocal() as media_db:
+                        pending_panels = pending_media_context(
+                            media_db,
+                            native_run_id=run_id,
+                        )
+                    instructions += (
+                        "\n\n<durable_media_tasks>\n"
+                        "当前只执行下列已经由用户批准的图片 Panel。每个 Panel 必须严格使用"
+                        "其 prompt 调用一次 generate_image；不要调用文案 Tool，不要新增、合并或"
+                        "遗漏 Panel。所有 Panel 完成后再返回简短结果。\n"
+                        f"{json.dumps(pending_panels, ensure_ascii=False, separators=(',', ':'))}\n"
+                        "</durable_media_tasks>"
+                    )
             if instructions is None:
                 raise NativeAgentLoopError("Native Agent 缺少运行 instructions")
 
@@ -2376,19 +2396,37 @@ async def execute_native_agent_run(
                 store.pause_for_article_approval(final_output)
                 terminal_status = AgentRunStatus.waiting_for_input
             else:
-                from app.services.durable_agent_runtime import can_complete_native_run
+                from app.services.durable_agent_runtime import (
+                    can_complete_native_run,
+                    inspect_pending_native_media,
+                    media_ready_for_quality,
+                )
 
+                await asyncio.to_thread(
+                    inspect_pending_native_media,
+                    native_run_id=run_id,
+                    session_factory=SessionLocal,
+                )
                 with SessionLocal() as durable_db:
+                    waiting_for_quality = media_ready_for_quality(
+                        durable_db,
+                        native_run_id=run_id,
+                    )
+                    durable_db.commit()
                     can_complete = can_complete_native_run(
                         durable_db,
                         native_run_id=run_id,
                     )
-                if not can_complete:
+                if waiting_for_quality:
+                    store.pause_for_media_quality(final_output)
+                    terminal_status = AgentRunStatus.waiting_for_input
+                elif not can_complete:
                     raise NativeAgentLoopError(
                         "当前 Durable Task 尚未完成或仍等待人工 Gate，不能将 Run 标记成功"
                     )
-                store.complete_run(final_output)
-                terminal_status = AgentRunStatus.succeeded
+                else:
+                    store.complete_run(final_output)
+                    terminal_status = AgentRunStatus.succeeded
             with SessionLocal() as db:
                 run = db.get(NativeAgentRun, run_id)
                 if run is None:

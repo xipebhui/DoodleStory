@@ -228,6 +228,81 @@ class NativeAgentArticleApprovalDecision(BaseModel):
         return self
 
 
+class DurableVisualPlanPanelInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    panel_key: str = Field(min_length=1, max_length=120)
+    prompt: str = Field(min_length=1, max_length=20_000)
+    title: str | None = Field(default=None, max_length=240)
+    quality_criteria: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("panel_key", "prompt")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("字段不能为空")
+        return normalized
+
+
+class DurableVisualPlanCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    panels: list[DurableVisualPlanPanelInput] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_unique_panel_keys(self) -> "DurableVisualPlanCreate":
+        keys = [panel.panel_key for panel in self.panels]
+        if len(keys) != len(set(keys)):
+            raise ValueError("panel_key 不能重复")
+        return self
+
+
+class DurableGateDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["approve", "changes_requested"]
+    feedback: str | None = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_feedback(self) -> "DurableGateDecision":
+        if self.decision == "changes_requested" and not (
+            self.feedback and self.feedback.strip()
+        ):
+            raise ValueError("要求修改时必须填写具体意见")
+        return self
+
+
+class DurableImageQualityDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["accepted", "changes_required", "blocked", "unknown"]
+    summary: str = Field(min_length=1, max_length=2000)
+    details: dict[str, object] = Field(default_factory=dict)
+
+    @field_validator("summary")
+    @classmethod
+    def normalize_summary(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("质量结论摘要不能为空")
+        return normalized
+
+
+class DurablePanelRerunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    feedback: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("feedback")
+    @classmethod
+    def normalize_feedback(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("局部重跑必须填写具体意见")
+        return normalized
+
+
 class NativeAgentRunRead(BaseModel):
     id: str
     conversation_id: str

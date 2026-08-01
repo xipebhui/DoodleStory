@@ -27,8 +27,8 @@
   后续计划，已终态事实不可覆盖。
 - 本 Sprint 不实施图片并行、图片质量 Gate、局部图片重跑或 Probe；这些留给后续 Sprint 接入
   同一 Runtime。仍不引入外部工作流引擎。
-- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。目前只完成方案，
-  未修改运行代码或数据库。
+- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`；实现与验收记录见
+  `docs/qa/sprint-144-durable-backend-runtime-report.md`。
 
 ## Sprint 145（已完成）
 
@@ -55,13 +55,33 @@
   `topic_candidates` 的兼容和选题确认 adapter 的缺失导入后复验通过。
 - 合同：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`。
 
-## Sprint 146（规划中）
+## Sprint 146（已完成）
 
 - 将图片方案、并行 Panel 图片 Task、逐图质量检查、图片质量 Gate 和局部重跑接入同一 Runtime；
   用户在聊天中处理方案与质量，系统只重跑不合格 Panel。
 - 传统 GenerationTask、积分、图片版本和资产继续是领域事实，Agent 通过明确 adapter 调用，
   并由 Tool Effect 防止未知结果和重复扣费。
 - 合同：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`。
+- 新增 Durable 媒体绑定、图片质量结论和质量汇总 Gate 后端事实。传统 `GenerationTask` /
+  `TaskPanel` / `GeneratedImage` 继续是传统图片任务的唯一事实；Native Agent 图片继续使用
+  `NativeAgentImage`，Durable 仅记录关联 ID、Task/Attempt、Tool Effect 和质量结论，不复制资产。
+- 视觉方案注册后创建 `visual_plan_review` Gate；图片质量结论未全部完成时不能打开
+  `image_quality_review` Gate。对指定 Panel 请求重跑时，仅该 Panel 的图片/质量 Durable Task
+  进入 rerun，其他 Panel 保持 accepted。
+- 对 Native Agent 图片，绑定记录使用原 `NativeAgentImage.id` 和 Tool Step 幂等键，避免侵入
+  原图片 Tool 的资产事实；Provider 请求前写 prepared/submitted Effect，成功后在同一事务绑定
+  图片、Attempt 和质量 Task，明确失败产生新的 retry Attempt，unknown 阻止自动重放。逐图质量
+  Task 复用真实 VL 检查器，保存 verdict、评分、问题、Provider/model 和延迟；VL 失败明确记录为
+  blocked，不会伪装通过。
+- 新增独立迁移 `r9s0t1u2v3w4`，已验证旧库停在 Sprint 145 revision 后升级、downgrade、再次
+  upgrade，避免修改已执行 migration 导致现有数据库漏表。owner-scoped API 覆盖视觉方案、媒体
+  Gate、媒体状态、质量决定和 Panel 重跑；当前页面布局不变。
+- `./scripts/check.sh` 通过 354 项后端测试、空 SQLite 全量迁移、14 项前端测试、前端生产构建、
+  Remotion 类型检查与 5 项测试；聚焦 Durable/Native/恢复回归 54 项通过，`git diff --check`
+  通过。
+  Playwright 使用本地 QA 用户验证 `/agent → /agent/skills → /agent`，新对话、Skill 管理、返回传统
+  工作台和 `@` 资源入口均可用；启动时未登录产生的两条预期 401 是唯一 Console error。未调用
+  真实图片 Provider，未产生模型或图片费用；VL 执行器通过注入式真实 schema 回归验证。
 
 ## Sprint 147（规划中）
 

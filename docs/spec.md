@@ -436,6 +436,16 @@
   必须由 SDK LLM 生命周期覆盖 Compiler、Director 和所有子 Agent 的真实请求开始事件，
   不能再用父 Agent `response.created` 数量代替；每个 MLflow 根 Trace 标记
   `execution_attempt`、本次调用总数、完成数和角色拆分。
+- Sprint 144–146 在保留现有 `/agent-loop` 页面、Skill、账号和 `@` 资源交互的前提下，以
+  数据库 Durable Workflow 补强文案与媒体控制面。每个 Native Run 关联唯一 Workflow，Task、
+  Attempt、Checkpoint、Artifact、Gate、Plan Revision 和 Tool Effect 是恢复与完成判定事实。
+  视觉方案通过 owner-scoped API 保存为版本化 Artifact，并在用户批准后为每个 Panel 创建独立
+  图片 Task/Attempt；Native `generate_image` 在 Provider 请求前写入 prepared/submitted Tool
+  Effect，成功时原子绑定 `NativeAgentImage`，明确失败创建新的 retry Attempt，unknown 状态阻止
+  自动重放。每张成功图片创建独立质量 Task，由真实 VL 输出结构化 verdict、评分与问题；全部
+  accepted 后才能打开 `image_quality_review` Gate。Panel 局部重跑只重置目标图片与质量 Task，
+  其它 Panel、正文和 Review 保持不变。Sprint 146 新表必须通过独立 Alembic revision 添加，不能
+  修改已经执行过的 Sprint 145 migration。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。

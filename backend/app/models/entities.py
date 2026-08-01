@@ -1911,6 +1911,95 @@ class DurableAgentPlanRevision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class DurableAgentMediaBinding(Base, TimestampMixin):
+    __tablename__ = "agent_durable_media_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id",
+            "generated_image_id",
+            name="uq_agent_durable_media_binding_generated_image",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            "native_agent_image_id",
+            name="uq_agent_durable_media_binding_native_image",
+        ),
+        CheckConstraint(
+            "((generated_image_id IS NOT NULL AND native_agent_image_id IS NULL) "
+            "OR (generated_image_id IS NULL AND native_agent_image_id IS NOT NULL))",
+            name="ck_agent_durable_media_binding_one_image_source",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_workflows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    visual_plan_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_artifacts.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    plan_panel_key: Mapped[Optional[str]] = mapped_column(
+        String(120), nullable=True
+    )
+    generation_task_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("generation_tasks.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    panel_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("task_panels.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    generated_image_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("generated_images.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    native_agent_image_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("native_agent_images.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    image_task_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    quality_task_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_tasks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), default="generated")
+
+
+class DurableAgentImageQuality(Base, TimestampMixin):
+    __tablename__ = "agent_durable_image_qualities"
+    __table_args__ = (
+        UniqueConstraint(
+            "media_binding_id",
+            "revision",
+            name="uq_agent_durable_image_quality_revision",
+        ),
+        CheckConstraint(
+            "verdict IN ('accepted','changes_required','blocked','unknown')",
+            name="ck_agent_durable_image_quality_verdict",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    media_binding_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_media_bindings.id", ondelete="CASCADE"),
+        index=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer)
+    verdict: Mapped[str] = mapped_column(String(32))
+    summary: Mapped[str] = mapped_column(Text)
+    details_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class AgentConversation(Base, TimestampMixin):
     __tablename__ = "agent_conversations"
     __table_args__ = (

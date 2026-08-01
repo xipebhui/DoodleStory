@@ -16,8 +16,12 @@ from app.core.database import SessionLocal, get_db
 from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
+    DurableAgentGate,
+    DurableAgentImageQuality,
+    DurableAgentMediaBinding,
     DurableAgentTask,
     DurableAgentPlanRevision,
+    DurableAgentWorkflow,
     NativeAgentAudio,
     NativeAgentArticleApproval,
     NativeAgentArtifact,
@@ -67,6 +71,10 @@ from app.schemas.native_agent import (
     NativeAgentStepRead,
     NativeAgentSubtitleRead,
     NativeAgentVideoRead,
+    DurableGateDecision,
+    DurableImageQualityDecision,
+    DurablePanelRerunRequest,
+    DurableVisualPlanCreate,
 )
 from app.services.native_agent_worker import (
     cancel_native_agent_run,
@@ -84,6 +92,10 @@ from app.services.native_article_workflow import (
 from app.services.durable_agent_runtime import (
     DurableAgentRuntimeError,
     initialize_workflow,
+    open_image_quality_gate,
+    record_image_quality,
+    register_visual_plan,
+    request_panel_rerun,
     mirror_native_article_approval,
     resolve_gate,
     workflow_for_native_run,
@@ -115,6 +127,63 @@ def _load_owned_conversation(
             detail="最小 Agent 会话不存在",
         )
     return conversation
+
+
+def _load_owned_durable_workflow(
+    db: Session,
+    *,
+    run_id: str,
+    owner_user_id: str,
+) -> tuple[NativeAgentRun, DurableAgentWorkflow]:
+    run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == run_id,
+            NativeAgentConversation.owner_user_id == owner_user_id,
+        )
+    )
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Native Agent Run 不存在",
+        )
+    workflow = workflow_for_native_run(db, run.id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Native Agent Run 尚未初始化 Durable Workflow",
+        )
+    return run, workflow
+
+
+def _load_owned_media_binding(
+    db: Session,
+    *,
+    binding_id: str,
+    owner_user_id: str,
+) -> tuple[NativeAgentRun, DurableAgentMediaBinding]:
+    binding = db.get(DurableAgentMediaBinding, binding_id)
+    if binding is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Durable 图片绑定不存在",
+        )
+    workflow = db.get(DurableAgentWorkflow, binding.workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Durable Workflow 不存在",
+        )
+    run, _ = _load_owned_durable_workflow(
+        db,
+        run_id=workflow.native_run_id,
+        owner_user_id=owner_user_id,
+    )
+    return run, binding
 
 
 def _item_to_read(item: NativeAgentItem) -> NativeAgentItemRead:
@@ -1212,6 +1281,286 @@ def list_durable_plan_revisions(
             }
             for item in revisions
         ]
+    )
+
+
+@router.post(
+    "/runs/{run_id}/visual-plan",
+    response_model=ApiData[dict[str, object]],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_durable_visual_plan(
+    run_id: str,
+    payload: DurableVisualPlanCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    try:
+        artifact, gate = register_visual_plan(
+            db,
+            workflow=workflow,
+            content=payload.model_dump(mode="json"),
+        )
+        run.status = AgentRunStatus.waiting_for_input
+        run.workflow_phase = "visual_plan_review"
+        run.finished_at = None
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return ApiData(
+        data={
+            "artifact_id": artifact.id,
+            "artifact_version": artifact.version,
+            "gate_id": gate.id,
+            "gate_status": gate.status,
+        }
+    )
+
+
+@router.post(
+    "/runs/{run_id}/durable-gates/{gate_id}/decision",
+    response_model=ApiData[dict[str, object]],
+)
+async def decide_durable_media_gate(
+    run_id: str,
+    gate_id: str,
+    payload: DurableGateDecision,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    gate = db.get(DurableAgentGate, gate_id)
+    if gate is None or gate.workflow_id != workflow.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Durable Gate 不存在",
+        )
+    if gate.purpose not in {"visual_plan_review", "image_quality_review"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该 Gate 必须通过原文案审批入口处理",
+        )
+    if gate.purpose == "image_quality_review" and payload.decision != "approve":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="图片质量修改必须通过具体 Panel 的局部重跑入口提交",
+        )
+    try:
+        attempts = resolve_gate(
+            db,
+            gate=gate,
+            user=user,
+            decision=payload.decision,
+            feedback=payload.feedback,
+        )
+        should_enqueue = False
+        if gate.purpose == "visual_plan_review":
+            if payload.decision == "approve":
+                run.status = AgentRunStatus.retrying
+                run.workflow_phase = "generating_media"
+                should_enqueue = bool(attempts)
+            else:
+                run.status = AgentRunStatus.waiting_for_input
+                run.workflow_phase = "revising_visual_plan"
+            run.finished_at = None
+        else:
+            run.status = AgentRunStatus.succeeded
+            run.workflow_phase = "media_quality_approved"
+            run.finished_at = datetime.utcnow()
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    if should_enqueue:
+        await enqueue_native_agent_run(run.id)
+    return ApiData(
+        data={
+            "gate_id": gate.id,
+            "status": gate.status,
+            "attempt_ids": [attempt.id for attempt in attempts],
+        }
+    )
+
+
+@router.get(
+    "/runs/{run_id}/media-state",
+    response_model=ApiData[dict[str, object]],
+)
+def get_durable_media_state(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    _, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    bindings = db.scalars(
+        select(DurableAgentMediaBinding)
+        .where(DurableAgentMediaBinding.workflow_id == workflow.id)
+        .order_by(DurableAgentMediaBinding.created_at)
+    ).all()
+    rows: list[dict[str, object]] = []
+    for binding in bindings:
+        latest_quality = db.scalar(
+            select(DurableAgentImageQuality)
+            .where(DurableAgentImageQuality.media_binding_id == binding.id)
+            .order_by(DurableAgentImageQuality.revision.desc())
+            .limit(1)
+        )
+        rows.append(
+            {
+                "binding_id": binding.id,
+                "plan_panel_key": binding.plan_panel_key,
+                "generated_image_id": binding.generated_image_id,
+                "native_agent_image_id": binding.native_agent_image_id,
+                "image_task_id": binding.image_task_id,
+                "quality_task_id": binding.quality_task_id,
+                "status": binding.status,
+                "quality_revision": (
+                    latest_quality.revision if latest_quality is not None else None
+                ),
+                "quality_summary": (
+                    latest_quality.summary if latest_quality is not None else None
+                ),
+            }
+        )
+    return ApiData(
+        data={
+            "workflow_id": workflow.id,
+            "state_version": workflow.state_version,
+            "status": workflow.status,
+            "bindings": rows,
+        }
+    )
+
+
+@router.post(
+    "/media-bindings/{binding_id}/quality",
+    response_model=ApiData[dict[str, object]],
+)
+def decide_durable_image_quality(
+    binding_id: str,
+    payload: DurableImageQualityDecision,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    _, binding = _load_owned_media_binding(
+        db,
+        binding_id=binding_id,
+        owner_user_id=user.id,
+    )
+    try:
+        quality = record_image_quality(
+            db,
+            binding=binding,
+            verdict=payload.verdict,
+            summary=payload.summary,
+            details=payload.details,
+        )
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return ApiData(
+        data={
+            "binding_id": binding.id,
+            "quality_id": quality.id,
+            "revision": quality.revision,
+            "verdict": quality.verdict,
+        }
+    )
+
+
+@router.post(
+    "/runs/{run_id}/media-quality-gate",
+    response_model=ApiData[dict[str, object]],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_durable_media_quality_gate(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    try:
+        gate = open_image_quality_gate(db, workflow=workflow)
+        run.status = AgentRunStatus.waiting_for_input
+        run.workflow_phase = "image_quality_review"
+        run.finished_at = None
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return ApiData(data={"gate_id": gate.id, "status": gate.status})
+
+
+@router.post(
+    "/media-bindings/{binding_id}/rerun",
+    response_model=ApiData[dict[str, object]],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def rerun_durable_panel_image(
+    binding_id: str,
+    payload: DurablePanelRerunRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, binding = _load_owned_media_binding(
+        db,
+        binding_id=binding_id,
+        owner_user_id=user.id,
+    )
+    try:
+        attempt = request_panel_rerun(
+            db,
+            binding=binding,
+            user_feedback=payload.feedback,
+        )
+        run.status = AgentRunStatus.retrying
+        run.workflow_phase = "rerunning_panel_image"
+        run.finished_at = None
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    await enqueue_native_agent_run(run.id)
+    return ApiData(
+        data={
+            "binding_id": binding.id,
+            "attempt_id": attempt.id,
+            "status": binding.status,
+        }
     )
 
 
