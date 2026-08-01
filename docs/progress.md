@@ -925,3 +925,12 @@
   Conversation `5244309e9b3046739d78e69504f09c6d`
   在纯文案持续生成、内容高度从 4634px 增长至 6232px 的过程中，手动上翻后始终保持距底部
   约 1800–1900px，未再被拉回底部；图片、语音、字幕和视频均未生成。
+- 执行 Sprint 146 对标账号到全媒体的最小真实链路测试：创作账号 `中国文明长纪录片` 成功带入
+  对标账号 `Our Lìshǐ` 与绑定风格，生成并批准“隋朝为何短命却重新连接中国”选题；正文
+  Artifact `fdcf941ede1d491eb49fe0994428ddf7` 经机器计数为 118 个字符，Reviewer 结论为
+  `approved`。测试在 Review → Visual Plan 交接处失败：Review Approval
+  `90013041526b42aaaebe246b78f39672` 被错误映射为第二个 `article_draft_review` Gate，真正的
+  `editorial_review_gate` 仍为 pending，Run `e62d493e0a9e444589e336303d142da6` 因必需
+  Durable Task 未完成而失败，正式 Visual Plan API 返回“正文 Review 尚未批准”。为避免绕过
+  状态机或产生无效费用，图片、语音、字幕、视频调用均保持 0；完整证据与修复要求见
+  `docs/qa/sprint-146-full-media-e2e-report.md`。
