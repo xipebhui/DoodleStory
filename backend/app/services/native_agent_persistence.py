@@ -736,6 +736,7 @@ class NativeAgentStore:
         *,
         tool_call_id: str,
         prompt: str,
+        provider: str,
     ) -> CompletedNativeTool | NativeAgentStep:
         idempotency_key = (
             f"native:{self.run_id}:generate_image:{tool_call_id}"
@@ -745,7 +746,7 @@ class NativeAgentStore:
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
-            arguments = {"prompt": prompt}
+            arguments = {"prompt": prompt, "provider": provider}
             retry_step = self._claim_retry_step(
                 db,
                 name="generate_image",
@@ -788,6 +789,7 @@ class NativeAgentStore:
                         {
                             "tool": "generate_image",
                             "prompt": prompt,
+                            "provider": provider,
                             "tool_call_id": tool_call_id,
                             "step_id": step.id,
                         }
@@ -802,7 +804,7 @@ class NativeAgentStore:
                     "step_sequence": step.sequence,
                     "tool": "generate_image",
                     "tool_call_id": tool_call_id,
-                    "arguments": {"prompt": prompt},
+                    "arguments": arguments,
                 },
             )
             db.commit()
@@ -1156,6 +1158,7 @@ class NativeAgentStore:
         generated: GeneratedImageFile,
         image_model: str,
         aspect_ratio: str,
+        provider: str,
     ) -> CompletedNativeTool:
         with self._session_factory() as db:
             step = db.get(NativeAgentStep, step_id)
@@ -1185,6 +1188,7 @@ class NativeAgentStore:
                 prompt=prompt,
                 image_model_snapshot=image_model,
                 aspect_ratio_snapshot=aspect_ratio,
+                provider_snapshot=provider,
                 provider_request_id=generated.provider_request_id,
             )
             db.add(image)
@@ -1198,6 +1202,7 @@ class NativeAgentStore:
                     "image_id": image.id,
                     "asset_id": asset.id,
                     "provider_request_id": generated.provider_request_id,
+                    "provider": provider,
                 }
             )
             run.image_call_count += 1
@@ -1216,6 +1221,7 @@ class NativeAgentStore:
                             "width": generated.width,
                             "height": generated.height,
                             "provider_request_id": generated.provider_request_id,
+                            "provider": provider,
                         }
                     ),
                 )
@@ -1232,6 +1238,7 @@ class NativeAgentStore:
                     "asset_id": asset.id,
                     "width": generated.width,
                     "height": generated.height,
+                    "provider": provider,
                 },
             )
             db.commit()

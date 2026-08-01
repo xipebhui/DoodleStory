@@ -31,6 +31,7 @@ from app.models.entities import (
     NativeAgentContextItem,
     NativeAgentEvent,
     NativeAgentExternalContent,
+    NativeAgentImage,
     NativeAgentItem,
     NativeAgentRun,
     NativeAgentStep,
@@ -220,6 +221,7 @@ class NativeAgentLoopTests(unittest.TestCase):
             recorded_prompts.append(str(kwargs["prompt"]))
             self.assertEqual("gpt-image-2", kwargs["image_model_name"])
             self.assertEqual("9:16", kwargs["aspect_ratio"])
+            self.assertEqual("qy", kwargs["image_provider"])
             return GeneratedImageFile(
                 storage_backend=StorageBackend.local,
                 storage_key="generated_image/test.png",
@@ -233,9 +235,10 @@ class NativeAgentLoopTests(unittest.TestCase):
             )
 
         class FakeStore:
-            def prepare_tool(inner_self, *, tool_call_id, prompt):
+            def prepare_tool(inner_self, *, tool_call_id, prompt, provider):
                 self.assertEqual("call-1", tool_call_id)
                 self.assertEqual("完整的图片提示词", prompt)
+                self.assertEqual("qy", provider)
                 lifecycle.append("prepared")
                 return SimpleNamespace(id="step-1")
 
@@ -246,6 +249,7 @@ class NativeAgentLoopTests(unittest.TestCase):
             def complete_tool(inner_self, step_id, **kwargs):
                 self.assertEqual("step-1", step_id)
                 self.assertEqual("完整的图片提示词", kwargs["prompt"])
+                self.assertEqual("qy", kwargs["provider"])
                 lifecycle.append("succeeded")
                 return CompletedNativeTool(
                     step_id=step_id,
@@ -300,6 +304,75 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertIsInstance(output[0], ToolOutputText)
         self.assertIsInstance(output[1], ToolOutputImage)
         self.assertEqual("data:image/png;base64,aW1hZ2U=", output[1].image_url)
+
+    def test_generate_image_passes_explicit_grok_provider(self) -> None:
+        recorded_provider: list[str] = []
+
+        def image_generator(**kwargs):
+            recorded_provider.append(kwargs["image_provider"])
+            return GeneratedImageFile(
+                storage_backend=StorageBackend.local,
+                storage_key="generated_image/grok.jpg",
+                byte_size=10,
+                checksum_sha256="d" * 64,
+                content_type="image/jpeg",
+                original_filename="grok.jpg",
+                provider_request_id=None,
+                width=864,
+                height=1152,
+                provider="grok",
+                model="grok-imagine-image-quality",
+            )
+
+        class FakeStore:
+            def prepare_tool(inner_self, *, tool_call_id, prompt, provider):
+                self.assertEqual("grok", provider)
+                return SimpleNamespace(id="step-grok")
+
+            def start_tool(inner_self, step_id):
+                self.assertEqual("step-grok", step_id)
+
+            def complete_tool(inner_self, step_id, **kwargs):
+                self.assertEqual("grok", kwargs["provider"])
+                self.assertEqual("grok-imagine-image-quality", kwargs["image_model"])
+                return CompletedNativeTool(
+                    step_id=step_id,
+                    image_id="image-grok",
+                    asset_id="asset-grok",
+                    storage_backend=StorageBackend.local,
+                    storage_key="unused.jpg",
+                    public_url="data:image/jpeg;base64,aW1hZ2U=",
+                    content_type="image/jpeg",
+                    width=864,
+                    height=1152,
+                    provider_request_id=None,
+                )
+
+            def fail_tool(inner_self, step_id, exc):
+                raise AssertionError((step_id, exc))
+
+        tool = build_generate_image_tool(
+            NativeImageToolContext(
+                run_id="run-grok",
+                image_model="gpt-image-2",
+                aspect_ratio="3:4",
+                reference_urls=(),
+            ),
+            image_generator=image_generator,
+            store=FakeStore(),
+        )
+        asyncio.run(
+            tool.on_invoke_tool(
+                ToolContext(
+                    context=None,
+                    tool_name="generate_image",
+                    tool_call_id="call-grok",
+                    tool_arguments='{"prompt":"Grok 生图","provider":"grok"}',
+                ),
+                json.dumps({"prompt": "Grok 生图", "provider": "grok"}),
+            )
+        )
+        self.assertEqual(["grok"], recorded_provider)
 
     def test_youtube_publish_tool_requires_structured_confirmed_context(self) -> None:
         run_id = self.create_durable_run()
@@ -1051,6 +1124,8 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertIn('"aspect_ratio":"9:16"', instructions)
         self.assertIn('"style_prompt":"测试风格提示词"', instructions)
         self.assertIn("只用于规划图片", instructions)
+        self.assertIn("provider 分别设为 grok、qy 或 xgapi", instructions)
+        self.assertIn("失败后切换 provider", instructions)
 
     def test_generate_image_idempotency_reuses_success_without_provider_call(self) -> None:
         run_id = self.create_durable_run()
@@ -1112,6 +1187,10 @@ class NativeAgentLoopTests(unittest.TestCase):
             ).all()
             self.assertEqual(1, len(steps))
             self.assertEqual(NativeAgentStepStatus.succeeded, steps[0].status)
+            image = db.scalar(
+                select(NativeAgentImage).where(NativeAgentImage.run_id == run_id)
+            )
+            self.assertEqual("qy", image.provider_snapshot)
             prepared_event = db.scalar(
                 select(NativeAgentEvent).where(
                     NativeAgentEvent.run_id == run_id,
@@ -1121,6 +1200,10 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual(
                 "幂等图片提示词",
                 json.loads(prepared_event.payload_json)["arguments"]["prompt"],
+            )
+            self.assertEqual(
+                "qy",
+                json.loads(prepared_event.payload_json)["arguments"]["provider"],
             )
 
     def test_sdk_context_session_persists_and_finds_tool_output(self) -> None:
@@ -1635,7 +1718,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                 name="generate_image",
                 tool_call_id="failed-call",
                 idempotency_key=f"native:{run_id}:generate_image:failed-call",
-                input_summary_json='{"prompt":"原始提示词"}',
+                input_summary_json='{"prompt":"原始提示词","provider":"qy"}',
                 attempts=1,
                 error_code="ImageProviderError",
                 error_message="Provider 失败",
@@ -1700,10 +1783,12 @@ class NativeAgentLoopTests(unittest.TestCase):
             store.prepare_tool(
                 tool_call_id="changed-call",
                 prompt="改写后的提示词",
+                provider="qy",
             )
         claimed = store.prepare_tool(
             tool_call_id="retry-call",
             prompt="原始提示词",
+            provider="qy",
         )
         self.assertEqual(failed_step_id, claimed.id)
         store.start_tool(failed_step_id)
@@ -1721,6 +1806,7 @@ class NativeAgentLoopTests(unittest.TestCase):
         step = store.prepare_tool(
             tool_call_id="failed-provider-call",
             prompt="会失败的提示词",
+            provider="qy",
         )
         store.start_tool(step.id)
         store.fail_tool(step.id, RuntimeError("Provider 明确失败"))

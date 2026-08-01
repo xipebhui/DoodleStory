@@ -4556,7 +4556,7 @@ function NativeAgentView({
                           />
                           <Eye size={18} aria-hidden="true" />
                         </button>
-                        <figcaption>{image.image_model} · {image.aspect_ratio}</figcaption>
+                        <figcaption>{image.provider} · {image.image_model} · {image.aspect_ratio}</figcaption>
                       </figure>
                     ))}
                   </div>

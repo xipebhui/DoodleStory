@@ -1065,6 +1065,7 @@ class NativeAgentImage(Base, TimestampMixin):
     prompt: Mapped[str] = mapped_column(Text)
     image_model_snapshot: Mapped[str] = mapped_column(String(120))
     aspect_ratio_snapshot: Mapped[str] = mapped_column(String(20))
+    provider_snapshot: Mapped[str] = mapped_column(String(80), default="qy")
     provider_request_id: Mapped[Optional[str]] = mapped_column(
         String(255),
         nullable=True,

@@ -1,5 +1,7 @@
 import unittest
 from io import BytesIO
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -11,9 +13,13 @@ from app.services.image_generation import (
     ImageProviderConfigError,
     ImageProviderResponseError,
     build_image_gateway_generation_payload,
+    build_grokcli_image_command,
     build_xgapi_edit_payload,
     build_xgapi_generation_payload,
     generate_xg_image,
+    grokcli_reference_urls,
+    parse_grokcli_image_output,
+    request_grokcli_image,
     request_xg_image,
 )
 
@@ -26,6 +32,14 @@ def image_provider_settings(provider: str) -> SimpleNamespace:
         xg_api_key="xg-key",
         xg_base_url="https://api.xgapi.top",
         xg_image_quality="1k",
+        grokcli_executable="grokcli",
+        grokcli_home="/tmp/test-grokcli-home",
+        grokcli_image_model="grok-imagine-image-quality",
+        grokcli_image_edit_model="grok-imagine-image",
+        grokcli_image_resolution="2k",
+        grokcli_timeout_seconds=300,
+        grokcli_request_max_attempts=2,
+        grokcli_retry_backoff_seconds=0,
         xg_request_max_attempts=1,
         image_provider_timeout_retry_attempts=0,
         xg_request_retry_backoff_seconds=0,
@@ -62,7 +76,137 @@ def png_bytes(width: int, height: int) -> bytes:
     return output.getvalue()
 
 
+def jpeg_bytes(width: int, height: int) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (width, height), color="white").save(output, format="JPEG")
+    return output.getvalue()
+
+
 class ImageGenerationGatewayOnlyTest(unittest.TestCase):
+    def test_explicit_grok_provider_routes_only_to_grokcli(self) -> None:
+        with patch(
+            "app.services.image_generation.get_settings",
+            return_value=image_provider_settings("qy"),
+        ), patch(
+            "app.services.image_generation.request_grokcli_image",
+            return_value=(b"jpeg", "image/jpeg", None),
+        ) as grok_request, patch(
+            "app.services.image_generation.request_image_gateway_generation"
+        ) as gateway_request:
+            result = request_xg_image(
+                prompt="用 Grok 画一只猫",
+                references=[],
+                image_model_name="gpt-image-2",
+                aspect_ratio="3:4",
+                image_provider="grok",
+            )
+
+        self.assertEqual((b"jpeg", "image/jpeg", None), result)
+        grok_request.assert_called_once_with(
+            prompt="用 Grok 画一只猫",
+            references=[],
+            aspect_ratio="3:4",
+        )
+        gateway_request.assert_not_called()
+
+    def test_grokcli_generation_command_uses_quality_model_and_requested_ratio(self) -> None:
+        with patch(
+            "app.services.image_generation.get_settings",
+            return_value=image_provider_settings("grok"),
+        ):
+            command = build_grokcli_image_command(
+                prompt="画一只猫",
+                references=[],
+                aspect_ratio="3:4",
+            )
+
+        self.assertEqual("grokcli", command[0])
+        self.assertEqual("image", command[1])
+        self.assertIn("grok-imagine-image-quality", command)
+        self.assertEqual("3:4", command[command.index("--aspect") + 1])
+        self.assertEqual("2k", command[command.index("--resolution") + 1])
+
+    def test_grokcli_edit_command_keeps_up_to_three_public_references(self) -> None:
+        references = [
+            ImageReference(url="https://cdn.example.com/one.png"),
+            ImageReference(url="https://cdn.example.com/two.jpg"),
+        ]
+        with patch(
+            "app.services.image_generation.get_settings",
+            return_value=image_provider_settings("grok"),
+        ):
+            command = build_grokcli_image_command(
+                prompt="保持角色一致",
+                references=references,
+                aspect_ratio="9:16",
+            )
+
+        self.assertEqual("image-edit", command[1])
+        self.assertIn("grok-imagine-image", command)
+        self.assertEqual(2, command.count("--image"))
+        self.assertEqual(
+            ["https://cdn.example.com/one.png", "https://cdn.example.com/two.jpg"],
+            [command[index + 1] for index, value in enumerate(command) if value == "--image"],
+        )
+
+    def test_grokcli_rejects_too_many_or_non_public_references(self) -> None:
+        with self.assertRaisesRegex(ImageProviderConfigError, "最多支持 3 张"):
+            grokcli_reference_urls(
+                [ImageReference(url=f"https://cdn.example.com/{index}.png") for index in range(4)]
+            )
+        with self.assertRaisesRegex(ImageProviderConfigError, "HTTP\\(S\\) URL"):
+            grokcli_reference_urls([ImageReference(url="data:image/png;base64,abc")])
+
+    def test_grokcli_output_detects_real_jpeg_despite_png_suffix(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as temporary_dir:
+            output_root = Path(temporary_dir) / "output"
+            output_root.mkdir()
+            image_path = output_root / "result.png"
+            image_path.write_bytes(jpeg_bytes(3, 4))
+            content, content_type = parse_grokcli_image_output(
+                json.dumps({"paths": [str(image_path)]}),
+                output_root,
+            )
+
+        self.assertTrue(content.startswith(b"\xff\xd8\xff"))
+        self.assertEqual("image/jpeg", content_type)
+
+    def test_grokcli_retries_network_exit_code_then_reads_output(self) -> None:
+        calls = 0
+
+        def fake_run(command, **kwargs):
+            nonlocal calls
+            del command
+            calls += 1
+            if calls == 1:
+                return SimpleNamespace(returncode=6, stdout="", stderr="network failed")
+            output_root = Path(kwargs["env"]["GROKCLI_OUTPUT_DIR"])
+            output_root.mkdir(parents=True)
+            image_path = output_root / "result.png"
+            image_path.write_bytes(png_bytes(3, 4))
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"paths": [str(image_path)]}),
+                stderr="",
+            )
+
+        with patch(
+            "app.services.image_generation.get_settings",
+            return_value=image_provider_settings("grok"),
+        ), patch("app.services.image_generation.subprocess.run", side_effect=fake_run):
+            content, content_type, request_id = request_grokcli_image(
+                prompt="画一只猫",
+                references=[],
+                aspect_ratio="3:4",
+            )
+
+        self.assertEqual(2, calls)
+        self.assertEqual("image/png", content_type)
+        self.assertIsNone(request_id)
+        self.assertTrue(content.startswith(b"\x89PNG"))
+
     def test_gateway_response_error_is_not_fallback(self) -> None:
         with patch(
             "app.services.image_generation.get_settings",

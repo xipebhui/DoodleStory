@@ -4,6 +4,9 @@ import copy
 import json
 import logging
 import mimetypes
+import os
+import subprocess
+import tempfile
 from io import BytesIO
 from time import monotonic, sleep
 from dataclasses import dataclass
@@ -54,6 +57,11 @@ IMAGE_GATEWAY_IMAGE_SIZE_BY_ASPECT_RATIO = {
     "16:9": "1792x1024",
     "9:16": "1024x1792",
 }
+IMAGE_PROVIDERS = frozenset({"qy", "xgapi", "grok"})
+GROKCLI_ASPECT_RATIOS = frozenset(
+    {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}
+)
+GROKCLI_RETRYABLE_EXIT_CODES = frozenset({5, 6})
 
 
 class ImageProviderError(Exception):
@@ -90,11 +98,44 @@ class GeneratedImageFile:
     public_url: str | None = None
     width: int | None = None
     height: int | None = None
+    provider: str | None = None
+    model: str | None = None
 
 
 @dataclass(frozen=True)
 class ImageReference:
     url: str | None = None
+
+
+def resolve_image_provider(image_provider: str | None = None) -> str:
+    provider = (
+        image_provider
+        if image_provider is not None
+        else get_settings().image_provider
+    ).strip().lower()
+    provider = provider or "qy"
+    if provider not in IMAGE_PROVIDERS:
+        supported = "、".join(sorted(IMAGE_PROVIDERS))
+        raise ImageProviderConfigError(
+            f"IMAGE_PROVIDER 不支持：{provider}，可用值：{supported}"
+        )
+    return provider
+
+
+def resolve_image_provider_model(
+    *,
+    provider: str,
+    references: list[ImageReference],
+    image_model_name: str,
+) -> str:
+    if provider != "grok":
+        return image_model_name.strip()
+    settings = get_settings()
+    return (
+        settings.grokcli_image_edit_model
+        if references
+        else settings.grokcli_image_model
+    ).strip()
 
 
 def describe_reference_url(url: str) -> dict[str, Any]:
@@ -1006,10 +1047,213 @@ def request_xgapi_image(
     return image_content, content_type, result_request_id
 
 
-def request_xg_image(
-    *, prompt: str, references: list[ImageReference], image_model_name: str, aspect_ratio: str
+def grokcli_reference_urls(references: list[ImageReference]) -> list[str]:
+    if len(references) > 3:
+        raise ImageProviderConfigError("Grok image-edit 最多支持 3 张参考图")
+    urls: list[str] = []
+    for reference in references:
+        url = (reference.url or "").strip()
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ImageProviderConfigError(
+                "Grok 带参考图生图必须提供可公开访问的 HTTP(S) URL"
+            )
+        urls.append(url)
+    return urls
+
+
+def build_grokcli_image_command(
+    *,
+    prompt: str,
+    references: list[ImageReference],
+    aspect_ratio: str,
+) -> list[str]:
+    settings = get_settings()
+    executable = settings.grokcli_executable.strip()
+    if not executable:
+        raise ImageProviderConfigError("GROKCLI_EXECUTABLE 未配置")
+    if aspect_ratio not in GROKCLI_ASPECT_RATIOS:
+        supported = "、".join(sorted(GROKCLI_ASPECT_RATIOS))
+        raise ImageProviderConfigError(
+            f"Grok 不支持画面比例 {aspect_ratio}，可用值：{supported}"
+        )
+    resolution = settings.grokcli_image_resolution.strip().lower()
+    if resolution not in {"1k", "2k"}:
+        raise ImageProviderConfigError("GROKCLI_IMAGE_RESOLUTION 只支持 1k 或 2k")
+
+    command = [executable]
+    if references:
+        model = settings.grokcli_image_edit_model.strip()
+        command.extend(
+            [
+                "image-edit",
+                prompt,
+                "--model",
+                model,
+            ]
+        )
+        for url in grokcli_reference_urls(references):
+            command.extend(["--image", url])
+    else:
+        model = settings.grokcli_image_model.strip()
+        command.extend(
+            [
+                "image",
+                prompt,
+                "--model",
+                model,
+            ]
+        )
+    if not model:
+        model_setting = (
+            "GROKCLI_IMAGE_EDIT_MODEL" if references else "GROKCLI_IMAGE_MODEL"
+        )
+        raise ImageProviderConfigError(f"{model_setting} 未配置")
+    command.extend(
+        [
+            "--aspect",
+            aspect_ratio,
+            "--resolution",
+            resolution,
+            "--count",
+            "1",
+            "--timeout",
+            str(settings.grokcli_timeout_seconds),
+            "--output",
+            "json",
+            "--no-color",
+        ]
+    )
+    return command
+
+
+def parse_grokcli_image_output(stdout: str, output_root: Path) -> tuple[bytes, str]:
+    try:
+        body = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        raise ImageProviderResponseError("grokcli 返回内容不是合法 JSON") from exc
+    paths = body.get("paths") if isinstance(body, dict) else None
+    if not isinstance(paths, list) or len(paths) != 1 or not isinstance(paths[0], str):
+        raise ImageProviderResponseError("grokcli 返回中必须包含唯一图片路径")
+    image_path = Path(paths[0]).expanduser().resolve()
+    output_root = output_root.resolve()
+    if not image_path.is_relative_to(output_root):
+        raise ImageProviderResponseError("grokcli 返回了输出目录之外的图片路径")
+    try:
+        content = image_path.read_bytes()
+    except OSError as exc:
+        raise ImageProviderResponseError("无法读取 grokcli 生成的图片") from exc
+    if not content:
+        raise ImageProviderResponseError("grokcli 生成的图片内容为空")
+    return content, detect_image_content_type(content)
+
+
+def request_grokcli_image(
+    *,
+    prompt: str,
+    references: list[ImageReference],
+    aspect_ratio: str,
 ) -> tuple[bytes, str, str | None]:
-    provider = get_settings().image_provider.strip().lower()
+    settings = get_settings()
+    command = build_grokcli_image_command(
+        prompt=prompt,
+        references=references,
+        aspect_ratio=aspect_ratio,
+    )
+    environment = os.environ.copy()
+    environment["NO_COLOR"] = "1"
+    if settings.grokcli_home.strip():
+        environment["GROKCLI_HOME"] = settings.grokcli_home.strip()
+
+    for attempt in range(1, settings.grokcli_request_max_attempts + 1):
+        with tempfile.TemporaryDirectory(prefix="doodlestory-grokcli-") as temporary_dir:
+            working_directory = Path(temporary_dir)
+            output_root = working_directory / "output"
+            environment["GROKCLI_OUTPUT_DIR"] = str(output_root)
+            started_at = monotonic()
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=working_directory,
+                    env=environment,
+                    capture_output=True,
+                    text=True,
+                    timeout=settings.grokcli_timeout_seconds + 15,
+                    check=False,
+                )
+            except FileNotFoundError as exc:
+                raise ImageProviderConfigError(
+                    f"找不到 grokcli 可执行文件：{command[0]}"
+                ) from exc
+            except subprocess.TimeoutExpired as exc:
+                if attempt < settings.grokcli_request_max_attempts:
+                    logger.warning(
+                        "grokcli image subprocess timed out and will retry attempt=%s/%s",
+                        attempt,
+                        settings.grokcli_request_max_attempts,
+                    )
+                    sleep(settings.grokcli_retry_backoff_seconds * attempt)
+                    continue
+                raise ImageProviderResponseError("grokcli 生图超时") from exc
+
+            elapsed_ms = round((monotonic() - started_at) * 1000)
+            if completed.returncode == 0:
+                content, content_type = parse_grokcli_image_output(
+                    completed.stdout,
+                    output_root,
+                )
+                logger.info(
+                    "grokcli image succeeded mode=%s aspect_ratio=%s reference_count=%s bytes=%s content_type=%s elapsed_ms=%s",
+                    "edit" if references else "generation",
+                    aspect_ratio,
+                    len(references),
+                    len(content),
+                    content_type,
+                    elapsed_ms,
+                )
+                return content, content_type, None
+
+            error_preview = (completed.stderr or completed.stdout).strip()[:1000]
+            if (
+                completed.returncode in GROKCLI_RETRYABLE_EXIT_CODES
+                and attempt < settings.grokcli_request_max_attempts
+            ):
+                logger.warning(
+                    "grokcli image transient failure will retry exit_code=%s attempt=%s/%s elapsed_ms=%s error=%s",
+                    completed.returncode,
+                    attempt,
+                    settings.grokcli_request_max_attempts,
+                    elapsed_ms,
+                    error_preview,
+                )
+                sleep(settings.grokcli_retry_backoff_seconds * attempt)
+                continue
+            if completed.returncode in {2, 3}:
+                raise ImageProviderConfigError(
+                    f"grokcli 配置或认证失败（退出码 {completed.returncode}）：{error_preview}"
+                )
+            raise ImageProviderResponseError(
+                f"grokcli 生图失败（退出码 {completed.returncode}）：{error_preview}"
+            )
+
+    raise ImageProviderResponseError("grokcli 生图请求未执行")
+
+
+def request_xg_image(
+    *,
+    prompt: str,
+    references: list[ImageReference],
+    image_model_name: str,
+    aspect_ratio: str,
+    image_provider: str | None = None,
+) -> tuple[bytes, str, str | None]:
+    provider = resolve_image_provider(image_provider)
+    if provider == "grok":
+        return request_grokcli_image(
+            prompt=prompt,
+            references=references,
+            aspect_ratio=aspect_ratio,
+        )
     if provider == "xgapi":
         return request_xgapi_image(
             prompt=prompt,
@@ -1017,8 +1261,6 @@ def request_xg_image(
             image_model_name=image_model_name,
             aspect_ratio=aspect_ratio,
         )
-    if provider not in {"", "qy"}:
-        raise ImageProviderConfigError(f"IMAGE_PROVIDER 不支持：{provider}，可用值：qy、xgapi")
     if is_image_gateway_generation_model(image_model_name):
         return request_image_gateway_generation(
             prompt=prompt,
@@ -1037,12 +1279,20 @@ def generate_xg_image(
     image_model_name: str,
     aspect_ratio: str,
     validate_result_aspect_ratio: bool = False,
+    image_provider: str | None = None,
 ) -> GeneratedImageFile:
+    resolved_provider = resolve_image_provider(image_provider)
+    resolved_model = resolve_image_provider_model(
+        provider=resolved_provider,
+        references=references,
+        image_model_name=image_model_name,
+    )
     content, content_type, provider_request_id = request_xg_image(
         prompt=prompt,
         references=references,
         image_model_name=image_model_name,
         aspect_ratio=aspect_ratio,
+        image_provider=resolved_provider,
     )
     dimensions = read_image_dimensions(content)
     if validate_result_aspect_ratio:
@@ -1068,6 +1318,8 @@ def generate_xg_image(
         public_url=stored.public_url,
         width=dimensions.width,
         height=dimensions.height,
+        provider=resolved_provider,
+        model=resolved_model,
     )
 
 

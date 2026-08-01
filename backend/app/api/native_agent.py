@@ -122,6 +122,7 @@ def _image_to_read(image: NativeAgentImage) -> NativeAgentImageRead:
         id=image.id,
         asset_id=image.asset_id,
         prompt=image.prompt,
+        provider=image.provider_snapshot,
         image_model=image.image_model_snapshot,
         aspect_ratio=image.aspect_ratio_snapshot,
         width=image.asset.width,

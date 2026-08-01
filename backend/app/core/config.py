@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     xg_api_key: str = ""
     xg_base_url: str = "https://api.xgapi.top"
     xg_image_quality: str = "1k"
+    grokcli_executable: str = "grokcli"
+    grokcli_home: str = ""
+    grokcli_image_model: str = "grok-imagine-image-quality"
+    grokcli_image_edit_model: str = "grok-imagine-image"
+    grokcli_image_resolution: str = "2k"
+    grokcli_timeout_seconds: int = Field(default=300, ge=30)
+    grokcli_request_max_attempts: int = Field(default=2, ge=1, le=5)
+    grokcli_retry_backoff_seconds: float = Field(default=2.0, ge=0)
     apexerapi_api_key: str = ""
     apexerapi_base: str = ""
     apexerapi_proxy_url: str = ""

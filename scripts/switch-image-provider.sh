@@ -5,8 +5,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROVIDER="${1:-}"
 
-if [ "$PROVIDER" != "qy" ] && [ "$PROVIDER" != "xgapi" ]; then
-  echo "Usage: $0 qy|xgapi" >&2
+if [ "$PROVIDER" != "qy" ] && [ "$PROVIDER" != "xgapi" ] && [ "$PROVIDER" != "grok" ]; then
+  echo "Usage: $0 qy|xgapi|grok" >&2
   exit 2
 fi
 

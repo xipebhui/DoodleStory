@@ -16,3 +16,4 @@ oss2==2.19.1
 pillow==11.0.0
 faster-whisper==1.1.1
 opencc-python-reimplemented==0.1.7
+grokcli @ https://github.com/ele-yufo/grokcli/archive/ba81473c44b209ad008c1304fa42979a525eb814.tar.gz

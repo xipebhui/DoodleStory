@@ -70,6 +70,7 @@ from app.services.image_generation import (
     ImageProviderResponseError,
     ImageReference,
     generate_xg_image,
+    resolve_image_provider,
 )
 from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
@@ -424,15 +425,20 @@ def build_generate_image_tool(
     async def generate_image(
         tool_context: ToolContext[None],
         prompt: str,
+        provider: Literal["default", "grok", "qy", "xgapi"] = "default",
     ) -> list[ToolOutputText | ToolOutputImage]:
         if context.image_model is None or context.aspect_ratio is None:
             raise NativeAgentLoopError("本次 Run 没有 Style，不能调用 generate_image")
         cleaned_prompt = prompt.strip()
         if not cleaned_prompt:
             raise NativeAgentLoopError("generate_image prompt 不能为空")
+        resolved_provider = resolve_image_provider(
+            None if provider == "default" else provider
+        )
         prepared = store.prepare_tool(
             tool_call_id=tool_context.tool_call_id,
             prompt=cleaned_prompt,
+            provider=resolved_provider,
         )
         if isinstance(prepared, CompletedNativeTool):
             store.append_event(
@@ -452,6 +458,7 @@ def build_generate_image_tool(
             span_type="TOOL",
             attributes={
                 "tool_name": "generate_image",
+                "provider": resolved_provider,
                 "image_model": context.image_model,
                 "aspect_ratio": context.aspect_ratio,
                 "reference_count": len(context.reference_urls),
@@ -461,6 +468,7 @@ def build_generate_image_tool(
                 tool_span,
                 {
                     "prompt": cleaned_prompt,
+                    "provider": resolved_provider,
                     "reference_count": len(context.reference_urls),
                 },
             )
@@ -471,6 +479,7 @@ def build_generate_image_tool(
                     agent_run_id=context.run_id,
                     span_type="TASK",
                     attributes={
+                        "provider": resolved_provider,
                         "image_model": context.image_model,
                         "aspect_ratio": context.aspect_ratio,
                         "reference_count": len(context.reference_urls),
@@ -480,6 +489,7 @@ def build_generate_image_tool(
                         provider_span,
                         {
                             "prompt": cleaned_prompt,
+                            "provider": resolved_provider,
                             "reference_urls": list(context.reference_urls),
                         },
                     )
@@ -493,6 +503,7 @@ def build_generate_image_tool(
                             ],
                             image_model_name=context.image_model,
                             aspect_ratio=context.aspect_ratio,
+                            image_provider=resolved_provider,
                         )
                     except Exception:
                         set_span_status(
@@ -507,6 +518,7 @@ def build_generate_image_tool(
                             "width": generated.width,
                             "height": generated.height,
                             "provider_request_id": generated.provider_request_id,
+                            "provider": resolved_provider,
                         },
                     )
                     set_span_outputs(
@@ -515,6 +527,7 @@ def build_generate_image_tool(
                             "width": generated.width,
                             "height": generated.height,
                             "provider_request_id": generated.provider_request_id,
+                            "provider": resolved_provider,
                         },
                     )
                     set_span_status(
@@ -526,8 +539,9 @@ def build_generate_image_tool(
                     prepared.id,
                     prompt=cleaned_prompt,
                     generated=generated,
-                    image_model=context.image_model,
+                    image_model=generated.model or context.image_model,
                     aspect_ratio=context.aspect_ratio,
+                    provider=resolved_provider,
                 )
             except Exception as exc:
                 latency_ms = round((time.perf_counter() - started) * 1000)
@@ -555,6 +569,8 @@ def build_generate_image_tool(
                     "width": generated.width,
                     "height": generated.height,
                     "provider_request_id": generated.provider_request_id,
+                    "provider": resolved_provider,
+                    "image_model": generated.model or context.image_model,
                 },
             )
             set_span_outputs(
@@ -563,6 +579,7 @@ def build_generate_image_tool(
                     "status": "succeeded",
                     "width": generated.width,
                     "height": generated.height,
+                    "provider": resolved_provider,
                 },
             )
             set_span_status(
@@ -1639,6 +1656,9 @@ def native_agent_instructions(
             "以下 Style 只用于规划图片、编写 generate_image prompt 和 Review 图片，不得改变故事事实、"
             "旁白或对白。每次调用 generate_image 时，必须把适用于该画面的视觉规则和比例写入完整 "
             "prompt；Runtime 不会代为拼接。\n"
+            "用户可以在对话中指定生图方式。调用 generate_image 时：用户明确要求 Grok、QY "
+            "或 xgapi，就把 provider 分别设为 grok、qy 或 xgapi；用户未指定时必须设为 default，"
+            "不得自行猜测或在失败后切换 provider。\n"
             f"{image_generation_context}\n"
             "</image_generation_context>"
         )

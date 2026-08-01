@@ -1,5 +1,26 @@
 # 进度记录
 
+## Sprint 149 grokcli 显式生图 Provider（已完成）
+
+- 已安装并固定验证 `ele-yufo/grokcli` 0.1.0（commit
+  `ba81473c44b209ad008c1304fa42979a525eb814`），完成浏览器 OAuth 登录；`grokcli status`
+  显示账号有效。`grokcli doctor` 的 `/v1/models` 检查返回 403，但真实图片接口可用。
+- 已用中文提示词真实生成 3:4 图片，耗时约 7.5 秒，输出 864×1152、281204 bytes；CLI 文件名
+  后缀为 `.png`，实际内容为 JPEG，因此正式 adapter 按图片内容识别格式。
+- 已完成 `grok` adapter：纯文本走 `image`，最多三张公网参考图走 `image-edit`，按真实内容识别
+  PNG/JPEG/WebP，临时文件用完即清理；只对网络和超时做同 Provider 两次有界尝试，不做跨
+  Provider 兜底。DoodleStory adapter 真实验证纯文本生图约 7.36 秒、单参考图编辑约
+  12.76 秒，均返回 864×1152 JPEG。
+- Native Agent `generate_image` 已支持 `default/grok/qy/xgapi` 结构化 Provider 参数，System
+  Instructions 要求严格服从用户明确选择，未指定使用 default，失败后不得切换；实际 Provider
+  会进入 Tool 参数、事件、Trace、图片快照、API 和页面。传统任务也可通过
+  `IMAGE_PROVIDER=grok` 整体切换。
+- Docker 已固定安装通过真实验证的 grokcli commit，Coolify 凭据目录使用现有
+  `/app/data/grokcli` 持久化 volume；README 记录本地和容器认证步骤，OAuth token 不进入仓库。
+- 51 项定向测试通过；`./scripts/check.sh` 通过 346 项后端测试、空库全量迁移、14 项前端
+  测试、前端生产构建、Remotion TypeScript 与 5 项模板测试。合同：
+  `docs/contracts/sprint-149-grokcli-image-provider.md`。
+
 ## Sprint 144–146 Agent Durable Runtime 全量替换（规划完成，待连续实施）
 
 - 已根据 2026-07-30 真实事故建立 Native Agent 稳定任务控制面合同。事故链路确认：阶段性选题
@@ -100,11 +121,12 @@
   用户显式授权，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 144 Draft；Sprint 143、Sprint 142、Sprint 141 Complete；
+- 当前合同状态：Sprint 149 Complete；Sprint 144 Draft；Sprint 143、Sprint 142、Sprint 141 Complete；
   Sprint 135 真实外部发布 smoke 待用户授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-149-grokcli-image-provider.md`
 - Draft：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
 - Complete：`docs/contracts/sprint-143-native-agent-account-context.md`
 - Complete：`docs/contracts/sprint-142-system-skill-disable.md`

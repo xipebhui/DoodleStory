@@ -440,6 +440,7 @@ export type NativeAgentImage = {
   id: string;
   asset_id: string;
   prompt: string;
+  provider: string;
   image_model: string;
   aspect_ratio: string;
   width: number | null;

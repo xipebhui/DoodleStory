@@ -83,6 +83,7 @@ class NativeAgentImageRead(BaseModel):
     id: str
     asset_id: str
     prompt: str
+    provider: str
     image_model: str
     aspect_ratio: str
     width: int | None

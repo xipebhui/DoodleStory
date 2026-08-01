@@ -7,7 +7,7 @@ DoodleStory 是一个文本转图片的故事生成项目。它会把用户输�
 ## 产品形态
 
 - 用户系统：支持邮箱注册、登录、退出和找回密码；普通用户只能看到自己的任务，Admin 可以看到全部任务。
-- 风格库：管理图片风格、参考图片、风格基础信息、风格提示词和参考方式；provider、model 和默认参数由后台生成配置维护，不暴露给普通用户。
+- 风格库：管理图片风格、参考图片、风格基础信息、风格提示词和参考方式；model 和默认参数由后台生成配置维护。普通任务不暴露 provider 控件，Native Agent 用户可在对话中明确指定 Grok、QY 或 xgapi。
 - 角色管理：用户维护自己的固定角色形象，创建任务时可把故事里快速识别出的角色名绑定到自己的角色参考图。
 - 风格测试：输入一段测试文本，按风格当前参考方式生成测试图，方便调试风格。
 - 生成任务：用户输入原始文本，不改写原文；选择自动判断图片数量或固定图片数量；选择风格后提交生成。
@@ -126,6 +126,28 @@ tmp-project/
 ```
 
 生产容器默认监听 `8000`，SQLite 数据库和本地资产默认写入 `/app/data`，部署时必须把 `/app/data` 配成持久化 volume。
+
+### Grok 订阅生图认证
+
+项目固定安装 `grokcli`，本地通过浏览器 OAuth 登录一次即可：
+
+```bash
+grokcli login
+grokcli status --output json
+grokcli image "一只橘猫程序员" --aspect 3:4 --resolution 1k --output json
+```
+
+本地默认凭据目录是 `~/.config/grokcli`。Coolify Compose 把 `GROKCLI_HOME` 固定为
+`/app/data/grokcli`，位于现有持久化 volume；首次部署或凭据失效后，在运行中的容器内执行：
+
+```bash
+docker compose -f docker-compose.coolify.yml exec doodlestory grokcli login --manual-paste
+docker compose -f docker-compose.coolify.yml exec doodlestory grokcli status --output json
+```
+
+OAuth 凭据不得提交到 Git。`grokcli doctor` 会检查 `/v1/models` 等更宽的 API surface；若它
+单独报告 403，仍应以真实 `grokcli image` smoke 判断订阅生图权限。Provider 失败不会自动切换：
+Native Agent 对话可明确要求 `Grok`、`QY` 或 `xgapi`，普通任务使用 `IMAGE_PROVIDER`。
 
 ## 抖音热门样本采集环境
 
