@@ -706,6 +706,56 @@ export type NativeAgentConversationDetail = NativeAgentConversation & {
   runs: NativeAgentRun[];
 };
 
+export type DurableControlTask = {
+  id: string;
+  task_key: string;
+  task_type: string;
+  title: string;
+  status: string;
+  required: boolean;
+  current_attempt_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+};
+
+export type DurableUnknownEffect = {
+  id: string;
+  attempt_id: string;
+  effect_kind: string;
+  provider_request_id: string | null;
+};
+
+export type DurableControlState = {
+  workflow_id: string;
+  status: string;
+  state_version: number;
+  current_checkpoint_id: string | null;
+  current_gate_id: string | null;
+  expected_input_kind: string | null;
+  allowed_actions: Array<
+    | "approve_gate"
+    | "request_changes"
+    | "retry_task"
+    | "cancel_run"
+    | "resume_run"
+    | "resolve_unknown_effect"
+  >;
+  tasks: DurableControlTask[];
+  unknown_effects: DurableUnknownEffect[];
+};
+
+export type DurableControlCommand = {
+  id: string;
+  command: string;
+  target_id: string | null;
+  idempotency_key: string;
+  expected_state_version: number;
+  status: string;
+  result: Record<string, unknown>;
+  control_state: DurableControlState;
+  created_at: string;
+};
+
 export type FileAsset = {
   id: string;
   purpose: string;
@@ -1277,6 +1327,26 @@ export const api = {
     request<ApiData<NativeAgentRun>>(
       `/agent-loop/runs/${encodeURIComponent(runId)}/cancel`,
       { method: "POST" },
+    ).then((result) => result.data),
+  nativeAgentControlState: (runId: string) =>
+    request<ApiData<DurableControlState>>(
+      `/agent-loop/runs/${encodeURIComponent(runId)}/control-state`,
+    ).then((result) => result.data),
+  executeNativeAgentControlCommand: (
+    runId: string,
+    payload: {
+      command: DurableControlState["allowed_actions"][number];
+      idempotency_key: string;
+      expected_state_version: number;
+      target_id?: string | null;
+      feedback?: string | null;
+      resolution?: "succeeded" | "failed" | null;
+      result_ref?: Record<string, unknown> | null;
+    },
+  ) =>
+    request<ApiData<DurableControlCommand>>(
+      `/agent-loop/runs/${encodeURIComponent(runId)}/commands`,
+      { method: "POST", body: JSON.stringify(payload) },
     ).then((result) => result.data),
   youtubeChannels: (params?: { q?: string; remote_status?: string; cursor?: string; limit?: number }) => {
     const search = new URLSearchParams();

@@ -24,6 +24,8 @@ from app.models.entities import (
     AgentRun,
     AgentSkill,
     AgentSkillVersion,
+    DurableAgentTask,
+    DurableAgentWorkflow,
     FileAsset,
     GenerationTask,
     NativeAgentConversation,
@@ -32,6 +34,7 @@ from app.models.entities import (
     NativeAgentEvent,
     NativeAgentExternalContent,
     NativeAgentItem,
+    NativeAgentImage,
     NativeAgentRun,
     NativeAgentStep,
     NativeAgentVideo,
@@ -44,6 +47,7 @@ from app.models.entities import (
 from app.models.enums import (
     AgentRunStatus,
     AgentSkillStatus,
+    FileAssetPurpose,
     NativeAgentItemType,
     NativeAgentStepStatus,
     NativeAgentStepType,
@@ -68,6 +72,7 @@ from app.services.native_agent_loop import (
     NativeAgentLoopError,
     NativeImageToolContext,
     build_generate_image_tool,
+    build_inspect_image_tool,
     build_generate_speech_tool,
     build_capture_wechat_article_tool,
     build_inspect_youtube_channel_tool,
@@ -89,6 +94,7 @@ from app.services.social_content_import import SocialContentImportResult
 from app.services.storage import StoredFile
 from app.services.volcengine_speech import GeneratedSpeech
 from app.services.remotion_video import GeneratedRemotionVideo, RemotionScene
+from app.services.agent_vision import InspectionIssue, InspectionResult
 
 
 class FakeStreamedResult:
@@ -149,6 +155,7 @@ class NativeAgentLoopTests(unittest.TestCase):
         self,
         *,
         status: AgentRunStatus = AgentRunStatus.queued,
+        tool_names_json: str = '["generate_image"]',
     ) -> str:
         with self.Session() as db:
             user = User(email="durable-run@example.com", password_hash="hash")
@@ -160,7 +167,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                 name="持久化测试 Skill",
                 description="测试持久化执行。",
                 draft_instructions="# 方法\n需要时调用 generate_image。",
-                draft_tool_names_json='["generate_image"]',
+                draft_tool_names_json=tool_names_json,
                 draft_revision=1,
                 status=AgentSkillStatus.published,
             )
@@ -727,7 +734,7 @@ class NativeAgentLoopTests(unittest.TestCase):
 
     def test_native_runtime_tools_follow_published_skill_version(self) -> None:
         self.assertEqual(
-            ["generate_speech"],
+            ["generate_speech", "inspect_image"],
             native_runtime_tool_names(
                 '["generate_speech","inspect_image"]'
             ),
@@ -742,6 +749,201 @@ class NativeAgentLoopTests(unittest.TestCase):
             "generate_speech",
             native_runtime_tool_names('["generate_image"]'),
         )
+
+    def test_inspect_image_persists_acceptance_and_reuses_image_result(self) -> None:
+        run_id = self.create_durable_run(
+            tool_names_json='["generate_image","inspect_image","render_story_video"]'
+        )
+        with self.Session() as db:
+            asset = FileAsset(
+                purpose=FileAssetPurpose.generated_image,
+                storage_backend=StorageBackend.local,
+                storage_key="generated_image/inspection-test.png",
+                content_type="image/png",
+                byte_size=3,
+                checksum_sha256="f" * 64,
+                width=948,
+                height=1659,
+            )
+            db.add(asset)
+            db.flush()
+            image = NativeAgentImage(
+                run_id=run_id,
+                asset_id=asset.id,
+                prompt="检查测试图",
+                image_model_snapshot="gpt-image-2",
+                aspect_ratio_snapshot="9:16",
+            )
+            db.add(image)
+            db.commit()
+            image_id = image.id
+
+        provider_calls = 0
+
+        def fake_inspector(asset, *, checks, expected):
+            nonlocal provider_calls
+            provider_calls += 1
+            self.assertEqual(["story_alignment", "visual_artifacts"], checks)
+            self.assertEqual("老人第一次看见会说话的猫", expected["story_beat"])
+            return (
+                InspectionResult(
+                    verdict="accept",
+                    scores={"story_alignment": 0.9, "visual_artifacts": 0.95},
+                    issues=[
+                        InspectionIssue(
+                            code="minor",
+                            message="没有阻塞问题",
+                        )
+                    ],
+                ),
+                "test-provider",
+                "test-vl-model",
+                25,
+            )
+
+        tool = build_inspect_image_tool(
+            run_id,
+            store=NativeAgentStore(run_id, session_factory=self.Session),
+            image_inspector=fake_inspector,
+        )
+        arguments = {
+            "image_id": image_id,
+            "checks": ["story_alignment", "visual_artifacts"],
+            "expected": {
+                "story_beat": "老人第一次看见会说话的猫",
+                "characters": ["老人", "猫"],
+                "required_text": [],
+            },
+        }
+        with patch.object(native_agent_loop, "SessionLocal", self.Session):
+            first = asyncio.run(
+                tool.on_invoke_tool(
+                    ToolContext(
+                        context=None,
+                        tool_name="inspect_image",
+                        tool_call_id="inspect-call-1",
+                        tool_arguments=json.dumps(arguments, ensure_ascii=False),
+                    ),
+                    json.dumps(arguments, ensure_ascii=False),
+                )
+            )
+            replay = asyncio.run(
+                tool.on_invoke_tool(
+                    ToolContext(
+                        context=None,
+                        tool_name="inspect_image",
+                        tool_call_id="inspect-call-2",
+                        tool_arguments=json.dumps(arguments, ensure_ascii=False),
+                    ),
+                    json.dumps(arguments, ensure_ascii=False),
+                )
+            )
+
+        self.assertEqual(1, provider_calls)
+        self.assertEqual(json.loads(first[0].text), json.loads(replay[0].text))
+        with self.Session() as db:
+            step = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.run_id == run_id,
+                    NativeAgentStep.name == "inspect_image",
+                )
+            )
+            self.assertEqual(NativeAgentStepStatus.succeeded, step.status)
+            self.assertEqual("accept", json.loads(step.output_ref_json)["verdict"])
+
+    def test_video_inputs_require_accepted_inspection_when_skill_exposes_it(self) -> None:
+        run_id = self.create_durable_run(
+            tool_names_json='["inspect_image","render_story_video"]'
+        )
+        with self.Session() as db:
+            image_asset = FileAsset(
+                purpose=FileAssetPurpose.generated_image,
+                storage_backend=StorageBackend.local,
+                storage_key="generated_image/video-gate.png",
+                content_type="image/png",
+                byte_size=3,
+                width=948,
+                height=1659,
+            )
+            audio_asset = FileAsset(
+                purpose=FileAssetPurpose.generated_audio,
+                storage_backend=StorageBackend.local,
+                storage_key="generated_audio/video-gate.mp3",
+                content_type="audio/mpeg",
+                byte_size=3,
+            )
+            db.add_all([image_asset, audio_asset])
+            db.flush()
+            image = NativeAgentImage(
+                run_id=run_id,
+                asset_id=image_asset.id,
+                prompt="视频检查图",
+                image_model_snapshot="gpt-image-2",
+                aspect_ratio_snapshot="9:16",
+            )
+            audio = NativeAgentAudio(
+                run_id=run_id,
+                asset_id=audio_asset.id,
+                text="测试旁白",
+                provider_snapshot="test",
+                resource_id_snapshot="test",
+                model_snapshot="test",
+                speaker_snapshot="test",
+                response_format_snapshot="mp3",
+                sample_rate_snapshot=24000,
+                speed_snapshot=1.0,
+                speech_rate_snapshot=0,
+                duration_ms=1500,
+            )
+            db.add_all([image, audio])
+            db.commit()
+            scene = native_agent_loop.NativeVideoSceneInput(
+                image_id=image.id,
+                audio_id=audio.id,
+                subtitle="测试旁白",
+                motion_preset="static",
+            )
+
+        with (
+            patch.object(native_agent_loop, "SessionLocal", self.Session),
+            patch.object(
+                native_agent_loop,
+                "materialize_asset_to_local",
+                return_value=Path("/tmp/video-gate-asset"),
+            ),
+        ):
+            with self.assertRaisesRegex(NativeAgentLoopError, "必须先获得 verdict=accept"):
+                native_agent_loop._resolve_video_inputs(
+                    run_id,
+                    scenes=[scene],
+                    bgm_asset_id=None,
+                )
+            with self.Session() as db:
+                db.add(
+                    NativeAgentStep(
+                        run_id=run_id,
+                        sequence=2,
+                        step_type=NativeAgentStepType.tool_call,
+                        status=NativeAgentStepStatus.succeeded,
+                        name="inspect_image",
+                        tool_call_id="inspect-video-gate",
+                        idempotency_key=f"inspect-video-gate:{run_id}",
+                        output_ref_json=json.dumps(
+                            {"image_id": scene.image_id, "verdict": "accept"}
+                        ),
+                        attempts=1,
+                    )
+                )
+                db.commit()
+            resolved, snapshots, bgm_path = native_agent_loop._resolve_video_inputs(
+                run_id,
+                scenes=[scene],
+                bgm_asset_id=None,
+            )
+
+        self.assertEqual(1, len(resolved))
+        self.assertEqual(scene.image_id, snapshots[0]["image_id"])
+        self.assertIsNone(bgm_path)
         self.assertEqual(
             ["inspect_youtube_channel"],
             native_runtime_tool_names('["inspect_youtube_channel"]'),
@@ -806,7 +1008,12 @@ class NativeAgentLoopTests(unittest.TestCase):
             )
             replayed = asyncio.run(
                 tool.on_invoke_tool(
-                    invocation_context,
+                    ToolContext(
+                        context=None,
+                        tool_name="generate_speech",
+                        tool_call_id="speech-call-after-subtitle-failure",
+                        tool_arguments='{"text":"持久化语音测试。"}',
+                    ),
                     json.dumps({"text": "持久化语音测试。"}),
                 )
             )
@@ -1298,7 +1505,10 @@ class NativeAgentLoopTests(unittest.TestCase):
             asyncio.run(execute_native_agent_run(run_id, settings=settings))
 
         agent = captured["agent"]
-        self.assertEqual(["generate_image"], [tool.name for tool in agent.tools])
+        self.assertEqual(
+            ["generate_image", "inspect_image"],
+            [tool.name for tool in agent.tools],
+        )
         self.assertEqual("只回答，不要生图", captured["input"])
         self.assertEqual(12, captured["max_turns"])
         self.assertEqual(
@@ -1417,6 +1627,18 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual(1, db.query(NativeAgentRun).count())
             self.assertEqual(0, db.query(AgentRun).count())
             self.assertEqual(0, db.query(GenerationTask).count())
+            workflow = db.scalar(
+                select(DurableAgentWorkflow).where(
+                    DurableAgentWorkflow.native_run_id == response.data.id
+                )
+            )
+            self.assertIsNotNone(workflow)
+            self.assertEqual(
+                0,
+                db.query(DurableAgentTask)
+                .filter(DurableAgentTask.workflow_id == workflow.id)
+                .count(),
+            )
 
     def test_creation_account_uniquely_derives_style_snapshot(self) -> None:
         with self.Session() as db:
@@ -2329,3 +2551,43 @@ class NativeAgentLoopTests(unittest.TestCase):
                     stream_native_agent_run_events(run_id, request, other, db)
                 )
             self.assertEqual(404, raised.exception.status_code)
+
+    def test_run_sse_emits_resync_when_event_cursor_has_gap(self) -> None:
+        run_id = self.create_durable_run(status=AgentRunStatus.succeeded)
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            run.event_sequence = 3
+            run.finished_at = datetime.utcnow()
+            db.add(
+                NativeAgentEvent(
+                    run_id=run_id,
+                    sequence=3,
+                    event_type="run.completed",
+                    payload_json='{"status":"succeeded"}',
+                )
+            )
+            db.commit()
+            user = run.conversation.owner
+            request = SimpleNamespace(
+                headers={},
+                is_disconnected=AsyncMock(return_value=False),
+            )
+            with patch("app.api.native_agent.SessionLocal", self.Session):
+                response = asyncio.run(
+                    stream_native_agent_run_events(
+                        run_id,
+                        request,
+                        user,
+                        db,
+                        after=0,
+                    )
+                )
+
+                async def consume_first() -> str:
+                    chunk = await anext(response.body_iterator.__aiter__())
+                    return chunk.decode() if isinstance(chunk, bytes) else chunk
+
+                first = asyncio.run(consume_first())
+
+        self.assertIn("event: run.resync_required", first)
+        self.assertIn('"reason":"event_cursor_gap"', first)

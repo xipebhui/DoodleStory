@@ -43,6 +43,7 @@ from app.models.entities import (
     NativeAgentImage,
     NativeAgentItem,
     NativeAgentRun,
+    NativeAgentStep,
     NativeAgentSubtitle,
     NativeAgentConversation,
 )
@@ -50,6 +51,7 @@ from app.models.enums import (
     AgentRunStatus,
     GeneratedImageStatus,
     NativeAgentItemType,
+    NativeAgentStepStatus,
 )
 from app.services.agent_observability import (
     agent_span,
@@ -73,6 +75,7 @@ from app.services.image_generation import (
 )
 from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
+    CompletedNativeImageInspection,
     CompletedNativeSubtitle,
     CompletedNativeExternalContent,
     CompletedNativeTool,
@@ -91,6 +94,7 @@ from app.services.native_article_workflow import (
     save_article_artifact,
     save_compiled_workflow_plan,
 )
+from app.services.agent_vision import InspectionResult, inspect_image_asset
 from app.services.social_content_import import (
     SocialContentImportResult,
     import_social_content,
@@ -149,6 +153,14 @@ class NativeAgentLoopError(RuntimeError):
     pass
 
 
+class NativeImageInspectionExpected(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    story_beat: str | None = Field(default=None, max_length=4_000)
+    characters: list[str] = Field(default_factory=list, max_length=20)
+    required_text: list[str] = Field(default_factory=list, max_length=50)
+
+
 @dataclass(frozen=True)
 class NativeImageToolContext:
     run_id: str
@@ -161,11 +173,13 @@ ImageGenerator = Callable[..., GeneratedImageFile]
 SpeechGenerator = Callable[..., GeneratedSpeech]
 SubtitleGenerator = Callable[..., GeneratedSubtitles]
 VideoRenderer = Callable[..., GeneratedRemotionVideo]
+ImageInspector = Callable[..., tuple[InspectionResult, str, str, int]]
 SocialContentImporter = Callable[[str], SocialContentImportResult]
 YoutubeInsightsFetcher = Callable[..., YoutubeChannelInsightsResult]
 NATIVE_RUNTIME_TOOL_NAMES = frozenset(
     {
         "generate_image",
+        "inspect_image",
         "generate_speech",
         "generate_subtitles",
         "render_story_video",
@@ -582,6 +596,94 @@ def build_generate_image_tool(
     )
 
 
+def build_inspect_image_tool(
+    run_id: str,
+    *,
+    store: NativeAgentStore,
+    image_inspector: ImageInspector = inspect_image_asset,
+) -> FunctionTool:
+    async def inspect_image(
+        tool_context: ToolContext[None],
+        image_id: str,
+        checks: list[str],
+        expected: NativeImageInspectionExpected,
+    ) -> list[ToolOutputText]:
+        normalized_checks = [item.strip() for item in checks if item.strip()]
+        if not normalized_checks or len(normalized_checks) > 10:
+            raise NativeAgentLoopError("inspect_image checks 必须包含 1 到 10 项")
+        if len(normalized_checks) != len(set(normalized_checks)):
+            raise NativeAgentLoopError("inspect_image checks 不能重复")
+        expected_data = expected.model_dump(mode="json")
+        prepared = store.prepare_image_inspection_tool(
+            tool_call_id=tool_context.tool_call_id,
+            image_id=image_id,
+            checks=normalized_checks,
+            expected=expected_data,
+        )
+        if isinstance(prepared, CompletedNativeImageInspection):
+            completed = prepared
+        else:
+            store.start_tool(prepared.id)
+            try:
+                with SessionLocal() as db:
+                    image = db.scalar(
+                        select(NativeAgentImage)
+                        .where(
+                            NativeAgentImage.id == image_id,
+                            NativeAgentImage.run_id == run_id,
+                        )
+                        .options(selectinload(NativeAgentImage.asset))
+                    )
+                    if image is None:
+                        raise NativeAgentLoopError("image_id 不属于当前 Run")
+                    result, provider, model, latency_ms = await asyncio.to_thread(
+                        image_inspector,
+                        image.asset,
+                        checks=normalized_checks,
+                        expected=expected_data,
+                    )
+                completed = store.complete_image_inspection_tool(
+                    prepared.id,
+                    image_id=image_id,
+                    verdict=result.verdict,
+                    scores=result.scores,
+                    issues=[issue.model_dump(mode="json") for issue in result.issues],
+                    provider=provider,
+                    model=model,
+                    latency_ms=latency_ms,
+                )
+            except Exception as exc:
+                store.fail_tool(prepared.id, exc)
+                raise
+        return [
+            ToolOutputText(
+                text=json.dumps(
+                    {
+                        "status": "succeeded",
+                        "image_id": completed.image_id,
+                        "verdict": completed.verdict,
+                        "scores": completed.scores,
+                        "issues": completed.issues,
+                        "provider": completed.provider,
+                        "model": completed.model,
+                        "latency_ms": completed.latency_ms,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        ]
+
+    return function_tool(
+        inspect_image,
+        name_override="inspect_image",
+        description_override=(
+            "对当前 Run 的 image_id 执行一次真实视觉质量检查。checks 列出要检查的维度，"
+            "expected 描述预期画面；返回 accept、revise、ask_user 或 blocked。"
+            "只有 verdict=accept 的图片才能进入视频渲染。"
+        ),
+    )
+
+
 def build_generate_speech_tool(
     run_id: str,
     *,
@@ -847,10 +949,29 @@ def _resolve_video_inputs(
         run = db.scalar(
             select(NativeAgentRun)
             .where(NativeAgentRun.id == run_id)
-            .options(selectinload(NativeAgentRun.conversation))
+            .options(
+                selectinload(NativeAgentRun.conversation),
+                selectinload(NativeAgentRun.skill_version),
+            )
         )
         if run is None:
             raise NativeAgentLoopError("Native Agent Run 不存在")
+        requires_image_inspection = "inspect_image" in parse_tool_names(
+            run.skill_version.tool_names_json
+        )
+        accepted_inspection_image_ids: set[str] = set()
+        if requires_image_inspection:
+            inspection_steps = db.scalars(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.run_id == run_id,
+                    NativeAgentStep.name == "inspect_image",
+                    NativeAgentStep.status == NativeAgentStepStatus.succeeded,
+                )
+            ).all()
+            for inspection_step in inspection_steps:
+                inspection = json.loads(inspection_step.output_ref_json or "{}")
+                if inspection.get("verdict") == "accept" and inspection.get("image_id"):
+                    accepted_inspection_image_ids.add(str(inspection["image_id"]))
         image_ids = [scene.image_id for scene in scenes]
         audio_ids = [scene.audio_id for scene in scenes]
         images = {
@@ -925,6 +1046,14 @@ def _resolve_video_inputs(
                 raise NativeAgentLoopError(
                     f"第 {index} 个 Scene 的 image_id 不是当前 Run 图片，"
                     "也不是当前用户任务的成功 current 图片"
+                )
+            if (
+                requires_image_inspection
+                and scene.image_id not in accepted_inspection_image_ids
+            ):
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 的图片尚未通过 inspect_image；"
+                    "必须先获得 verdict=accept"
                 )
             if audio is None:
                 raise NativeAgentLoopError(
@@ -2130,6 +2259,8 @@ async def execute_native_agent_run(
                         store=store,
                     )
                 )
+            if "inspect_image" in exposed_tool_names:
+                tools.append(build_inspect_image_tool(run_id, store=store))
             if "generate_speech" in exposed_tool_names:
                 tools.append(
                     build_generate_speech_tool(
@@ -2398,6 +2529,7 @@ async def execute_native_agent_run(
             else:
                 from app.services.durable_agent_runtime import (
                     can_complete_native_run,
+                    finalize_workflow_if_complete,
                     inspect_pending_native_media,
                     media_ready_for_quality,
                 )
@@ -2417,6 +2549,12 @@ async def execute_native_agent_run(
                         durable_db,
                         native_run_id=run_id,
                     )
+                    if can_complete and not waiting_for_quality:
+                        finalize_workflow_if_complete(
+                            durable_db,
+                            native_run_id=run_id,
+                        )
+                        durable_db.commit()
                 if waiting_for_quality:
                     store.pause_for_media_quality(final_output)
                     terminal_status = AgentRunStatus.waiting_for_input

@@ -273,6 +273,77 @@ class DurableGateDecision(BaseModel):
         return self
 
 
+class DurableControlCommandCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    command: Literal[
+        "approve_gate",
+        "request_changes",
+        "retry_task",
+        "cancel_run",
+        "resume_run",
+        "resolve_unknown_effect",
+    ]
+    idempotency_key: str = Field(min_length=8, max_length=160)
+    expected_state_version: int = Field(ge=1)
+    target_id: str | None = Field(default=None, max_length=32)
+    feedback: str | None = Field(default=None, max_length=4000)
+    resolution: Literal["succeeded", "failed"] | None = None
+    result_ref: dict[str, object] | None = None
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def normalize_idempotency_key(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 8:
+            raise ValueError("idempotency_key 不能为空")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_command_payload(self) -> "DurableControlCommandCreate":
+        if self.command in {"request_changes", "cancel_run"} and not (
+            self.feedback and self.feedback.strip()
+        ):
+            raise ValueError("修改或取消命令必须填写具体原因")
+        if self.command in {
+            "retry_task",
+            "resolve_unknown_effect",
+        } and not self.target_id:
+            raise ValueError("当前命令必须指定 target_id")
+        if self.command == "resolve_unknown_effect":
+            if self.resolution is None:
+                raise ValueError("处理 unknown Effect 必须指定 resolution")
+            if self.resolution == "succeeded" and not self.result_ref:
+                raise ValueError("将 unknown Effect 标记成功必须提供 result_ref")
+        elif self.resolution is not None or self.result_ref is not None:
+            raise ValueError("只有 resolve_unknown_effect 可以提供 resolution/result_ref")
+        return self
+
+
+class DurableControlStateRead(BaseModel):
+    workflow_id: str
+    status: str
+    state_version: int
+    current_checkpoint_id: str | None
+    current_gate_id: str | None
+    expected_input_kind: str | None
+    allowed_actions: list[str]
+    tasks: list[dict[str, object]]
+    unknown_effects: list[dict[str, object]]
+
+
+class DurableControlCommandRead(BaseModel):
+    id: str
+    command: str
+    target_id: str | None
+    idempotency_key: str
+    expected_state_version: int
+    status: str
+    result: dict[str, object]
+    control_state: DurableControlStateRead
+    created_at: datetime
+
+
 class DurableImageQualityDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

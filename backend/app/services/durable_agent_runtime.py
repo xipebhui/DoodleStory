@@ -153,7 +153,12 @@ def runtime_tables_available(db: Session) -> bool:
     return inspect(db.get_bind()).has_table("agent_durable_workflows")
 
 
-def initialize_workflow(db: Session, *, native_run: NativeAgentRun) -> DurableAgentWorkflow:
+def initialize_workflow(
+    db: Session,
+    *,
+    native_run: NativeAgentRun,
+    include_article_tasks: bool = True,
+) -> DurableAgentWorkflow:
     existing = workflow_for_native_run(db, native_run.id)
     if existing is not None:
         return existing
@@ -166,6 +171,19 @@ def initialize_workflow(db: Session, *, native_run: NativeAgentRun) -> DurableAg
     )
     db.add(workflow)
     db.flush()
+    if not include_article_tasks:
+        _append_checkpoint(
+            db,
+            workflow=workflow,
+            reason="initial non-article workflow",
+            state=_workflow_state(db, workflow),
+        )
+        append_plan_revision(
+            db,
+            workflow=workflow,
+            reason="initial non-article workflow",
+        )
+        return workflow
     task_by_key: dict[str, DurableAgentTask] = {}
     for key, task_type, title, dependencies, output_key in ARTICLE_TASKS:
         task = DurableAgentTask(
@@ -463,7 +481,14 @@ def mirror_native_article_approval(
             "editorial_review",
             "finish_run",
         )
-    elif native_type == "article_review" or gate_count == 1:
+    elif native_type == "article_review":
+        gate_key, artifact_key, purpose, action = (
+            "editorial_review_gate",
+            "review_draft",
+            "editorial_review",
+            "finish_run",
+        )
+    elif native_type == "article_draft" or gate_count == 1:
         gate_key, artifact_key, purpose, action = (
             "draft_review_gate",
             "write_draft",
@@ -622,7 +647,257 @@ def can_complete_native_run(db: Session, *, native_run_id: str) -> bool:
             DurableAgentTask.required.is_(True),
         )
     ).all()
-    return bool(tasks) and all(task.status == "succeeded" for task in tasks)
+    return not tasks or all(task.status == "succeeded" for task in tasks)
+
+
+def finalize_workflow_if_complete(
+    db: Session,
+    *,
+    native_run_id: str,
+) -> bool:
+    workflow = workflow_for_native_run(db, native_run_id)
+    if workflow is None or workflow.status in {"succeeded", "failed", "cancelled"}:
+        return workflow is None or workflow.status == "succeeded"
+    if not can_complete_native_run(db, native_run_id=native_run_id):
+        return False
+    workflow.status = "succeeded"
+    workflow.allowed_actions_json = _json([])
+    workflow.expected_input_kind = None
+    workflow.finished_at = _now()
+    workflow.state_version += 1
+    _append_checkpoint(
+        db,
+        workflow=workflow,
+        reason="native run completed",
+        state=_workflow_state(db, workflow),
+    )
+    return True
+
+
+def retry_durable_task(
+    db: Session,
+    *,
+    workflow: DurableAgentWorkflow,
+    task: DurableAgentTask,
+) -> DurableAgentAttempt:
+    if task.workflow_id != workflow.id:
+        raise DurableAgentRuntimeError("Task 不属于当前 Durable Workflow")
+    if task.status not in {"failed", "blocked"}:
+        raise DurableAgentRuntimeError("只有明确失败或阻塞的 Task 可以重试")
+    unknown_effect = db.scalar(
+        select(DurableAgentToolEffect)
+        .join(
+            DurableAgentAttempt,
+            DurableAgentAttempt.id == DurableAgentToolEffect.attempt_id,
+        )
+        .where(
+            DurableAgentAttempt.task_id == task.id,
+            DurableAgentToolEffect.status == "unknown",
+        )
+        .limit(1)
+    )
+    if unknown_effect is not None:
+        raise DurableAgentRuntimeError("Task 存在 unknown Tool Effect，人工处理前不能重试")
+    attempt = _prepare_attempt(
+        db,
+        task=task,
+        attempt_kind="retry",
+        checkpoint_id=workflow.current_checkpoint_id,
+    )
+    task.error_code = None
+    task.error_message = None
+    task.finished_at = None
+    workflow.status = "retrying"
+    workflow.error_code = None
+    workflow.error_message = None
+    workflow.finished_at = None
+    workflow.allowed_actions_json = _json(["cancel_run"])
+    workflow.state_version += 1
+    _append_checkpoint(
+        db,
+        workflow=workflow,
+        reason=f"task retry requested: {task.task_key}",
+        state=_workflow_state(db, workflow),
+    )
+    append_plan_revision(
+        db,
+        workflow=workflow,
+        reason=f"task retry requested: {task.task_key}",
+    )
+    return attempt
+
+
+def resume_durable_workflow(
+    db: Session,
+    *,
+    workflow: DurableAgentWorkflow,
+) -> DurableAgentAttempt:
+    if workflow.status not in {"failed", "retrying", "running"}:
+        raise DurableAgentRuntimeError("当前 Durable Workflow 不可恢复")
+    task = db.scalar(
+        select(DurableAgentTask)
+        .where(
+            DurableAgentTask.workflow_id == workflow.id,
+            DurableAgentTask.status.in_(["failed", "blocked"]),
+        )
+        .order_by(DurableAgentTask.updated_at.desc(), DurableAgentTask.id.desc())
+        .limit(1)
+    )
+    if task is None:
+        interrupted = db.scalar(
+            select(DurableAgentAttempt)
+            .join(DurableAgentTask, DurableAgentTask.id == DurableAgentAttempt.task_id)
+            .where(
+                DurableAgentTask.workflow_id == workflow.id,
+                DurableAgentAttempt.status == "interrupted",
+            )
+            .order_by(DurableAgentAttempt.updated_at.desc())
+            .limit(1)
+        )
+        if interrupted is None:
+            raise DurableAgentRuntimeError("没有可安全恢复的失败或中断 Attempt")
+        task = db.get(DurableAgentTask, interrupted.task_id)
+        assert task is not None
+        task.status = "failed"
+    return retry_durable_task(db, workflow=workflow, task=task)
+
+
+def cancel_durable_workflow(
+    db: Session,
+    *,
+    workflow: DurableAgentWorkflow,
+    reason: str,
+) -> bool:
+    if workflow.status in {"succeeded", "failed", "cancelled"}:
+        raise DurableAgentRuntimeError("终态 Durable Workflow 不能取消")
+    unknown_effect_created = False
+    tasks = db.scalars(
+        select(DurableAgentTask).where(DurableAgentTask.workflow_id == workflow.id)
+    ).all()
+    for task in tasks:
+        if task.status in {"succeeded", "failed", "cancelled"}:
+            continue
+        attempts = db.scalars(
+            select(DurableAgentAttempt).where(DurableAgentAttempt.task_id == task.id)
+        ).all()
+        task_has_unknown = False
+        for attempt in attempts:
+            effects = db.scalars(
+                select(DurableAgentToolEffect).where(
+                    DurableAgentToolEffect.attempt_id == attempt.id
+                )
+            ).all()
+            for effect in effects:
+                if effect.status == "submitted":
+                    effect.status = "unknown"
+                    task_has_unknown = True
+                    unknown_effect_created = True
+            if task_has_unknown and attempt.status == "running":
+                attempt.status = "unknown"
+                attempt.error_code = "CancelledWithUnknownEffect"
+                attempt.error_message = reason
+                attempt.finished_at = _now()
+                attempt.lease_owner = None
+                attempt.lease_expires_at = None
+            elif attempt.status in {"prepared", "running", "interrupted"}:
+                attempt.status = "cancelled"
+                attempt.error_message = reason
+                attempt.finished_at = _now()
+                attempt.lease_owner = None
+                attempt.lease_expires_at = None
+        task.status = "blocked" if task_has_unknown else "cancelled"
+        task.error_code = "CancelledWithUnknownEffect" if task_has_unknown else None
+        task.error_message = reason
+        task.finished_at = _now()
+    workflow.current_gate_id = None
+    workflow.expected_input_kind = (
+        "unknown_effect_resolution" if unknown_effect_created else None
+    )
+    workflow.status = "waiting_for_input" if unknown_effect_created else "cancelled"
+    workflow.allowed_actions_json = _json(
+        ["resolve_unknown_effect"] if unknown_effect_created else []
+    )
+    workflow.error_code = (
+        "CancelledWithUnknownEffect" if unknown_effect_created else None
+    )
+    workflow.error_message = reason
+    workflow.finished_at = None if unknown_effect_created else _now()
+    workflow.state_version += 1
+    _append_checkpoint(
+        db,
+        workflow=workflow,
+        reason="run cancellation requested",
+        state=_workflow_state(db, workflow),
+    )
+    append_plan_revision(db, workflow=workflow, reason="run cancellation requested")
+    return unknown_effect_created
+
+
+def resolve_unknown_tool_effect(
+    db: Session,
+    *,
+    workflow: DurableAgentWorkflow,
+    effect: DurableAgentToolEffect,
+    resolution: str,
+    result_ref: dict[str, object] | None,
+) -> None:
+    attempt = db.get(DurableAgentAttempt, effect.attempt_id)
+    if attempt is None:
+        raise DurableAgentRuntimeError("unknown Tool Effect 缺少 Attempt")
+    task = db.get(DurableAgentTask, attempt.task_id)
+    if task is None or task.workflow_id != workflow.id:
+        raise DurableAgentRuntimeError("unknown Tool Effect 不属于当前 Workflow")
+    if effect.status != "unknown":
+        raise DurableAgentRuntimeError("Tool Effect 不是 unknown 状态")
+    if resolution not in {"succeeded", "failed"}:
+        raise DurableAgentRuntimeError("unknown Tool Effect 只支持 succeeded/failed")
+    if resolution == "succeeded" and not result_ref:
+        raise DurableAgentRuntimeError("标记成功必须提供可核验 result_ref")
+    effect.status = resolution
+    effect.result_ref_json = _json(result_ref) if result_ref else None
+    attempt.status = resolution
+    attempt.finished_at = _now()
+    attempt.lease_owner = None
+    attempt.lease_expires_at = None
+    task.status = resolution
+    task.finished_at = _now()
+    task.error_code = None if resolution == "succeeded" else "UnknownEffectResolvedFailed"
+    task.error_message = None
+    remaining = db.scalar(
+        select(func.count(DurableAgentToolEffect.id))
+        .join(
+            DurableAgentAttempt,
+            DurableAgentAttempt.id == DurableAgentToolEffect.attempt_id,
+        )
+        .join(DurableAgentTask, DurableAgentTask.id == DurableAgentAttempt.task_id)
+        .where(
+            DurableAgentTask.workflow_id == workflow.id,
+            DurableAgentToolEffect.status == "unknown",
+            DurableAgentToolEffect.id != effect.id,
+        )
+    ) or 0
+    if remaining:
+        workflow.status = "waiting_for_input"
+        workflow.allowed_actions_json = _json(["resolve_unknown_effect"])
+    else:
+        workflow.status = "failed" if resolution == "failed" else "cancelled"
+        workflow.allowed_actions_json = _json(
+            ["retry_task", "resume_run"] if resolution == "failed" else []
+        )
+        workflow.expected_input_kind = None
+        workflow.finished_at = _now()
+    workflow.state_version += 1
+    _append_checkpoint(
+        db,
+        workflow=workflow,
+        reason=f"unknown effect resolved: {resolution}",
+        state=_workflow_state(db, workflow),
+    )
+    append_plan_revision(
+        db,
+        workflow=workflow,
+        reason=f"unknown effect resolved: {resolution}",
+    )
 
 
 def needs_native_review_gate(db: Session, *, native_run_id: str) -> bool:

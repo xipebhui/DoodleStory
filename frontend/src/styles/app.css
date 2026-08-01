@@ -8779,6 +8779,75 @@ textarea {
   font-size: 12px;
 }
 
+.native-agent-tool-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 14px;
+  padding: 9px 11px;
+  border: 1px solid #4a4035;
+  border-radius: 8px;
+  background: #1d1915;
+  color: #d8b594;
+  font-size: 12px;
+}
+
+.native-agent-control-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border: 1px solid #34383d;
+  border-radius: 9px;
+  background: #15181b;
+}
+
+.native-agent-control-panel > header,
+.native-agent-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.native-agent-control-panel > header {
+  justify-content: space-between;
+  color: #d7d4cf;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.native-agent-control-panel > header small,
+.native-agent-control-panel > p {
+  margin: 0;
+  color: #858b91;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.native-agent-control-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #555b61;
+  border-radius: 7px;
+  background: transparent;
+  color: #d8dadd;
+  font-size: 12px;
+}
+
+.native-agent-control-actions button.is-danger {
+  border-color: #71433d;
+  color: #e6a49a;
+}
+
+.native-agent-control-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .native-agent-responses {
   display: grid;
   gap: 12px;

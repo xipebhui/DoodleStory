@@ -90,6 +90,20 @@
   和图片检查顺序修复。Follow-up Run 与受控 Probe 移交下一 Sprint，避免在控制闭环中混入未完成
   分支语义。
 - 合同：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`。
+- 已新增 `agent_durable_commands` 与 owner-scoped `control-state / commands` API；六类命令统一校验
+  `allowed_actions`、`state_version`、目标归属和 unknown Effect。相同幂等键重放只返回首次结果，
+  不会再次入队或取消 Worker；旧文案审批、媒体 Gate 与取消入口已委托统一命令服务。
+- 非文案 Skill 现在只初始化空 Durable Workflow，不创建 ARTICLE_TASKS；Run 正常完成时同步收敛
+  Workflow 终态。`article_review` 明确映射 `editorial_review_gate`，避免 Review 审批退回正文 Gate。
+- 原生 Runtime 已开放并持久化 `inspect_image`；Skill 暴露该 Tool 时，视频渲染强制要求对应图片
+  `verdict=accept`。字幕对同一音频最多自动失败两次，字幕失败后的相同文本/语速 TTS 调用复用
+  已成功音频，不再重复请求 Provider。
+- 前端按后端 `allowed_actions + state_version` 展示重试、恢复、unknown 处理与取消操作；运行中的
+  Tool 展示名称和真实已等待时间。SSE 检测 cursor 缺口时发出 `run.resync_required`，页面重新拉取
+  Conversation Projection 与控制状态，不以 heartbeat 伪造业务进度。
+- 当前实现检查已通过 360 项后端测试、空 SQLite 全量迁移、14 项前端测试、生产构建、Remotion
+  类型检查和 5 项测试；新增故障回归覆盖命令幂等/过期版本、取消、unknown Effect、纯媒体空
+  Workflow、图片检查顺序、TTS 复用与 SSE cursor 缺口。浏览器故障验收与操作文档仍待完成。
 
 ## Sprint 143（已完成）
 

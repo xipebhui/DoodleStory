@@ -1911,6 +1911,44 @@ class DurableAgentPlanRevision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
+class DurableAgentCommand(Base):
+    __tablename__ = "agent_durable_commands"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id",
+            "idempotency_key",
+            name="uq_agent_durable_commands_workflow_idempotency",
+        ),
+        CheckConstraint(
+            "command_type IN ('approve_gate','request_changes','retry_task','cancel_run','resume_run','resolve_unknown_effect')",
+            name="ck_agent_durable_commands_type",
+        ),
+        CheckConstraint(
+            "status IN ('applied','rejected')",
+            name="ck_agent_durable_commands_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_workflows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    requested_by_user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    command_type: Mapped[str] = mapped_column(String(80), index=True)
+    target_id: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(160))
+    expected_state_version: Mapped[int] = mapped_column(Integer)
+    payload_hash: Mapped[str] = mapped_column(String(80))
+    payload_json: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="applied")
+    result_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class DurableAgentMediaBinding(Base, TimestampMixin):
     __tablename__ = "agent_durable_media_bindings"
     __table_args__ = (

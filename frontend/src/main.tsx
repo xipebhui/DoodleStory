@@ -85,6 +85,7 @@ import {
   type CreditTransaction,
   type CreditTransactionFilter,
   type CreditUsagePoint,
+  type DurableControlState,
   type FileAsset,
   type Style,
   type StyleOption,
@@ -3748,6 +3749,9 @@ function NativeAgentView({
   const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null);
   const [approvalFeedback, setApprovalFeedback] = useState<Record<string, string>>({});
+  const [controlStates, setControlStates] = useState<Record<string, DurableControlState>>({});
+  const [controlBusyRunId, setControlBusyRunId] = useState<string | null>(null);
+  const [clockTick, setClockTick] = useState(0);
   const [error, setError] = useState("");
   const [eventConnectionError, setEventConnectionError] = useState("");
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
@@ -3766,9 +3770,25 @@ function NativeAgentView({
   async function loadDetail(conversationId: string) {
     setLoading(true);
     try {
-      setDetail(await api.nativeAgentConversation(conversationId));
+      const nextDetail = await api.nativeAgentConversation(conversationId);
+      setDetail(nextDetail);
+      const latestRun = nextDetail.runs[nextDetail.runs.length - 1];
+      if (latestRun) void loadControlState(latestRun.id);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadControlState(runId: string) {
+    try {
+      const state = await api.nativeAgentControlState(runId);
+      setControlStates((current) => ({ ...current, [runId]: state }));
+    } catch {
+      setControlStates((current) => {
+        const next = { ...current };
+        delete next[runId];
+        return next;
+      });
     }
   }
 
@@ -3867,6 +3887,9 @@ function NativeAgentView({
           });
           return { ...current, runs };
         });
+        if (nextEvent.event_type === "control.command.applied") {
+          void loadControlState(activeRun.id);
+        }
         setEventConnectionError("");
       } catch {
         setEventConnectionError("实时事件内容无法读取，请刷新页面恢复当前状态");
@@ -3891,21 +3914,48 @@ function NativeAgentView({
             setError(loadError instanceof Error ? loadError.message : "会话列表刷新失败");
           });
         }
+        if (nextRun.status !== activeRun.status) {
+          void loadControlState(nextRun.id);
+        }
       } catch {
         setEventConnectionError("实时事件内容无法读取，请刷新页面恢复当前状态");
       }
     };
+    const handleResyncRequired = () => {
+      setEventConnectionError("检测到实时事件缺口，正在重新同步完整状态");
+      if (!detail) return;
+      void loadDetail(detail.id).catch((loadError) => {
+        setEventConnectionError(
+          loadError instanceof Error ? loadError.message : "完整状态同步失败",
+        );
+      });
+      void loadControlState(activeRun.id);
+    };
     source.addEventListener("native.event", handleNativeEvent as EventListener);
     source.addEventListener("run.updated", handleUpdate as EventListener);
+    source.addEventListener(
+      "run.resync_required",
+      handleResyncRequired as EventListener,
+    );
     source.onerror = () => {
       setEventConnectionError("实时连接已断开，浏览器正在自动重连");
     };
     return () => {
       source.removeEventListener("native.event", handleNativeEvent as EventListener);
       source.removeEventListener("run.updated", handleUpdate as EventListener);
+      source.removeEventListener(
+        "run.resync_required",
+        handleResyncRequired as EventListener,
+      );
       source.close();
     };
   }, [activeRun?.id]);
+
+  useEffect(() => {
+    if (!activeRun?.steps.some((step) => step.status === "running")) return;
+    const timer = window.setInterval(() => setClockTick((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeRun?.id, activeRun?.steps]);
 
   const threadSignature = detail?.runs
     .map(
@@ -4206,6 +4256,7 @@ function NativeAgentView({
             }
           : current,
       );
+      void loadControlState(run.id);
       void loadConversations().catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : "会话列表刷新失败");
       });
@@ -4257,19 +4308,20 @@ function NativeAgentView({
     setDecidingApprovalId(approvalId);
     setError("");
     try {
-      const nextRun = await api.decideNativeArticleApproval(approvalId, {
-        decision,
+      const state = controlStates[runId];
+      if (!state) throw new Error("控制状态尚未加载，请刷新后重试");
+      const command = await api.executeNativeAgentControlCommand(runId, {
+        command: decision === "approve" ? "approve_gate" : "request_changes",
+        idempotency_key: crypto.randomUUID(),
+        expected_state_version: state.state_version,
+        target_id: state.current_gate_id,
         feedback: feedback || null,
       });
-      setDetail((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          runs: current.runs.map((run) =>
-            run.id === runId ? nextRun : run
-          ),
-        };
-      });
+      setControlStates((current) => ({
+        ...current,
+        [runId]: command.control_state,
+      }));
+      if (detail) await loadDetail(detail.id);
       setApprovalFeedback((current) => {
         const next = { ...current };
         delete next[approvalId];
@@ -4284,6 +4336,46 @@ function NativeAgentView({
       );
     } finally {
       setDecidingApprovalId(null);
+    }
+  }
+
+  async function executeControlAction(
+    run: NativeAgentRun,
+    action: DurableControlState["allowed_actions"][number],
+  ) {
+    const state = controlStates[run.id];
+    if (!state || controlBusyRunId) return;
+    if (action === "cancel_run") {
+      const confirmed = window.confirm(
+        "确认取消当前 Run？未开始的任务会停止，已提交但结果未知的副作用需要人工处理。",
+      );
+      if (!confirmed) return;
+    }
+    const retryTask = state.tasks.find((task) => ["failed", "blocked"].includes(task.status));
+    const unknownEffect = state.unknown_effects[0];
+    setControlBusyRunId(run.id);
+    setError("");
+    try {
+      const result = await api.executeNativeAgentControlCommand(run.id, {
+        command: action,
+        idempotency_key: crypto.randomUUID(),
+        expected_state_version: state.state_version,
+        target_id:
+          action === "retry_task"
+            ? retryTask?.id || null
+            : action === "resolve_unknown_effect"
+              ? unknownEffect?.id || null
+              : null,
+        feedback: action === "cancel_run" ? "用户从聊天页面取消 Run" : null,
+        resolution: action === "resolve_unknown_effect" ? "failed" : null,
+      });
+      setControlStates((current) => ({ ...current, [run.id]: result.control_state }));
+      if (detail) await loadDetail(detail.id);
+    } catch (controlError) {
+      setError(controlError instanceof Error ? controlError.message : "控制命令执行失败");
+      await loadControlState(run.id);
+    } finally {
+      setControlBusyRunId(null);
     }
   }
 
@@ -4335,6 +4427,18 @@ function NativeAgentView({
             const visibleArticleArtifacts = run.artifacts.filter(
               (artifact) => artifact.status !== "superseded",
             );
+            const controlState = controlStates[run.id];
+            const runningTool = run.steps.find(
+              (step) => step.step_type === "tool_call" && step.status === "running",
+            );
+            const runningToolElapsedSeconds = runningTool?.started_at
+              ? Math.max(
+                  0,
+                  Math.floor(
+                    (Date.now() - new Date(runningTool.started_at).getTime()) / 1000,
+                  ),
+                ) + clockTick * 0
+              : 0;
             return (
               <article className="native-agent-run" key={run.id}>
                 <div className="native-agent-user-message">
@@ -4356,6 +4460,74 @@ function NativeAgentView({
                   <span>{run.subtitle_call_count} 次字幕生成</span>
                   <span>{run.video_call_count} 次视频生成</span>
                 </div>
+                {runningTool ? (
+                  <div className="native-agent-tool-wait" role="status">
+                    <Loader2 className="spin" size={15} />
+                    <span>
+                      正在执行 {runningTool.name} · 已等待 {runningToolElapsedSeconds} 秒
+                      {runningTool.name === "generate_image"
+                        ? " · 单次最多 300 秒，Provider 内部最多 4 次尝试"
+                        : ""}
+                    </span>
+                  </div>
+                ) : null}
+                {controlState ? (
+                  <section className="native-agent-control-panel" aria-label="当前 Run 控制">
+                    <header>
+                      <span>运行控制 · 状态版本 {controlState.state_version}</span>
+                      <small>{controlState.status}</small>
+                    </header>
+                    {controlState.allowed_actions.some((action) =>
+                      ["retry_task", "resume_run", "cancel_run", "resolve_unknown_effect"].includes(action)
+                    ) ? (
+                      <div className="native-agent-control-actions">
+                        {controlState.allowed_actions.includes("retry_task") ? (
+                          <button
+                            type="button"
+                            className="is-secondary"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "retry_task")}
+                          >
+                            <RefreshCw size={14} />重试失败任务
+                          </button>
+                        ) : null}
+                        {controlState.allowed_actions.includes("resume_run") ? (
+                          <button
+                            type="button"
+                            className="is-secondary"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "resume_run")}
+                          >
+                            <Play size={14} />从检查点恢复
+                          </button>
+                        ) : null}
+                        {controlState.allowed_actions.includes("resolve_unknown_effect") ? (
+                          <button
+                            type="button"
+                            className="is-secondary"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "resolve_unknown_effect")}
+                          >
+                            <AlertCircle size={14} />确认未知结果失败
+                          </button>
+                        ) : null}
+                        {controlState.allowed_actions.includes("cancel_run") ? (
+                          <button
+                            type="button"
+                            className="is-danger"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "cancel_run")}
+                          >
+                            <X size={14} />取消后续任务
+                          </button>
+                        ) : null}
+                        {controlBusyRunId === run.id ? <Loader2 className="spin" size={15} /> : null}
+                      </div>
+                    ) : (
+                      <p>当前没有需要人工执行的控制操作。</p>
+                    )}
+                  </section>
+                ) : null}
                 <div className="native-agent-responses" aria-label="Agent Response 与工具调用">
                   {responses.map((response, responseIndex) => (
                     <section className="native-agent-response" key={response.responseId}>
