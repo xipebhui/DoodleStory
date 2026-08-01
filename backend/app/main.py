@@ -9,6 +9,7 @@ from app.api import agent_skills, audio_references, assets, auth, characters, co
 from app.api.errors import http_exception_handler, validation_exception_handler
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.core.runtime_instance_lock import RuntimeInstanceLock
 from app.services.task_worker import init_task_queue, recover_queued_tasks, shutdown_task_queue
 from app.services.video_task_worker import init_video_task_queue, recover_video_tasks, shutdown_video_task_queue
 from app.services.agent_observability import initialize_agent_observability
@@ -56,23 +57,37 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup() -> None:
-        initialize_runtime_skill_registry()
-        initialize_system_agent_skills()
-        initialize_agent_observability(settings)
-        content_extractions.recover_interrupted_content_extractions()
-        styles.recover_interrupted_style_tests()
-        init_task_queue()
-        init_video_task_queue()
-        init_native_agent_queue()
-        await recover_queued_tasks()
-        await recover_video_tasks()
-        await recover_native_agent_runs()
+        instance_lock = RuntimeInstanceLock.for_database(settings.resolved_database_url)
+        instance_lock.acquire()
+        app.state.runtime_instance_lock = instance_lock
+        try:
+            initialize_runtime_skill_registry()
+            initialize_system_agent_skills()
+            initialize_agent_observability(settings)
+            content_extractions.recover_interrupted_content_extractions()
+            styles.recover_interrupted_style_tests()
+            init_task_queue()
+            init_video_task_queue()
+            init_native_agent_queue()
+            await recover_queued_tasks()
+            await recover_video_tasks()
+            await recover_native_agent_runs()
+        except BaseException:
+            instance_lock.release()
+            del app.state.runtime_instance_lock
+            raise
 
     @app.on_event("shutdown")
     async def shutdown() -> None:
-        await shutdown_native_agent_queue()
-        await shutdown_task_queue()
-        await shutdown_video_task_queue()
+        try:
+            await shutdown_native_agent_queue()
+            await shutdown_task_queue()
+            await shutdown_video_task_queue()
+        finally:
+            instance_lock = getattr(app.state, "runtime_instance_lock", None)
+            if instance_lock is not None:
+                instance_lock.release()
+                del app.state.runtime_instance_lock
 
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(styles.router, prefix="/api/v1")

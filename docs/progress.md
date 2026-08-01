@@ -135,6 +135,27 @@
 - 合同：`docs/contracts/sprint-148-explicit-follow-up-run.md`。
 - QA：`docs/qa/sprint-148-explicit-follow-up-run-report.md`。
 
+## Sprint 149（已完成）
+
+- 修复本地手动 Uvicorn 与 KeepAlive LaunchAgent 并存时，在端口绑定失败前反复执行 startup
+  恢复的问题。新增按数据库标识生成的跨进程单实例锁，任何队列初始化和恢复动作都必须在持锁
+  后执行；锁冲突时第二实例明确退出，startup 初始化失败与正常 shutdown 均释放锁。
+- 事故 Run `d41010e722604b758d0d909ad10a388e` 已保留全部 Trace 和事件并收敛为 `failed`；真实
+  并存测试中第二实例退出码为 3，事件数在测试前后保持 245，没有新增恢复或 Provider 调用。
+- 发现未提交 Grok 图片 Provider migration 复用了 Sprint 144 revision `p7q8r9s0t1u2`。开发库
+  已从事故前完整备份恢复，按正式 Durable migration 链升级到 `t1u2v3w4x5y6`，11 张 Durable
+  表全部存在且 SQLite `integrity_check=ok`；冲突 migration 未进入运行库，后续整合时必须改用
+  新 revision。
+- 本地前后端改由各自唯一的 launchd job 管理，后端 job 运行已修复的 Durable Runtime 分支并
+  指向主工作区数据库与存储。健康检查通过，`8000` 与 `3000` 各一个监听进程，两个 job 均只
+  启动 1 次且保持 running。
+- `./scripts/check.sh` 通过 372 项后端测试、空 SQLite 全量迁移、14 项前端测试、前端生产构建、
+  Remotion 类型检查与 5 项测试；新增 5 项单实例锁测试。目标 URL 可加载且控制台 0 error / 0
+  warning，但浏览器无登录态，未在 UI 内展开受保护的 Trace 详情；终态与事件稳定性由数据库和
+  后端日志验收。
+- 合同：`docs/contracts/sprint-149-single-instance-startup-recovery.md`。
+- QA：`docs/qa/sprint-149-single-instance-startup-recovery-report.md`。
+
 ## Sprint 143（已完成）
 
 - 修复 `@创作账号` 只推导绑定 Style、没有进入 Agent Context 的断链。Run 现在按准确账号 ID
@@ -195,21 +216,21 @@
 
 ## 当前基线
 
-- 分支：`codex/simple-agent-loop`
+- 分支：`codex/durable-runtime-backend-144`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 147 已完成；统一 Durable 控制、恢复、unknown Effect、SSE 重同步、
-  纯媒体终态、字幕/TTS 复用和图片检查顺序已收敛。`./scripts/check.sh` 已通过 361 项后端测试、
-  空库迁移、14 项前端测试、前端生产构建和 Remotion 检查；本 Sprint 浏览器 QA 未调用收费
-  Provider，Deferred Evaluation 未实施。
+- 最近验证状态：Sprint 149 已完成；单实例 startup recovery lock、事故 Run 收敛和本地唯一
+  launchd 运行入口已验证。`./scripts/check.sh` 已通过 372 项后端测试、空库迁移、14 项前端测试、
+  前端生产构建和 Remotion 检查；本 Sprint 未调用收费 Provider，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 148 Active；Sprint 144、145、146、147 Complete；Sprint 143、Sprint 142、Sprint 141 Complete；
+- 当前合同状态：Sprint 149 Complete；Sprint 144、145、146、147、148 Complete；Sprint 143、Sprint 142、Sprint 141 Complete；
   Sprint 135 真实外部发布 smoke 待用户授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
-- Active：`docs/contracts/sprint-148-explicit-follow-up-run.md`
+- Complete：`docs/contracts/sprint-149-single-instance-startup-recovery.md`
+- Complete：`docs/contracts/sprint-148-explicit-follow-up-run.md`
 - Draft：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
 - Draft：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`
 - Draft：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`

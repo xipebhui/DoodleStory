@@ -34,6 +34,9 @@
 ## 部署与运行
 
 - 本地开发保持前后端双服务：FastAPI 后端默认监听 `127.0.0.1:8000`，Vite 前端默认监听 `127.0.0.1:3000`。
+- 同一主机上指向同一数据库的 DoodleStory 后端必须保持单实例。后端在任何 startup 恢复动作前
+  获取基于数据库标识的跨进程锁；第二实例必须明确启动失败，不能先恢复任务再因端口冲突退出。
+  正常关闭与 startup 失败释放锁，进程异常退出时由操作系统释放锁。
 - Docker 生产部署中，DoodleStory 应用镜像使用单容器形态：构建阶段生成前端静态文件，运行阶段由 FastAPI 同时提供前端页面和 `/api/v1/*` API。
 - Docker Compose 部署同时编排 DoodleStory 和同级目录的多平台 `douyin-import-service`；该服务组合 `douyin-downloader`、`wechat-article-crawler` 与 `XHS-Downloader` 的隔离运行环境，并以 Compose 服务名 `douyin-import-service` 暴露内部端口 `8010`。DoodleStory 通过 `http://douyin-import-service:8010` 调用，导入服务不暴露公网入口。
 - 生产容器内部只监听 HTTP 端口 `8000`；在 Coolify + Traefik 节点上只能通过 `expose: "8000"` 暴露给 Traefik，不手动映射宿主机 `80/443`。
