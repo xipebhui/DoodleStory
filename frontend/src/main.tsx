@@ -4428,9 +4428,11 @@ function NativeAgentView({
               (artifact) => artifact.status !== "superseded",
             );
             const controlState = controlStates[run.id];
-            const runningTool = run.steps.find(
-              (step) => step.step_type === "tool_call" && step.status === "running",
-            );
+            const runningTool = runActive
+              ? run.steps.find(
+                  (step) => step.step_type === "tool_call" && step.status === "running",
+                )
+              : undefined;
             const runningToolElapsedSeconds = runningTool?.started_at
               ? Math.max(
                   0,

@@ -944,6 +944,35 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertEqual(1, len(resolved))
         self.assertEqual(scene.image_id, snapshots[0]["image_id"])
         self.assertIsNone(bgm_path)
+
+    def test_subtitle_generation_stops_after_two_failures_for_same_audio(self) -> None:
+        run_id = self.create_durable_run()
+        audio_id = "audio-with-two-subtitle-failures"
+        with self.Session() as db:
+            for sequence in (1, 2):
+                db.add(
+                    NativeAgentStep(
+                        run_id=run_id,
+                        sequence=sequence,
+                        step_type=NativeAgentStepType.tool_call,
+                        status=NativeAgentStepStatus.failed,
+                        name="generate_subtitles",
+                        tool_call_id=f"subtitle-failure-{sequence}",
+                        idempotency_key=f"subtitle-failure:{run_id}:{sequence}",
+                        input_summary_json=json.dumps({"audio_id": audio_id}),
+                        attempts=1,
+                        error_code="SubtitleProviderError",
+                        error_message="fixture failure",
+                    )
+                )
+            db.commit()
+
+        store = NativeAgentStore(run_id, session_factory=self.Session)
+        with self.assertRaisesRegex(RuntimeError, "已失败 2 次"):
+            store.prepare_subtitle_tool(
+                tool_call_id="subtitle-third-attempt",
+                audio_id=audio_id,
+            )
         self.assertEqual(
             ["inspect_youtube_channel"],
             native_runtime_tool_names('["inspect_youtube_channel"]'),

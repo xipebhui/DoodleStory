@@ -83,7 +83,7 @@
   工作台和 `@` 资源入口均可用；启动时未登录产生的两条预期 401 是唯一 Console error。未调用
   真实图片 Provider，未产生模型或图片费用；VL 执行器通过注入式真实 schema 回归验证。
 
-## Sprint 147（进行中）
+## Sprint 147（已完成）
 
 - 已根据真实全媒体测试暴露的问题将 Draft 收紧并激活：本 Sprint 聚焦六类统一控制命令、取消、
   重启恢复、unknown Effect 人工处理、SSE/刷新收敛，以及 Review Gate、纯媒体终态、字幕重试复用
@@ -101,9 +101,13 @@
 - 前端按后端 `allowed_actions + state_version` 展示重试、恢复、unknown 处理与取消操作；运行中的
   Tool 展示名称和真实已等待时间。SSE 检测 cursor 缺口时发出 `run.resync_required`，页面重新拉取
   Conversation Projection 与控制状态，不以 heartbeat 伪造业务进度。
-- 当前实现检查已通过 360 项后端测试、空 SQLite 全量迁移、14 项前端测试、生产构建、Remotion
+- 最终检查已通过 361 项后端测试、空 SQLite 全量迁移、14 项前端测试、生产构建、Remotion
   类型检查和 5 项测试；新增故障回归覆盖命令幂等/过期版本、取消、unknown Effect、纯媒体空
-  Workflow、图片检查顺序、TTS 复用与 SSE cursor 缺口。浏览器故障验收与操作文档仍待完成。
+  Workflow、图片检查顺序、TTS 复用、字幕失败上限与 SSE cursor 缺口。
+- 隔离 SQLite + 真实 FastAPI/Vite 浏览器验收确认 unknown 处理、取消、长 Tool 等待、失败后的
+  retry/resume、终态刷新和 0 console error/warning。验收发现并修复 unknown 已处理但 Native Step
+  仍显示 running 的收敛问题。操作手册见 `docs/deployment/agent-durable-runtime-operations.md`，
+  QA 报告见 `docs/qa/sprint-147-durable-control-and-recovery-report.md`。
 
 ## Sprint 143（已完成）
 
@@ -168,13 +172,13 @@
 - 分支：`codex/simple-agent-loop`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 143 已完成；`@创作账号` 的完整资料快照已进入普通 Agent 和多 Agent
-  文案 Context。`./scripts/check.sh` 已通过 339 项后端测试、空库迁移、14 项前端测试、
-  前端生产构建和 Remotion 检查；未调用收费模型或真实 YouTube 发布，真实发布 smoke 等待
-  用户显式授权，Deferred Evaluation 未实施。
+- 最近验证状态：Sprint 147 已完成；统一 Durable 控制、恢复、unknown Effect、SSE 重同步、
+  纯媒体终态、字幕/TTS 复用和图片检查顺序已收敛。`./scripts/check.sh` 已通过 361 项后端测试、
+  空库迁移、14 项前端测试、前端生产构建和 Remotion 检查；本 Sprint 浏览器 QA 未调用收费
+  Provider，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 144、145、146、147 Draft；Sprint 143、Sprint 142、Sprint 141 Complete；
+- 当前合同状态：Sprint 144、145、146、147 Complete；Sprint 143、Sprint 142、Sprint 141 Complete；
   Sprint 135 真实外部发布 smoke 待用户授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
@@ -182,7 +186,7 @@
 - Draft：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
 - Draft：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`
 - Draft：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`
-- Draft：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`
+- Complete：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`
 - Complete：`docs/contracts/sprint-143-native-agent-account-context.md`
 - Complete：`docs/contracts/sprint-142-system-skill-disable.md`
 - Complete：`docs/contracts/sprint-141-native-agent-resource-mentions.md`

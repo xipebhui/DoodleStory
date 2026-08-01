@@ -12,6 +12,7 @@ from app.models.entities import (
     DurableAgentAttempt,
     DurableAgentCommand,
     DurableAgentGate,
+    DurableAgentMediaBinding,
     DurableAgentTask,
     DurableAgentToolEffect,
     DurableAgentWorkflow,
@@ -28,6 +29,7 @@ from app.services.durable_agent_runtime import (
     cancel_durable_workflow,
     resolve_gate,
     resolve_unknown_tool_effect,
+    request_panel_rerun,
     resume_durable_workflow,
     retry_durable_task,
 )
@@ -274,7 +276,30 @@ def execute_durable_control_command(
             task = db.get(DurableAgentTask, payload.target_id)
             if task is None:
                 raise DurableAgentRuntimeError("待重试 Task 不存在")
-            attempt = retry_durable_task(db, workflow=workflow, task=task)
+            media_binding = db.scalar(
+                select(DurableAgentMediaBinding).where(
+                    DurableAgentMediaBinding.workflow_id == workflow.id,
+                    DurableAgentMediaBinding.image_task_id == task.id,
+                    DurableAgentMediaBinding.status.in_(
+                        ["changes_required", "blocked"]
+                    ),
+                )
+            )
+            if media_binding is not None:
+                if not payload.feedback or not payload.feedback.strip():
+                    raise DurableAgentRuntimeError("Panel 局部重跑必须填写修改意见")
+                attempt = request_panel_rerun(
+                    db,
+                    binding=media_binding,
+                    user_feedback=payload.feedback.strip(),
+                )
+                run.workflow_phase = "rerunning_panel_image"
+            else:
+                attempt = retry_durable_task(
+                    db,
+                    workflow=workflow,
+                    task=task,
+                )
             attempt_ids = [attempt.id]
             enqueue_run = True
             run.status = AgentRunStatus.retrying

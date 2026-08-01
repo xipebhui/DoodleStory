@@ -1595,27 +1595,42 @@ async def rerun_durable_panel_image(
         binding_id=binding_id,
         owner_user_id=user.id,
     )
-    try:
-        attempt = request_panel_rerun(
-            db,
-            binding=binding,
-            user_feedback=payload.feedback,
+    workflow = db.get(DurableAgentWorkflow, binding.workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Panel 绑定缺少 Durable Workflow",
         )
-        run.status = AgentRunStatus.retrying
-        run.workflow_phase = "rerunning_panel_image"
-        run.finished_at = None
+    try:
+        _, result = execute_durable_control_command(
+            db,
+            run=run,
+            workflow=workflow,
+            user=user,
+            payload=DurableControlCommandCreate(
+                command="retry_task",
+                idempotency_key=(
+                    f"legacy-panel:{binding.id}:v{workflow.state_version}"
+                ),
+                expected_state_version=workflow.state_version,
+                target_id=binding.image_task_id,
+                feedback=payload.feedback,
+            ),
+        )
         db.commit()
-    except DurableAgentRuntimeError as exc:
+    except (DurableAgentRuntimeError, AgentControlCommandError) as exc:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
-    await enqueue_native_agent_run(run.id)
+    if result.get("enqueue_run"):
+        await enqueue_native_agent_run(run.id)
+    db.refresh(binding)
     return ApiData(
         data={
             "binding_id": binding.id,
-            "attempt_id": attempt.id,
+            "attempt_id": result["attempt_ids"][0],
             "status": binding.status,
         }
     )

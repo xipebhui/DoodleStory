@@ -12,9 +12,15 @@ from app.models.entities import (
     DurableAgentToolEffect,
     NativeAgentConversation,
     NativeAgentRun,
+    NativeAgentStep,
     User,
 )
-from app.models.enums import AgentRunStatus, AgentSkillStatus
+from app.models.enums import (
+    AgentRunStatus,
+    AgentSkillStatus,
+    NativeAgentStepStatus,
+    NativeAgentStepType,
+)
 from app.schemas.native_agent import DurableControlCommandCreate
 from app.services.agent_control_commands import (
     AgentControlCommandError,
@@ -191,10 +197,22 @@ class AgentControlCommandTests(unittest.TestCase):
                 DurableAgentTask.task_key == "research_topics",
             )
         )
+        native_step = NativeAgentStep(
+            run_id=self.run.id,
+            sequence=1,
+            step_type=NativeAgentStepType.tool_call,
+            status=NativeAgentStepStatus.unknown,
+            name="generate_image",
+            tool_call_id="unknown-image-call",
+            idempotency_key=f"native:{self.run.id}:unknown-image-call",
+            attempts=1,
+        )
+        self.db.add(native_step)
+        self.db.flush()
         effect = DurableAgentToolEffect(
             attempt_id=task.current_attempt_id,
-            effect_kind="generate_image",
-            idempotency_key="unknown-effect-001",
+            effect_kind="native_generate_image",
+            idempotency_key=f"native-image-step:{native_step.id}",
             status="unknown",
         )
         self.db.add(effect)
@@ -223,6 +241,8 @@ class AgentControlCommandTests(unittest.TestCase):
         self.db.commit()
 
         self.assertEqual("failed", result["workflow_status"])
+        self.assertEqual(NativeAgentStepStatus.failed, native_step.status)
+        self.assertIsNotNone(native_step.finished_at)
         state = durable_control_state(self.db, workflow=self.workflow)
         self.assertIn("retry_task", state["allowed_actions"])
         _, retry_result = execute_durable_control_command(

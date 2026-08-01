@@ -2,9 +2,10 @@
 
 ## Status
 
-Active。依赖 Sprint 144–146 的 Durable Runtime、动态计划、文章 Gate、媒体 Task 和图片质量
+Complete。依赖 Sprint 144–146 的 Durable Runtime、动态计划、文章 Gate、媒体 Task 和图片质量
 Gate。2026-08-01 根据真实全媒体验收结果，将原 Draft 收紧为一次可完成、可验证的控制与恢复闭环；
-Follow-up Run 和 Probe 分支移交后续 Sprint。
+Follow-up Run 和 Probe 分支移交后续 Sprint。实现、故障矩阵和浏览器证据见
+`docs/qa/sprint-147-durable-control-and-recovery-report.md`。
 
 ## Goal
 

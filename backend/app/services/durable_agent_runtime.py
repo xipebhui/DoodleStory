@@ -855,6 +855,21 @@ def resolve_unknown_tool_effect(
         raise DurableAgentRuntimeError("标记成功必须提供可核验 result_ref")
     effect.status = resolution
     effect.result_ref_json = _json(result_ref) if result_ref else None
+    if (
+        effect.effect_kind == "native_generate_image"
+        and effect.idempotency_key.startswith("native-image-step:")
+    ):
+        native_step_id = effect.idempotency_key.removeprefix(
+            "native-image-step:"
+        )
+        native_step = db.get(NativeAgentStep, native_step_id)
+        if native_step is not None:
+            native_step.status = resolution
+            native_step.finished_at = _now()
+            native_step.error_code = (
+                None if resolution == "succeeded" else "UnknownEffectResolvedFailed"
+            )
+            native_step.error_message = None
     attempt.status = resolution
     attempt.finished_at = _now()
     attempt.lease_owner = None
