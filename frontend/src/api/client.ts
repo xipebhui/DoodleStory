@@ -632,6 +632,8 @@ export type YoutubeChannelDetail = YoutubeChannelSummary & {
 export type NativeAgentRun = {
   id: string;
   conversation_id: string;
+  parent_run_id: string | null;
+  continued_from_checkpoint_id: string | null;
   skill_version_id: string;
   skill_name: string;
   skill_version: number;
@@ -1305,6 +1307,14 @@ export const api = {
   ) =>
     request<ApiData<NativeAgentRun>>(
       `/agent-loop/conversations/${encodeURIComponent(conversationId)}/runs`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
+  createNativeAgentFollowUp: (
+    parentRunId: string,
+    payload: { content: string; idempotency_key: string },
+  ) =>
+    request<ApiData<NativeAgentRun>>(
+      `/agent-loop/runs/${encodeURIComponent(parentRunId)}/follow-ups`,
       { method: "POST", body: JSON.stringify(payload) },
     ).then((result) => result.data),
   retryLatestNativeAgentRun: (conversationId: string) =>

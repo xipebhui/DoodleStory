@@ -3744,6 +3744,8 @@ function NativeAgentView({
     thumbnail_url: "",
   });
   const [content, setContent] = useState("");
+  const [followUpParentRunId, setFollowUpParentRunId] = useState<string | null>(null);
+  const [followUpIdempotencyKey, setFollowUpIdempotencyKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
@@ -3829,8 +3831,12 @@ function NativeAgentView({
   useEffect(() => {
     if (!routeConversationId) {
       setDetail(null);
+      setFollowUpParentRunId(null);
+      setFollowUpIdempotencyKey(null);
       return;
     }
+    setFollowUpParentRunId(null);
+    setFollowUpIdempotencyKey(null);
     void loadDetail(routeConversationId).catch((loadError) => {
       setError(loadError instanceof Error ? loadError.message : "会话加载失败");
     });
@@ -3840,6 +3846,9 @@ function NativeAgentView({
     [...(detail?.runs || [])]
       .reverse()
       .find((run) => activeAgentRunStatuses.has(run.status)) || null;
+  const followUpParentRun = detail?.runs.find(
+    (run) => run.id === followUpParentRunId,
+  ) || null;
   const cancellationPending = Boolean(
     activeRun
     && (
@@ -4178,25 +4187,30 @@ function NativeAgentView({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const retryingLatestRun = content.trim() === "重试";
+    const creatingFollowUp = Boolean(followUpParentRun);
+    const retryingLatestRun = !creatingFollowUp && content.trim() === "重试";
     if (!content.trim() || sending || activeRun) return;
+    if (followUpParentRunId && !followUpParentRun) {
+      setError("要续接的父 Run 已不在当前会话中，请重新选择");
+      return;
+    }
     if (retryingLatestRun && !detail) {
       setError("当前会话还没有可重试的任务");
       return;
     }
-    if (!retryingLatestRun && !skillVersionId) {
+    if (!creatingFollowUp && !retryingLatestRun && !skillVersionId) {
       setError("请先输入 @ 并添加一个已发布的 Skill");
       return;
     }
-    if (creationChannelId && !selectedCreationChannel?.bound_style) {
+    if (!creatingFollowUp && creationChannelId && !selectedCreationChannel?.bound_style) {
       setError("所选创作账号尚未绑定风格，请先前往频道账号管理完成绑定");
       return;
     }
-    if (youtubeChannelId && !selectedPublishableVideo) {
+    if (!creatingFollowUp && youtubeChannelId && !selectedPublishableVideo) {
       setError("选择 @频道后，还需要选择一个审核通过的视频");
       return;
     }
-    if (selectedYoutubeChannel && selectedPublishableVideo) {
+    if (!creatingFollowUp && selectedYoutubeChannel && selectedPublishableVideo) {
       const confirmed = window.confirm(
         [
           `确认创建真实 YouTube 发布请求？`,
@@ -4210,6 +4224,12 @@ function NativeAgentView({
       );
       if (!confirmed) return;
     }
+    const followUpRequestKey = creatingFollowUp
+      ? followUpIdempotencyKey || crypto.randomUUID()
+      : null;
+    if (creatingFollowUp && !followUpIdempotencyKey) {
+      setFollowUpIdempotencyKey(followUpRequestKey);
+    }
     setSending(true);
     setError("");
     try {
@@ -4218,9 +4238,14 @@ function NativeAgentView({
         (await api.createNativeAgentConversation({
           title: content.trim().slice(0, 40),
         }));
-      const run = retryingLatestRun
-        ? await api.retryLatestNativeAgentRun(conversation.id)
-        : await api.createNativeAgentRun(conversation.id, {
+      const run = creatingFollowUp && followUpParentRun
+        ? await api.createNativeAgentFollowUp(followUpParentRun.id, {
+            content,
+            idempotency_key: followUpRequestKey as string,
+          })
+        : retryingLatestRun
+          ? await api.retryLatestNativeAgentRun(conversation.id)
+          : await api.createNativeAgentRun(conversation.id, {
             content,
             skill_version_id: skillVersionId,
             style_id: creationChannelId ? null : styleId || null,
@@ -4238,8 +4263,10 @@ function NativeAgentView({
                     confirmed: true,
                   }
                 : null,
-          });
+            });
       setContent("");
+      setFollowUpParentRunId(null);
+      setFollowUpIdempotencyKey(null);
       setSelectedResources((current) =>
         clearNativeAgentPublishingResources(current),
       );
@@ -4252,7 +4279,11 @@ function NativeAgentView({
                 ? current.runs.map((existingRun) =>
                     existingRun.id === run.id ? run : existingRun
                   )
-                : [...current.runs, run],
+                : current.runs.some((existingRun) => existingRun.id === run.id)
+                  ? current.runs.map((existingRun) =>
+                      existingRun.id === run.id ? run : existingRun
+                    )
+                  : [...current.runs, run],
             }
           : current,
       );
@@ -4442,11 +4473,26 @@ function NativeAgentView({
                 ) + clockTick * 0
               : 0;
             return (
-              <article className="native-agent-run" key={run.id}>
+              <article
+                className="native-agent-run"
+                id={`native-agent-run-${run.id}`}
+                key={run.id}
+              >
                 <div className="native-agent-user-message">
                   {String(userItem?.payload.content || "")}
                 </div>
                 <div className="native-agent-run-meta">
+                  {run.parent_run_id ? (
+                    <button
+                      type="button"
+                      className="native-agent-parent-link"
+                      onClick={() => document
+                        .getElementById(`native-agent-run-${run.parent_run_id}`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    >
+                      续接自上一结果
+                    </button>
+                  ) : null}
                   <span>{run.skill_name} · v{run.skill_version}</span>
                   <span>{run.style_name}</span>
                   {run.creation_channel_id ? <span>创作账号：@{run.creation_channel_name}</span> : null}
@@ -4845,6 +4891,24 @@ function NativeAgentView({
                     {run.error_message}
                   </div>
                 ) : null}
+                {run.status === "succeeded" && !activeRun ? (
+                  <div className="native-agent-follow-up-action">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFollowUpParentRunId(run.id);
+                        setFollowUpIdempotencyKey(crypto.randomUUID());
+                        setResourceMenuOpen(false);
+                        setError("");
+                        window.requestAnimationFrame(() =>
+                          nativeComposerInputRef.current?.focus()
+                        );
+                      }}
+                    >
+                      <RefreshCw size={14} />基于此结果继续
+                    </button>
+                  </div>
+                ) : null}
               </article>
             );
           })}
@@ -4857,7 +4921,32 @@ function NativeAgentView({
         </section>
 
         <form className="native-agent-composer" onSubmit={submit}>
-          {selectedResources.length > 0 ? (
+          {followUpParentRun ? (
+            <div className="native-agent-follow-up-banner" role="status">
+              <div>
+                <strong>基于上一结果继续</strong>
+                <span>
+                  固定 {followUpParentRun.skill_name} · v{followUpParentRun.skill_version}
+                  {followUpParentRun.style_name
+                    ? ` · ${followUpParentRun.style_name}`
+                    : ""}
+                  {followUpParentRun.creation_channel_name
+                    ? ` · @${followUpParentRun.creation_channel_name}`
+                    : ""}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() => {
+                  setFollowUpParentRunId(null);
+                  setFollowUpIdempotencyKey(null);
+                }}
+              >
+                <X size={14} />取消续接
+              </button>
+            </div>
+          ) : selectedResources.length > 0 ? (
             <div className="native-agent-context-row" aria-label="本轮已引用资源">
               {selectedResources.map((resource) => (
                 <span
@@ -4892,7 +4981,7 @@ function NativeAgentView({
                 aria-label="添加本轮资源"
                 aria-haspopup="listbox"
                 aria-expanded={resourceMenuOpen}
-                disabled={sending || Boolean(activeRun)}
+                disabled={sending || Boolean(activeRun) || Boolean(followUpParentRun)}
                 onClick={() => {
                   if (resourceMenuOpen) {
                     setResourceMenuOpen(false);
@@ -5026,11 +5115,13 @@ function NativeAgentView({
                   setResourceMenuOpen(false);
                 }
               }}
-              placeholder="输入内容，键入 @ 添加 Skill、账号、Style 或其它资源…"
+              placeholder={followUpParentRun
+                ? "输入本轮的新目标；上一轮事实和产物会以只读快照提供给 Agent…"
+                : "输入内容，键入 @ 添加 Skill、账号、Style 或其它资源…"}
               disabled={sending || Boolean(activeRun)}
             />
           </div>
-          {youtubeChannelId ? (
+          {youtubeChannelId && !followUpParentRun ? (
             <div className="native-agent-publish-options">
               <div>
                 <span>发布可见性</span>
@@ -5072,6 +5163,8 @@ function NativeAgentView({
                 ? activeRun.status === "waiting_for_input"
                   ? "最终文案已保存；请在上方确认，或填写意见后要求修改。"
                   : "终止后不会再启动新的 Tool；已被 Provider 接收的请求可能仍会计费。"
+                : followUpParentRun
+                  ? "将创建独立的新 Run；继承上一轮固定资源和只读结果，但不会继承发布确认。"
                 : content.trim() === "重试"
                   ? "将继续最近一次 Run，并复用该 Run 固定的 Skill、Style 和成功资产；当前选择不会生效。"
                   : youtubeChannelId

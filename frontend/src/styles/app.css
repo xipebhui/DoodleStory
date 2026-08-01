@@ -8779,6 +8779,38 @@ textarea {
   font-size: 12px;
 }
 
+.native-agent-parent-link {
+  border: 1px solid rgba(94, 106, 210, 0.25);
+  border-radius: 999px;
+  background: rgba(94, 106, 210, 0.08);
+  color: #4d58b8;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+}
+
+.native-agent-follow-up-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.native-agent-follow-up-action button,
+.native-agent-follow-up-banner button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.native-agent-follow-up-action button {
+  border: 1px solid rgba(94, 106, 210, 0.28);
+  border-radius: 9px;
+  background: #fff;
+  color: #4d58b8;
+  cursor: pointer;
+  padding: 8px 11px;
+}
+
 .native-agent-tool-wait {
   display: flex;
   align-items: center;
@@ -9288,6 +9320,33 @@ textarea {
   border-radius: 14px;
   background: #111316;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.native-agent-follow-up-banner {
+  align-items: center;
+  background: rgba(94, 106, 210, 0.08);
+  border: 1px solid rgba(94, 106, 210, 0.2);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.native-agent-follow-up-banner div {
+  display: grid;
+  gap: 3px;
+}
+
+.native-agent-follow-up-banner span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.native-agent-follow-up-banner button {
+  border: 0;
+  background: transparent;
+  color: #4d58b8;
+  cursor: pointer;
 }
 
 .native-agent-context-row {

@@ -71,6 +71,21 @@ class NativeAgentRunCreate(BaseModel):
         return self
 
 
+class NativeAgentFollowUpCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=20_000)
+    idempotency_key: str = Field(min_length=8, max_length=160)
+
+    @field_validator("content", "idempotency_key")
+    @classmethod
+    def normalize_follow_up_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("字段不能为空")
+        return normalized
+
+
 class NativeAgentItemRead(BaseModel):
     id: str
     sequence: int
@@ -377,6 +392,8 @@ class DurablePanelRerunRequest(BaseModel):
 class NativeAgentRunRead(BaseModel):
     id: str
     conversation_id: str
+    parent_run_id: str | None
+    continued_from_checkpoint_id: str | None
     skill_version_id: str
     skill_name: str
     skill_version: int

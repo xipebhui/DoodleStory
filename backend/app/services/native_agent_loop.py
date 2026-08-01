@@ -1757,6 +1757,7 @@ def native_agent_instructions(
         "</skill>"
     )
     instructions += creation_account_context_instructions(run)
+    instructions += follow_up_context_instructions(run)
     if active_role is not None:
         instructions += (
             "\n\n<execution_context>\n"
@@ -1807,6 +1808,26 @@ def creation_account_context_instructions(run: NativeAgentRun) -> str:
     )
 
 
+def follow_up_context_instructions(run: NativeAgentRun) -> str:
+    if not run.continuation_context_json:
+        return ""
+    try:
+        context = json.loads(run.continuation_context_json)
+    except json.JSONDecodeError as exc:
+        raise NativeAgentLoopError("Follow-up Context 快照不是合法 JSON") from exc
+    if not isinstance(context, dict):
+        raise NativeAgentLoopError("Follow-up Context 快照必须是对象")
+    return (
+        "\n\n<follow_up_context>\n"
+        "以下是父 Run 成功结束时冻结的只读事实、Checkpoint 和产物。它们可以作为本轮的"
+        "既有依据，但不得修改、覆盖或声称由当前 Run 重新完成。当前用户输入是本轮唯一的新目标；"
+        "只执行该新目标，不要自行继续父 Run 中没有被明确要求的动作。父 Run 的发布对象引用不代表"
+        "当前 Run 获得了发布确认；没有当前 Run 的显式发布确认时禁止提交发布。\n"
+        f"{json.dumps(context, ensure_ascii=False, separators=(',', ':'))}\n"
+        "</follow_up_context>"
+    )
+
+
 def article_role_instructions(
     run: NativeAgentRun,
     workflow: CompiledArticleWorkflow,
@@ -1833,6 +1854,7 @@ def article_role_instructions(
         "</role>"
     )
     instructions += creation_account_context_instructions(run)
+    instructions += follow_up_context_instructions(run)
     if durable_task_key:
         task_constraint = {
             "research_topics": (

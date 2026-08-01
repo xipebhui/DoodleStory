@@ -874,6 +874,18 @@ class NativeAgentConversation(Base, TimestampMixin):
 class NativeAgentRun(Base, TimestampMixin):
     __tablename__ = "native_agent_runs"
     __table_args__ = (
+        CheckConstraint(
+            "(parent_run_id IS NULL AND continued_from_checkpoint_id IS NULL "
+            "AND follow_up_idempotency_key IS NULL "
+            "AND follow_up_request_hash IS NULL "
+            "AND continuation_context_json IS NULL) OR "
+            "(parent_run_id IS NOT NULL "
+            "AND continued_from_checkpoint_id IS NOT NULL "
+            "AND follow_up_idempotency_key IS NOT NULL "
+            "AND follow_up_request_hash IS NOT NULL "
+            "AND continuation_context_json IS NOT NULL)",
+            name="ck_native_agent_runs_follow_up_shape",
+        ),
         Index(
             "ix_native_agent_runs_conversation_created",
             "conversation_id",
@@ -885,6 +897,25 @@ class NativeAgentRun(Base, TimestampMixin):
     conversation_id: Mapped[str] = mapped_column(
         ForeignKey("native_agent_conversations.id", ondelete="CASCADE"),
         index=True,
+    )
+    parent_run_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    continued_from_checkpoint_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_checkpoints.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    follow_up_idempotency_key: Mapped[Optional[str]] = mapped_column(
+        String(160), nullable=True, unique=True
+    )
+    follow_up_request_hash: Mapped[Optional[str]] = mapped_column(
+        String(80), nullable=True
+    )
+    continuation_context_json: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
     )
     skill_version_id: Mapped[str] = mapped_column(
         ForeignKey("agent_skill_versions.id", ondelete="RESTRICT"),

@@ -117,6 +117,16 @@
   Artifact 作为带 ID/hash 的只读 snapshot 注入；父 Run 事实不可修改。
 - 本 Sprint 不实现 Probe。只读预算、Probe Artifact 和显式采纳留给 Sprint 149，Deferred
   Evaluation 继续保持延后。
+- 已完成 Follow-up 后端主链：新增父 Run/Checkpoint 关系、请求幂等键与 hash、64KB/50 产物的
+  完整 snapshot 上限和数据库形状约束；只有同 owner、同会话的成功 Run 且存在当前 Checkpoint
+  时才能创建。子 Run 固定继承 Skill/Style/账号与发布对象引用，但清除发布确认，并初始化独立的
+  文案或非文案 Durable Workflow。
+- 普通 Agent 和文案多角色 instructions 均已注入 `<follow_up_context>`，明确父事实只读、本轮输入
+  是唯一新目标、未重新完成父 Tool 且不得沿用发布确认。Run Projection/SSE 已返回父 Run 与来源
+  Checkpoint ID。
+- 页面已加入“基于此结果继续”、固定资源提示、取消续接、父子定位与稳定幂等键；提交失败保留
+  输入和父 Run 选择，Follow-up 模式禁止改选资源。专项后端 5 项、相关后端 54 项、前端 14 项及
+  生产构建已通过；开发库已升级到 `t1u2v3w4x5y6`。完整检查与浏览器验收待执行。
 - 合同：`docs/contracts/sprint-148-explicit-follow-up-run.md`。
 
 ## Sprint 143（已完成）

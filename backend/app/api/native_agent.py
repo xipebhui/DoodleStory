@@ -7,6 +7,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
@@ -70,6 +71,7 @@ from app.schemas.native_agent import (
     NativeAgentImageRead,
     NativeAgentItemRead,
     NativeAgentRunCreate,
+    NativeAgentFollowUpCreate,
     NativeAgentRunRead,
     NativeAgentStepRead,
     NativeAgentSubtitleRead,
@@ -111,6 +113,11 @@ from app.services.durable_agent_runtime import (
 from app.services.account_creation_context import (
     AccountCreationContextError,
     build_account_creation_context_snapshot,
+)
+from app.services.native_agent_follow_up import (
+    NativeAgentFollowUpError,
+    create_follow_up_run,
+    find_idempotent_follow_up,
 )
 
 
@@ -354,6 +361,8 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
     return NativeAgentRunRead(
         id=run.id,
         conversation_id=run.conversation_id,
+        parent_run_id=run.parent_run_id,
+        continued_from_checkpoint_id=run.continued_from_checkpoint_id,
         skill_version_id=run.skill_version_id,
         skill_name=run.skill_name_snapshot,
         skill_version=run.skill_version_snapshot,
@@ -945,6 +954,73 @@ async def create_native_agent_run(
     db.commit()
 
     await enqueue_native_agent_run(run.id)
+    return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+
+
+@router.post(
+    "/runs/{parent_run_id}/follow-ups",
+    response_model=ApiData[NativeAgentRunRead],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_native_agent_follow_up(
+    parent_run_id: str,
+    payload: NativeAgentFollowUpCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[NativeAgentRunRead]:
+    parent_run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == parent_run_id,
+            NativeAgentConversation.owner_user_id == user.id,
+        )
+    )
+    if parent_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="父 Run 不存在或不可访问",
+        )
+    try:
+        run, replayed = create_follow_up_run(
+            db,
+            parent_run=parent_run,
+            user=user,
+            payload=payload,
+        )
+        db.commit()
+    except NativeAgentFollowUpError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        try:
+            run = find_idempotent_follow_up(
+                db,
+                user=user,
+                parent_run_id=parent_run_id,
+                payload=payload,
+            )
+        except NativeAgentFollowUpError as replay_exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(replay_exc),
+            ) from replay_exc
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Follow-up 创建发生并发冲突，请使用相同幂等键重试",
+            ) from exc
+        replayed = True
+
+    if not replayed:
+        await enqueue_native_agent_run(run.id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
 
 

@@ -29,8 +29,8 @@ Follow-up Run；受控 Probe 和 Artifact 采纳留给 Sprint 149。
 - 新增 `POST /agent-loop/runs/{parent_run_id}/follow-ups`，请求包含新目标和客户端
   `idempotency_key`。
 - 相同 owner、parent、key 与相同 payload 返回同一子 Run；同 key 不同 payload 返回 409。
-- Follow-up 固定继承父 Run 的 Skill Version、Style 快照、创作账号 Context 以及结构化发布资源；
-  第一版不允许在创建 Follow-up 时替换这些资源。
+- Follow-up 固定继承父 Run 的 Skill Version、Style 快照、创作账号 Context 以及发布频道/视频的
+  只读引用；父 Run 的发布确认和确认时间不继承，第一版也不允许在 Follow-up 创建请求中替换资源。
 - 同一 Conversation 存在 active Run 时拒绝创建；成功创建后通过现有 in-process Worker 入队。
 
 ### 3. Runtime 注入与终态语义
@@ -97,7 +97,7 @@ Browser QA：
 ## Risks / Notes
 
 - continuation snapshot 进入模型上下文，必须有明确 schema 和大小上限；不允许静默截断。
-- 继承发布上下文不等于自动发布。外部副作用仍要求当前 Follow-up 的 Skill 授权和明确 Tool 调用。
+- 继承发布资源不等于继承发布授权；Follow-up 清除父 Run 的发布确认，不能调用发布 Tool。
 - 多级 Follow-up 允许形成线性 parent 链，但本 Sprint 不加载整条祖先链，只注入直接父 Run snapshot。
 
 ## Handoff
