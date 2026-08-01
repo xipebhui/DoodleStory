@@ -1,6 +1,6 @@
 # 进度记录
 
-## Sprint 144（进行中）
+## Sprint 144（已完成）
 
 - 已根据 2026-08-01 的最新决定收紧为后端优先：保留已调试的 Agent 页面、Skill、账号与 `@`
   资源交互；Sprint 144 只替换任务、审批、恢复和终态的后端事实，不重做页面。
@@ -17,6 +17,9 @@
   原 Agent 页面浏览器验证确认 Simple Agent Loop、Skill 管理、返回工作台、`@` Skill/Style
   菜单和资源标签保持不变。定向 42 项回归及 `./scripts/check.sh`（343 项后端测试、14 项前端
   测试、构建和 Remotion）通过。
+- 最终实现确认：Sprint 144 从规划基线只修改后端、Alembic、测试和文档；没有修改
+  `frontend/src`。当前页面继续由原 `NativeAgentView` 和 `/agent-loop` 支撑，后续 Sprint 的
+  前端控制重构不在本 Sprint 提前实施。
 - 首条链路固定为：初始计划 → 选题研究/确认 → 正文撰写/确认 → Review/确认 → 完成。非终态
   Gate 的批准必须在同一 Run 内推进后继 Task；“继续/重试”不再依赖精确自然语言。
 - Runtime 将采用 Run → 动态 Task 图 → Attempt → append-only Checkpoint → Artifact/Gate 的
