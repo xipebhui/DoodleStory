@@ -109,7 +109,7 @@
   仍显示 running 的收敛问题。操作手册见 `docs/deployment/agent-durable-runtime-operations.md`，
   QA 报告见 `docs/qa/sprint-147-durable-control-and-recovery-report.md`。
 
-## Sprint 148（进行中）
+## Sprint 148（已完成）
 
 - 已激活显式 Follow-up Run 合同：只允许从同一 owner/Conversation 的成功终态 Run 续接固定
   Checkpoint，创建隔离的新 Run、Workflow、Task、Attempt 和 Effect；不靠“继续”文本猜测来源。
@@ -125,9 +125,15 @@
   是唯一新目标、未重新完成父 Tool 且不得沿用发布确认。Run Projection/SSE 已返回父 Run 与来源
   Checkpoint ID。
 - 页面已加入“基于此结果继续”、固定资源提示、取消续接、父子定位与稳定幂等键；提交失败保留
-  输入和父 Run 选择，Follow-up 模式禁止改选资源。专项后端 5 项、相关后端 54 项、前端 14 项及
-  生产构建已通过；开发库已升级到 `t1u2v3w4x5y6`。完整检查与浏览器验收待执行。
+  输入和父 Run 选择，Follow-up 模式禁止改选资源。专项后端 6 项与 `./scripts/check.sh` 全部通过：
+  367 项后端测试、空 SQLite 全量迁移、14 项前端测试、生产构建、Remotion 类型检查与 5 项测试；
+  开发库已升级到 `t1u2v3w4x5y6`。
+- 隔离 SQLite + 真实 FastAPI/Vite 浏览器验收确认成功/失败 Run 按钮边界、固定资源提示、取消模式
+  保留输入、真实 409 后保留父选择和文本、父子标签刷新、幂等 API 重放，以及登录后刷新 0 console
+  error/warning。浏览器验收发现并修复了非文案空 Workflow 被 Worker 永久跳过的问题；现在只有
+  “存在 Durable Task 但没有 ready Attempt”的 Workflow 才会阻止 Native Loop。
 - 合同：`docs/contracts/sprint-148-explicit-follow-up-run.md`。
+- QA：`docs/qa/sprint-148-explicit-follow-up-run-report.md`。
 
 ## Sprint 143（已完成）
 

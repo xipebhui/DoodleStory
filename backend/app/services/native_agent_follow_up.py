@@ -79,7 +79,10 @@ def _continuation_context(
 ) -> str:
     durable_artifacts = db.scalars(
         select(DurableAgentArtifact)
-        .where(DurableAgentArtifact.workflow_id == workflow.id)
+        .where(
+            DurableAgentArtifact.workflow_id == workflow.id,
+            DurableAgentArtifact.status == "committed",
+        )
         .order_by(
             DurableAgentArtifact.created_at,
             DurableAgentArtifact.artifact_key,
@@ -88,7 +91,10 @@ def _continuation_context(
     ).all()
     native_artifacts = db.scalars(
         select(NativeAgentArtifact)
-        .where(NativeAgentArtifact.run_id == parent_run.id)
+        .where(
+            NativeAgentArtifact.run_id == parent_run.id,
+            NativeAgentArtifact.status.in_(("completed", "approved")),
+        )
         .order_by(
             NativeAgentArtifact.created_at,
             NativeAgentArtifact.artifact_type,

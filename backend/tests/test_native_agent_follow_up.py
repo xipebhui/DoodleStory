@@ -1,6 +1,7 @@
+import asyncio
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
@@ -12,6 +13,7 @@ from app.models.entities import (
     AgentSkillVersion,
     DurableAgentArtifact,
     DurableAgentTask,
+    NativeAgentArtifact,
     NativeAgentConversation,
     NativeAgentRun,
     User,
@@ -24,6 +26,7 @@ from app.services.native_agent_follow_up import (
     create_follow_up_run,
 )
 from app.services.native_agent_loop import native_agent_instructions
+from app.services import native_agent_worker
 
 
 class NativeAgentFollowUpTests(unittest.TestCase):
@@ -132,6 +135,31 @@ class NativeAgentFollowUpTests(unittest.TestCase):
         return NativeAgentFollowUpCreate(content=content, idempotency_key=key)
 
     def test_create_follow_up_freezes_parent_context_and_isolates_workflow(self) -> None:
+        self.db.add_all(
+            [
+                NativeAgentArtifact(
+                    run_id=self.parent.id,
+                    artifact_type="article_draft",
+                    schema_version=1,
+                    version=1,
+                    status="approved",
+                    producer_role="writer",
+                    content_json='{"body_markdown":"已批准正文"}',
+                    content_hash="sha256:approved-native",
+                ),
+                NativeAgentArtifact(
+                    run_id=self.parent.id,
+                    artifact_type="article_review",
+                    schema_version=1,
+                    version=1,
+                    status="rejected",
+                    producer_role="reviewer",
+                    content_json='{"summary":"已拒绝内容"}',
+                    content_hash="sha256:rejected-native",
+                ),
+            ]
+        )
+        self.db.commit()
         checkpoint_id = self.parent_workflow.current_checkpoint_id
         child, replayed = create_follow_up_run(
             self.db,
@@ -155,6 +183,12 @@ class NativeAgentFollowUpTests(unittest.TestCase):
             "sha256:artifact",
             context["durable_artifacts"][0]["content_hash"],
         )
+        self.assertEqual(1, len(context["native_artifacts"]))
+        self.assertEqual(
+            "sha256:approved-native",
+            context["native_artifacts"][0]["content_hash"],
+        )
+        self.assertNotIn("已拒绝内容", child.continuation_context_json)
         child_workflow = workflow_for_native_run(self.db, child.id)
         self.assertIsNotNone(child_workflow)
         self.assertNotEqual(self.parent_workflow.id, child_workflow.id)
@@ -257,6 +291,51 @@ class NativeAgentFollowUpTests(unittest.TestCase):
                     user=self.user,
                     payload=self._payload(),
                 )
+
+    def test_non_article_follow_up_with_empty_workflow_reaches_native_loop(self) -> None:
+        self.version.tool_names_json = "[]"
+        child, _ = create_follow_up_run(
+            self.db,
+            parent_run=self.parent,
+            user=self.user,
+            payload=self._payload(),
+        )
+        self.db.commit()
+        child_workflow = workflow_for_native_run(self.db, child.id)
+        self.assertEqual(
+            0,
+            len(
+                self.db.scalars(
+                    select(DurableAgentTask).where(
+                        DurableAgentTask.workflow_id == child_workflow.id
+                    )
+                ).all()
+            ),
+        )
+
+        async def exercise_worker() -> AsyncMock:
+            execute = AsyncMock()
+            queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+            with (
+                patch.object(native_agent_worker, "SessionLocal", self.Session),
+                patch.object(native_agent_worker, "_queue", queue),
+                patch.object(
+                    native_agent_worker,
+                    "execute_native_agent_run",
+                    execute,
+                ),
+            ):
+                worker_task = asyncio.create_task(native_agent_worker._worker_loop())
+                try:
+                    await queue.put(("run", child.id))
+                    await queue.join()
+                finally:
+                    worker_task.cancel()
+                    await asyncio.gather(worker_task, return_exceptions=True)
+            return execute
+
+        execute = asyncio.run(exercise_worker())
+        execute.assert_awaited_once_with(child.id)
 
 
 if __name__ == "__main__":

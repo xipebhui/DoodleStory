@@ -7,7 +7,7 @@ import logging
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
-from app.models.entities import NativeAgentRun, NativeAgentStep
+from app.models.entities import DurableAgentTask, NativeAgentRun, NativeAgentStep
 from app.models.enums import (
     AgentRunStatus,
     NativeAgentStepStatus,
@@ -98,7 +98,18 @@ async def _worker_loop() -> None:
                 continue
             if durable_enabled and durable_attempt is None:
                 with SessionLocal() as db:
-                    if workflow_for_native_run(db, run_id) is not None:
+                    workflow = workflow_for_native_run(db, run_id)
+                    has_durable_tasks = (
+                        db.scalar(
+                            select(DurableAgentTask.id)
+                            .where(DurableAgentTask.workflow_id == workflow.id)
+                            .limit(1)
+                        )
+                        is not None
+                        if workflow is not None
+                        else False
+                    )
+                    if has_durable_tasks:
                         logger.info(
                             "native agent run skipped because durable workflow has no ready attempt run_id=%s",
                             run_id,

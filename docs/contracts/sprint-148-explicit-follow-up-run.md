@@ -2,7 +2,7 @@
 
 ## Status
 
-Active。承接 Sprint 147 的统一控制与恢复闭环。本 Sprint 只实现从成功终态 Run 显式创建隔离的
+Completed。承接 Sprint 147 的统一控制与恢复闭环。本 Sprint 只实现从成功终态 Run 显式创建隔离的
 Follow-up Run；受控 Probe 和 Artifact 采纳留给 Sprint 149。
 
 ## Goal
