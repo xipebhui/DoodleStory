@@ -14,6 +14,8 @@ from app.models.entities import (
     DurableAgentTask,
     DurableAgentWorkflow,
     NativeAgentConversation,
+    NativeAgentArticleApproval,
+    NativeAgentArtifact,
     NativeAgentRun,
     User,
 )
@@ -21,6 +23,7 @@ from app.models.enums import AgentRunStatus, AgentSkillStatus
 from app.services.durable_agent_runtime import (
     claim_attempt,
     initialize_workflow,
+    mirror_native_article_approval,
     open_gate,
     record_artifact,
     resolve_gate,
@@ -184,6 +187,55 @@ class DurableAgentRuntimeTests(unittest.TestCase):
         self.assertEqual("interrupted", attempt.status)
         replacement = self.db.get(type(attempt), recovered[0])
         self.assertEqual("resume", replacement.attempt_kind)
+
+    def test_legacy_candidate_approval_maps_to_topic_gate(self) -> None:
+        workflow = initialize_workflow(self.db, native_run=self.run)
+        native_artifact = NativeAgentArtifact(
+            run_id=self.run.id,
+            artifact_type="final_article",
+            schema_version=1,
+            version=1,
+            status="awaiting_approval",
+            producer_role="director",
+            content_json='{"title":"候选选题","body_markdown":"topic_candidates：第一个选题"}',
+            content_hash="sha256:legacy-topic",
+        )
+        self.db.add(native_artifact)
+        self.db.flush()
+        native_approval = NativeAgentArticleApproval(
+            run_id=self.run.id,
+            artifact_id=native_artifact.id,
+            artifact_hash=native_artifact.content_hash,
+            status="pending",
+        )
+        self.db.add(native_approval)
+        self.db.commit()
+
+        gate = mirror_native_article_approval(
+            self.db,
+            native_run=self.run,
+            native_approval=native_approval,
+        )
+        attempts = resolve_gate(
+            self.db,
+            gate=gate,
+            user=self.user,
+            decision="approve",
+            feedback="使用第一个选题就可以",
+        )
+        self.db.commit()
+
+        self.assertEqual(workflow.id, gate.workflow_id)
+        self.assertEqual("topic_selection", gate.purpose)
+        self.assertEqual("advance_to_draft", gate.on_approve_action)
+        self.assertEqual(1, len(attempts))
+        draft_task = self.db.scalar(
+            select(DurableAgentTask).where(
+                DurableAgentTask.workflow_id == workflow.id,
+                DurableAgentTask.task_key == "write_draft",
+            )
+        )
+        self.assertEqual(draft_task.id, attempts[0].task_id)
 
 
 if __name__ == "__main__":

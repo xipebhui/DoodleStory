@@ -345,6 +345,13 @@ def mirror_native_article_approval(
             "article_draft_review",
             "advance_to_review",
         )
+    elif gate_count >= 2:
+        gate_key, artifact_key, purpose, action = (
+            "editorial_review_gate",
+            "review_draft",
+            "editorial_review",
+            "finish_run",
+        )
     else:
         gate_key, artifact_key, purpose, action = (
             (
@@ -369,19 +376,27 @@ def mirror_native_article_approval(
     )
     if source_task is None:
         raise DurableAgentRuntimeError("Durable Artifact Task 不存在")
-    artifact = DurableAgentArtifact(
-        workflow_id=workflow.id,
-        task_id=source_task.id,
-        artifact_key=artifact_key,
-        artifact_type=artifact_key,
-        version=1,
-        content_json=native_approval.artifact.content_json,
-        content_hash=native_approval.artifact_hash,
+    artifact = db.scalar(
+        select(DurableAgentArtifact).where(
+            DurableAgentArtifact.workflow_id == workflow.id,
+            DurableAgentArtifact.task_id == source_task.id,
+            DurableAgentArtifact.content_hash == native_approval.artifact_hash,
+        )
     )
-    db.add(artifact)
-    db.flush()
-    source_task.status = "succeeded"
-    source_task.finished_at = _now()
+    if artifact is None:
+        artifact = DurableAgentArtifact(
+            workflow_id=workflow.id,
+            task_id=source_task.id,
+            artifact_key=artifact_key,
+            artifact_type=artifact_key,
+            version=1,
+            content_json=native_approval.artifact.content_json,
+            content_hash=native_approval.artifact_hash,
+        )
+        db.add(artifact)
+        db.flush()
+        source_task.status = "succeeded"
+        source_task.finished_at = _now()
     return open_gate(
         db,
         workflow=workflow,
@@ -390,6 +405,85 @@ def mirror_native_article_approval(
         purpose=purpose,
         on_approve_action=action,
         native_approval_id=native_approval.id,
+    )
+
+
+def sync_native_artifact(
+    db: Session,
+    *,
+    native_run: NativeAgentRun,
+    artifact_type: str,
+    content: dict[str, object],
+) -> DurableAgentArtifact | None:
+    workflow = workflow_for_native_run(db, native_run.id)
+    if workflow is None:
+        return None
+    task_key = current_task_key(db, native_run_id=native_run.id)
+    expected = {
+        "research_topics": "topic_candidates",
+        "write_draft": "article_draft",
+        "review_draft": "article_review",
+    }.get(task_key or "")
+    if expected != artifact_type:
+        return None
+    task = db.scalar(
+        select(DurableAgentTask).where(
+            DurableAgentTask.workflow_id == workflow.id,
+            DurableAgentTask.task_key == task_key,
+        )
+    )
+    if task is None:
+        return None
+    attempt = db.get(DurableAgentAttempt, task.current_attempt_id)
+    if attempt is not None and attempt.status == "prepared":
+        claim_attempt(
+            db,
+            attempt_id=attempt.id,
+            worker_id="native-agent-adapter",
+        )
+    return record_artifact(
+        db,
+        workflow=workflow,
+        task_key=task_key,
+        artifact_type=(
+            "topic_candidates"
+            if task_key == "research_topics"
+            else artifact_type
+        ),
+        content=content,
+    )
+
+
+def can_complete_native_run(db: Session, *, native_run_id: str) -> bool:
+    workflow = workflow_for_native_run(db, native_run_id)
+    if workflow is None:
+        return True
+    if workflow.status == "waiting_for_input":
+        return False
+    tasks = db.scalars(
+        select(DurableAgentTask).where(
+            DurableAgentTask.workflow_id == workflow.id,
+            DurableAgentTask.required.is_(True),
+        )
+    ).all()
+    return bool(tasks) and all(task.status == "succeeded" for task in tasks)
+
+
+def needs_native_review_gate(db: Session, *, native_run_id: str) -> bool:
+    workflow = workflow_for_native_run(db, native_run_id)
+    if workflow is None or workflow.current_gate_id is not None:
+        return False
+    tasks = {
+        task.task_key: task
+        for task in db.scalars(
+            select(DurableAgentTask).where(
+                DurableAgentTask.workflow_id == workflow.id
+            )
+        ).all()
+    }
+    return (
+        tasks["review_draft"].status == "succeeded"
+        and tasks["editorial_review_gate"].status == "pending"
     )
 
 

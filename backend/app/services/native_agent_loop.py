@@ -83,8 +83,10 @@ from app.services.native_agent_persistence import (
 from app.services.native_article_workflow import (
     ARTICLE_DRAFT,
     ARTICLE_REVIEW,
+    TOPIC_CANDIDATES,
     has_pending_article_approval,
     load_compiled_workflow_plan,
+    request_article_artifact_approval,
     request_final_article_approval,
     save_article_artifact,
     save_compiled_workflow_plan,
@@ -1872,13 +1874,30 @@ def build_article_agent_tools(
 
     async def extract_writer_output(result) -> str:
         output = ArticleDraftOutput.model_validate(result.final_output)
+        artifact_type = (
+            TOPIC_CANDIDATES
+            if durable_task_key == "research_topics"
+            else ARTICLE_DRAFT
+        )
         artifact = save_article_artifact(
             run.id,
-            artifact_type=ARTICLE_DRAFT,
+            artifact_type=artifact_type,
             producer_role="writer",
             content=output.model_dump(mode="json"),
             session_factory=store.session_factory,
         )
+        if durable_task_key in {"research_topics", "write_draft"}:
+            approval = request_article_artifact_approval(
+                run.id,
+                artifact_id=str(artifact["id"]),
+                purpose=(
+                    "topic_selection"
+                    if durable_task_key == "research_topics"
+                    else "article_draft_review"
+                ),
+                session_factory=store.session_factory,
+            )
+            return json.dumps(approval, ensure_ascii=False)
         return json.dumps(
             {"status": "succeeded", "artifact": artifact},
             ensure_ascii=False,
@@ -1893,6 +1912,14 @@ def build_article_agent_tools(
             content=output.model_dump(mode="json"),
             session_factory=store.session_factory,
         )
+        if durable_task_key == "review_draft":
+            approval = request_article_artifact_approval(
+                run.id,
+                artifact_id=str(artifact["id"]),
+                purpose="editorial_review",
+                session_factory=store.session_factory,
+            )
+            return json.dumps(approval, ensure_ascii=False)
         return json.dumps(
             {"status": "succeeded", "artifact": artifact},
             ensure_ascii=False,
@@ -1910,7 +1937,7 @@ def build_article_agent_tools(
         )
         return [ToolOutputText(text=json.dumps(result, ensure_ascii=False))]
 
-    return [
+    tools = [
         writer.as_tool(
             tool_name="write_article",
             tool_description=(
@@ -1938,6 +1965,11 @@ def build_article_agent_tools(
             ),
         ),
     ]
+    if durable_task_key in {"research_topics", "write_draft"}:
+        return [tools[0]]
+    if durable_task_key == "review_draft":
+        return [tools[1]]
+    return tools
 
 
 async def execute_native_agent_run(
@@ -2340,6 +2372,17 @@ async def execute_native_agent_run(
                 store.pause_for_article_approval(final_output)
                 terminal_status = AgentRunStatus.waiting_for_input
             else:
+                from app.services.durable_agent_runtime import can_complete_native_run
+
+                with SessionLocal() as durable_db:
+                    can_complete = can_complete_native_run(
+                        durable_db,
+                        native_run_id=run_id,
+                    )
+                if not can_complete:
+                    raise NativeAgentLoopError(
+                        "当前 Durable Task 尚未完成或仍等待人工 Gate，不能将 Run 标记成功"
+                    )
                 store.complete_run(final_output)
                 terminal_status = AgentRunStatus.succeeded
             with SessionLocal() as db:

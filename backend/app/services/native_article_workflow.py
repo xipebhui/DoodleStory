@@ -22,6 +22,7 @@ from app.services.native_agent_persistence import add_native_agent_event
 ARTICLE_DRAFT = "article_draft"
 ARTICLE_REVIEW = "article_review"
 FINAL_ARTICLE = "final_article"
+TOPIC_CANDIDATES = "topic_candidates"
 COMPILED_WORKFLOW_PLAN_SCHEMA_VERSION = 1
 
 
@@ -155,7 +156,7 @@ def save_article_artifact(
     content: dict[str, object],
     session_factory: sessionmaker = SessionLocal,
 ) -> dict[str, object]:
-    if artifact_type not in {ARTICLE_DRAFT, ARTICLE_REVIEW}:
+    if artifact_type not in {TOPIC_CANDIDATES, ARTICLE_DRAFT, ARTICLE_REVIEW}:
         raise NativeArticleWorkflowError("不支持的子 Agent Artifact 类型")
     content_json = _json_dumps(content)
     digest = _content_hash(content_json)
@@ -199,9 +200,11 @@ def save_article_artifact(
             raise NativeArticleWorkflowError("文案工作流 Artifact Checkpoint 数据损坏")
         artifacts[artifact_type] = artifact.id
         checkpoint["schema_version"] = 1
-        checkpoint["phase"] = (
-            "draft_ready" if artifact_type == ARTICLE_DRAFT else "review_ready"
-        )
+        checkpoint["phase"] = {
+            TOPIC_CANDIDATES: "topic_candidates_ready",
+            ARTICLE_DRAFT: "draft_ready",
+            ARTICLE_REVIEW: "review_ready",
+        }[artifact_type]
         checkpoint["workflow_revision"] = run.workflow_revision
         run.workflow_phase = str(checkpoint["phase"])
         run.workflow_checkpoint_json = _json_dumps(checkpoint)
@@ -216,6 +219,39 @@ def save_article_artifact(
                 "producer_role": producer_role,
             },
         )
+        from app.services.durable_agent_runtime import sync_native_artifact
+
+        sync_native_artifact(
+            db,
+            native_run=run,
+            artifact_type=artifact_type,
+            content=content,
+        )
+        if artifact_type == ARTICLE_REVIEW:
+            from app.services.durable_agent_runtime import needs_native_review_gate
+
+            if needs_native_review_gate(db, native_run_id=run.id):
+                artifact.status = "awaiting_approval"
+                approval = NativeAgentArticleApproval(
+                    run_id=run.id,
+                    artifact_id=artifact.id,
+                    artifact_hash=artifact.content_hash,
+                    status="pending",
+                )
+                db.add(approval)
+                db.flush()
+                run.workflow_phase = "waiting_for_editorial_review"
+                add_native_agent_event(
+                    db,
+                    run_id=run.id,
+                    event_type="approval.requested",
+                    payload={
+                        "approval_id": approval.id,
+                        "artifact_id": artifact.id,
+                        "artifact_type": artifact.artifact_type,
+                        "version": artifact.version,
+                    },
+                )
         db.commit()
         return _artifact_payload(artifact)
 
@@ -338,6 +374,75 @@ def request_final_article_approval(
         return {
             "status": "waiting_for_approval",
             "artifact": _artifact_payload(artifact),
+            "approval_id": approval.id,
+        }
+
+
+def request_article_artifact_approval(
+    run_id: str,
+    *,
+    artifact_id: str,
+    purpose: str,
+    session_factory: sessionmaker = SessionLocal,
+) -> dict[str, object]:
+    with session_factory() as db:
+        run = db.get(NativeAgentRun, run_id)
+        if run is None:
+            raise NativeArticleWorkflowError("Native Agent Run 不存在")
+        stored = db.get(NativeAgentArtifact, artifact_id)
+        if stored is None:
+            raise NativeArticleWorkflowError("待审批 Artifact 不存在")
+        if stored.approval is not None and stored.approval.status == "pending":
+            return {
+                "status": "waiting_for_approval",
+                "artifact": _artifact_payload(stored),
+                "approval_id": stored.approval.id,
+            }
+        if stored.approval is not None:
+            raise NativeArticleWorkflowError("Artifact 审批已经处理，不能重复申请")
+        stored.status = "awaiting_approval"
+        approval = NativeAgentArticleApproval(
+            run_id=run.id,
+            artifact_id=stored.id,
+            artifact_hash=stored.content_hash,
+            status="pending",
+        )
+        db.add(approval)
+        db.flush()
+        checkpoint = _checkpoint(run)
+        checkpoint.update(
+            {
+                "schema_version": 1,
+                "phase": f"waiting_for_{purpose}",
+                "pending_approval_id": approval.id,
+                "workflow_revision": run.workflow_revision,
+            }
+        )
+        run.workflow_phase = f"waiting_for_{purpose}"
+        run.workflow_checkpoint_json = _json_dumps(checkpoint)
+        add_native_agent_event(
+            db,
+            run_id=run.id,
+            event_type="approval.requested",
+            payload={
+                "approval_id": approval.id,
+                "artifact_id": stored.id,
+                "artifact_type": stored.artifact_type,
+                "version": stored.version,
+                "purpose": purpose,
+            },
+        )
+        from app.services.durable_agent_runtime import mirror_native_article_approval
+
+        mirror_native_article_approval(
+            db,
+            native_run=run,
+            native_approval=approval,
+        )
+        db.commit()
+        return {
+            "status": "waiting_for_approval",
+            "artifact": _artifact_payload(stored),
             "approval_id": approval.id,
         }
 

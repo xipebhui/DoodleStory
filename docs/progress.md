@@ -4,6 +4,19 @@
 
 - 已根据 2026-08-01 的最新决定收紧为后端优先：保留已调试的 Agent 页面、Skill、账号与 `@`
   资源交互；Sprint 144 只替换任务、审批、恢复和终态的后端事实，不重做页面。
+- 已新增后端 Durable Workflow、Task、Attempt、Checkpoint、Artifact、Gate 与 Tool Effect 表；它们
+  通过 `native_run_id` 关联现有 `NativeAgentRun`，不删除 `native_agent_*` 表、不替换
+  `/agent-loop` 请求/响应形状。
+- 现有 Run 创建会初始化唯一 Durable Workflow；原页面产生的候选选题审批会镜像为
+  `topic_selection` Gate。用户批准“使用第一个选题就可以”后，后端写回同一 Run 的持久化上下文
+  并准备正文 Attempt，而不是把 Run 标记成功或创建新的“继续”Run。
+- 已将现有 Writer/Reviewer 产物同步到 Durable Task；当前 Durable Task 会限制旧 Loop 只暴露
+  当前阶段的 Writer 或 Reviewer Tool，候选选题、正文和 Review 依次使用现有页面可见的审批
+  容器。旧 Loop 在 Durable required Task 未完成或仍有 Gate 时不能将 Run 标记成功。
+- 迁移副本验证新增 7 张 Durable 后端表后仍保留 34 用户、21 风格、18 频道和 82 条传统任务；
+  原 Agent 页面浏览器验证确认 Simple Agent Loop、Skill 管理、返回工作台、`@` Skill/Style
+  菜单和资源标签保持不变。定向 42 项回归及 `./scripts/check.sh`（343 项后端测试、14 项前端
+  测试、构建和 Remotion）通过。
 - 首条链路固定为：初始计划 → 选题研究/确认 → 正文撰写/确认 → Review/确认 → 完成。非终态
   Gate 的批准必须在同一 Run 内推进后继 Task；“继续/重试”不再依赖精确自然语言。
 - Runtime 将采用 Run → 动态 Task 图 → Attempt → append-only Checkpoint → Artifact/Gate 的
