@@ -2,7 +2,8 @@
 
 ## Status
 
-Draft。本文只定义改造范围和验收标准，尚未授权实施。
+Active。本文按 2026-08-01 的最新决定实施：先替换后端 Durable Runtime，保留已经验收的
+`/agent` 页面、Skill 管理、账号管理和 `@` 资源交互。前端正式控制与展示重构留到后续 Sprint。
 
 ## Goal
 
@@ -50,17 +51,15 @@ Conversation
 
 ## Product Contract
 
-### 聊天优先的呈现
+### 现有聊天界面保持稳定
 
-- `/agent` 主界面继续是会话列表和聊天，不新增任务后台、DAG 画布或用户可编辑工作流。
-- Run 启动后，聊天中展示一张简洁“本次计划”卡：说明当前目标、已知阶段与近端确认点。例如：
-  “先研究账号和候选选题；你确认选题后，再写正文和审稿。”
-- 任务运行时，聊天原位更新阶段摘要或追加有意义的系统消息，例如：
-  “候选选题已完成，等待你的确认”“正文 v2 已交给审稿”“Review 建议修改结尾”。
-- 用户可展开“查看本次计划”，查看当前已知阶段、自然语言状态、已完成产物与近端依赖。尚未执行
-  的后续阶段必须标识为“后续计划”，允许在上游产物、用户决定或 Review 后受控调整。
-- Task ID、Attempt、lease、模型 reasoning、Tool arguments、原始 Provider response、完整系统
-  Prompt 和 chain-of-thought 不进入聊天主流；仅允许在权限保护的运行详情中提供脱敏诊断。
+- 现有 `/agent`、Skill 管理、账号管理、`@` 资源引用、会话侧栏和聊天展示保持不动。
+- 本 Sprint 不删除或重做 `NativeAgentView`、`nativeAgentResources`、`nativeAgentScroll`、现有
+  `/agent-loop` 请求/响应形状或已调试的页面交互。
+- 新 Runtime 通过后端 adapter 向现有页面提供同一类会话、Run、Artifact、审批与 SSE 数据；页面
+  不能直接读取 Task、Attempt、lease、模型 reasoning、Tool 参数或 Provider 原始内容。
+- 聊天计划卡、阶段摘要和新的前端控制界面属于 Sprint 147；本 Sprint 只保证现有页面不会出现
+  “批准选题后终态”或“终态仍等待执行”的错误状态。
 
 ### 多阶段人工 Gate
 
@@ -90,7 +89,7 @@ Conversation
 
 ### 1. 唯一 Durable Runtime 数据模型
 
-- 建立新的统一 Agent 运行时表和破坏性迁移，至少覆盖：
+- 建立新的后端 Durable Runtime 表和迁移，至少覆盖：
   - Workflow Run；
   - Task；
   - Task Dependency；
@@ -155,12 +154,11 @@ Conversation
 
 - 迁移前只备份明确的本地数据库文件；保留用户、Skill、Style、频道、FileAsset、传统生成任务
   和传统资产数据。
-- 删除当前 Native Agent 的错误控制层：覆盖式文章 Checkpoint、整 Run SDK Session 恢复语义、
-  `/agent-loop` 控制 API、基于原始 Response 的主界面投影及精确字符串“继续/重试”路由。
-- 删除未挂载旧 Agent 控制面及其重复的类型、测试、前端不可达代码；不保留旧 API、旧表、双写、
-  compatibility adapter、占位实现或静默 fallback。
-- 共享 Skill 管理、资源解析、账号/Style/频道快照、领域 Tool adapter、传统图片/视频任务及
-  observability 基础设施，只能通过新 Runtime 的明确接口接回。
+- 保留现有 `/agent-loop` API 及其前端请求/响应形状，改由后端 adapter 映射到新 Runtime；这不是
+  双写，Durable Runtime 是任务、审批、恢复和终态的唯一事实，旧 Native 表仅继续承载现有页面
+  的消息与领域展示数据，直到后续前端 cutover。
+- 不删除或改写 Skill、账号、Style、频道、FileAsset、传统任务、已调试页面组件和资源引用能力。
+- 未挂载旧 Agent 控制面仍应在后续清理，但不应影响当前 Native Agent 前端。
 
 ## Out of Scope
 
@@ -173,10 +171,9 @@ Conversation
 
 ## Deliverables
 
-- 新的 Alembic migration、唯一 Durable Runtime ORM/Schema/API/Worker。
+- Durable Runtime 后端表、ORM、Service、Worker 和现有 `/agent-loop` adapter。
 - `article-creation-team` 的初始计划、三个人工 Gate、Checkpoint 恢复和局部修订链路。
-- `/agent` 的聊天式计划卡、阶段摘要、Artifact/Gate 卡、SSE 收敛和折叠式运行详情。
-- 事故回归 fixture、Task/Attempt/Checkpoint/Gate/lease/API/SSE/前端测试。
+- 事故回归 fixture、Task/Attempt/Checkpoint/Gate/lease/API/SSE 测试。
 - 更新 `docs/spec.md`、`docs/progress.md`、运行时操作说明与 QA 报告。
 
 ## Done Means
@@ -219,8 +216,8 @@ Database and recovery checks:
 
 Browser QA:
 
-- 在真实前后端完成：创建会话、查看本次计划、选题批准、正文批准、Review 退回并修订、Review
-  批准、刷新、SSE 重连和后端重启恢复。
+- 在真实前后端完成：使用保留的现有页面创建会话、选题批准、正文批准、Review 退回并修订、
+  Review 批准、刷新、SSE 重连和后端重启恢复。
 - 记录真实 Conversation、Run、Task、Attempt、Checkpoint、Gate ID 和必要截图到 QA 报告；
   浏览器控制台不得有 error/warning。
 

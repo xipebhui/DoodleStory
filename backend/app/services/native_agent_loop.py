@@ -1681,6 +1681,7 @@ def article_role_instructions(
     workflow: CompiledArticleWorkflow,
     *,
     active_role: Literal["director", "writer", "reviewer"],
+    durable_task_key: str | None = None,
 ) -> str:
     role = workflow.role(active_role)
     shared_constraints = "\n".join(
@@ -1701,6 +1702,27 @@ def article_role_instructions(
         "</role>"
     )
     instructions += creation_account_context_instructions(run)
+    if durable_task_key:
+        task_constraint = {
+            "research_topics": (
+                "当前 Durable Task 是候选选题。只能生成候选选题并等待用户确认；"
+                "不得生成 approved_topic、正文、Review、封面或媒体计划。"
+            ),
+            "write_draft": (
+                "当前 Durable Task 是正文。只能基于已经批准的选题生成完整正文草稿；"
+                "不得重新生成候选选题、Review、封面或媒体计划。"
+            ),
+            "review_draft": (
+                "当前 Durable Task 是 Review。只能审阅当前正文并输出审稿结论；"
+                "不得改写正文、重新选题或生成媒体计划。"
+            ),
+        }.get(durable_task_key)
+        if task_constraint:
+            instructions += (
+                "\n\n<durable_task_constraint>\n"
+                f"{task_constraint}\n"
+                "</durable_task_constraint>"
+            )
     if active_role == "director":
         steps = [
             step.model_dump(mode="json")
@@ -1815,6 +1837,7 @@ def build_article_agent_tools(
     model: str,
     store: NativeAgentStore,
     hooks: NativeModelMetricHooks,
+    durable_task_key: str | None = None,
 ) -> list[FunctionTool]:
     model_settings = ModelSettings(
         retry=ModelRetrySettings(max_retries=0),
@@ -1826,6 +1849,7 @@ def build_article_agent_tools(
             run,
             workflow,
             active_role="writer",
+            durable_task_key=durable_task_key,
         ),
         model=model,
         model_settings=model_settings,
@@ -1838,6 +1862,7 @@ def build_article_agent_tools(
             run,
             workflow,
             active_role="reviewer",
+            durable_task_key=durable_task_key,
         ),
         model=model,
         model_settings=model_settings,
@@ -1937,6 +1962,7 @@ async def execute_native_agent_run(
         run_id,
         session_factory=SessionLocal,
     )
+    durable_task_key: str | None = None
     with SessionLocal() as db:
         run = db.scalar(
             select(NativeAgentRun)
@@ -1986,6 +2012,10 @@ async def execute_native_agent_run(
         is_article_workflow = bool(
             article_tool_names.intersection(exposed_tool_names)
         )
+        if is_article_workflow:
+            from app.services.durable_agent_runtime import current_task_key
+
+            durable_task_key = current_task_key(db, native_run_id=run.id)
         instructions = (
             None if is_article_workflow else native_agent_instructions(run)
         )
@@ -2030,6 +2060,7 @@ async def execute_native_agent_run(
                     run,
                     workflow,
                     active_role="director",
+                    durable_task_key=durable_task_key,
                 )
             if instructions is None:
                 raise NativeAgentLoopError("Native Agent 缺少运行 instructions")
@@ -2095,6 +2126,7 @@ async def execute_native_agent_run(
                     model=resolved_settings.agent_model.strip(),
                     store=store,
                     hooks=metric_hooks,
+                    durable_task_key=durable_task_key,
                 )
                 tools.extend(
                     tool

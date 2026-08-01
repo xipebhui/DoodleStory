@@ -19,6 +19,7 @@ from app.services.native_agent_persistence import (
     NativeAgentRunCancelled,
     NativeAgentStore,
 )
+from app.services.durable_agent_runtime import recover_attempts
 
 
 logger = logging.getLogger(__name__)
@@ -141,6 +142,8 @@ async def recover_native_agent_runs() -> None:
     if _queue is None:
         raise RuntimeError("Native Agent 队列尚未初始化")
     with SessionLocal() as db:
+        durable_attempt_ids = recover_attempts(db)
+        db.commit()
         interrupted_ids = db.scalars(
             select(NativeAgentRun.id).where(
                 NativeAgentRun.status.in_(
@@ -244,11 +247,12 @@ async def recover_native_agent_runs() -> None:
         await enqueue_native_agent_run(run_id)
     logger.info(
         "native agent recovery complete interrupted_count=%s recovered_count=%s "
-        "blocked_count=%s queued_count=%s",
+        "blocked_count=%s queued_count=%s durable_attempt_count=%s",
         len(interrupted_ids),
         recovered_count,
         blocked_count,
         len(queued_ids),
+        len(durable_attempt_ids),
     )
 
 

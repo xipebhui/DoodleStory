@@ -1625,6 +1625,262 @@ class NativeAgentArticleApproval(Base):
     decided_by_user: Mapped[Optional[User]] = relationship()
 
 
+class DurableAgentWorkflow(Base, TimestampMixin):
+    __tablename__ = "agent_durable_workflows"
+    __table_args__ = (
+        UniqueConstraint(
+            "native_run_id",
+            name="uq_agent_durable_workflows_native_run",
+        ),
+        CheckConstraint(
+            "status IN ('queued','running','waiting_for_input','retrying','succeeded','failed','cancelled')",
+            name="ck_agent_durable_workflows_status",
+        ),
+        CheckConstraint(
+            "state_version > 0",
+            name="ck_agent_durable_workflows_state_version_positive",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    native_run_id: Mapped[str] = mapped_column(
+        ForeignKey("native_agent_runs.id", ondelete="CASCADE"),
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
+    state_version: Mapped[int] = mapped_column(Integer, default=1)
+    current_checkpoint_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_checkpoints.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    current_gate_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_gates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    expected_input_kind: Mapped[Optional[str]] = mapped_column(
+        String(80), nullable=True
+    )
+    allowed_actions_json: Mapped[str] = mapped_column(Text, default="[]")
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class DurableAgentTask(Base, TimestampMixin):
+    __tablename__ = "agent_durable_tasks"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id",
+            "task_key",
+            name="uq_agent_durable_tasks_workflow_key",
+        ),
+        CheckConstraint(
+            "status IN ('pending','ready','running','waiting_for_input','retrying','succeeded','failed','blocked','cancelled')",
+            name="ck_agent_durable_tasks_status",
+        ),
+        CheckConstraint(
+            "max_attempts > 0",
+            name="ck_agent_durable_tasks_max_attempts_positive",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_workflows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    task_key: Mapped[str] = mapped_column(String(120))
+    task_type: Mapped[str] = mapped_column(String(80))
+    title: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    required: Mapped[bool] = mapped_column(Boolean, default=True)
+    dependencies_json: Mapped[str] = mapped_column(Text, default="[]")
+    input_artifact_keys_json: Mapped[str] = mapped_column(Text, default="[]")
+    output_artifact_key: Mapped[Optional[str]] = mapped_column(
+        String(120), nullable=True
+    )
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    current_attempt_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_attempts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class DurableAgentAttempt(Base, TimestampMixin):
+    __tablename__ = "agent_durable_attempts"
+    __table_args__ = (
+        UniqueConstraint(
+            "task_id",
+            "attempt_number",
+            name="uq_agent_durable_attempts_task_number",
+        ),
+        CheckConstraint(
+            "status IN ('prepared','running','succeeded','failed','interrupted','unknown','cancelled')",
+            name="ck_agent_durable_attempts_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_tasks.id", ondelete="CASCADE"),
+        index=True,
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer)
+    attempt_kind: Mapped[str] = mapped_column(String(32))
+    base_checkpoint_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_checkpoints.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(32), default="prepared", index=True)
+    lease_owner: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    lease_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
+    heartbeat_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    input_hash: Mapped[str] = mapped_column(String(80))
+    output_hash: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class DurableAgentCheckpoint(Base):
+    __tablename__ = "agent_durable_checkpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id",
+            "revision",
+            name="uq_agent_durable_checkpoints_workflow_revision",
+        ),
+        CheckConstraint(
+            "revision > 0",
+            name="ck_agent_durable_checkpoints_revision_positive",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_workflows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer)
+    parent_checkpoint_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_checkpoints.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    reason: Mapped[str] = mapped_column(Text)
+    state_json: Mapped[str] = mapped_column(Text)
+    state_hash: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class DurableAgentArtifact(Base, TimestampMixin):
+    __tablename__ = "agent_durable_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id",
+            "artifact_key",
+            "version",
+            name="uq_agent_durable_artifacts_workflow_key_version",
+        ),
+        CheckConstraint(
+            "version > 0",
+            name="ck_agent_durable_artifacts_version_positive",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_workflows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_tasks.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    artifact_key: Mapped[str] = mapped_column(String(120))
+    artifact_type: Mapped[str] = mapped_column(String(80))
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="committed")
+    content_json: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(80))
+
+
+class DurableAgentGate(Base):
+    __tablename__ = "agent_durable_gates"
+    __table_args__ = (
+        UniqueConstraint(
+            "native_approval_id",
+            name="uq_agent_durable_gates_native_approval",
+        ),
+        CheckConstraint(
+            "status IN ('pending','approved','changes_requested','cancelled')",
+            name="ck_agent_durable_gates_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    native_approval_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("native_agent_article_approvals.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_workflows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_tasks.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_artifacts.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    purpose: Mapped[str] = mapped_column(String(80))
+    on_approve_action: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    requested_hash: Mapped[str] = mapped_column(String(80))
+    feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resolved_by_user_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class DurableAgentToolEffect(Base, TimestampMixin):
+    __tablename__ = "agent_durable_tool_effects"
+    __table_args__ = (
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_agent_durable_tool_effects_idempotency",
+        ),
+        CheckConstraint(
+            "status IN ('prepared','submitted','succeeded','failed','unknown')",
+            name="ck_agent_durable_tool_effects_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_attempts.id", ondelete="CASCADE"),
+        index=True,
+    )
+    effect_kind: Mapped[str] = mapped_column(String(80))
+    idempotency_key: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), default="prepared")
+    provider_request_id: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    result_ref_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class AgentConversation(Base, TimestampMixin):
     __tablename__ = "agent_conversations"
     __table_args__ = (

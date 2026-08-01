@@ -78,6 +78,12 @@ from app.services.native_article_workflow import (
     NativeArticleWorkflowError,
     decide_article_approval,
 )
+from app.services.durable_agent_runtime import (
+    DurableAgentRuntimeError,
+    initialize_workflow,
+    mirror_native_article_approval,
+    resolve_gate,
+)
 from app.services.account_creation_context import (
     AccountCreationContextError,
     build_account_creation_context_snapshot,
@@ -844,6 +850,7 @@ async def create_native_agent_run(
         {"status": AgentRunStatus.queued.value},
     )
     conversation.last_message_at = datetime.utcnow()
+    initialize_workflow(db, native_run=run)
     db.commit()
 
     await enqueue_native_agent_run(run.id)
@@ -971,20 +978,96 @@ async def decide_native_article_approval(
             detail="文案审批不存在",
         )
     try:
-        run_id, approval_status = decide_article_approval(
-            approval_id,
-            user_id=user.id,
+        durable_gate = mirror_native_article_approval(
+            db,
+            native_run=approval.run,
+            native_approval=approval,
+        )
+        attempts = resolve_gate(
+            db,
+            gate=durable_gate,
+            user=user,
             decision=payload.decision,
             feedback=payload.feedback,
-            session_factory=SessionLocal,
         )
-    except NativeArticleWorkflowError as exc:
+        approval.status = (
+            "approved" if payload.decision == "approve" else "changes_requested"
+        )
+        approval.feedback = payload.feedback.strip() if payload.feedback else None
+        approval.resolved_at = datetime.utcnow()
+        approval.decided_by_user_id = user.id
+        run_id = approval.run_id
+        approval_status = approval.status
+        native_run = approval.run
+        if payload.decision == "approve" and durable_gate.on_approve_action != "finish_run":
+            native_run.status = AgentRunStatus.retrying
+            native_run.finished_at = None
+            native_run.workflow_phase = durable_gate.on_approve_action
+            next_context_sequence = (
+                db.scalar(
+                    select(func.coalesce(func.max(NativeAgentContextItem.sequence), 0))
+                    .where(NativeAgentContextItem.run_id == native_run.id)
+                )
+                or 0
+            ) + 1
+            selection_context = (
+                "用户已批准当前候选选题。请只基于批准的候选和以下反馈进入正文阶段，"
+                "不得重新生成候选选题或结束 Run："
+                f"{approval.feedback or '未提供额外反馈'}"
+            )
+            db.add(
+                NativeAgentContextItem(
+                    run_id=native_run.id,
+                    sequence=next_context_sequence,
+                    item_json=json.dumps(
+                        {"role": "user", "content": selection_context},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                )
+            )
+            db.add(
+                NativeAgentItem(
+                    run_id=native_run.id,
+                    sequence=(
+                        db.scalar(
+                            select(func.coalesce(func.max(NativeAgentItem.sequence), 0))
+                            .where(NativeAgentItem.run_id == native_run.id)
+                        )
+                        or 0
+                    )
+                    + 1,
+                    item_type=NativeAgentItemType.user_input,
+                    payload_json=json.dumps(
+                        {
+                            "content": approval.feedback
+                            or "批准当前候选选题，继续写正文",
+                            "control": "topic_selection_approved",
+                        },
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                )
+            )
+        elif payload.decision == "approve":
+            native_run.status = AgentRunStatus.succeeded
+            native_run.finished_at = datetime.utcnow()
+            native_run.workflow_phase = "article_approved"
+        else:
+            native_run.status = AgentRunStatus.retrying
+            native_run.finished_at = None
+            native_run.workflow_phase = "revising_article"
+        db.commit()
+    except (NativeArticleWorkflowError, DurableAgentRuntimeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
     db.expire_all()
-    if approval_status == "changes_requested":
+    if approval_status == "changes_requested" or (
+        payload.decision == "approve"
+        and durable_gate.on_approve_action != "finish_run"
+    ):
         await enqueue_native_agent_run(run_id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run_id)))
 

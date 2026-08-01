@@ -327,6 +327,13 @@ def request_final_article_approval(
                 "version": version,
             },
         )
+        from app.services.durable_agent_runtime import mirror_native_article_approval
+
+        mirror_native_article_approval(
+            db,
+            native_run=run,
+            native_approval=approval,
+        )
         db.commit()
         return {
             "status": "waiting_for_approval",
