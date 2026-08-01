@@ -83,9 +83,12 @@
   工作台和 `@` 资源入口均可用；启动时未登录产生的两条预期 401 是唯一 Console error。未调用
   真实图片 Provider，未产生模型或图片费用；VL 执行器通过注入式真实 schema 回归验证。
 
-## Sprint 147（规划中）
+## Sprint 147（进行中）
 
-- 收敛统一控制命令、Follow-up Run、受控 Probe、取消、重启恢复、SSE 收敛和完整故障验收。
+- 已根据真实全媒体测试暴露的问题将 Draft 收紧并激活：本 Sprint 聚焦六类统一控制命令、取消、
+  重启恢复、unknown Effect 人工处理、SSE/刷新收敛，以及 Review Gate、纯媒体终态、字幕重试复用
+  和图片检查顺序修复。Follow-up Run 与受控 Probe 移交下一 Sprint，避免在控制闭环中混入未完成
+  分支语义。
 - 合同：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`。
 
 ## Sprint 143（已完成）
