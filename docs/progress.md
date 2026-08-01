@@ -1,56 +1,173 @@
 # 进度记录
 
-## Sprint 149 grokcli 显式生图 Provider（已完成）
+## Sprint 144（已完成）
 
-- 已安装并固定验证 `ele-yufo/grokcli` 0.1.0（commit
-  `ba81473c44b209ad008c1304fa42979a525eb814`），完成浏览器 OAuth 登录；`grokcli status`
-  显示账号有效。`grokcli doctor` 的 `/v1/models` 检查返回 403，但真实图片接口可用。
-- 已用中文提示词真实生成 3:4 图片，耗时约 7.5 秒，输出 864×1152、281204 bytes；CLI 文件名
-  后缀为 `.png`，实际内容为 JPEG，因此正式 adapter 按图片内容识别格式。
-- 已完成 `grok` adapter：纯文本走 `image`，最多三张公网参考图走 `image-edit`，按真实内容识别
-  PNG/JPEG/WebP，临时文件用完即清理；只对网络和超时做同 Provider 两次有界尝试，不做跨
-  Provider 兜底。DoodleStory adapter 真实验证纯文本生图约 7.36 秒、单参考图编辑约
-  12.76 秒，均返回 864×1152 JPEG。
-- Native Agent `generate_image` 已支持 `default/grok/qy/xgapi` 结构化 Provider 参数，System
-  Instructions 要求严格服从用户明确选择，未指定使用 default，失败后不得切换；实际 Provider
-  会进入 Tool 参数、事件、Trace、图片快照、API 和页面。传统任务也可通过
-  `IMAGE_PROVIDER=grok` 整体切换。
-- Docker 已固定安装通过真实验证的 grokcli commit，Coolify 凭据目录使用现有
-  `/app/data/grokcli` 持久化 volume；README 记录本地和容器认证步骤，OAuth token 不进入仓库。
-- 51 项定向测试通过；`./scripts/check.sh` 通过 346 项后端测试、空库全量迁移、14 项前端
-  测试、前端生产构建、Remotion TypeScript 与 5 项模板测试。合同：
-  `docs/contracts/sprint-149-grokcli-image-provider.md`。
+- 已根据 2026-08-01 的最新决定收紧为后端优先：保留已调试的 Agent 页面、Skill、账号与 `@`
+  资源交互；Sprint 144 只替换任务、审批、恢复和终态的后端事实，不重做页面。
+- 已新增后端 Durable Workflow、Task、Attempt、Checkpoint、Artifact、Gate 与 Tool Effect 表；它们
+  通过 `native_run_id` 关联现有 `NativeAgentRun`，不删除 `native_agent_*` 表、不替换
+  `/agent-loop` 请求/响应形状。
+- 现有 Run 创建会初始化唯一 Durable Workflow；原页面产生的候选选题审批会镜像为
+  `topic_selection` Gate。用户批准“使用第一个选题就可以”后，后端写回同一 Run 的持久化上下文
+  并准备正文 Attempt，而不是把 Run 标记成功或创建新的“继续”Run。
+- 已将现有 Writer/Reviewer 产物同步到 Durable Task；当前 Durable Task 会限制旧 Loop 只暴露
+  当前阶段的 Writer 或 Reviewer Tool，候选选题、正文和 Review 依次使用现有页面可见的审批
+  容器。旧 Loop 在 Durable required Task 未完成或仍有 Gate 时不能将 Run 标记成功。
+- 迁移副本验证新增 7 张 Durable 后端表后仍保留 34 用户、21 风格、18 频道和 82 条传统任务；
+  原 Agent 页面浏览器验证确认 Simple Agent Loop、Skill 管理、返回工作台、`@` Skill/Style
+  菜单和资源标签保持不变。定向 42 项回归及 `./scripts/check.sh`（343 项后端测试、14 项前端
+  测试、构建和 Remotion）通过。
+- 最终实现确认：Sprint 144 从规划基线只修改后端、Alembic、测试和文档；没有修改
+  `frontend/src`。当前页面继续由原 `NativeAgentView` 和 `/agent-loop` 支撑，后续 Sprint 的
+  前端控制重构不在本 Sprint 提前实施。
+- 首条链路固定为：初始计划 → 选题研究/确认 → 正文撰写/确认 → Review/确认 → 完成。非终态
+  Gate 的批准必须在同一 Run 内推进后继 Task；“继续/重试”不再依赖精确自然语言。
+- Runtime 将采用 Run → 动态 Task 图 → Attempt → append-only Checkpoint → Artifact/Gate 的
+  权威模型。初始计划仅固定当前阶段与近端 Gate；上游产物、用户决定与 Review 结果可以受控调整
+  后续计划，已终态事实不可覆盖。
+- 本 Sprint 不实施图片并行、图片质量 Gate、局部图片重跑或 Probe；这些留给后续 Sprint 接入
+  同一 Runtime。仍不引入外部工作流引擎。
+- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`；实现与验收记录见
+  `docs/qa/sprint-144-durable-backend-runtime-report.md`。
 
-## Sprint 144–146 Agent Durable Runtime 全量替换（规划完成，待连续实施）
+## Sprint 145（已完成）
 
-- 已根据 2026-07-30 真实事故建立 Native Agent 稳定任务控制面合同。事故链路确认：阶段性选题
-  Approve 把旧 Run 直接结束；用户随后输入“继续”创建缺少旧 Artifact 和恢复位置的新 Run；
-  三次 Writer 子 Agent 超时后根 Run 仍被标成 succeeded，前端则因没有统一 Tool 终态事件持续
-  显示“等待执行”。
-- 用户要求一次定义并完成完整改造，不接受把 Task、Memory、局部恢复、并行 DAG 或 Probe 留到
-  未定义的后续阶段。合同已升级为 Sprint 144–146 连续交付总计划：每个 Sprint 验证、记录和
-  Commit 后自动进入下一段，不再逐段等待确认。
-- 用户进一步确认当前没有真实用户，允许删除本地测试数据和错误设计。仓库审计已确认未挂载旧
-  Agent Runtime、当前 Native Agent Runtime 和不可达旧前端并存；Sprint 144 改为替换式重构，
-  整体删除旧控制面、替换当前 Native 链路中错误的控制层，再重建唯一 Agent schema、Worker、
-  API 和 Workspace，不保留兼容层或双写。
-- 进一步完成两条链路的依赖审计：当前生效的 `/agent-loop` 与 `NativeAgentView` 没有调用旧
-  `agent_runner`、`agent_tool_runtime`、`agent_hitl` 等控制链；旧 Router 未挂载、旧
-  `AgentView` 不可达，但旧 Model、模块、前端 client/type 和测试仍残留。合同现要求把旧链路
-  整体删除并加入零引用验收；当前独立链路仅替换错误控制层，已有业务 Tool 与领域 adapter
-  保留，且禁止通过兼容包装回调旧链路。
-- 传统 `generation_tasks`、图片/视频 Worker、Skill、Style、账号、频道和领域资产能力不属于
-  删除范围；它们只通过新 Durable Runtime 的明确 adapter 接入。
-- Sprint 144 将一次建全 Conversation、Run、Branch、Task/Dependency/Task State、Attempt、
-  Model Session/Context、Checkpoint、Memory、Artifact Version、Approval、Tool Effect、
-  Command 和 Event 表族，同时重接 YouTube 发布来源外键并删除旧表；Sprint 145、146 不再按
-  功能进度追加核心状态表。该 Sprint 同时用新 Repository、Command、Projection、`/agent`
-  API 和基础 Workspace 完成当前文案链 Cutover，验证后仓库仍保持可启动、可使用状态。
-- Sprint 145 完成 Durable Worker、Session Context Replay、Memory、Checkpoint、Retry、
-  Resume、Follow-up、局部 Rerun/Probe Branch、Tool Effect 和多 Agent DAG；Sprint 146 完成
-  统一 `/agent` API、SSE、单一 Workspace、前后端状态收敛及强制中断/真实模型端到端验收。
-- 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。当前已完成全量
-  计划，尚未新增数据库表或修改 Runtime。
+- 在 Sprint 144 的 Task / Attempt / Checkpoint 基础上，增加固定 Skill Version 约束下的动态计划
+  修订：上游 Artifact、用户决定和 Review 可追加、替换或取消未执行的后续 Task，但不能覆盖
+  已终态事实。
+- 本 Sprint 不改已调试的 `/agent` 页面；先完成后端计划修订、局部失效/重试和恢复投影，正式
+  页面控制留到后续 Sprint。
+- 新增 append-only `agent_durable_plan_revisions`：初始 Task 图、Task 产物完成、Gate 打开、
+  Gate 批准/修改、lease 过期恢复和补充研究分支都会记录不可变计划版本，关联来源 Checkpoint。
+- 正文 Gate 修改只重置正文及其下游 Review/最终 Gate；已批准选题保持成功且不重跑。最终 Review
+  修改意见包含“补充研究”时，后端只追加 allowlist 内的 `supplement_research` Task，研究完成后
+  才准备正文修订 Attempt，禁止重复追加或任意模型动态建图。
+- 新增 owner-scoped `GET /agent-loop/runs/{run_id}/plan-revisions`，为后续页面控制提供只读计划
+  事实来源；当前页面没有调用它，因此 Simple Agent Loop、Skill 管理、账号和 `@` 资源交互保持
+  原样。
+- 迁移副本升级至 `q8r9s0t1u2v3` 后保留 34 用户、21 Style、18 频道与 82 条传统任务；原页面
+  浏览器回归确认 Simple Agent Loop、Skill 管理入口和 Style `@` 菜单未变化。`./scripts/check.sh`
+  通过 346 项后端测试、14 项前端测试、构建和 Remotion。
+- 真实文本链路验证：隔离 Run `802937baf304454199b5f6c9df0e13cb` 只引用文案 Skill，真实生成
+  候选选题后进入 `topic_selection` Gate；确认后在同一 Run 创建 `write_draft` initial Attempt，
+  Checkpoint 与 Plan Revision 连续推进，模型输入只包含已批准选题和正文阶段约束。验证期间
+  图片/语音/字幕/视频调用均为 0；正文返回前主动取消。修复现有 SSE schema 对
+  `topic_candidates` 的兼容和选题确认 adapter 的缺失导入后复验通过。
+- 合同：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`。
+
+## Sprint 146（已完成）
+
+- 将图片方案、并行 Panel 图片 Task、逐图质量检查、图片质量 Gate 和局部重跑接入同一 Runtime；
+  用户在聊天中处理方案与质量，系统只重跑不合格 Panel。
+- 传统 GenerationTask、积分、图片版本和资产继续是领域事实，Agent 通过明确 adapter 调用，
+  并由 Tool Effect 防止未知结果和重复扣费。
+- 合同：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`。
+- 新增 Durable 媒体绑定、图片质量结论和质量汇总 Gate 后端事实。传统 `GenerationTask` /
+  `TaskPanel` / `GeneratedImage` 继续是传统图片任务的唯一事实；Native Agent 图片继续使用
+  `NativeAgentImage`，Durable 仅记录关联 ID、Task/Attempt、Tool Effect 和质量结论，不复制资产。
+- 视觉方案注册后创建 `visual_plan_review` Gate；图片质量结论未全部完成时不能打开
+  `image_quality_review` Gate。对指定 Panel 请求重跑时，仅该 Panel 的图片/质量 Durable Task
+  进入 rerun，其他 Panel 保持 accepted。
+- 对 Native Agent 图片，绑定记录使用原 `NativeAgentImage.id` 和 Tool Step 幂等键，避免侵入
+  原图片 Tool 的资产事实；Provider 请求前写 prepared/submitted Effect，成功后在同一事务绑定
+  图片、Attempt 和质量 Task，明确失败产生新的 retry Attempt，unknown 阻止自动重放。逐图质量
+  Task 复用真实 VL 检查器，保存 verdict、评分、问题、Provider/model 和延迟；VL 失败明确记录为
+  blocked，不会伪装通过。
+- 新增独立迁移 `r9s0t1u2v3w4`，已验证旧库停在 Sprint 145 revision 后升级、downgrade、再次
+  upgrade，避免修改已执行 migration 导致现有数据库漏表。owner-scoped API 覆盖视觉方案、媒体
+  Gate、媒体状态、质量决定和 Panel 重跑；当前页面布局不变。
+- `./scripts/check.sh` 通过 354 项后端测试、空 SQLite 全量迁移、14 项前端测试、前端生产构建、
+  Remotion 类型检查与 5 项测试；聚焦 Durable/Native/恢复回归 54 项通过，`git diff --check`
+  通过。
+  Playwright 使用本地 QA 用户验证 `/agent → /agent/skills → /agent`，新对话、Skill 管理、返回传统
+  工作台和 `@` 资源入口均可用；启动时未登录产生的两条预期 401 是唯一 Console error。未调用
+  真实图片 Provider，未产生模型或图片费用；VL 执行器通过注入式真实 schema 回归验证。
+
+## Sprint 147（已完成）
+
+- 已根据真实全媒体测试暴露的问题将 Draft 收紧并激活：本 Sprint 聚焦六类统一控制命令、取消、
+  重启恢复、unknown Effect 人工处理、SSE/刷新收敛，以及 Review Gate、纯媒体终态、字幕重试复用
+  和图片检查顺序修复。Follow-up Run 与受控 Probe 移交下一 Sprint，避免在控制闭环中混入未完成
+  分支语义。
+- 合同：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`。
+- 已新增 `agent_durable_commands` 与 owner-scoped `control-state / commands` API；六类命令统一校验
+  `allowed_actions`、`state_version`、目标归属和 unknown Effect。相同幂等键重放只返回首次结果，
+  不会再次入队或取消 Worker；旧文案审批、媒体 Gate 与取消入口已委托统一命令服务。
+- 非文案 Skill 现在只初始化空 Durable Workflow，不创建 ARTICLE_TASKS；Run 正常完成时同步收敛
+  Workflow 终态。`article_review` 明确映射 `editorial_review_gate`，避免 Review 审批退回正文 Gate。
+- 原生 Runtime 已开放并持久化 `inspect_image`；Skill 暴露该 Tool 时，视频渲染强制要求对应图片
+  `verdict=accept`。字幕对同一音频最多自动失败两次，字幕失败后的相同文本/语速 TTS 调用复用
+  已成功音频，不再重复请求 Provider。
+- 前端按后端 `allowed_actions + state_version` 展示重试、恢复、unknown 处理与取消操作；运行中的
+  Tool 展示名称和真实已等待时间。SSE 检测 cursor 缺口时发出 `run.resync_required`，页面重新拉取
+  Conversation Projection 与控制状态，不以 heartbeat 伪造业务进度。
+- 最终检查已通过 361 项后端测试、空 SQLite 全量迁移、14 项前端测试、生产构建、Remotion
+  类型检查和 5 项测试；新增故障回归覆盖命令幂等/过期版本、取消、unknown Effect、纯媒体空
+  Workflow、图片检查顺序、TTS 复用、字幕失败上限与 SSE cursor 缺口。
+- 隔离 SQLite + 真实 FastAPI/Vite 浏览器验收确认 unknown 处理、取消、长 Tool 等待、失败后的
+  retry/resume、终态刷新和 0 console error/warning。验收发现并修复 unknown 已处理但 Native Step
+  仍显示 running 的收敛问题。操作手册见 `docs/deployment/agent-durable-runtime-operations.md`，
+  QA 报告见 `docs/qa/sprint-147-durable-control-and-recovery-report.md`。
+
+## Sprint 148（已完成）
+
+- 已激活显式 Follow-up Run 合同：只允许从同一 owner/Conversation 的成功终态 Run 续接固定
+  Checkpoint，创建隔离的新 Run、Workflow、Task、Attempt 和 Effect；不靠“继续”文本猜测来源。
+- Follow-up 固定继承父 Run 的 Skill Version、Style、账号与结构化资源，并把父最终输出和已确认
+  Artifact 作为带 ID/hash 的只读 snapshot 注入；父 Run 事实不可修改。
+- 本 Sprint 不实现 Probe。只读预算、Probe Artifact 和显式采纳留给 Sprint 149，Deferred
+  Evaluation 继续保持延后。
+- 已完成 Follow-up 后端主链：新增父 Run/Checkpoint 关系、请求幂等键与 hash、64KB/50 产物的
+  完整 snapshot 上限和数据库形状约束；只有同 owner、同会话的成功 Run 且存在当前 Checkpoint
+  时才能创建。子 Run 固定继承 Skill/Style/账号与发布对象引用，但清除发布确认，并初始化独立的
+  文案或非文案 Durable Workflow。
+- 普通 Agent 和文案多角色 instructions 均已注入 `<follow_up_context>`，明确父事实只读、本轮输入
+  是唯一新目标、未重新完成父 Tool 且不得沿用发布确认。Run Projection/SSE 已返回父 Run 与来源
+  Checkpoint ID。
+- 页面已加入“基于此结果继续”、固定资源提示、取消续接、父子定位与稳定幂等键；提交失败保留
+  输入和父 Run 选择，Follow-up 模式禁止改选资源。专项后端 6 项与 `./scripts/check.sh` 全部通过：
+  367 项后端测试、空 SQLite 全量迁移、14 项前端测试、生产构建、Remotion 类型检查与 5 项测试；
+  开发库已升级到 `t1u2v3w4x5y6`。
+- 隔离 SQLite + 真实 FastAPI/Vite 浏览器验收确认成功/失败 Run 按钮边界、固定资源提示、取消模式
+  保留输入、真实 409 后保留父选择和文本、父子标签刷新、幂等 API 重放，以及登录后刷新 0 console
+  error/warning。浏览器验收发现并修复了非文案空 Workflow 被 Worker 永久跳过的问题；现在只有
+  “存在 Durable Task 但没有 ready Attempt”的 Workflow 才会阻止 Native Loop。
+- 合同：`docs/contracts/sprint-148-explicit-follow-up-run.md`。
+- QA：`docs/qa/sprint-148-explicit-follow-up-run-report.md`。
+
+## Sprint 149（已完成）
+
+- 新增 `grok` 显式图片 Provider，通过已认证的 `grokcli image` 调用 Grok 订阅生图；Provider
+  失败明确返回错误，不自动切换到其它图片平台。
+- Native Agent 生图 Tool 支持逐次显式选择 Provider，并把实际 Provider 快照保存到图片事实；
+  传统任务继续使用环境配置的默认 Provider。
+- Grok Provider migration 已调整为在 Durable Runtime 与 Follow-up migration 之后执行，使用
+  唯一 revision `u2v3w4x5y6z7`，不再与 Sprint 144 的 `p7q8r9s0t1u2` 冲突。
+- 合同：`docs/contracts/sprint-149-grokcli-image-provider.md`。
+
+## Sprint 150（已完成）
+
+- 修复本地手动 Uvicorn 与 KeepAlive LaunchAgent 并存时，在端口绑定失败前反复执行 startup
+  恢复的问题。新增按数据库标识生成的跨进程单实例锁，任何队列初始化和恢复动作都必须在持锁
+  后执行；锁冲突时第二实例明确退出，startup 初始化失败与正常 shutdown 均释放锁。
+- 事故 Run `d41010e722604b758d0d909ad10a388e` 已保留全部 Trace 和事件并收敛为 `failed`；真实
+  并存测试中第二实例退出码为 3，事件数在测试前后保持 245，没有新增恢复或 Provider 调用。
+- 发现未提交 Grok 图片 Provider migration 复用了 Sprint 144 revision `p7q8r9s0t1u2`。开发库
+  已从事故前完整备份恢复，按正式 Durable migration 链升级到 `t1u2v3w4x5y6`，11 张 Durable
+  表全部存在且 SQLite `integrity_check=ok`；冲突 migration 未进入运行库，后续整合时必须改用
+  新 revision。
+- 本地前后端改由各自唯一的 launchd job 管理，后端 job 运行已修复的 Durable Runtime 分支并
+  指向主工作区数据库与存储。健康检查通过，`8000` 与 `3000` 各一个监听进程，两个 job 均只
+  启动 1 次且保持 running。
+- `scripts/restart-dev.sh` 在手动启动前会明确 bootout 已加载的 DoodleStory 前后端 launchd job，
+  避免 KeepAlive 在脚本停止旧监听端口后立即抢占端口；因此 launchd 与手动脚本不会同时成为
+  服务 owner。
+- `./scripts/check.sh` 通过 372 项后端测试、空 SQLite 全量迁移、14 项前端测试、前端生产构建、
+  Remotion 类型检查与 5 项测试；新增 5 项单实例锁测试。目标 URL 可加载且控制台 0 error / 0
+  warning，但浏览器无登录态，未在 UI 内展开受保护的 Trace 详情；终态与事件稳定性由数据库和
+  后端日志验收。
+- 合同：`docs/contracts/sprint-150-single-instance-startup-recovery.md`。
+- QA：`docs/qa/sprint-150-single-instance-startup-recovery-report.md`。
 
 ## Sprint 143（已完成）
 
@@ -112,22 +229,26 @@
 
 ## 当前基线
 
-- 分支：`codex/simple-agent-loop`
+- 分支：`codex/durable-runtime-backend-144`
 - Harness 状态：`active`
 - 产品：`DoodleStory`，文本转图片故事生成项目
-- 最近验证状态：Sprint 143 已完成；`@创作账号` 的完整资料快照已进入普通 Agent 和多 Agent
-  文案 Context。`./scripts/check.sh` 已通过 339 项后端测试、空库迁移、14 项前端测试、
-  前端生产构建和 Remotion 检查；未调用收费模型或真实 YouTube 发布，真实发布 smoke 等待
-  用户显式授权，Deferred Evaluation 未实施。
+- 最近验证状态：Sprint 150 已完成；单实例 startup recovery lock、事故 Run 收敛和本地唯一
+  launchd 运行入口已验证。`./scripts/check.sh` 已通过 372 项后端测试、空库迁移、14 项前端测试、
+  前端生产构建和 Remotion 检查；本 Sprint 未调用收费 Provider，Deferred Evaluation 未实施。
 - 最新规划状态：用户于 2026-07-26 决定把 Evaluation 推迟到全部计划功能完成后的最终阶段，并把 Skill 管理与真实 Runtime 接入合并为 Sprint 117。新合同覆盖用户 Skill CRUD、草稿和不可变发布版本、系统 Skill clone、受控 Tool 白名单、AI 编写辅助、独立管理页面、对话 `@Skill`、Run 固定 Skill Version、通用内容创作 Base Instructions，以及移除漫画专用 Runner/资源路由硬编码后的统一 Agents SDK Tool Loop；第一版不做 Workflow DSL、多 Skill、脚本/MCP、Memory 或新媒体 Tool。
 - Sprint 117 前端视觉基准已补充：基于当前 Agent Studio 生成并归档 Skill 列表、Skill 编辑器、版本历史、对话 `@Skill` 与执行状态四张高保真效果图，同时新增页面结构、AI 建议、发布/激活/归档、导航恢复、必备状态、响应式和交互验收说明；实施窗口必须先阅读 `docs/design/sprint-117-skill-ui/README.md`，不得把正式页面做成通用后台模板、JSON/Workflow 编辑器或只有简单文本框的草率实现。
-- 当前合同状态：Sprint 149 Complete；Sprint 144 Draft；Sprint 143、Sprint 142、Sprint 141 Complete；
+- 当前合同状态：Sprint 149、150 Complete；Sprint 144、145、146、147、148 Complete；Sprint 143、Sprint 142、Sprint 141 Complete；
   Sprint 135 真实外部发布 smoke 待用户授权；正式 Evaluation 保持 Deferred。
 
 ## 当前 Sprint 合同
 
+- Complete：`docs/contracts/sprint-150-single-instance-startup-recovery.md`
 - Complete：`docs/contracts/sprint-149-grokcli-image-provider.md`
+- Complete：`docs/contracts/sprint-148-explicit-follow-up-run.md`
 - Draft：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
+- Draft：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`
+- Draft：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`
+- Complete：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`
 - Complete：`docs/contracts/sprint-143-native-agent-account-context.md`
 - Complete：`docs/contracts/sprint-142-system-skill-disable.md`
 - Complete：`docs/contracts/sprint-141-native-agent-resource-mentions.md`
@@ -166,6 +287,7 @@
 - Complete：`docs/contracts/sprint-106-agent-comic-creation-vertical-slice-draft.md`
 - Complete：`docs/contracts/sprint-105-agent-runtime-foundation.md`
 - 全局路线：`docs/implementation/agent-v1-implementation-roadmap.md`
+- Durable Runtime 路线：`docs/implementation/agent-durable-chat-runtime-roadmap.md`
 - `docs/contracts/sprint-104-agent-foundation-and-provider-spike.md`
 - `docs/contracts/sprint-103-agent-conversation-demo.md`
 - `docs/contracts/sprint-102-single-image-content-extraction-lio-fallback.md`
@@ -886,3 +1008,21 @@
   Conversation `5244309e9b3046739d78e69504f09c6d`
   在纯文案持续生成、内容高度从 4634px 增长至 6232px 的过程中，手动上翻后始终保持距底部
   约 1800–1900px，未再被拉回底部；图片、语音、字幕和视频均未生成。
+- 执行 Sprint 146 对标账号到全媒体的最小真实链路测试：创作账号 `中国文明长纪录片` 成功带入
+  对标账号 `Our Lìshǐ` 与绑定风格，生成并批准“隋朝为何短命却重新连接中国”选题；正文
+  Artifact `fdcf941ede1d491eb49fe0994428ddf7` 经机器计数为 118 个字符，Reviewer 结论为
+  `approved`。测试在 Review → Visual Plan 交接处失败：Review Approval
+  `90013041526b42aaaebe246b78f39672` 被错误映射为第二个 `article_draft_review` Gate，真正的
+  `editorial_review_gate` 仍为 pending，Run `e62d493e0a9e444589e336303d142da6` 因必需
+  Durable Task 未完成而失败，正式 Visual Plan API 返回“正文 Review 尚未批准”。为避免绕过
+  状态机或产生无效费用，图片、语音、字幕、视频调用均保持 0；完整证据与修复要求见
+  `docs/qa/sprint-146-full-media-e2e-report.md`。
+- 经用户明确允许，继续使用上述 118 字审核正文创建独立媒体 Run
+  `a23fc6becb5c4fecb9796ed61351cdfa`，锁定单 Chunk/单 Scene 后真实生成 1 张 1086×1448
+  图片、1 份 9 cue WebVTT 字幕和 1 个 24.661 秒、1086×1448、H.264 + AAC 的 Remotion
+  视频；字幕全文与正文一致，视频抽帧确认画面和字幕正常。续作同时暴露三项问题：首次成功旁白的
+  字幕连续两次返回无效词级时间戳后，Agent 重复调用 TTS 生成第二段相同旁白；Skill 要求的
+  `inspect_image` 没有执行便进入视频渲染；媒体资产全部成功后，非文案 Run 仍因初始化的文案
+  Durable Task 未完成而被标记 `failed`。最终实际调用为生图 1、TTS 2、字幕尝试 3（成功 1）、
+  视频渲染 1，没有发布；本地核验产物保存在 `output/sprint-146-full-media-e2e/`，详细 ID、尺寸、
+  时长与修复要求已追加到 QA 报告。

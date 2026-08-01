@@ -43,6 +43,7 @@ from app.models.entities import (
     NativeAgentImage,
     NativeAgentItem,
     NativeAgentRun,
+    NativeAgentStep,
     NativeAgentSubtitle,
     NativeAgentConversation,
 )
@@ -50,6 +51,7 @@ from app.models.enums import (
     AgentRunStatus,
     GeneratedImageStatus,
     NativeAgentItemType,
+    NativeAgentStepStatus,
 )
 from app.services.agent_observability import (
     agent_span,
@@ -74,6 +76,7 @@ from app.services.image_generation import (
 )
 from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
+    CompletedNativeImageInspection,
     CompletedNativeSubtitle,
     CompletedNativeExternalContent,
     CompletedNativeTool,
@@ -84,12 +87,15 @@ from app.services.native_agent_persistence import (
 from app.services.native_article_workflow import (
     ARTICLE_DRAFT,
     ARTICLE_REVIEW,
+    TOPIC_CANDIDATES,
     has_pending_article_approval,
     load_compiled_workflow_plan,
+    request_article_artifact_approval,
     request_final_article_approval,
     save_article_artifact,
     save_compiled_workflow_plan,
 )
+from app.services.agent_vision import InspectionResult, inspect_image_asset
 from app.services.social_content_import import (
     SocialContentImportResult,
     import_social_content,
@@ -148,6 +154,14 @@ class NativeAgentLoopError(RuntimeError):
     pass
 
 
+class NativeImageInspectionExpected(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    story_beat: str | None = Field(default=None, max_length=4_000)
+    characters: list[str] = Field(default_factory=list, max_length=20)
+    required_text: list[str] = Field(default_factory=list, max_length=50)
+
+
 @dataclass(frozen=True)
 class NativeImageToolContext:
     run_id: str
@@ -160,11 +174,13 @@ ImageGenerator = Callable[..., GeneratedImageFile]
 SpeechGenerator = Callable[..., GeneratedSpeech]
 SubtitleGenerator = Callable[..., GeneratedSubtitles]
 VideoRenderer = Callable[..., GeneratedRemotionVideo]
+ImageInspector = Callable[..., tuple[InspectionResult, str, str, int]]
 SocialContentImporter = Callable[[str], SocialContentImportResult]
 YoutubeInsightsFetcher = Callable[..., YoutubeChannelInsightsResult]
 NATIVE_RUNTIME_TOOL_NAMES = frozenset(
     {
         "generate_image",
+        "inspect_image",
         "generate_speech",
         "generate_subtitles",
         "render_story_video",
@@ -597,6 +613,94 @@ def build_generate_image_tool(
     )
 
 
+def build_inspect_image_tool(
+    run_id: str,
+    *,
+    store: NativeAgentStore,
+    image_inspector: ImageInspector = inspect_image_asset,
+) -> FunctionTool:
+    async def inspect_image(
+        tool_context: ToolContext[None],
+        image_id: str,
+        checks: list[str],
+        expected: NativeImageInspectionExpected,
+    ) -> list[ToolOutputText]:
+        normalized_checks = [item.strip() for item in checks if item.strip()]
+        if not normalized_checks or len(normalized_checks) > 10:
+            raise NativeAgentLoopError("inspect_image checks 必须包含 1 到 10 项")
+        if len(normalized_checks) != len(set(normalized_checks)):
+            raise NativeAgentLoopError("inspect_image checks 不能重复")
+        expected_data = expected.model_dump(mode="json")
+        prepared = store.prepare_image_inspection_tool(
+            tool_call_id=tool_context.tool_call_id,
+            image_id=image_id,
+            checks=normalized_checks,
+            expected=expected_data,
+        )
+        if isinstance(prepared, CompletedNativeImageInspection):
+            completed = prepared
+        else:
+            store.start_tool(prepared.id)
+            try:
+                with SessionLocal() as db:
+                    image = db.scalar(
+                        select(NativeAgentImage)
+                        .where(
+                            NativeAgentImage.id == image_id,
+                            NativeAgentImage.run_id == run_id,
+                        )
+                        .options(selectinload(NativeAgentImage.asset))
+                    )
+                    if image is None:
+                        raise NativeAgentLoopError("image_id 不属于当前 Run")
+                    result, provider, model, latency_ms = await asyncio.to_thread(
+                        image_inspector,
+                        image.asset,
+                        checks=normalized_checks,
+                        expected=expected_data,
+                    )
+                completed = store.complete_image_inspection_tool(
+                    prepared.id,
+                    image_id=image_id,
+                    verdict=result.verdict,
+                    scores=result.scores,
+                    issues=[issue.model_dump(mode="json") for issue in result.issues],
+                    provider=provider,
+                    model=model,
+                    latency_ms=latency_ms,
+                )
+            except Exception as exc:
+                store.fail_tool(prepared.id, exc)
+                raise
+        return [
+            ToolOutputText(
+                text=json.dumps(
+                    {
+                        "status": "succeeded",
+                        "image_id": completed.image_id,
+                        "verdict": completed.verdict,
+                        "scores": completed.scores,
+                        "issues": completed.issues,
+                        "provider": completed.provider,
+                        "model": completed.model,
+                        "latency_ms": completed.latency_ms,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        ]
+
+    return function_tool(
+        inspect_image,
+        name_override="inspect_image",
+        description_override=(
+            "对当前 Run 的 image_id 执行一次真实视觉质量检查。checks 列出要检查的维度，"
+            "expected 描述预期画面；返回 accept、revise、ask_user 或 blocked。"
+            "只有 verdict=accept 的图片才能进入视频渲染。"
+        ),
+    )
+
+
 def build_generate_speech_tool(
     run_id: str,
     *,
@@ -862,10 +966,29 @@ def _resolve_video_inputs(
         run = db.scalar(
             select(NativeAgentRun)
             .where(NativeAgentRun.id == run_id)
-            .options(selectinload(NativeAgentRun.conversation))
+            .options(
+                selectinload(NativeAgentRun.conversation),
+                selectinload(NativeAgentRun.skill_version),
+            )
         )
         if run is None:
             raise NativeAgentLoopError("Native Agent Run 不存在")
+        requires_image_inspection = "inspect_image" in parse_tool_names(
+            run.skill_version.tool_names_json
+        )
+        accepted_inspection_image_ids: set[str] = set()
+        if requires_image_inspection:
+            inspection_steps = db.scalars(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.run_id == run_id,
+                    NativeAgentStep.name == "inspect_image",
+                    NativeAgentStep.status == NativeAgentStepStatus.succeeded,
+                )
+            ).all()
+            for inspection_step in inspection_steps:
+                inspection = json.loads(inspection_step.output_ref_json or "{}")
+                if inspection.get("verdict") == "accept" and inspection.get("image_id"):
+                    accepted_inspection_image_ids.add(str(inspection["image_id"]))
         image_ids = [scene.image_id for scene in scenes]
         audio_ids = [scene.audio_id for scene in scenes]
         images = {
@@ -940,6 +1063,14 @@ def _resolve_video_inputs(
                 raise NativeAgentLoopError(
                     f"第 {index} 个 Scene 的 image_id 不是当前 Run 图片，"
                     "也不是当前用户任务的成功 current 图片"
+                )
+            if (
+                requires_image_inspection
+                and scene.image_id not in accepted_inspection_image_ids
+            ):
+                raise NativeAgentLoopError(
+                    f"第 {index} 个 Scene 的图片尚未通过 inspect_image；"
+                    "必须先获得 verdict=accept"
                 )
             if audio is None:
                 raise NativeAgentLoopError(
@@ -1643,6 +1774,7 @@ def native_agent_instructions(
         "</skill>"
     )
     instructions += creation_account_context_instructions(run)
+    instructions += follow_up_context_instructions(run)
     if active_role is not None:
         instructions += (
             "\n\n<execution_context>\n"
@@ -1696,11 +1828,32 @@ def creation_account_context_instructions(run: NativeAgentRun) -> str:
     )
 
 
+def follow_up_context_instructions(run: NativeAgentRun) -> str:
+    if not run.continuation_context_json:
+        return ""
+    try:
+        context = json.loads(run.continuation_context_json)
+    except json.JSONDecodeError as exc:
+        raise NativeAgentLoopError("Follow-up Context 快照不是合法 JSON") from exc
+    if not isinstance(context, dict):
+        raise NativeAgentLoopError("Follow-up Context 快照必须是对象")
+    return (
+        "\n\n<follow_up_context>\n"
+        "以下是父 Run 成功结束时冻结的只读事实、Checkpoint 和产物。它们可以作为本轮的"
+        "既有依据，但不得修改、覆盖或声称由当前 Run 重新完成。当前用户输入是本轮唯一的新目标；"
+        "只执行该新目标，不要自行继续父 Run 中没有被明确要求的动作。父 Run 的发布对象引用不代表"
+        "当前 Run 获得了发布确认；没有当前 Run 的显式发布确认时禁止提交发布。\n"
+        f"{json.dumps(context, ensure_ascii=False, separators=(',', ':'))}\n"
+        "</follow_up_context>"
+    )
+
+
 def article_role_instructions(
     run: NativeAgentRun,
     workflow: CompiledArticleWorkflow,
     *,
     active_role: Literal["director", "writer", "reviewer"],
+    durable_task_key: str | None = None,
 ) -> str:
     role = workflow.role(active_role)
     shared_constraints = "\n".join(
@@ -1721,6 +1874,32 @@ def article_role_instructions(
         "</role>"
     )
     instructions += creation_account_context_instructions(run)
+    instructions += follow_up_context_instructions(run)
+    if durable_task_key:
+        task_constraint = {
+            "research_topics": (
+                "当前 Durable Task 是候选选题。只能生成候选选题并等待用户确认；"
+                "不得生成 approved_topic、正文、Review、封面或媒体计划。"
+            ),
+            "write_draft": (
+                "当前 Durable Task 是正文。只能基于已经批准的选题生成完整正文草稿；"
+                "不得重新生成候选选题、Review、封面或媒体计划。"
+            ),
+            "review_draft": (
+                "当前 Durable Task 是 Review。只能审阅当前正文并输出审稿结论；"
+                "不得改写正文、重新选题或生成媒体计划。"
+            ),
+            "supplement_research": (
+                "当前 Durable Task 是补充研究。只能基于已批准选题和 Review 反馈补充研究依据，"
+                "不得重新选题、写正文、审稿或生成媒体计划。"
+            ),
+        }.get(durable_task_key)
+        if task_constraint:
+            instructions += (
+                "\n\n<durable_task_constraint>\n"
+                f"{task_constraint}\n"
+                "</durable_task_constraint>"
+            )
     if active_role == "director":
         steps = [
             step.model_dump(mode="json")
@@ -1835,7 +2014,10 @@ def build_article_agent_tools(
     model: str,
     store: NativeAgentStore,
     hooks: NativeModelMetricHooks,
+    durable_task_key: str | None = None,
 ) -> list[FunctionTool]:
+    if durable_task_key and durable_task_key.startswith("image:"):
+        return []
     model_settings = ModelSettings(
         retry=ModelRetrySettings(max_retries=0),
         store=False,
@@ -1846,6 +2028,7 @@ def build_article_agent_tools(
             run,
             workflow,
             active_role="writer",
+            durable_task_key=durable_task_key,
         ),
         model=model,
         model_settings=model_settings,
@@ -1858,6 +2041,7 @@ def build_article_agent_tools(
             run,
             workflow,
             active_role="reviewer",
+            durable_task_key=durable_task_key,
         ),
         model=model,
         model_settings=model_settings,
@@ -1867,13 +2051,30 @@ def build_article_agent_tools(
 
     async def extract_writer_output(result) -> str:
         output = ArticleDraftOutput.model_validate(result.final_output)
+        artifact_type = (
+            TOPIC_CANDIDATES
+            if durable_task_key == "research_topics"
+            else ARTICLE_DRAFT
+        )
         artifact = save_article_artifact(
             run.id,
-            artifact_type=ARTICLE_DRAFT,
+            artifact_type=artifact_type,
             producer_role="writer",
             content=output.model_dump(mode="json"),
             session_factory=store.session_factory,
         )
+        if durable_task_key in {"research_topics", "write_draft"}:
+            approval = request_article_artifact_approval(
+                run.id,
+                artifact_id=str(artifact["id"]),
+                purpose=(
+                    "topic_selection"
+                    if durable_task_key == "research_topics"
+                    else "article_draft_review"
+                ),
+                session_factory=store.session_factory,
+            )
+            return json.dumps(approval, ensure_ascii=False)
         return json.dumps(
             {"status": "succeeded", "artifact": artifact},
             ensure_ascii=False,
@@ -1888,6 +2089,14 @@ def build_article_agent_tools(
             content=output.model_dump(mode="json"),
             session_factory=store.session_factory,
         )
+        if durable_task_key == "review_draft":
+            approval = request_article_artifact_approval(
+                run.id,
+                artifact_id=str(artifact["id"]),
+                purpose="editorial_review",
+                session_factory=store.session_factory,
+            )
+            return json.dumps(approval, ensure_ascii=False)
         return json.dumps(
             {"status": "succeeded", "artifact": artifact},
             ensure_ascii=False,
@@ -1905,7 +2114,7 @@ def build_article_agent_tools(
         )
         return [ToolOutputText(text=json.dumps(result, ensure_ascii=False))]
 
-    return [
+    tools = [
         writer.as_tool(
             tool_name="write_article",
             tool_description=(
@@ -1933,6 +2142,11 @@ def build_article_agent_tools(
             ),
         ),
     ]
+    if durable_task_key in {"research_topics", "write_draft", "supplement_research"}:
+        return [tools[0]]
+    if durable_task_key == "review_draft":
+        return [tools[1]]
+    return tools
 
 
 async def execute_native_agent_run(
@@ -1957,6 +2171,7 @@ async def execute_native_agent_run(
         run_id,
         session_factory=SessionLocal,
     )
+    durable_task_key: str | None = None
     with SessionLocal() as db:
         run = db.scalar(
             select(NativeAgentRun)
@@ -2006,6 +2221,10 @@ async def execute_native_agent_run(
         is_article_workflow = bool(
             article_tool_names.intersection(exposed_tool_names)
         )
+        if is_article_workflow:
+            from app.services.durable_agent_runtime import current_task_key
+
+            durable_task_key = current_task_key(db, native_run_id=run.id)
         instructions = (
             None if is_article_workflow else native_agent_instructions(run)
         )
@@ -2050,7 +2269,26 @@ async def execute_native_agent_run(
                     run,
                     workflow,
                     active_role="director",
+                    durable_task_key=durable_task_key,
                 )
+                if durable_task_key and durable_task_key.startswith("image:"):
+                    from app.services.durable_agent_runtime import (
+                        pending_media_context,
+                    )
+
+                    with SessionLocal() as media_db:
+                        pending_panels = pending_media_context(
+                            media_db,
+                            native_run_id=run_id,
+                        )
+                    instructions += (
+                        "\n\n<durable_media_tasks>\n"
+                        "当前只执行下列已经由用户批准的图片 Panel。每个 Panel 必须严格使用"
+                        "其 prompt 调用一次 generate_image；不要调用文案 Tool，不要新增、合并或"
+                        "遗漏 Panel。所有 Panel 完成后再返回简短结果。\n"
+                        f"{json.dumps(pending_panels, ensure_ascii=False, separators=(',', ':'))}\n"
+                        "</durable_media_tasks>"
+                    )
             if instructions is None:
                 raise NativeAgentLoopError("Native Agent 缺少运行 instructions")
 
@@ -2063,6 +2301,8 @@ async def execute_native_agent_run(
                         store=store,
                     )
                 )
+            if "inspect_image" in exposed_tool_names:
+                tools.append(build_inspect_image_tool(run_id, store=store))
             if "generate_speech" in exposed_tool_names:
                 tools.append(
                     build_generate_speech_tool(
@@ -2115,6 +2355,7 @@ async def execute_native_agent_run(
                     model=resolved_settings.agent_model.strip(),
                     store=store,
                     hooks=metric_hooks,
+                    durable_task_key=durable_task_key,
                 )
                 tools.extend(
                     tool
@@ -2328,8 +2569,44 @@ async def execute_native_agent_run(
                 store.pause_for_article_approval(final_output)
                 terminal_status = AgentRunStatus.waiting_for_input
             else:
-                store.complete_run(final_output)
-                terminal_status = AgentRunStatus.succeeded
+                from app.services.durable_agent_runtime import (
+                    can_complete_native_run,
+                    finalize_workflow_if_complete,
+                    inspect_pending_native_media,
+                    media_ready_for_quality,
+                )
+
+                await asyncio.to_thread(
+                    inspect_pending_native_media,
+                    native_run_id=run_id,
+                    session_factory=SessionLocal,
+                )
+                with SessionLocal() as durable_db:
+                    waiting_for_quality = media_ready_for_quality(
+                        durable_db,
+                        native_run_id=run_id,
+                    )
+                    durable_db.commit()
+                    can_complete = can_complete_native_run(
+                        durable_db,
+                        native_run_id=run_id,
+                    )
+                    if can_complete and not waiting_for_quality:
+                        finalize_workflow_if_complete(
+                            durable_db,
+                            native_run_id=run_id,
+                        )
+                        durable_db.commit()
+                if waiting_for_quality:
+                    store.pause_for_media_quality(final_output)
+                    terminal_status = AgentRunStatus.waiting_for_input
+                elif not can_complete:
+                    raise NativeAgentLoopError(
+                        "当前 Durable Task 尚未完成或仍等待人工 Gate，不能将 Run 标记成功"
+                    )
+                else:
+                    store.complete_run(final_output)
+                    terminal_status = AgentRunStatus.succeeded
             with SessionLocal() as db:
                 run = db.get(NativeAgentRun, run_id)
                 if run is None:

@@ -1,7 +1,7 @@
 """add native agent image provider snapshot
 
-Revision ID: p7q8r9s0t1u2
-Revises: o6p7q8r9s0t1
+Revision ID: u2v3w4x5y6z7
+Revises: t1u2v3w4x5y6
 Create Date: 2026-08-01 23:35:00.000000
 """
 
@@ -11,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "p7q8r9s0t1u2"
-down_revision: Union[str, None] = "o6p7q8r9s0t1"
+revision: str = "u2v3w4x5y6z7"
+down_revision: Union[str, None] = "t1u2v3w4x5y6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

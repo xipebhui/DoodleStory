@@ -124,6 +124,18 @@ class CompletedNativeTool:
 
 
 @dataclass(frozen=True)
+class CompletedNativeImageInspection:
+    step_id: str
+    image_id: str
+    verdict: str
+    scores: dict[str, float]
+    issues: list[dict[str, object]]
+    provider: str
+    model: str
+    latency_ms: int
+
+
+@dataclass(frozen=True)
 class CompletedNativeSpeech:
     step_id: str
     audio_id: str
@@ -780,6 +792,15 @@ class NativeAgentStore:
             )
             db.add(step)
             db.flush()
+            from app.services.durable_agent_runtime import (
+                prepare_native_image_effect,
+            )
+
+            prepare_native_image_effect(
+                db,
+                native_run_id=self.run_id,
+                native_step=step,
+            )
             db.add(
                 NativeAgentItem(
                     run_id=self.run_id,
@@ -845,6 +866,31 @@ class NativeAgentStore:
                 raise RuntimeError(
                     "同一 generate_speech 调用已存在未确认执行，拒绝重复调用"
                 )
+            reusable_audio = db.scalar(
+                select(NativeAgentAudio)
+                .where(
+                    NativeAgentAudio.run_id == self.run_id,
+                    NativeAgentAudio.text == text,
+                    NativeAgentAudio.speed_snapshot == float(speed),
+                )
+                .order_by(NativeAgentAudio.created_at.asc())
+                .limit(1)
+            )
+            if reusable_audio is not None:
+                reusable_step = db.scalar(
+                    select(NativeAgentStep)
+                    .where(
+                        NativeAgentStep.run_id == self.run_id,
+                        NativeAgentStep.name == "generate_speech",
+                        NativeAgentStep.status == NativeAgentStepStatus.succeeded,
+                        NativeAgentStep.output_ref_json.contains(reusable_audio.id),
+                    )
+                    .order_by(NativeAgentStep.sequence.asc())
+                    .limit(1)
+                )
+                if reusable_step is None:
+                    raise RuntimeError("可复用语音缺少成功 Tool Step")
+                return self._completed_speech(db, reusable_step)
             step = NativeAgentStep(
                 run_id=self.run_id,
                 sequence=_next_sequence(db, NativeAgentStep, self.run_id),
@@ -889,6 +935,90 @@ class NativeAgentStore:
             db.refresh(step)
             return step
 
+    def prepare_image_inspection_tool(
+        self,
+        *,
+        tool_call_id: str,
+        image_id: str,
+        checks: list[str],
+        expected: dict[str, object],
+    ) -> CompletedNativeImageInspection | NativeAgentStep:
+        idempotency_key = f"native:{self.run_id}:inspect_image:{tool_call_id}"
+        arguments = {
+            "image_id": image_id,
+            "checks": checks,
+            "expected": expected,
+        }
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
+            image = db.get(NativeAgentImage, image_id)
+            if image is None or image.run_id != self.run_id:
+                raise RuntimeError("image_id 不属于当前 Run")
+            existing = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None:
+                if existing.status == NativeAgentStepStatus.succeeded:
+                    return self._completed_image_inspection(existing)
+                raise RuntimeError("同一 inspect_image 调用已存在未确认执行，拒绝重复调用")
+            prior = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.run_id == self.run_id,
+                    NativeAgentStep.name == "inspect_image",
+                    NativeAgentStep.status == NativeAgentStepStatus.succeeded,
+                    NativeAgentStep.output_ref_json.contains(image_id),
+                )
+            )
+            if prior is not None:
+                return self._completed_image_inspection(prior)
+            step = NativeAgentStep(
+                run_id=self.run_id,
+                sequence=_next_sequence(db, NativeAgentStep, self.run_id),
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.prepared,
+                name="inspect_image",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                input_summary_json=_json_dumps(arguments),
+                attempts=0,
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_call,
+                    payload_json=_json_dumps(
+                        {
+                            "tool": "inspect_image",
+                            "tool_call_id": tool_call_id,
+                            "step_id": step.id,
+                            **arguments,
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.prepared",
+                {
+                    "step_sequence": step.sequence,
+                    "tool": "inspect_image",
+                    "tool_call_id": tool_call_id,
+                    "arguments": arguments,
+                },
+            )
+            db.commit()
+            db.refresh(step)
+            return step
+
     def prepare_subtitle_tool(
         self,
         *,
@@ -901,6 +1031,19 @@ class NativeAgentStore:
             if run is None:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
+            failed_attempts = (
+                db.scalar(
+                    select(func.count(NativeAgentStep.id)).where(
+                        NativeAgentStep.run_id == self.run_id,
+                        NativeAgentStep.name == "generate_subtitles",
+                        NativeAgentStep.status == NativeAgentStepStatus.failed,
+                        NativeAgentStep.input_summary_json.contains(audio_id),
+                    )
+                )
+                or 0
+            )
+            if failed_attempts >= 2:
+                raise RuntimeError("同一音频的字幕生成已失败 2 次，拒绝继续自动重试")
             arguments = {"audio_id": audio_id}
             retry_step = self._claim_retry_step(
                 db,
@@ -1148,6 +1291,15 @@ class NativeAgentStore:
                     "attempt": step.attempts,
                 },
             )
+            from app.services.durable_agent_runtime import (
+                update_native_image_effect,
+            )
+
+            update_native_image_effect(
+                db,
+                native_step_id=step.id,
+                status="submitted",
+            )
             db.commit()
 
     def complete_tool(
@@ -1241,6 +1393,21 @@ class NativeAgentStore:
                     "provider": provider,
                 },
             )
+            from app.services.durable_agent_runtime import (
+                bind_native_agent_image,
+                media_runtime_enabled,
+                workflow_for_native_run,
+            )
+
+            if media_runtime_enabled(db, native_run_id=self.run_id):
+                workflow = workflow_for_native_run(db, self.run_id)
+                assert workflow is not None
+                bind_native_agent_image(
+                    db,
+                    workflow=workflow,
+                    native_image=image,
+                    native_step=step,
+                )
             db.commit()
             return self._completed_tool(db, step)
 
@@ -1712,7 +1879,82 @@ class NativeAgentStore:
                     "error_message": step.error_message,
                 },
             )
+            from app.services.durable_agent_runtime import (
+                update_native_image_effect,
+            )
+
+            update_native_image_effect(
+                db,
+                native_step_id=step.id,
+                status="failed",
+                result={
+                    "error_code": step.error_code,
+                    "error_message": step.error_message,
+                },
+            )
             db.commit()
+
+    def complete_image_inspection_tool(
+        self,
+        step_id: str,
+        *,
+        image_id: str,
+        verdict: str,
+        scores: dict[str, float],
+        issues: list[dict[str, object]],
+        provider: str,
+        model: str,
+        latency_ms: int,
+    ) -> CompletedNativeImageInspection:
+        with self._session_factory() as db:
+            step = db.get(NativeAgentStep, step_id)
+            run = db.get(NativeAgentRun, self.run_id)
+            if step is None or run is None:
+                raise RuntimeError("Native Agent Tool Step 或 Run 不存在")
+            _require_run_writable(run)
+            if step.name != "inspect_image":
+                raise RuntimeError("Native Agent Tool Step 不是 inspect_image")
+            if step.status != NativeAgentStepStatus.running:
+                raise RuntimeError("Native Agent Tool Step 不是 running 状态")
+            image = db.get(NativeAgentImage, image_id)
+            if image is None or image.run_id != self.run_id:
+                raise RuntimeError("image_id 不属于当前 Run")
+            output = {
+                "image_id": image_id,
+                "verdict": verdict,
+                "scores": scores,
+                "issues": issues,
+                "provider": provider,
+                "model": model,
+                "latency_ms": latency_ms,
+            }
+            step.status = NativeAgentStepStatus.succeeded
+            step.finished_at = datetime.utcnow()
+            step.output_ref_json = _json_dumps(output)
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_result,
+                    payload_json=_json_dumps(
+                        {
+                            "tool": "inspect_image",
+                            "status": "succeeded",
+                            "tool_call_id": step.tool_call_id,
+                            "step_id": step.id,
+                            **output,
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.completed",
+                {"step_sequence": step.sequence, "tool": "inspect_image", **output},
+            )
+            db.commit()
+            return self._completed_image_inspection(step)
 
     def complete_run(self, final_output: str) -> None:
         with self._session_factory() as db:
@@ -1841,6 +2083,42 @@ class NativeAgentStore:
             )
             db.commit()
 
+    def pause_for_media_quality(self, final_output: str) -> None:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            if run.status in {
+                AgentRunStatus.cancel_requested,
+                AgentRunStatus.cancelled,
+            }:
+                raise NativeAgentRunCancelled("Native Agent Run 已请求取消")
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.assistant_output,
+                    payload_json=_json_dumps({"content": final_output}),
+                )
+            )
+            run.status = AgentRunStatus.waiting_for_input
+            run.workflow_phase = "image_quality_pending"
+            run.final_output = final_output
+            run.finished_at = None
+            _add_event(
+                db,
+                self.run_id,
+                "checkpoint.saved",
+                {"phase": "waiting_for_image_quality"},
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "run.waiting_for_input",
+                {"status": "waiting_for_input", "kind": "image_quality"},
+            )
+            db.commit()
+
     def fail_run(self, exc: Exception) -> None:
         with self._session_factory() as db:
             run = db.get(NativeAgentRun, self.run_id)
@@ -1956,6 +2234,16 @@ class NativeAgentStore:
                     "error_message": message,
                 },
             )
+            from app.services.durable_agent_runtime import (
+                update_native_image_effect,
+            )
+
+            update_native_image_effect(
+                db,
+                native_step_id=step.id,
+                status="unknown",
+                result={"error_message": message},
+            )
             db.commit()
 
     @staticmethod
@@ -1985,6 +2273,24 @@ class NativeAgentStore:
             width=image.asset.width,
             height=image.asset.height,
             provider_request_id=image.provider_request_id,
+        )
+
+    @staticmethod
+    def _completed_image_inspection(
+        step: NativeAgentStep,
+    ) -> CompletedNativeImageInspection:
+        output = json.loads(step.output_ref_json or "{}")
+        if not output.get("image_id") or not output.get("verdict"):
+            raise RuntimeError("成功 inspect_image Step 缺少检查结果")
+        return CompletedNativeImageInspection(
+            step_id=step.id,
+            image_id=str(output["image_id"]),
+            verdict=str(output["verdict"]),
+            scores={str(key): float(value) for key, value in output.get("scores", {}).items()},
+            issues=list(output.get("issues", [])),
+            provider=str(output.get("provider") or ""),
+            model=str(output.get("model") or ""),
+            latency_ms=int(output.get("latency_ms") or 0),
         )
 
     @staticmethod

@@ -6,7 +6,7 @@ from time import monotonic
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.config import get_settings
-from app.models.entities import GeneratedImage
+from app.models.entities import FileAsset, GeneratedImage
 from app.services.media_text_extraction import (
     LLMProviderError,
     _chat_text_fallback_multimodal,
@@ -54,11 +54,20 @@ def inspect_generated_image(
 ) -> tuple[InspectionResult, str, str, int]:
     if image.asset is None:
         raise AgentVisionError("图片版本缺少可检查资产")
+    return inspect_image_asset(image.asset, checks=checks, expected=expected)
+
+
+def inspect_image_asset(
+    asset: FileAsset,
+    *,
+    checks: list[str],
+    expected: dict[str, object],
+) -> tuple[InspectionResult, str, str, int]:
     settings = get_settings()
     model = settings.text_fallback_model.strip()
     if not model:
         raise AgentVisionError("TEXT_FALLBACK_MODEL 未配置，无法执行图片检查")
-    path = materialize_asset_to_local(image.asset)
+    path = materialize_asset_to_local(asset)
     content = path.read_bytes()
     if not content:
         raise AgentVisionError("图片资产内容为空")
@@ -80,7 +89,7 @@ def inspect_generated_image(
                 {
                     "type": "image_url",
                     "image_url": {
-                        "url": data_url_from_bytes(content, image.asset.content_type),
+                        "url": data_url_from_bytes(content, asset.content_type),
                         "detail": "high",
                     },
                 },

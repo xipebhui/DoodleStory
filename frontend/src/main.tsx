@@ -85,6 +85,7 @@ import {
   type CreditTransaction,
   type CreditTransactionFilter,
   type CreditUsagePoint,
+  type DurableControlState,
   type FileAsset,
   type Style,
   type StyleOption,
@@ -3743,11 +3744,16 @@ function NativeAgentView({
     thumbnail_url: "",
   });
   const [content, setContent] = useState("");
+  const [followUpParentRunId, setFollowUpParentRunId] = useState<string | null>(null);
+  const [followUpIdempotencyKey, setFollowUpIdempotencyKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [cancellingRunId, setCancellingRunId] = useState<string | null>(null);
   const [decidingApprovalId, setDecidingApprovalId] = useState<string | null>(null);
   const [approvalFeedback, setApprovalFeedback] = useState<Record<string, string>>({});
+  const [controlStates, setControlStates] = useState<Record<string, DurableControlState>>({});
+  const [controlBusyRunId, setControlBusyRunId] = useState<string | null>(null);
+  const [clockTick, setClockTick] = useState(0);
   const [error, setError] = useState("");
   const [eventConnectionError, setEventConnectionError] = useState("");
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
@@ -3766,9 +3772,25 @@ function NativeAgentView({
   async function loadDetail(conversationId: string) {
     setLoading(true);
     try {
-      setDetail(await api.nativeAgentConversation(conversationId));
+      const nextDetail = await api.nativeAgentConversation(conversationId);
+      setDetail(nextDetail);
+      const latestRun = nextDetail.runs[nextDetail.runs.length - 1];
+      if (latestRun) void loadControlState(latestRun.id);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadControlState(runId: string) {
+    try {
+      const state = await api.nativeAgentControlState(runId);
+      setControlStates((current) => ({ ...current, [runId]: state }));
+    } catch {
+      setControlStates((current) => {
+        const next = { ...current };
+        delete next[runId];
+        return next;
+      });
     }
   }
 
@@ -3809,8 +3831,12 @@ function NativeAgentView({
   useEffect(() => {
     if (!routeConversationId) {
       setDetail(null);
+      setFollowUpParentRunId(null);
+      setFollowUpIdempotencyKey(null);
       return;
     }
+    setFollowUpParentRunId(null);
+    setFollowUpIdempotencyKey(null);
     void loadDetail(routeConversationId).catch((loadError) => {
       setError(loadError instanceof Error ? loadError.message : "会话加载失败");
     });
@@ -3820,6 +3846,9 @@ function NativeAgentView({
     [...(detail?.runs || [])]
       .reverse()
       .find((run) => activeAgentRunStatuses.has(run.status)) || null;
+  const followUpParentRun = detail?.runs.find(
+    (run) => run.id === followUpParentRunId,
+  ) || null;
   const cancellationPending = Boolean(
     activeRun
     && (
@@ -3867,6 +3896,9 @@ function NativeAgentView({
           });
           return { ...current, runs };
         });
+        if (nextEvent.event_type === "control.command.applied") {
+          void loadControlState(activeRun.id);
+        }
         setEventConnectionError("");
       } catch {
         setEventConnectionError("实时事件内容无法读取，请刷新页面恢复当前状态");
@@ -3891,21 +3923,48 @@ function NativeAgentView({
             setError(loadError instanceof Error ? loadError.message : "会话列表刷新失败");
           });
         }
+        if (nextRun.status !== activeRun.status) {
+          void loadControlState(nextRun.id);
+        }
       } catch {
         setEventConnectionError("实时事件内容无法读取，请刷新页面恢复当前状态");
       }
     };
+    const handleResyncRequired = () => {
+      setEventConnectionError("检测到实时事件缺口，正在重新同步完整状态");
+      if (!detail) return;
+      void loadDetail(detail.id).catch((loadError) => {
+        setEventConnectionError(
+          loadError instanceof Error ? loadError.message : "完整状态同步失败",
+        );
+      });
+      void loadControlState(activeRun.id);
+    };
     source.addEventListener("native.event", handleNativeEvent as EventListener);
     source.addEventListener("run.updated", handleUpdate as EventListener);
+    source.addEventListener(
+      "run.resync_required",
+      handleResyncRequired as EventListener,
+    );
     source.onerror = () => {
       setEventConnectionError("实时连接已断开，浏览器正在自动重连");
     };
     return () => {
       source.removeEventListener("native.event", handleNativeEvent as EventListener);
       source.removeEventListener("run.updated", handleUpdate as EventListener);
+      source.removeEventListener(
+        "run.resync_required",
+        handleResyncRequired as EventListener,
+      );
       source.close();
     };
   }, [activeRun?.id]);
+
+  useEffect(() => {
+    if (!activeRun?.steps.some((step) => step.status === "running")) return;
+    const timer = window.setInterval(() => setClockTick((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeRun?.id, activeRun?.steps]);
 
   const threadSignature = detail?.runs
     .map(
@@ -4128,25 +4187,30 @@ function NativeAgentView({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const retryingLatestRun = content.trim() === "重试";
+    const creatingFollowUp = Boolean(followUpParentRun);
+    const retryingLatestRun = !creatingFollowUp && content.trim() === "重试";
     if (!content.trim() || sending || activeRun) return;
+    if (followUpParentRunId && !followUpParentRun) {
+      setError("要续接的父 Run 已不在当前会话中，请重新选择");
+      return;
+    }
     if (retryingLatestRun && !detail) {
       setError("当前会话还没有可重试的任务");
       return;
     }
-    if (!retryingLatestRun && !skillVersionId) {
+    if (!creatingFollowUp && !retryingLatestRun && !skillVersionId) {
       setError("请先输入 @ 并添加一个已发布的 Skill");
       return;
     }
-    if (creationChannelId && !selectedCreationChannel?.bound_style) {
+    if (!creatingFollowUp && creationChannelId && !selectedCreationChannel?.bound_style) {
       setError("所选创作账号尚未绑定风格，请先前往频道账号管理完成绑定");
       return;
     }
-    if (youtubeChannelId && !selectedPublishableVideo) {
+    if (!creatingFollowUp && youtubeChannelId && !selectedPublishableVideo) {
       setError("选择 @频道后，还需要选择一个审核通过的视频");
       return;
     }
-    if (selectedYoutubeChannel && selectedPublishableVideo) {
+    if (!creatingFollowUp && selectedYoutubeChannel && selectedPublishableVideo) {
       const confirmed = window.confirm(
         [
           `确认创建真实 YouTube 发布请求？`,
@@ -4160,6 +4224,12 @@ function NativeAgentView({
       );
       if (!confirmed) return;
     }
+    const followUpRequestKey = creatingFollowUp
+      ? followUpIdempotencyKey || crypto.randomUUID()
+      : null;
+    if (creatingFollowUp && !followUpIdempotencyKey) {
+      setFollowUpIdempotencyKey(followUpRequestKey);
+    }
     setSending(true);
     setError("");
     try {
@@ -4168,9 +4238,14 @@ function NativeAgentView({
         (await api.createNativeAgentConversation({
           title: content.trim().slice(0, 40),
         }));
-      const run = retryingLatestRun
-        ? await api.retryLatestNativeAgentRun(conversation.id)
-        : await api.createNativeAgentRun(conversation.id, {
+      const run = creatingFollowUp && followUpParentRun
+        ? await api.createNativeAgentFollowUp(followUpParentRun.id, {
+            content,
+            idempotency_key: followUpRequestKey as string,
+          })
+        : retryingLatestRun
+          ? await api.retryLatestNativeAgentRun(conversation.id)
+          : await api.createNativeAgentRun(conversation.id, {
             content,
             skill_version_id: skillVersionId,
             style_id: creationChannelId ? null : styleId || null,
@@ -4188,8 +4263,10 @@ function NativeAgentView({
                     confirmed: true,
                   }
                 : null,
-          });
+            });
       setContent("");
+      setFollowUpParentRunId(null);
+      setFollowUpIdempotencyKey(null);
       setSelectedResources((current) =>
         clearNativeAgentPublishingResources(current),
       );
@@ -4202,10 +4279,15 @@ function NativeAgentView({
                 ? current.runs.map((existingRun) =>
                     existingRun.id === run.id ? run : existingRun
                   )
-                : [...current.runs, run],
+                : current.runs.some((existingRun) => existingRun.id === run.id)
+                  ? current.runs.map((existingRun) =>
+                      existingRun.id === run.id ? run : existingRun
+                    )
+                  : [...current.runs, run],
             }
           : current,
       );
+      void loadControlState(run.id);
       void loadConversations().catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : "会话列表刷新失败");
       });
@@ -4257,19 +4339,20 @@ function NativeAgentView({
     setDecidingApprovalId(approvalId);
     setError("");
     try {
-      const nextRun = await api.decideNativeArticleApproval(approvalId, {
-        decision,
+      const state = controlStates[runId];
+      if (!state) throw new Error("控制状态尚未加载，请刷新后重试");
+      const command = await api.executeNativeAgentControlCommand(runId, {
+        command: decision === "approve" ? "approve_gate" : "request_changes",
+        idempotency_key: crypto.randomUUID(),
+        expected_state_version: state.state_version,
+        target_id: state.current_gate_id,
         feedback: feedback || null,
       });
-      setDetail((current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          runs: current.runs.map((run) =>
-            run.id === runId ? nextRun : run
-          ),
-        };
-      });
+      setControlStates((current) => ({
+        ...current,
+        [runId]: command.control_state,
+      }));
+      if (detail) await loadDetail(detail.id);
       setApprovalFeedback((current) => {
         const next = { ...current };
         delete next[approvalId];
@@ -4284,6 +4367,46 @@ function NativeAgentView({
       );
     } finally {
       setDecidingApprovalId(null);
+    }
+  }
+
+  async function executeControlAction(
+    run: NativeAgentRun,
+    action: DurableControlState["allowed_actions"][number],
+  ) {
+    const state = controlStates[run.id];
+    if (!state || controlBusyRunId) return;
+    if (action === "cancel_run") {
+      const confirmed = window.confirm(
+        "确认取消当前 Run？未开始的任务会停止，已提交但结果未知的副作用需要人工处理。",
+      );
+      if (!confirmed) return;
+    }
+    const retryTask = state.tasks.find((task) => ["failed", "blocked"].includes(task.status));
+    const unknownEffect = state.unknown_effects[0];
+    setControlBusyRunId(run.id);
+    setError("");
+    try {
+      const result = await api.executeNativeAgentControlCommand(run.id, {
+        command: action,
+        idempotency_key: crypto.randomUUID(),
+        expected_state_version: state.state_version,
+        target_id:
+          action === "retry_task"
+            ? retryTask?.id || null
+            : action === "resolve_unknown_effect"
+              ? unknownEffect?.id || null
+              : null,
+        feedback: action === "cancel_run" ? "用户从聊天页面取消 Run" : null,
+        resolution: action === "resolve_unknown_effect" ? "failed" : null,
+      });
+      setControlStates((current) => ({ ...current, [run.id]: result.control_state }));
+      if (detail) await loadDetail(detail.id);
+    } catch (controlError) {
+      setError(controlError instanceof Error ? controlError.message : "控制命令执行失败");
+      await loadControlState(run.id);
+    } finally {
+      setControlBusyRunId(null);
     }
   }
 
@@ -4335,12 +4458,41 @@ function NativeAgentView({
             const visibleArticleArtifacts = run.artifacts.filter(
               (artifact) => artifact.status !== "superseded",
             );
+            const controlState = controlStates[run.id];
+            const runningTool = runActive
+              ? run.steps.find(
+                  (step) => step.step_type === "tool_call" && step.status === "running",
+                )
+              : undefined;
+            const runningToolElapsedSeconds = runningTool?.started_at
+              ? Math.max(
+                  0,
+                  Math.floor(
+                    (Date.now() - new Date(runningTool.started_at).getTime()) / 1000,
+                  ),
+                ) + clockTick * 0
+              : 0;
             return (
-              <article className="native-agent-run" key={run.id}>
+              <article
+                className="native-agent-run"
+                id={`native-agent-run-${run.id}`}
+                key={run.id}
+              >
                 <div className="native-agent-user-message">
                   {String(userItem?.payload.content || "")}
                 </div>
                 <div className="native-agent-run-meta">
+                  {run.parent_run_id ? (
+                    <button
+                      type="button"
+                      className="native-agent-parent-link"
+                      onClick={() => document
+                        .getElementById(`native-agent-run-${run.parent_run_id}`)
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                    >
+                      续接自上一结果
+                    </button>
+                  ) : null}
                   <span>{run.skill_name} · v{run.skill_version}</span>
                   <span>{run.style_name}</span>
                   {run.creation_channel_id ? <span>创作账号：@{run.creation_channel_name}</span> : null}
@@ -4356,6 +4508,74 @@ function NativeAgentView({
                   <span>{run.subtitle_call_count} 次字幕生成</span>
                   <span>{run.video_call_count} 次视频生成</span>
                 </div>
+                {runningTool ? (
+                  <div className="native-agent-tool-wait" role="status">
+                    <Loader2 className="spin" size={15} />
+                    <span>
+                      正在执行 {runningTool.name} · 已等待 {runningToolElapsedSeconds} 秒
+                      {runningTool.name === "generate_image"
+                        ? " · 单次最多 300 秒，Provider 内部最多 4 次尝试"
+                        : ""}
+                    </span>
+                  </div>
+                ) : null}
+                {controlState ? (
+                  <section className="native-agent-control-panel" aria-label="当前 Run 控制">
+                    <header>
+                      <span>运行控制 · 状态版本 {controlState.state_version}</span>
+                      <small>{controlState.status}</small>
+                    </header>
+                    {controlState.allowed_actions.some((action) =>
+                      ["retry_task", "resume_run", "cancel_run", "resolve_unknown_effect"].includes(action)
+                    ) ? (
+                      <div className="native-agent-control-actions">
+                        {controlState.allowed_actions.includes("retry_task") ? (
+                          <button
+                            type="button"
+                            className="is-secondary"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "retry_task")}
+                          >
+                            <RefreshCw size={14} />重试失败任务
+                          </button>
+                        ) : null}
+                        {controlState.allowed_actions.includes("resume_run") ? (
+                          <button
+                            type="button"
+                            className="is-secondary"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "resume_run")}
+                          >
+                            <Play size={14} />从检查点恢复
+                          </button>
+                        ) : null}
+                        {controlState.allowed_actions.includes("resolve_unknown_effect") ? (
+                          <button
+                            type="button"
+                            className="is-secondary"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "resolve_unknown_effect")}
+                          >
+                            <AlertCircle size={14} />确认未知结果失败
+                          </button>
+                        ) : null}
+                        {controlState.allowed_actions.includes("cancel_run") ? (
+                          <button
+                            type="button"
+                            className="is-danger"
+                            disabled={controlBusyRunId === run.id}
+                            onClick={() => void executeControlAction(run, "cancel_run")}
+                          >
+                            <X size={14} />取消后续任务
+                          </button>
+                        ) : null}
+                        {controlBusyRunId === run.id ? <Loader2 className="spin" size={15} /> : null}
+                      </div>
+                    ) : (
+                      <p>当前没有需要人工执行的控制操作。</p>
+                    )}
+                  </section>
+                ) : null}
                 <div className="native-agent-responses" aria-label="Agent Response 与工具调用">
                   {responses.map((response, responseIndex) => (
                     <section className="native-agent-response" key={response.responseId}>
@@ -4671,6 +4891,24 @@ function NativeAgentView({
                     {run.error_message}
                   </div>
                 ) : null}
+                {run.status === "succeeded" && !activeRun ? (
+                  <div className="native-agent-follow-up-action">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFollowUpParentRunId(run.id);
+                        setFollowUpIdempotencyKey(crypto.randomUUID());
+                        setResourceMenuOpen(false);
+                        setError("");
+                        window.requestAnimationFrame(() =>
+                          nativeComposerInputRef.current?.focus()
+                        );
+                      }}
+                    >
+                      <RefreshCw size={14} />基于此结果继续
+                    </button>
+                  </div>
+                ) : null}
               </article>
             );
           })}
@@ -4683,7 +4921,32 @@ function NativeAgentView({
         </section>
 
         <form className="native-agent-composer" onSubmit={submit}>
-          {selectedResources.length > 0 ? (
+          {followUpParentRun ? (
+            <div className="native-agent-follow-up-banner" role="status">
+              <div>
+                <strong>基于上一结果继续</strong>
+                <span>
+                  固定 {followUpParentRun.skill_name} · v{followUpParentRun.skill_version}
+                  {followUpParentRun.style_name
+                    ? ` · ${followUpParentRun.style_name}`
+                    : ""}
+                  {followUpParentRun.creation_channel_name
+                    ? ` · @${followUpParentRun.creation_channel_name}`
+                    : ""}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() => {
+                  setFollowUpParentRunId(null);
+                  setFollowUpIdempotencyKey(null);
+                }}
+              >
+                <X size={14} />取消续接
+              </button>
+            </div>
+          ) : selectedResources.length > 0 ? (
             <div className="native-agent-context-row" aria-label="本轮已引用资源">
               {selectedResources.map((resource) => (
                 <span
@@ -4718,7 +4981,7 @@ function NativeAgentView({
                 aria-label="添加本轮资源"
                 aria-haspopup="listbox"
                 aria-expanded={resourceMenuOpen}
-                disabled={sending || Boolean(activeRun)}
+                disabled={sending || Boolean(activeRun) || Boolean(followUpParentRun)}
                 onClick={() => {
                   if (resourceMenuOpen) {
                     setResourceMenuOpen(false);
@@ -4852,11 +5115,13 @@ function NativeAgentView({
                   setResourceMenuOpen(false);
                 }
               }}
-              placeholder="输入内容，键入 @ 添加 Skill、账号、Style 或其它资源…"
+              placeholder={followUpParentRun
+                ? "输入本轮的新目标；上一轮事实和产物会以只读快照提供给 Agent…"
+                : "输入内容，键入 @ 添加 Skill、账号、Style 或其它资源…"}
               disabled={sending || Boolean(activeRun)}
             />
           </div>
-          {youtubeChannelId ? (
+          {youtubeChannelId && !followUpParentRun ? (
             <div className="native-agent-publish-options">
               <div>
                 <span>发布可见性</span>
@@ -4898,6 +5163,8 @@ function NativeAgentView({
                 ? activeRun.status === "waiting_for_input"
                   ? "最终文案已保存；请在上方确认，或填写意见后要求修改。"
                   : "终止后不会再启动新的 Tool；已被 Provider 接收的请求可能仍会计费。"
+                : followUpParentRun
+                  ? "将创建独立的新 Run；继承上一轮固定资源和只读结果，但不会继承发布确认。"
                 : content.trim() === "重试"
                   ? "将继续最近一次 Run，并复用该 Run 固定的 Skill、Style 和成功资产；当前选择不会生效。"
                   : youtubeChannelId

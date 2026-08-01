@@ -7,6 +7,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import current_user
@@ -16,10 +17,17 @@ from app.core.database import SessionLocal, get_db
 from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
+    DurableAgentGate,
+    DurableAgentImageQuality,
+    DurableAgentMediaBinding,
+    DurableAgentTask,
+    DurableAgentPlanRevision,
+    DurableAgentWorkflow,
     NativeAgentAudio,
     NativeAgentArticleApproval,
     NativeAgentArtifact,
     NativeAgentConversation,
+    NativeAgentContextItem,
     NativeAgentEvent,
     NativeAgentExternalContent,
     NativeAgentImage,
@@ -47,6 +55,9 @@ from app.models.enums import (
 from app.schemas.common import ApiData, ApiList, normalize_api_datetimes
 from app.schemas.agent import AgentResourceKind, AgentResourceOption
 from app.schemas.native_agent import (
+    DurableControlCommandCreate,
+    DurableControlCommandRead,
+    DurableControlStateRead,
     NativeAgentCapabilityRead,
     NativeAgentAudioRead,
     NativeAgentArticleApprovalDecision,
@@ -60,10 +71,15 @@ from app.schemas.native_agent import (
     NativeAgentImageRead,
     NativeAgentItemRead,
     NativeAgentRunCreate,
+    NativeAgentFollowUpCreate,
     NativeAgentRunRead,
     NativeAgentStepRead,
     NativeAgentSubtitleRead,
     NativeAgentVideoRead,
+    DurableGateDecision,
+    DurableImageQualityDecision,
+    DurablePanelRerunRequest,
+    DurableVisualPlanCreate,
 )
 from app.services.native_agent_worker import (
     cancel_native_agent_run,
@@ -74,13 +90,34 @@ from app.services.native_agent_persistence import (
     NativeAgentStore,
     add_native_agent_event,
 )
+from app.services.agent_control_commands import (
+    AgentControlCommandError,
+    durable_control_state,
+    execute_durable_control_command,
+)
 from app.services.native_article_workflow import (
     NativeArticleWorkflowError,
     decide_article_approval,
 )
+from app.services.durable_agent_runtime import (
+    DurableAgentRuntimeError,
+    initialize_workflow,
+    open_image_quality_gate,
+    record_image_quality,
+    register_visual_plan,
+    request_panel_rerun,
+    mirror_native_article_approval,
+    resolve_gate,
+    workflow_for_native_run,
+)
 from app.services.account_creation_context import (
     AccountCreationContextError,
     build_account_creation_context_snapshot,
+)
+from app.services.native_agent_follow_up import (
+    NativeAgentFollowUpError,
+    create_follow_up_run,
+    find_idempotent_follow_up,
 )
 
 
@@ -105,6 +142,63 @@ def _load_owned_conversation(
             detail="最小 Agent 会话不存在",
         )
     return conversation
+
+
+def _load_owned_durable_workflow(
+    db: Session,
+    *,
+    run_id: str,
+    owner_user_id: str,
+) -> tuple[NativeAgentRun, DurableAgentWorkflow]:
+    run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == run_id,
+            NativeAgentConversation.owner_user_id == owner_user_id,
+        )
+    )
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Native Agent Run 不存在",
+        )
+    workflow = workflow_for_native_run(db, run.id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Native Agent Run 尚未初始化 Durable Workflow",
+        )
+    return run, workflow
+
+
+def _load_owned_media_binding(
+    db: Session,
+    *,
+    binding_id: str,
+    owner_user_id: str,
+) -> tuple[NativeAgentRun, DurableAgentMediaBinding]:
+    binding = db.get(DurableAgentMediaBinding, binding_id)
+    if binding is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Durable 图片绑定不存在",
+        )
+    workflow = db.get(DurableAgentWorkflow, binding.workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Durable Workflow 不存在",
+        )
+    run, _ = _load_owned_durable_workflow(
+        db,
+        run_id=workflow.native_run_id,
+        owner_user_id=owner_user_id,
+    )
+    return run, binding
 
 
 def _item_to_read(item: NativeAgentItem) -> NativeAgentItemRead:
@@ -268,6 +362,8 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
     return NativeAgentRunRead(
         id=run.id,
         conversation_id=run.conversation_id,
+        parent_run_id=run.parent_run_id,
+        continued_from_checkpoint_id=run.continued_from_checkpoint_id,
         skill_version_id=run.skill_version_id,
         skill_name=run.skill_name_snapshot,
         skill_version=run.skill_version_snapshot,
@@ -845,9 +941,87 @@ async def create_native_agent_run(
         {"status": AgentRunStatus.queued.value},
     )
     conversation.last_message_at = datetime.utcnow()
+    initialize_workflow(
+        db,
+        native_run=run,
+        include_article_tasks=bool(
+            {
+                "write_article",
+                "review_article",
+                "submit_final_article",
+            }.intersection(selected_tool_names)
+        ),
+    )
     db.commit()
 
     await enqueue_native_agent_run(run.id)
+    return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+
+
+@router.post(
+    "/runs/{parent_run_id}/follow-ups",
+    response_model=ApiData[NativeAgentRunRead],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_native_agent_follow_up(
+    parent_run_id: str,
+    payload: NativeAgentFollowUpCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[NativeAgentRunRead]:
+    parent_run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == parent_run_id,
+            NativeAgentConversation.owner_user_id == user.id,
+        )
+    )
+    if parent_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="父 Run 不存在或不可访问",
+        )
+    try:
+        run, replayed = create_follow_up_run(
+            db,
+            parent_run=parent_run,
+            user=user,
+            payload=payload,
+        )
+        db.commit()
+    except NativeAgentFollowUpError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        try:
+            run = find_idempotent_follow_up(
+                db,
+                user=user,
+                parent_run_id=parent_run_id,
+                payload=payload,
+            )
+        except NativeAgentFollowUpError as replay_exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(replay_exc),
+            ) from replay_exc
+        if run is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Follow-up 创建发生并发冲突，请使用相同幂等键重试",
+            ) from exc
+        replayed = True
+
+    if not replayed:
+        await enqueue_native_agent_run(run.id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
 
 
@@ -972,20 +1146,47 @@ async def decide_native_article_approval(
             detail="文案审批不存在",
         )
     try:
-        run_id, approval_status = decide_article_approval(
-            approval_id,
-            user_id=user.id,
-            decision=payload.decision,
-            feedback=payload.feedback,
-            session_factory=SessionLocal,
+        durable_gate = mirror_native_article_approval(
+            db,
+            native_run=approval.run,
+            native_approval=approval,
         )
-    except NativeArticleWorkflowError as exc:
+        workflow = workflow_for_native_run(db, approval.run_id)
+        if workflow is None:
+            raise DurableAgentRuntimeError("文案审批缺少 Durable Workflow")
+        _, result = execute_durable_control_command(
+            db,
+            run=approval.run,
+            workflow=workflow,
+            user=user,
+            payload=DurableControlCommandCreate(
+                command=(
+                    "approve_gate"
+                    if payload.decision == "approve"
+                    else "request_changes"
+                ),
+                idempotency_key=(
+                    f"legacy-article:{approval.id}:{payload.decision}"
+                ),
+                expected_state_version=workflow.state_version,
+                target_id=durable_gate.id,
+                feedback=payload.feedback,
+            ),
+        )
+        run_id = approval.run_id
+        db.commit()
+    except (
+        NativeArticleWorkflowError,
+        DurableAgentRuntimeError,
+        AgentControlCommandError,
+    ) as exc:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
     db.expire_all()
-    if approval_status == "changes_requested":
+    if result.get("enqueue_run"):
         await enqueue_native_agent_run(run_id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run_id)))
 
@@ -1026,6 +1227,31 @@ async def cancel_native_run(
             status_code=status.HTTP_409_CONFLICT,
             detail="已结束的 Native Agent Run 不能终止",
         )
+    workflow = workflow_for_native_run(db, run.id)
+    if workflow is not None:
+        try:
+            _, result = execute_durable_control_command(
+                db,
+                run=run,
+                workflow=workflow,
+                user=user,
+                payload=DurableControlCommandCreate(
+                    command="cancel_run",
+                    idempotency_key=f"legacy-cancel:{run.id}",
+                    expected_state_version=workflow.state_version,
+                    feedback="兼容取消入口请求终止",
+                ),
+            )
+            db.commit()
+        except AgentControlCommandError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        if result.get("cancel_worker"):
+            await cancel_native_agent_run(run.id)
+        return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
     if run.status != AgentRunStatus.cancel_requested:
         cancel_update = db.execute(
             update(NativeAgentRun)
@@ -1074,6 +1300,419 @@ async def cancel_native_run(
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
 
 
+@router.get(
+    "/runs/{run_id}/control-state",
+    response_model=ApiData[DurableControlStateRead],
+)
+def get_durable_control_state(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[DurableControlStateRead]:
+    _, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    return ApiData(
+        data=DurableControlStateRead.model_validate(
+            durable_control_state(db, workflow=workflow)
+        )
+    )
+
+
+@router.post(
+    "/runs/{run_id}/commands",
+    response_model=ApiData[DurableControlCommandRead],
+)
+async def execute_durable_command(
+    run_id: str,
+    payload: DurableControlCommandCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[DurableControlCommandRead]:
+    run, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    try:
+        command, result = execute_durable_control_command(
+            db,
+            run=run,
+            workflow=workflow,
+            user=user,
+            payload=payload,
+        )
+        db.commit()
+    except AgentControlCommandError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    db.refresh(command)
+    if result.get("cancel_worker"):
+        await cancel_native_agent_run(run.id)
+    if result.get("enqueue_run"):
+        await enqueue_native_agent_run(run.id)
+    return ApiData(
+        data=DurableControlCommandRead(
+            id=command.id,
+            command=command.command_type,
+            target_id=command.target_id,
+            idempotency_key=command.idempotency_key,
+            expected_state_version=command.expected_state_version,
+            status=command.status,
+            result=result,
+            control_state=DurableControlStateRead.model_validate(
+                durable_control_state(db, workflow=workflow)
+            ),
+            created_at=command.created_at,
+        )
+    )
+
+
+@router.get(
+    "/runs/{run_id}/plan-revisions",
+    response_model=ApiData[list[dict[str, object]]],
+)
+def list_durable_plan_revisions(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[list[dict[str, object]]]:
+    run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == run_id,
+            NativeAgentConversation.owner_user_id == user.id,
+        )
+    )
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Native Agent Run 不存在",
+        )
+    workflow = workflow_for_native_run(db, run.id)
+    if workflow is None:
+        return ApiData(data=[])
+    revisions = db.scalars(
+        select(DurableAgentPlanRevision)
+        .where(DurableAgentPlanRevision.workflow_id == workflow.id)
+        .order_by(DurableAgentPlanRevision.revision.asc())
+    ).all()
+    return ApiData(
+        data=[
+            {
+                "id": item.id,
+                "revision": item.revision,
+                "reason": item.reason,
+                "source_checkpoint_id": item.source_checkpoint_id,
+                "plan": json.loads(item.plan_json),
+                "created_at": item.created_at,
+            }
+            for item in revisions
+        ]
+    )
+
+
+@router.post(
+    "/runs/{run_id}/visual-plan",
+    response_model=ApiData[dict[str, object]],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_durable_visual_plan(
+    run_id: str,
+    payload: DurableVisualPlanCreate,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    try:
+        artifact, gate = register_visual_plan(
+            db,
+            workflow=workflow,
+            content=payload.model_dump(mode="json"),
+        )
+        run.status = AgentRunStatus.waiting_for_input
+        run.workflow_phase = "visual_plan_review"
+        run.finished_at = None
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return ApiData(
+        data={
+            "artifact_id": artifact.id,
+            "artifact_version": artifact.version,
+            "gate_id": gate.id,
+            "gate_status": gate.status,
+        }
+    )
+
+
+@router.post(
+    "/runs/{run_id}/durable-gates/{gate_id}/decision",
+    response_model=ApiData[dict[str, object]],
+)
+async def decide_durable_media_gate(
+    run_id: str,
+    gate_id: str,
+    payload: DurableGateDecision,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    gate = db.get(DurableAgentGate, gate_id)
+    if gate is None or gate.workflow_id != workflow.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Durable Gate 不存在",
+        )
+    if gate.purpose not in {"visual_plan_review", "image_quality_review"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该 Gate 必须通过原文案审批入口处理",
+        )
+    if gate.purpose == "image_quality_review" and payload.decision != "approve":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="图片质量修改必须通过具体 Panel 的局部重跑入口提交",
+        )
+    try:
+        _, result = execute_durable_control_command(
+            db,
+            run=run,
+            workflow=workflow,
+            user=user,
+            payload=DurableControlCommandCreate(
+                command=(
+                    "approve_gate"
+                    if payload.decision == "approve"
+                    else "request_changes"
+                ),
+                idempotency_key=f"legacy-media:{gate.id}:{payload.decision}",
+                expected_state_version=workflow.state_version,
+                target_id=gate.id,
+                feedback=payload.feedback,
+            ),
+        )
+        db.commit()
+    except (DurableAgentRuntimeError, AgentControlCommandError) as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    if result.get("enqueue_run"):
+        await enqueue_native_agent_run(run.id)
+    db.refresh(gate)
+    return ApiData(
+        data={
+            "gate_id": gate.id,
+            "status": gate.status,
+            "attempt_ids": result["attempt_ids"],
+        }
+    )
+
+
+@router.get(
+    "/runs/{run_id}/media-state",
+    response_model=ApiData[dict[str, object]],
+)
+def get_durable_media_state(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    _, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    bindings = db.scalars(
+        select(DurableAgentMediaBinding)
+        .where(DurableAgentMediaBinding.workflow_id == workflow.id)
+        .order_by(DurableAgentMediaBinding.created_at)
+    ).all()
+    rows: list[dict[str, object]] = []
+    for binding in bindings:
+        latest_quality = db.scalar(
+            select(DurableAgentImageQuality)
+            .where(DurableAgentImageQuality.media_binding_id == binding.id)
+            .order_by(DurableAgentImageQuality.revision.desc())
+            .limit(1)
+        )
+        rows.append(
+            {
+                "binding_id": binding.id,
+                "plan_panel_key": binding.plan_panel_key,
+                "generated_image_id": binding.generated_image_id,
+                "native_agent_image_id": binding.native_agent_image_id,
+                "image_task_id": binding.image_task_id,
+                "quality_task_id": binding.quality_task_id,
+                "status": binding.status,
+                "quality_revision": (
+                    latest_quality.revision if latest_quality is not None else None
+                ),
+                "quality_summary": (
+                    latest_quality.summary if latest_quality is not None else None
+                ),
+            }
+        )
+    return ApiData(
+        data={
+            "workflow_id": workflow.id,
+            "state_version": workflow.state_version,
+            "status": workflow.status,
+            "bindings": rows,
+        }
+    )
+
+
+@router.post(
+    "/media-bindings/{binding_id}/quality",
+    response_model=ApiData[dict[str, object]],
+)
+def decide_durable_image_quality(
+    binding_id: str,
+    payload: DurableImageQualityDecision,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    _, binding = _load_owned_media_binding(
+        db,
+        binding_id=binding_id,
+        owner_user_id=user.id,
+    )
+    try:
+        quality = record_image_quality(
+            db,
+            binding=binding,
+            verdict=payload.verdict,
+            summary=payload.summary,
+            details=payload.details,
+        )
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return ApiData(
+        data={
+            "binding_id": binding.id,
+            "quality_id": quality.id,
+            "revision": quality.revision,
+            "verdict": quality.verdict,
+        }
+    )
+
+
+@router.post(
+    "/runs/{run_id}/media-quality-gate",
+    response_model=ApiData[dict[str, object]],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_durable_media_quality_gate(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, workflow = _load_owned_durable_workflow(
+        db,
+        run_id=run_id,
+        owner_user_id=user.id,
+    )
+    try:
+        gate = open_image_quality_gate(db, workflow=workflow)
+        run.status = AgentRunStatus.waiting_for_input
+        run.workflow_phase = "image_quality_review"
+        run.finished_at = None
+        db.commit()
+    except DurableAgentRuntimeError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return ApiData(data={"gate_id": gate.id, "status": gate.status})
+
+
+@router.post(
+    "/media-bindings/{binding_id}/rerun",
+    response_model=ApiData[dict[str, object]],
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def rerun_durable_panel_image(
+    binding_id: str,
+    payload: DurablePanelRerunRequest,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[dict[str, object]]:
+    run, binding = _load_owned_media_binding(
+        db,
+        binding_id=binding_id,
+        owner_user_id=user.id,
+    )
+    workflow = db.get(DurableAgentWorkflow, binding.workflow_id)
+    if workflow is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Panel 绑定缺少 Durable Workflow",
+        )
+    try:
+        _, result = execute_durable_control_command(
+            db,
+            run=run,
+            workflow=workflow,
+            user=user,
+            payload=DurableControlCommandCreate(
+                command="retry_task",
+                idempotency_key=(
+                    f"legacy-panel:{binding.id}:v{workflow.state_version}"
+                ),
+                expected_state_version=workflow.state_version,
+                target_id=binding.image_task_id,
+                feedback=payload.feedback,
+            ),
+        )
+        db.commit()
+    except (DurableAgentRuntimeError, AgentControlCommandError) as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    if result.get("enqueue_run"):
+        await enqueue_native_agent_run(run.id)
+    db.refresh(binding)
+    return ApiData(
+        data={
+            "binding_id": binding.id,
+            "attempt_id": result["attempt_ids"][0],
+            "status": binding.status,
+        }
+    )
+
+
 @router.get("/runs/{run_id}/events")
 async def stream_native_agent_run_events(
     run_id: str,
@@ -1115,6 +1754,7 @@ async def stream_native_agent_run_events(
         nonlocal current_cursor
         heartbeat_ticks = 0
         sent_snapshot = False
+        resync_checked = False
         while not await request.is_disconnected():
             with SessionLocal() as event_db:
                 events = event_db.scalars(
@@ -1127,6 +1767,24 @@ async def stream_native_agent_run_events(
                     .limit(100)
                 ).all()
                 run = _load_run_for_read(event_db, run_id)
+                cursor_gap = False
+                if not resync_checked:
+                    cursor_gap = bool(
+                        current_cursor > run.event_sequence
+                        or (
+                            events
+                            and events[0].sequence > current_cursor + 1
+                        )
+                    )
+                    if current_cursor > run.event_sequence:
+                        current_cursor = 0
+                        events = event_db.scalars(
+                            select(NativeAgentEvent)
+                            .where(NativeAgentEvent.run_id == run_id)
+                            .order_by(NativeAgentEvent.sequence.asc())
+                            .limit(100)
+                        ).all()
+                    resync_checked = True
                 run_read = normalize_api_datetimes(_run_to_read(run))
                 snapshot = json.dumps(
                     run_read.model_dump(mode="json"),
@@ -1138,6 +1796,18 @@ async def stream_native_agent_run_events(
                     AgentRunStatus.failed,
                     AgentRunStatus.cancelled,
                 }
+            if cursor_gap:
+                resync_payload = json.dumps(
+                    {
+                        "reason": "event_cursor_gap",
+                        "requested_cursor": requested_cursor,
+                        "last_event_id": header_cursor,
+                        "current_event_sequence": run.event_sequence,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                yield f"event: run.resync_required\ndata: {resync_payload}\n\n"
             if events:
                 for event in events:
                     event_payload = json.dumps(

@@ -633,6 +633,8 @@ export type YoutubeChannelDetail = YoutubeChannelSummary & {
 export type NativeAgentRun = {
   id: string;
   conversation_id: string;
+  parent_run_id: string | null;
+  continued_from_checkpoint_id: string | null;
   skill_version_id: string;
   skill_name: string;
   skill_version: number;
@@ -683,7 +685,7 @@ export type NativeAgentArticleApproval = {
 
 export type NativeAgentArtifact = {
   id: string;
-  artifact_type: "article_draft" | "article_review" | "final_article";
+  artifact_type: "topic_candidates" | "article_draft" | "article_review" | "final_article";
   schema_version: number;
   version: number;
   status: "completed" | "awaiting_approval" | "approved" | "rejected" | "superseded";
@@ -705,6 +707,56 @@ export type NativeAgentConversation = {
 
 export type NativeAgentConversationDetail = NativeAgentConversation & {
   runs: NativeAgentRun[];
+};
+
+export type DurableControlTask = {
+  id: string;
+  task_key: string;
+  task_type: string;
+  title: string;
+  status: string;
+  required: boolean;
+  current_attempt_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+};
+
+export type DurableUnknownEffect = {
+  id: string;
+  attempt_id: string;
+  effect_kind: string;
+  provider_request_id: string | null;
+};
+
+export type DurableControlState = {
+  workflow_id: string;
+  status: string;
+  state_version: number;
+  current_checkpoint_id: string | null;
+  current_gate_id: string | null;
+  expected_input_kind: string | null;
+  allowed_actions: Array<
+    | "approve_gate"
+    | "request_changes"
+    | "retry_task"
+    | "cancel_run"
+    | "resume_run"
+    | "resolve_unknown_effect"
+  >;
+  tasks: DurableControlTask[];
+  unknown_effects: DurableUnknownEffect[];
+};
+
+export type DurableControlCommand = {
+  id: string;
+  command: string;
+  target_id: string | null;
+  idempotency_key: string;
+  expected_state_version: number;
+  status: string;
+  result: Record<string, unknown>;
+  control_state: DurableControlState;
+  created_at: string;
 };
 
 export type FileAsset = {
@@ -1258,6 +1310,14 @@ export const api = {
       `/agent-loop/conversations/${encodeURIComponent(conversationId)}/runs`,
       { method: "POST", body: JSON.stringify(payload) },
     ).then((result) => result.data),
+  createNativeAgentFollowUp: (
+    parentRunId: string,
+    payload: { content: string; idempotency_key: string },
+  ) =>
+    request<ApiData<NativeAgentRun>>(
+      `/agent-loop/runs/${encodeURIComponent(parentRunId)}/follow-ups`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ).then((result) => result.data),
   retryLatestNativeAgentRun: (conversationId: string) =>
     request<ApiData<NativeAgentRun>>(
       `/agent-loop/conversations/${encodeURIComponent(conversationId)}/retry-latest`,
@@ -1278,6 +1338,26 @@ export const api = {
     request<ApiData<NativeAgentRun>>(
       `/agent-loop/runs/${encodeURIComponent(runId)}/cancel`,
       { method: "POST" },
+    ).then((result) => result.data),
+  nativeAgentControlState: (runId: string) =>
+    request<ApiData<DurableControlState>>(
+      `/agent-loop/runs/${encodeURIComponent(runId)}/control-state`,
+    ).then((result) => result.data),
+  executeNativeAgentControlCommand: (
+    runId: string,
+    payload: {
+      command: DurableControlState["allowed_actions"][number];
+      idempotency_key: string;
+      expected_state_version: number;
+      target_id?: string | null;
+      feedback?: string | null;
+      resolution?: "succeeded" | "failed" | null;
+      result_ref?: Record<string, unknown> | null;
+    },
+  ) =>
+    request<ApiData<DurableControlCommand>>(
+      `/agent-loop/runs/${encodeURIComponent(runId)}/commands`,
+      { method: "POST", body: JSON.stringify(payload) },
     ).then((result) => result.data),
   youtubeChannels: (params?: { q?: string; remote_status?: string; cursor?: string; limit?: number }) => {
     const search = new URLSearchParams();

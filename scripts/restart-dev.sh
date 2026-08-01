@@ -16,6 +16,22 @@ FFPROBE_EXECUTABLE="${FFPROBE_EXECUTABLE:-$(command -v ffprobe 2>/dev/null || tr
 
 echo "[restart-dev] root: $ROOT_DIR"
 
+stop_launch_agent() {
+  local label="$1"
+
+  if ! command -v launchctl >/dev/null 2>&1; then
+    return
+  fi
+
+  local service_target="gui/$(id -u)/$label"
+  if ! launchctl print "$service_target" >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "[restart-dev] stopping launchd service: $label"
+  launchctl bootout "$service_target"
+}
+
 kill_pid_file() {
   local name="$1"
   local pid_file="$2"
@@ -84,6 +100,8 @@ backend_python() {
   fi
 }
 
+stop_launch_agent "com.doodlestory.backend"
+stop_launch_agent "com.doodlestory.frontend"
 kill_pid_file "backend" "$BACKEND_PID_FILE"
 kill_pid_file "frontend" "$FRONTEND_PID_FILE"
 kill_port "backend" "$BACKEND_PORT"

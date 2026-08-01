@@ -39,6 +39,9 @@
 ## 部署与运行
 
 - 本地开发保持前后端双服务：FastAPI 后端默认监听 `127.0.0.1:8000`，Vite 前端默认监听 `127.0.0.1:3000`。
+- 同一主机上指向同一数据库的 DoodleStory 后端必须保持单实例。后端在任何 startup 恢复动作前
+  获取基于数据库标识的跨进程锁；第二实例必须明确启动失败，不能先恢复任务再因端口冲突退出。
+  正常关闭与 startup 失败释放锁，进程异常退出时由操作系统释放锁。
 - Docker 生产部署中，DoodleStory 应用镜像使用单容器形态：构建阶段生成前端静态文件，运行阶段由 FastAPI 同时提供前端页面和 `/api/v1/*` API。
 - Docker Compose 部署同时编排 DoodleStory 和同级目录的多平台 `douyin-import-service`；该服务组合 `douyin-downloader`、`wechat-article-crawler` 与 `XHS-Downloader` 的隔离运行环境，并以 Compose 服务名 `douyin-import-service` 暴露内部端口 `8010`。DoodleStory 通过 `http://douyin-import-service:8010` 调用，导入服务不暴露公网入口。
 - 生产容器内部只监听 HTTP 端口 `8000`；在 Coolify + Traefik 节点上只能通过 `expose: "8000"` 暴露给 Traefik，不手动映射宿主机 `80/443`。
@@ -54,7 +57,7 @@
 0. 进入工作台。
    - 已登录用户访问根路径 `/` 时进入任务页 `/tasks`。
    - 传统构建继续使用旧工作台 `/tasks`；Agent 创作使用独立模块 `/agent`。两者共享用户、积分、风格、角色、任务、Panel、图片版本和资产数据，但不共享页面 Shell，也不在 Agent 页面常驻旧后台导航。
-   - `/agent` 的主导航是新建对话、搜索和历史会话；页面保留 DoodleStory 品牌、用户、积分和一个低层级“返回传统工作台”入口，不显示旧 `图文任务/内容提取/风格/角色` 导航或 `传统构建 / AI 构建` 分段切换。
+   - `/agent` 的主导航是新建对话、搜索和历史会话；页面保留 DoodleStory 品牌、用户、积分和一个低层级“返回传统工作台”入口，不显示旧 `图文任务/内容提取/风格/角色` 导航或 `传统构建 / AI 构建` 分段切换。Agent 的 Task、Attempt、依赖和 Checkpoint 是后端执行事实，但用户主界面仍是聊天：只在对话中展示可读阶段摘要、产物、确认卡和可展开的“本次计划”，不把页面做成传统任务后台、DAG 画布或原始模型 Response/Tool 参数查看器。
    - `/agent/{conversation_id}` 稳定恢复指定 Agent 会话；`/agent/{conversation_id}/tasks/{task_id}` 在同一 Agent 上下文中打开 AI 专属任务检查器。Agent 任务检查器不复用旧 Pipeline 任务抽屉，旧 `/tasks/{task_id}` 继续服务传统工作台。
    - `/agent` 以 Sprint 103 已调试 Demo 的会话优先交互为视觉事实来源，但正式页面的 Conversation、Message、Run、Style、Character、Task、Panel、Image Version、Artifact、Approval 和 Event 必须来自真实 API/数据库，不得包含 Mock、占位成功或未接通假操作。
    - 传统工作台页面保持稳定二级路径：`/tasks`、`/video-tasks`、`/audio-references`、`/content-extractions`、`/styles`、`/characters`、`/users`、`/credit-usage`、`/settings`。
@@ -265,6 +268,7 @@
 - Agent 当前真实基线由 Sprint 105–115 完成：除 Conversation/Message/Run/Step 外，已有版本化 `agent_artifacts`、hash 绑定 `agent_approval_requests` 和用户安全 `agent_events`；`agent_runs.task_id` 继续关联同一 `generation_tasks`。正式漫画创建加载 `idea-to-comic`，生成 2–8 Panel 方案并停在 `waiting_for_input`，owner 批准后才创建 Task/Panel/Image Job；页面通过 SSE cursor 读取持久化事件，不再轮询 Agent 进度。资源输入支持显式 Style、Character、Task、Panel 与 Image Version，并在入队前完成权限、状态、父子关系和组合校验；消息保存规范引用与安全快照，模型重放不接触 owner、存储路径、密钥或无关任务。Character 会真实进入任务角色快照和图片参考，Task 引用进入同一 GenerationTask 的只读续作，不开放版本写操作。
 - Sprint 107/108 已完成的统一 Shell 和旧 Task 详情跳转保留为历史实现记录，但其产品方向已被 2026-07-23 的最新决定替代。Sprint 111 已把 `/agent` 拆为独立 Agent 模块；Agent Task 仍与传统列表共享同一个 GenerationTask，但使用 `/agent/{conversation_id}/tasks/{task_id}` AI 专属只读检查器。检查器数据只允许通过 `GET /api/v1/agent/conversations/{conversation_id}/tasks/{task_id}` 读取，并同时校验当前用户拥有 Conversation、Task 经 Agent Run 关联到该 Conversation、Task owner 与 Conversation owner 一致；Admin 也不能越权读取他人的 Agent 会话任务。
 - Agent 漫画 V1 的目标架构是“通用创作 Agent + 按需加载 Skill + 原子 Tool + 通用 Runtime”。Skill 定义创作方法、步骤、质量门槛和确认点；Tool 只代表真实基础能力，V1 使用 `generate_image` 与 `inspect_image`；Runtime 负责权限、状态、预算、幂等、Provider 路由、等待、恢复、暂停、取消、安全事件和 MLflow 观测。不为每种创作方式增加硬编码 Workflow，不把旧故事拆分、复杂 Prompt 拼接或重试编排包装成 Tool。
+- Durable Agent Runtime 将一次完整用户目标建模为 Workflow Run；Run 内保存受控动态 Task 图，Task 的每次真实执行是 Attempt，用户可见产物是版本化 Artifact，人工介入点是 Gate，恢复锚点是 append-only Checkpoint，外部副作用通过 Tool Effect 账本保存。Skill 可以声明允许的 Task 类型、阶段、质量门槛和 Gate 意图，模型可以建议后续计划，但 Runtime 必须验证依赖无环、输入 Artifact、权限、预算和完成契约。批准非终态 Gate 只能推进同一 Run 的后继 Task，修改只失效目标及下游；已终态 Task、Attempt、Artifact、Gate 和 Checkpoint 不得覆盖。SDK Session 仅属于单个 Attempt，不能替代业务恢复事实。
 - Sprint 117 已把产品运行时 Skill 的正式事实来源迁移为数据库中的 `agent_skills` 与不可变 `agent_skill_versions`：用户只编辑名称、适用场景、纯文本正文和可选的相关 Tool 说明，不编写 JSON/YAML/代码；Tool 勾选用于帮助用户理解 Skill 可能使用的能力，不作为对话选择或 Run 创建门禁，Runtime 实际开放的 Tool 仍以当前代码注册能力为准。草稿用 revision 做乐观并发控制，发布使用幂等键创建递增版本并默认启用，历史版本只能读取或显式重新启用。系统 `idea-to-comic` 由原受控文件幂等种入数据库，普通用户只读且可复制为个人草稿；`agent_runs.skill_version_id` 固定准确发布版本，Skill 后续发布、切换或归档不得改变已有 Run。基础 Agent 只读取可用 Skill catalog，选定并固定准确版本后才加载完整正文；skill_version_id、name、version、内容 hash、选择来源和相关 Tool 说明写入 AgentStep、安全 Event 与默认脱敏的 MLflow span。
 - Sprint 113 已实现最小 Skill/Tool Runtime：服务启动扫描受控 Skill 根目录，校验目录/name、frontmatter、正整数版本、重复 name、文件大小和路径边界，并自动计算完整文件 SHA-256；catalog 不包含正文。代码级 Tool Registry 当前只注册 `load_skill` 与 `generate_image`，所有 schema 拒绝额外字段，模型不能提供数据库 Session、用户 ID、Provider、API key、预算或幂等键。Generic Tool Executor 在副作用前提交 `tool_call` AgentStep，按 Run/Conversation/已授权 Task/Panel 构造 RuntimeContext，保存 wait checkpoint，并在恢复模型前提交 `tool_result`；稳定幂等键重放只复用既有 Step/job/result。当前固定两格正式链路仍使用旧 ComicPlan 规划入口，但真实图片 job 创建已经通过统一 Executor/adapter 执行；没有新增数据库表或 Workflow DSL。
 - 首个生产 Skill 为 `idea-to-comic`：用户提交 Idea 与一个真实风格后，Agent 补齐并检查故事、规划 2–8 个连续 Panel、生成简洁的最终单图 Prompt，先保存用户可见 ComicPlan Artifact 并进入 `waiting_for_input`；只有 Conversation owner 批准与当前 Artifact hash 一致的方案后，Runtime 才能创建 GenerationTask、Panel 和图片 job。请求修改会创建方案新版本，不能覆盖历史或提前占用图片积分。
@@ -440,38 +444,16 @@
   必须由 SDK LLM 生命周期覆盖 Compiler、Director 和所有子 Agent 的真实请求开始事件，
   不能再用父 Agent `response.created` 数量代替；每个 MLflow 根 Trace 标记
   `execution_attempt`、本次调用总数、完成数和角色拆分。
-- Sprint 144–146 将以替换式重构建立唯一 Agent Durable Runtime。当前 `/agent-loop` 与此前
-  旧 Agent Runtime 是两条独立链路；旧 `agent_runner`、`agent_tool_runtime`、`agent_hitl`、
-  旧 `/agent/conversations`、不可达 `AgentView` 及其 ORM、表和测试必须整体删除，不允许新
-  Runtime 回调旧控制链，也不保留兼容 API、双写或 Feature Flag。当前 Native 链路的 Skill、
-  业务 Tool、账号、Style、频道、FileAsset、Provider Client 和领域执行器继续保留，只替换
-  Run、Worker、Persistence、Checkpoint、Projection 和前端状态控制层。
-- Agent 的持久化身份固定为
-  `Conversation → Run → Branch → Task State → Attempt → Model Session`。Conversation 是用户
-  Session；Run 是一次用户目标；Branch 隔离主线、Retry、局部 Rerun 和 Probe；Task 是不可变
-  DAG 节点；同一 Task 在不同 Branch 有独立 Task State；每次模型、子 Agent、重试或恢复均创建
-  不覆盖历史的 Attempt。数据库是这些状态、Approval、Tool Effect 和完成判定的唯一事实来源，
-  OpenAI Agents SDK 只执行模型/Tool Loop，MLflow 只做观测。
-- Sprint 144 必须用一次破坏性 Migration 建全最终核心表，包括 Conversation/Message/Run、
-  Run Resource、Branch、Task/Dependency/Task State、Attempt、Model Session/Context Item、
-  Checkpoint、Memory Snapshot/Item、Artifact/Version、Approval、Tool Call/Effect、
-  Command 和 Event；不得按后续功能进度再逐批补核心表。旧
-  `native_agent_images/audios/subtitles/videos/external_contents` 统一迁为版本化 Agent
-  Artifact 语义，YouTube 发布来源改为引用视频 Artifact Version。传统
-  `generation_tasks/video_tasks/generated_images/file_assets` 继续作为独立产品域能力。
-- Conversation History、Memory Snapshot 和 Attempt Model Session 是三层不同上下文。新 Run
-  只能显式继承已确认的 Memory Snapshot 与 Artifact Version，不能复用上一 Run 的可变 SDK
-  Session；Resume Attempt 从 Checkpoint 固定的 Context Sequence 创建新 Model Session。
-  Memory Item 必须保留 Message、Artifact 或 Approval 来源，模型摘要不能覆盖用户原文和决定。
-- 用户可以对失败节点安全 Retry、在进程中断后 Resume，或从任意允许的局部 Task 创建 Candidate
-  Branch 重新执行。局部 Rerun 复用安全上游结果，将依赖旧输出的下游标记 stale 并按 DAG 重跑；
-  Candidate 验证通过后才原子提升为 Active Branch，失败或 Probe 未通过不能污染主线。外部
-  Tool Effect 结果为 unknown 时必须阻止自动重放并等待人工命令。
-- Agent API 和前端只使用数据库权威 Projection。Approve、Request Changes、Retry、Resume、
-  Rerun、Promote/Discard Branch、Cancel 和 Follow-up 都是带幂等键与 expected state version
-  的结构化 Command。SSE 使用 Run 内递增 sequence 和 state version；断线或发现缺口时重新读取
-  Projection。Run 终态时所有 Task、Attempt 和 Function Call 必须有明确终态，不能继续显示
-  “等待执行”。
+- Sprint 144–146 在保留现有 `/agent-loop` 页面、Skill、账号和 `@` 资源交互的前提下，以
+  数据库 Durable Workflow 补强文案与媒体控制面。每个 Native Run 关联唯一 Workflow，Task、
+  Attempt、Checkpoint、Artifact、Gate、Plan Revision 和 Tool Effect 是恢复与完成判定事实。
+  视觉方案通过 owner-scoped API 保存为版本化 Artifact，并在用户批准后为每个 Panel 创建独立
+  图片 Task/Attempt；Native `generate_image` 在 Provider 请求前写入 prepared/submitted Tool
+  Effect，成功时原子绑定 `NativeAgentImage`，明确失败创建新的 retry Attempt，unknown 状态阻止
+  自动重放。每张成功图片创建独立质量 Task，由真实 VL 输出结构化 verdict、评分与问题；全部
+  accepted 后才能打开 `image_quality_review` Gate。Panel 局部重跑只重置目标图片与质量 Task，
+  其它 Panel、正文和 Review 保持不变。Sprint 146 新表必须通过独立 Alembic revision 添加，不能
+  修改已经执行过的 Sprint 145 migration。
 - Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。

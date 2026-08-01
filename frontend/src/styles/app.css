@@ -8779,6 +8779,107 @@ textarea {
   font-size: 12px;
 }
 
+.native-agent-parent-link {
+  border: 1px solid rgba(94, 106, 210, 0.25);
+  border-radius: 999px;
+  background: rgba(94, 106, 210, 0.08);
+  color: #4d58b8;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+}
+
+.native-agent-follow-up-action {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.native-agent-follow-up-action button,
+.native-agent-follow-up-banner button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.native-agent-follow-up-action button {
+  border: 1px solid rgba(94, 106, 210, 0.28);
+  border-radius: 9px;
+  background: #fff;
+  color: #4d58b8;
+  cursor: pointer;
+  padding: 8px 11px;
+}
+
+.native-agent-tool-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 0 14px;
+  padding: 9px 11px;
+  border: 1px solid #4a4035;
+  border-radius: 8px;
+  background: #1d1915;
+  color: #d8b594;
+  font-size: 12px;
+}
+
+.native-agent-control-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border: 1px solid #34383d;
+  border-radius: 9px;
+  background: #15181b;
+}
+
+.native-agent-control-panel > header,
+.native-agent-control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.native-agent-control-panel > header {
+  justify-content: space-between;
+  color: #d7d4cf;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.native-agent-control-panel > header small,
+.native-agent-control-panel > p {
+  margin: 0;
+  color: #858b91;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.native-agent-control-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #555b61;
+  border-radius: 7px;
+  background: transparent;
+  color: #d8dadd;
+  font-size: 12px;
+}
+
+.native-agent-control-actions button.is-danger {
+  border-color: #71433d;
+  color: #e6a49a;
+}
+
+.native-agent-control-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .native-agent-responses {
   display: grid;
   gap: 12px;
@@ -9219,6 +9320,33 @@ textarea {
   border-radius: 14px;
   background: #111316;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.native-agent-follow-up-banner {
+  align-items: center;
+  background: rgba(94, 106, 210, 0.08);
+  border: 1px solid rgba(94, 106, 210, 0.2);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.native-agent-follow-up-banner div {
+  display: grid;
+  gap: 3px;
+}
+
+.native-agent-follow-up-banner span {
+  color: #667085;
+  font-size: 12px;
+}
+
+.native-agent-follow-up-banner button {
+  border: 0;
+  background: transparent;
+  color: #4d58b8;
+  cursor: pointer;
 }
 
 .native-agent-context-row {
