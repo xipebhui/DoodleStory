@@ -22,6 +22,7 @@ from app.models.entities import (
     NativeAgentArticleApproval,
     NativeAgentArtifact,
     NativeAgentConversation,
+    NativeAgentContextItem,
     NativeAgentEvent,
     NativeAgentExternalContent,
     NativeAgentImage,

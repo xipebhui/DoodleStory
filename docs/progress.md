@@ -48,6 +48,11 @@
 - 迁移副本升级至 `q8r9s0t1u2v3` 后保留 34 用户、21 Style、18 频道与 82 条传统任务；原页面
   浏览器回归确认 Simple Agent Loop、Skill 管理入口和 Style `@` 菜单未变化。`./scripts/check.sh`
   通过 346 项后端测试、14 项前端测试、构建和 Remotion。
+- 真实文本链路验证：隔离 Run `802937baf304454199b5f6c9df0e13cb` 只引用文案 Skill，真实生成
+  候选选题后进入 `topic_selection` Gate；确认后在同一 Run 创建 `write_draft` initial Attempt，
+  Checkpoint 与 Plan Revision 连续推进，模型输入只包含已批准选题和正文阶段约束。验证期间
+  图片/语音/字幕/视频调用均为 0；正文返回前主动取消。修复现有 SSE schema 对
+  `topic_candidates` 的兼容和选题确认 adapter 的缺失导入后复验通过。
 - 合同：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`。
 
 ## Sprint 146（规划中）

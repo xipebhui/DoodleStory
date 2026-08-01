@@ -682,7 +682,7 @@ export type NativeAgentArticleApproval = {
 
 export type NativeAgentArtifact = {
   id: string;
-  artifact_type: "article_draft" | "article_review" | "final_article";
+  artifact_type: "topic_candidates" | "article_draft" | "article_review" | "final_article";
   schema_version: number;
   version: number;
   status: "completed" | "awaiting_approval" | "approved" | "rejected" | "superseded";

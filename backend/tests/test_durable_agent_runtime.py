@@ -21,6 +21,7 @@ from app.models.entities import (
     User,
 )
 from app.models.enums import AgentRunStatus, AgentSkillStatus
+from app.schemas.native_agent import NativeAgentArtifactRead
 from app.services.durable_agent_runtime import (
     claim_attempt,
     add_supplement_research_task,
@@ -370,6 +371,22 @@ class DurableAgentRuntimeTests(unittest.TestCase):
         self.assertEqual(supplement.id, attempts[0].task_id)
         self.assertEqual("ready", supplement.status)
         self.assertEqual("succeeded", tasks["write_draft"].status)
+
+    def test_topic_candidate_artifact_is_readable_by_legacy_api_schema(self) -> None:
+        artifact = NativeAgentArtifactRead(
+            id="topic-artifact",
+            artifact_type="topic_candidates",
+            schema_version=1,
+            version=1,
+            status="awaiting_approval",
+            producer_role="writer",
+            content={"candidates": ["A", "B", "C"]},
+            content_hash="sha256:topic",
+            approval=None,
+            created_at=self.run.created_at,
+            updated_at=self.run.updated_at,
+        )
+        self.assertEqual("topic_candidates", artifact.artifact_type)
 
 
 if __name__ == "__main__":

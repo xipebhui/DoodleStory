@@ -191,6 +191,7 @@ class NativeAgentArticleApprovalRead(BaseModel):
 class NativeAgentArtifactRead(BaseModel):
     id: str
     artifact_type: Literal[
+        "topic_candidates",
         "article_draft",
         "article_review",
         "final_article",
