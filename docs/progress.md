@@ -934,3 +934,12 @@
   Durable Task 未完成而失败，正式 Visual Plan API 返回“正文 Review 尚未批准”。为避免绕过
   状态机或产生无效费用，图片、语音、字幕、视频调用均保持 0；完整证据与修复要求见
   `docs/qa/sprint-146-full-media-e2e-report.md`。
+- 经用户明确允许，继续使用上述 118 字审核正文创建独立媒体 Run
+  `a23fc6becb5c4fecb9796ed61351cdfa`，锁定单 Chunk/单 Scene 后真实生成 1 张 1086×1448
+  图片、1 份 9 cue WebVTT 字幕和 1 个 24.661 秒、1086×1448、H.264 + AAC 的 Remotion
+  视频；字幕全文与正文一致，视频抽帧确认画面和字幕正常。续作同时暴露三项问题：首次成功旁白的
+  字幕连续两次返回无效词级时间戳后，Agent 重复调用 TTS 生成第二段相同旁白；Skill 要求的
+  `inspect_image` 没有执行便进入视频渲染；媒体资产全部成功后，非文案 Run 仍因初始化的文案
+  Durable Task 未完成而被标记 `failed`。最终实际调用为生图 1、TTS 2、字幕尝试 3（成功 1）、
+  视频渲染 1，没有发布；本地核验产物保存在 `output/sprint-146-full-media-e2e/`，详细 ID、尺寸、
+  时长与修复要求已追加到 QA 报告。
