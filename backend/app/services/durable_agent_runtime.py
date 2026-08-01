@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, inspect, select, update
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
@@ -84,6 +84,10 @@ def workflow_for_native_run(db: Session, native_run_id: str) -> DurableAgentWork
             DurableAgentWorkflow.native_run_id == native_run_id
         )
     )
+
+
+def runtime_tables_available(db: Session) -> bool:
+    return inspect(db.get_bind()).has_table("agent_durable_workflows")
 
 
 def initialize_workflow(db: Session, *, native_run: NativeAgentRun) -> DurableAgentWorkflow:
@@ -675,3 +679,64 @@ def recover_attempts(db: Session) -> list[str]:
             continue
         recovered.append(attempt.id)
     return recovered
+
+
+def claim_current_attempt_for_native_run(
+    db: Session,
+    *,
+    native_run_id: str,
+    worker_id: str,
+) -> DurableAgentAttempt | None:
+    workflow = workflow_for_native_run(db, native_run_id)
+    if workflow is None or workflow.status == "waiting_for_input":
+        return None
+    task = db.scalar(
+        select(DurableAgentTask)
+        .where(
+            DurableAgentTask.workflow_id == workflow.id,
+            DurableAgentTask.status.in_(["ready", "retrying"]),
+        )
+        .order_by(DurableAgentTask.created_at)
+        .limit(1)
+    )
+    if task is None or task.current_attempt_id is None:
+        return None
+    attempt = claim_attempt(
+        db,
+        attempt_id=task.current_attempt_id,
+        worker_id=worker_id,
+    )
+    db.commit()
+    return attempt
+
+
+def native_run_id_for_attempt(db: Session, *, attempt_id: str) -> str | None:
+    attempt = db.get(DurableAgentAttempt, attempt_id)
+    if attempt is None:
+        return None
+    task = db.get(DurableAgentTask, attempt.task_id)
+    if task is None:
+        return None
+    workflow = db.get(DurableAgentWorkflow, task.workflow_id)
+    return workflow.native_run_id if workflow is not None else None
+
+
+def prepared_attempt_id_for_native_run(
+    db: Session,
+    *,
+    native_run_id: str,
+) -> str | None:
+    workflow = workflow_for_native_run(db, native_run_id)
+    if workflow is None or workflow.status == "waiting_for_input":
+        return None
+    return db.scalar(
+        select(DurableAgentAttempt.id)
+        .join(DurableAgentTask, DurableAgentTask.id == DurableAgentAttempt.task_id)
+        .where(
+            DurableAgentTask.workflow_id == workflow.id,
+            DurableAgentTask.status.in_(["ready", "retrying"]),
+            DurableAgentAttempt.status == "prepared",
+        )
+        .order_by(DurableAgentTask.created_at, DurableAgentAttempt.attempt_number)
+        .limit(1)
+    )

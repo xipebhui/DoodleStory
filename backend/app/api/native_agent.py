@@ -16,6 +16,7 @@ from app.core.database import SessionLocal, get_db
 from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
+    DurableAgentTask,
     NativeAgentAudio,
     NativeAgentArticleApproval,
     NativeAgentArtifact,
@@ -850,7 +851,7 @@ async def create_native_agent_run(
         {"status": AgentRunStatus.queued.value},
     )
     conversation.last_message_at = datetime.utcnow()
-    initialize_workflow(db, native_run=run)
+    durable_workflow = initialize_workflow(db, native_run=run)
     db.commit()
 
     await enqueue_native_agent_run(run.id)
@@ -1010,11 +1011,18 @@ async def decide_native_article_approval(
                 )
                 or 0
             ) + 1
-            selection_context = (
-                "用户已批准当前候选选题。请只基于批准的候选和以下反馈进入正文阶段，"
-                "不得重新生成候选选题或结束 Run："
-                f"{approval.feedback or '未提供额外反馈'}"
-            )
+            selection_context = {
+                "topic_selection": (
+                    "用户已批准当前候选选题。请只基于批准的候选和以下反馈进入正文阶段，"
+                    "不得重新生成候选选题或结束 Run："
+                ),
+                "article_draft_review": (
+                    "用户已确认当前正文草稿。请只进入 Review 阶段，不得重新选题或改写正文："
+                ),
+            }.get(
+                durable_gate.purpose,
+                "用户已批准当前阶段，请只执行 Durable Workflow 指定的后继阶段：",
+            ) + (approval.feedback or "未提供额外反馈")
             db.add(
                 NativeAgentContextItem(
                     run_id=native_run.id,

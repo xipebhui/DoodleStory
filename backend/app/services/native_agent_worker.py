@@ -19,12 +19,19 @@ from app.services.native_agent_persistence import (
     NativeAgentRunCancelled,
     NativeAgentStore,
 )
-from app.services.durable_agent_runtime import recover_attempts
+from app.services.durable_agent_runtime import (
+    claim_current_attempt_for_native_run,
+    native_run_id_for_attempt,
+    prepared_attempt_id_for_native_run,
+    recover_attempts,
+    runtime_tables_available,
+    workflow_for_native_run,
+)
 
 
 logger = logging.getLogger(__name__)
 
-_queue: asyncio.Queue[str] | None = None
+_queue: asyncio.Queue[tuple[str, str]] | None = None
 _worker_task: asyncio.Task[None] | None = None
 _accepting = False
 _active_run_tasks: dict[str, asyncio.Task[None]] = {}
@@ -60,11 +67,28 @@ async def _worker_loop() -> None:
     if _queue is None:
         raise RuntimeError("Native Agent 队列尚未初始化")
     while True:
-        run_id = await _queue.get()
+        queue_kind, queue_id = await _queue.get()
         try:
             with SessionLocal() as db:
+                run_id = (
+                    native_run_id_for_attempt(db, attempt_id=queue_id)
+                    if queue_kind == "attempt"
+                    else queue_id
+                )
+                if run_id is None:
+                    continue
                 run = db.get(NativeAgentRun, run_id)
                 run_status = run.status if run is not None else None
+                durable_enabled = runtime_tables_available(db)
+                durable_attempt = (
+                    claim_current_attempt_for_native_run(
+                        db,
+                        native_run_id=run_id,
+                        worker_id="native-agent-worker-0",
+                    )
+                    if durable_enabled
+                    else None
+                )
             if run_status in {
                 AgentRunStatus.cancel_requested,
                 AgentRunStatus.cancelled,
@@ -72,6 +96,14 @@ async def _worker_loop() -> None:
                 if run_status == AgentRunStatus.cancel_requested:
                     NativeAgentStore(run_id).cancel_run()
                 continue
+            if durable_enabled and durable_attempt is None:
+                with SessionLocal() as db:
+                    if workflow_for_native_run(db, run_id) is not None:
+                        logger.info(
+                            "native agent run skipped because durable workflow has no ready attempt run_id=%s",
+                            run_id,
+                        )
+                        continue
             run_task = asyncio.create_task(
                 execute_native_agent_run(run_id),
                 name=f"native-agent-run-{run_id}",
@@ -120,10 +152,36 @@ def init_native_agent_queue() -> None:
 async def enqueue_native_agent_run(run_id: str) -> None:
     if not _accepting or _queue is None:
         raise RuntimeError("Native Agent 队列尚未初始化或正在关闭")
-    await _queue.put(run_id)
+    with SessionLocal() as db:
+        durable_attempt_id = (
+            prepared_attempt_id_for_native_run(db, native_run_id=run_id)
+            if runtime_tables_available(db)
+            else None
+        )
+    if durable_attempt_id:
+        await _queue.put(("attempt", durable_attempt_id))
+        logger.info(
+            "native agent durable attempt enqueued from run_id=%s attempt_id=%s queue_size=%s",
+            run_id,
+            durable_attempt_id,
+            _queue.qsize(),
+        )
+        return
+    await _queue.put(("run", run_id))
     logger.info(
         "native agent run enqueued run_id=%s queue_size=%s",
         run_id,
+        _queue.qsize(),
+    )
+
+
+async def enqueue_native_agent_attempt(attempt_id: str) -> None:
+    if not _accepting or _queue is None:
+        raise RuntimeError("Native Agent 队列尚未初始化或正在关闭")
+    await _queue.put(("attempt", attempt_id))
+    logger.info(
+        "native agent durable attempt enqueued attempt_id=%s queue_size=%s",
+        attempt_id,
         _queue.qsize(),
     )
 
