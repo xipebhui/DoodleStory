@@ -17,6 +17,7 @@ from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
     DurableAgentTask,
+    DurableAgentPlanRevision,
     NativeAgentAudio,
     NativeAgentArticleApproval,
     NativeAgentArtifact,
@@ -84,6 +85,7 @@ from app.services.durable_agent_runtime import (
     initialize_workflow,
     mirror_native_article_approval,
     resolve_gate,
+    workflow_for_native_run,
 )
 from app.services.account_creation_context import (
     AccountCreationContextError,
@@ -1162,6 +1164,54 @@ async def cancel_native_run(
         db.commit()
     await cancel_native_agent_run(run.id)
     return ApiData(data=_run_to_read(_load_run_for_read(db, run.id)))
+
+
+@router.get(
+    "/runs/{run_id}/plan-revisions",
+    response_model=ApiData[list[dict[str, object]]],
+)
+def list_durable_plan_revisions(
+    run_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ApiData[list[dict[str, object]]]:
+    run = db.scalar(
+        select(NativeAgentRun)
+        .join(
+            NativeAgentConversation,
+            NativeAgentConversation.id == NativeAgentRun.conversation_id,
+        )
+        .where(
+            NativeAgentRun.id == run_id,
+            NativeAgentConversation.owner_user_id == user.id,
+        )
+    )
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Native Agent Run 不存在",
+        )
+    workflow = workflow_for_native_run(db, run.id)
+    if workflow is None:
+        return ApiData(data=[])
+    revisions = db.scalars(
+        select(DurableAgentPlanRevision)
+        .where(DurableAgentPlanRevision.workflow_id == workflow.id)
+        .order_by(DurableAgentPlanRevision.revision.asc())
+    ).all()
+    return ApiData(
+        data=[
+            {
+                "id": item.id,
+                "revision": item.revision,
+                "reason": item.reason,
+                "source_checkpoint_id": item.source_checkpoint_id,
+                "plan": json.loads(item.plan_json),
+                "created_at": item.created_at,
+            }
+            for item in revisions
+        ]
+    )
 
 
 @router.get("/runs/{run_id}/events")

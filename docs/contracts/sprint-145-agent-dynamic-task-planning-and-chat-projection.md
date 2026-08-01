@@ -2,14 +2,15 @@
 
 ## Status
 
-Draft。依赖 Sprint 144 的唯一 Durable Runtime、Task Attempt、append-only Checkpoint 和
-文章多阶段 Gate。
+Active。依赖 Sprint 144 的 Durable Runtime、Task Attempt、append-only Checkpoint 和文章
+多阶段 Gate。按 2026-08-01 的最新决定，本 Sprint 只完成后端计划修订、局部修改/重试和恢复
+语义；已验收的 Agent 页面、Skill、账号与 `@` 资源交互保持不动。
 
 ## Goal
 
 让 Skill 驱动的 Agent 不只执行一张启动时固定的任务表，而是在上游 Artifact、用户决定和
-Review 结果出现后，受控地追加、替换或取消尚未执行的 Task；同时把这一演进呈现为聊天中的
-“本次计划”和阶段摘要，而不是把内部 DAG 暴露为传统工作流界面。
+Review 结果出现后，受控地记录计划修订、局部失效和后继 Attempt。计划投影 API 在后端就绪，
+正式聊天展示与控制留到后续 Sprint。
 
 ## In Scope
 
@@ -41,22 +42,14 @@ Review 结果出现后，受控地追加、替换或取消尚未执行的 Task�
 - 不允许以一个新的自然语言“继续”创建脱离原 Run 的执行；当前 Gate 的输入、修改和批准均走
   显式控制命令。
 
-### 3. 聊天中的计划与状态
+### 3. 后端计划投影与兼容边界
 
-- 初始计划以一张聊天计划卡显示当前目标、当前阶段、近端 Gate 与“后续计划”；后续 Plan Revision
-  原位更新该卡或追加简洁的计划变更消息。
-- 每个用户可见 Task 状态映射为自然语言，而非内部状态名，例如：
-  - `正在整理候选选题`
-  - `等待你确认选题`
-  - `正在按已选选题写正文`
-  - `Reviewer 建议补充研究`
-  - `正文正在根据审稿意见修订`
-- 计划卡的展开区展示阶段标题、依赖说明、产物摘要和状态；不展示 Task ID、Attempt、lease、
-  Tool arguments、模型推理或 Provider 原始内容。
-- Gate 卡必须在聊天当前语义位置展示待审产物、可选动作、反馈输入和动作后果，例如
-  “批准选题并开始写正文”“退回正文并重新审稿”。
-- 阶段完成、失败、修订、取消和等待状态通过 SSE 增量更新；刷新或 sequence 缺口必须按
-  Conversation Projection 重建，不产生重复聊天消息。
+- 后端为每个 Run 保存初始 Plan Revision，后续 Gate 决定、局部修改、重试和 Review 分支都追加
+  不可变版本，并关联来源 Checkpoint 和触发原因。
+- 现有 `/agent-loop` 和页面继续使用原数据形状；本 Sprint 不替换页面、不卡片化 Task、不增加
+  新的聊天展示或控制按钮。
+- 后端为后续前端提供 owner-scoped 计划投影，但不得将 Tool 参数、模型推理或 Provider 原始内容
+  作为用户可读数据。
 
 ### 4. Projection 与权限
 
@@ -78,20 +71,17 @@ Review 结果出现后，受控地追加、替换或取消尚未执行的 Task�
 
 - Plan Revision 领域模型、API/SSE Projection、计划校验器和 Runtime 计划修订命令。
 - `article-creation-team` 的动态研究补充、正文修订、Review 反馈分支。
-- `/agent` 聊天式计划卡、阶段摘要、Gate 卡与折叠式计划详情。
 - 单元、集成、SSE 和浏览器 QA 证据。
 
 ## Done Means
 
-- 文章 Run 启动后用户能在聊天看到初始计划；选题确认、正文修改和 Review 结果会在同一 Run 中
-  发布新的计划修订。
+- 文章 Run 启动时保存初始计划；选题确认、正文修改和 Review 结果会在同一 Run 中发布新的
+  不可变计划修订。
 - Runtime 拒绝环状依赖、无输入 Task、超出 Skill allowlist 的 Task 和试图覆盖终态 Task 的修订。
 - Review 提出“补充研究”时，只新增允许的研究与下游修订 Task；已批准选题、正文版本和历史
   Attempt 均保留可审计。
-- 用户在刷新、SSE 重连和切换历史 Conversation 后，看到同一份计划卡、当前 Gate 和阶段摘要；
-  不重复显示模型原始执行记录。
-- 普通用户不需要知道 Task、Attempt、DAG 或 Checkpoint 的存在，仍能清楚理解“正在做什么、
-  等待什么、下一步会发生什么”。
+- 现有页面在刷新、SSE 重连和切换历史 Conversation 后仍保持已验收的原交互；计划修订不影响
+  Skill、账号和资源标签。
 
 ## Verification
 
@@ -108,10 +98,9 @@ git diff --check
 
 Browser QA:
 
-- 创建文章会话，检查初始计划卡与候选选题 Gate。
-- 批准选题、要求修改正文、使 Review 返回“补充研究”，确认聊天中出现正确阶段摘要和计划修订。
-- 展开/收起“本次计划”、刷新页面、断开并重连 SSE、重新进入历史会话。
-- 检查浏览器控制台无 error/warning，并保存 Conversation、Run、Plan Revision、Task、Gate 与截图。
+- 打开保留的原 Agent 页面，确认 Skill 管理、账号/Style 资源和 `@` 标签交互未回归。
+- 创建/恢复会话、审批后继续、刷新和 SSE 重连，确认后端计划修订不破坏既有页面。
+- 保存 Conversation、Run、Plan Revision、Task、Gate 与截图。
 
 ## Handoff
 

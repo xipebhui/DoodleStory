@@ -30,13 +30,24 @@
 - 合同：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`。目前只完成方案，
   未修改运行代码或数据库。
 
-## Sprint 145（规划中）
+## Sprint 145（已完成）
 
 - 在 Sprint 144 的 Task / Attempt / Checkpoint 基础上，增加固定 Skill Version 约束下的动态计划
   修订：上游 Artifact、用户决定和 Review 可追加、替换或取消未执行的后续 Task，但不能覆盖
   已终态事实。
-- `/agent` 仍是聊天；计划修订通过“本次计划”、阶段摘要和 Gate 卡渐进呈现，不提供传统任务后台、
-  用户可编辑 DAG 或原始模型执行记录。
+- 本 Sprint 不改已调试的 `/agent` 页面；先完成后端计划修订、局部失效/重试和恢复投影，正式
+  页面控制留到后续 Sprint。
+- 新增 append-only `agent_durable_plan_revisions`：初始 Task 图、Task 产物完成、Gate 打开、
+  Gate 批准/修改、lease 过期恢复和补充研究分支都会记录不可变计划版本，关联来源 Checkpoint。
+- 正文 Gate 修改只重置正文及其下游 Review/最终 Gate；已批准选题保持成功且不重跑。最终 Review
+  修改意见包含“补充研究”时，后端只追加 allowlist 内的 `supplement_research` Task，研究完成后
+  才准备正文修订 Attempt，禁止重复追加或任意模型动态建图。
+- 新增 owner-scoped `GET /agent-loop/runs/{run_id}/plan-revisions`，为后续页面控制提供只读计划
+  事实来源；当前页面没有调用它，因此 Simple Agent Loop、Skill 管理、账号和 `@` 资源交互保持
+  原样。
+- 迁移副本升级至 `q8r9s0t1u2v3` 后保留 34 用户、21 Style、18 频道与 82 条传统任务；原页面
+  浏览器回归确认 Simple Agent Loop、Skill 管理入口和 Style `@` 菜单未变化。`./scripts/check.sh`
+  通过 346 项后端测试、14 项前端测试、构建和 Remotion。
 - 合同：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`。
 
 ## Sprint 146（规划中）

@@ -12,6 +12,7 @@ from app.models.entities import (
     DurableAgentAttempt,
     DurableAgentCheckpoint,
     DurableAgentGate,
+    DurableAgentPlanRevision,
     DurableAgentTask,
     DurableAgentWorkflow,
     NativeAgentArticleApproval,
@@ -64,6 +65,15 @@ ARTICLE_TASKS = (
         None,
     ),
 )
+
+ALLOWED_DYNAMIC_TASKS = {
+    "supplement_research": {
+        "title": "补充研究",
+        "task_type": "model",
+        "dependencies": ("topic_selection_gate",),
+        "output_artifact_key": "research_addendum",
+    },
+}
 
 
 def _json(value: object) -> str:
@@ -132,7 +142,55 @@ def initialize_workflow(db: Session, *, native_run: NativeAgentRun) -> DurableAg
         reason="initial article task plan",
         state=_workflow_state(db, workflow),
     )
+    append_plan_revision(
+        db,
+        workflow=workflow,
+        reason="initial task plan",
+    )
     return workflow
+
+
+def append_plan_revision(
+    db: Session,
+    *,
+    workflow: DurableAgentWorkflow,
+    reason: str,
+) -> DurableAgentPlanRevision:
+    tasks = db.scalars(
+        select(DurableAgentTask)
+        .where(DurableAgentTask.workflow_id == workflow.id)
+        .order_by(DurableAgentTask.created_at)
+    ).all()
+    plan = [
+        {
+            "task_key": task.task_key,
+            "title": task.title,
+            "status": task.status,
+            "dependencies": json.loads(task.dependencies_json),
+            "input_artifacts": json.loads(task.input_artifact_keys_json),
+            "output_artifact": task.output_artifact_key,
+        }
+        for task in tasks
+    ]
+    revision = (
+        db.scalar(
+            select(func.coalesce(func.max(DurableAgentPlanRevision.revision), 0)).where(
+                DurableAgentPlanRevision.workflow_id == workflow.id
+            )
+        )
+        or 0
+    ) + 1
+    row = DurableAgentPlanRevision(
+        workflow_id=workflow.id,
+        source_checkpoint_id=workflow.current_checkpoint_id,
+        revision=revision,
+        reason=reason,
+        plan_json=_json(plan),
+        plan_hash=_hash(plan),
+    )
+    db.add(row)
+    db.flush()
+    return row
 
 
 def _prepare_attempt(
@@ -260,6 +318,11 @@ def record_artifact(
         reason=f"{task_key} completed",
         state=_workflow_state(db, workflow),
     )
+    append_plan_revision(
+        db,
+        workflow=workflow,
+        reason=f"{task_key} completed",
+    )
     return artifact
 
 
@@ -303,6 +366,11 @@ def open_gate(
         workflow=workflow,
         reason=f"{purpose} waiting for user input",
         state=_workflow_state(db, workflow),
+    )
+    append_plan_revision(
+        db,
+        workflow=workflow,
+        reason=f"{purpose} gate opened",
     )
     return gate
 
@@ -427,6 +495,7 @@ def sync_native_artifact(
         "research_topics": "topic_candidates",
         "write_draft": "article_draft",
         "review_draft": "article_review",
+        "supplement_research": "article_draft",
     }.get(task_key or "")
     if expected != artifact_type:
         return None
@@ -445,7 +514,7 @@ def sync_native_artifact(
             attempt_id=attempt.id,
             worker_id="native-agent-adapter",
         )
-    return record_artifact(
+    artifact = record_artifact(
         db,
         workflow=workflow,
         task_key=task_key,
@@ -456,6 +525,36 @@ def sync_native_artifact(
         ),
         content=content,
     )
+    if task_key == "supplement_research":
+        draft_task = db.scalar(
+            select(DurableAgentTask).where(
+                DurableAgentTask.workflow_id == workflow.id,
+                DurableAgentTask.task_key == "write_draft",
+            )
+        )
+        if draft_task is None:
+            raise DurableAgentRuntimeError("补充研究后缺少正文 Task")
+        _prepare_attempt(
+            db,
+            task=draft_task,
+            attempt_kind="retry",
+            checkpoint_id=workflow.current_checkpoint_id,
+        )
+        workflow.status = "queued"
+        workflow.allowed_actions_json = _json(["cancel_run"])
+        workflow.state_version += 1
+        _append_checkpoint(
+            db,
+            workflow=workflow,
+            reason="supplement research completed; draft revision prepared",
+            state=_workflow_state(db, workflow),
+        )
+        append_plan_revision(
+            db,
+            workflow=workflow,
+            reason="supplement research completed",
+        )
+    return artifact
 
 
 def can_complete_native_run(db: Session, *, native_run_id: str) -> bool:
@@ -550,6 +649,44 @@ def resolve_gate(
             workflow.allowed_actions_json = _json(["follow_up"])
             workflow.finished_at = _now()
     else:
+        if (
+            gate_task.task_key == "editorial_review_gate"
+            and "补充研究" in (feedback or "")
+        ):
+            add_supplement_research_task(
+                db,
+                workflow=workflow,
+                reason=feedback or "",
+            )
+            workflow.status = "queued"
+            workflow.allowed_actions_json = _json(["cancel_run"])
+            workflow.state_version += 1
+            _append_checkpoint(
+                db,
+                workflow=workflow,
+                reason="editorial review requested supplement research",
+                state=_workflow_state(db, workflow),
+            )
+            append_plan_revision(
+                db,
+                workflow=workflow,
+                reason="review requested supplement research",
+            )
+            return [
+                db.scalar(
+                    select(DurableAgentAttempt)
+                    .join(
+                        DurableAgentTask,
+                        DurableAgentTask.id == DurableAgentAttempt.task_id,
+                    )
+                    .where(
+                        DurableAgentTask.workflow_id == workflow.id,
+                        DurableAgentTask.task_key == "supplement_research",
+                    )
+                    .order_by(DurableAgentAttempt.attempt_number.desc())
+                    .limit(1)
+                )
+            ]
         retry_key = {
             "topic_selection_gate": "research_topics",
             "draft_review_gate": "write_draft",
@@ -579,7 +716,77 @@ def resolve_gate(
         reason=f"{gate.purpose} {gate.status}",
         state=_workflow_state(db, workflow),
     )
+    append_plan_revision(
+        db,
+        workflow=workflow,
+        reason=f"{gate.purpose} {gate.status}",
+    )
     return attempts
+
+
+def add_supplement_research_task(
+    db: Session,
+    *,
+    workflow: DurableAgentWorkflow,
+    reason: str,
+) -> DurableAgentAttempt:
+    existing = db.scalar(
+        select(DurableAgentTask).where(
+            DurableAgentTask.workflow_id == workflow.id,
+            DurableAgentTask.task_key == "supplement_research",
+        )
+    )
+    if existing is not None:
+        raise DurableAgentRuntimeError("补充研究 Task 已存在，不能重复追加")
+    definition = ALLOWED_DYNAMIC_TASKS["supplement_research"]
+    task = DurableAgentTask(
+        workflow_id=workflow.id,
+        task_key="supplement_research",
+        task_type=str(definition["task_type"]),
+        title=str(definition["title"]),
+        status="pending",
+        dependencies_json=_json(list(definition["dependencies"])),
+        input_artifact_keys_json=_json(["topic_candidates"]),
+        output_artifact_key=str(definition["output_artifact_key"]),
+    )
+    db.add(task)
+    db.flush()
+    prerequisites = {
+        item.task_key: item.status
+        for item in db.scalars(
+            select(DurableAgentTask).where(
+                DurableAgentTask.workflow_id == workflow.id
+            )
+        ).all()
+    }
+    if any(
+        prerequisites.get(key) != "succeeded"
+        for key in definition["dependencies"]
+    ):
+        raise DurableAgentRuntimeError("补充研究缺少已批准的上游选题")
+    attempt = _prepare_attempt(
+        db,
+        task=task,
+        attempt_kind="initial",
+        checkpoint_id=workflow.current_checkpoint_id,
+    )
+    workflow.status = "queued"
+    workflow.allowed_actions_json = _json(["cancel_run"])
+    workflow.state_version += 1
+    _append_checkpoint(
+        db,
+        workflow=workflow,
+        reason=f"supplement research requested: {reason}",
+        state=_workflow_state(db, workflow),
+    )
+    append_plan_revision(
+        db,
+        workflow=workflow,
+        reason="review requested supplement research",
+    )
+    return attempt
+
+
 
 
 def _workflow_state(db: Session, workflow: DurableAgentWorkflow) -> dict[str, object]:
@@ -674,6 +881,11 @@ def recover_attempts(db: Session) -> list[str]:
                 task=task,
                 attempt_kind="resume",
                 checkpoint_id=workflow.current_checkpoint_id,
+            )
+            append_plan_revision(
+                db,
+                workflow=workflow,
+                reason=f"{task.task_key} resumed after lease expiry",
             )
             recovered.append(replacement.id)
             continue

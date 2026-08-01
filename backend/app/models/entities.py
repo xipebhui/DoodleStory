@@ -1881,6 +1881,36 @@ class DurableAgentToolEffect(Base, TimestampMixin):
     result_ref_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
+class DurableAgentPlanRevision(Base):
+    __tablename__ = "agent_durable_plan_revisions"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id",
+            "revision",
+            name="uq_agent_durable_plan_revisions_workflow_revision",
+        ),
+        CheckConstraint(
+            "revision > 0",
+            name="ck_agent_durable_plan_revisions_revision_positive",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_durable_workflows.id", ondelete="CASCADE"),
+        index=True,
+    )
+    source_checkpoint_id: Mapped[Optional[str]] = mapped_column(
+        ForeignKey("agent_durable_checkpoints.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    revision: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(Text)
+    plan_json: Mapped[str] = mapped_column(Text)
+    plan_hash: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class AgentConversation(Base, TimestampMixin):
     __tablename__ = "agent_conversations"
     __table_args__ = (

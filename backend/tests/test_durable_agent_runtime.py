@@ -11,6 +11,7 @@ from app.models.entities import (
     AgentSkill,
     AgentSkillVersion,
     DurableAgentArtifact,
+    DurableAgentPlanRevision,
     DurableAgentTask,
     DurableAgentWorkflow,
     NativeAgentConversation,
@@ -22,6 +23,7 @@ from app.models.entities import (
 from app.models.enums import AgentRunStatus, AgentSkillStatus
 from app.services.durable_agent_runtime import (
     claim_attempt,
+    add_supplement_research_task,
     initialize_workflow,
     mirror_native_article_approval,
     open_gate,
@@ -236,6 +238,138 @@ class DurableAgentRuntimeTests(unittest.TestCase):
             )
         )
         self.assertEqual(draft_task.id, attempts[0].task_id)
+
+    def test_plan_revisions_are_append_only_after_gate_decisions(self) -> None:
+        workflow = initialize_workflow(self.db, native_run=self.run)
+        topic_task = self.db.scalar(
+            select(DurableAgentTask).where(
+                DurableAgentTask.workflow_id == workflow.id,
+                DurableAgentTask.task_key == "research_topics",
+            )
+        )
+        claim_attempt(
+            self.db,
+            attempt_id=topic_task.current_attempt_id,
+            worker_id="test-worker",
+        )
+        artifact = record_artifact(
+            self.db,
+            workflow=workflow,
+            task_key="research_topics",
+            artifact_type="topic_candidates",
+            content={"candidates": [{"id": "topic-1"}]},
+        )
+        gate = open_gate(
+            self.db,
+            workflow=workflow,
+            task_key="topic_selection_gate",
+            artifact=artifact,
+            purpose="topic_selection",
+            on_approve_action="advance_to_draft",
+        )
+        resolve_gate(
+            self.db,
+            gate=gate,
+            user=self.user,
+            decision="approve",
+            feedback="使用第一个选题",
+        )
+        self.db.commit()
+        revisions = self.db.scalars(
+            select(DurableAgentPlanRevision)
+            .where(DurableAgentPlanRevision.workflow_id == workflow.id)
+            .order_by(DurableAgentPlanRevision.revision)
+        ).all()
+        self.assertEqual(
+            [
+                "initial task plan",
+                "research_topics completed",
+                "topic_selection gate opened",
+                "topic_selection approved",
+            ],
+            [item.reason for item in revisions],
+        )
+        self.assertEqual(
+            "write_draft",
+            next(
+                entry["task_key"]
+                for entry in __import__("json").loads(revisions[-1].plan_json)
+                if entry["status"] == "ready"
+            ),
+        )
+
+    def test_supplement_research_can_only_be_added_once(self) -> None:
+        workflow = initialize_workflow(self.db, native_run=self.run)
+        topic_task = self.db.scalar(
+            select(DurableAgentTask).where(
+                DurableAgentTask.workflow_id == workflow.id,
+                DurableAgentTask.task_key == "topic_selection_gate",
+            )
+        )
+        topic_task.status = "succeeded"
+        attempt = add_supplement_research_task(
+            self.db,
+            workflow=workflow,
+            reason="Review 要求补充研究",
+        )
+        self.assertEqual("initial", attempt.attempt_kind)
+        with self.assertRaises(RuntimeError):
+            add_supplement_research_task(
+                self.db,
+                workflow=workflow,
+                reason="重复补充研究",
+            )
+
+    def test_review_requesting_supplement_research_only_prepares_research(self) -> None:
+        workflow = initialize_workflow(self.db, native_run=self.run)
+        tasks = {
+            task.task_key: task
+            for task in self.db.scalars(
+                select(DurableAgentTask).where(
+                    DurableAgentTask.workflow_id == workflow.id
+                )
+            ).all()
+        }
+        tasks["topic_selection_gate"].status = "succeeded"
+        tasks["write_draft"].status = "succeeded"
+        tasks["draft_review_gate"].status = "succeeded"
+        tasks["review_draft"].status = "succeeded"
+        artifact = DurableAgentArtifact(
+            workflow_id=workflow.id,
+            task_id=tasks["review_draft"].id,
+            artifact_key="article_review",
+            artifact_type="article_review",
+            version=1,
+            content_json='{"verdict":"changes_required"}',
+            content_hash="sha256:review",
+        )
+        self.db.add(artifact)
+        self.db.flush()
+        gate = open_gate(
+            self.db,
+            workflow=workflow,
+            task_key="editorial_review_gate",
+            artifact=artifact,
+            purpose="editorial_review",
+            on_approve_action="finish_run",
+        )
+        attempts = resolve_gate(
+            self.db,
+            gate=gate,
+            user=self.user,
+            decision="changes_requested",
+            feedback="请先补充研究，再修改正文",
+        )
+        self.assertEqual(1, len(attempts))
+        supplement = self.db.scalar(
+            select(DurableAgentTask).where(
+                DurableAgentTask.workflow_id == workflow.id,
+                DurableAgentTask.task_key == "supplement_research",
+            )
+        )
+        self.assertEqual(supplement.id, attempts[0].task_id)
+        self.assertEqual("ready", supplement.status)
+        self.assertEqual("succeeded", tasks["write_draft"].status)
 
 
 if __name__ == "__main__":

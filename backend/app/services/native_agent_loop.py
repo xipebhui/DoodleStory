@@ -1718,6 +1718,10 @@ def article_role_instructions(
                 "当前 Durable Task 是 Review。只能审阅当前正文并输出审稿结论；"
                 "不得改写正文、重新选题或生成媒体计划。"
             ),
+            "supplement_research": (
+                "当前 Durable Task 是补充研究。只能基于已批准选题和 Review 反馈补充研究依据，"
+                "不得重新选题、写正文、审稿或生成媒体计划。"
+            ),
         }.get(durable_task_key)
         if task_constraint:
             instructions += (
@@ -1965,7 +1969,7 @@ def build_article_agent_tools(
             ),
         ),
     ]
-    if durable_task_key in {"research_topics", "write_draft"}:
+    if durable_task_key in {"research_topics", "write_draft", "supplement_research"}:
         return [tools[0]]
     if durable_task_key == "review_draft":
         return [tools[1]]
