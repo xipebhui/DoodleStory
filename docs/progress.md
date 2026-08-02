@@ -1040,3 +1040,12 @@
   在 WSL 中规范化执行后因环境缺少 `python3.11`、且本机没有项目虚拟环境而无法继续；未修改代码，
   该环境限制已记录在 Sprint 151 合同中。
 - 合同：`docs/contracts/sprint-151-video-api-doc-archive.md`。
+
+# Sprint 152 项目出站 API 调用清单（已完成）
+
+- 将原有的 SiliconFlow/Agent 地址说明扩展为全量出站调用清单，覆盖普通文本与视觉、Native Agent Responses、旧 Agent Router、统一生图网关、XG、Grok CLI、SiliconFlow 语音、火山语音、Whisper、FFmpeg、Remotion、comic-video-studio、多平台导入、抖音下载、YouTube 研究与发布、七牛、阿里云 OSS、MLflow、飞书告警和内部 FastAPI 边界。
+- 另外记录了兼容性探测、Agent SDK 探测、Runtime smoke 和 MLflow smoke 等诊断脚本的主动调用，区分正常业务链路与手工诊断链路。
+- 明确当前 Native Agent 主地址是 `TEXT_FALLBACK_BASE_URL` 规范化后的 `/responses`，SiliconFlow 是独立的 `/chat/completions`、语音注册和语音合成链路；同时记录 `APEXERAPI_BASE` 当前只存在配置和模型归类逻辑，没有 DoodleStory 直连请求。
+- 文档只保留公开 Endpoint、路径、配置名和代码入口，没有写入 API Key、Secret、Token 或完整 webhook URL。
+- 验证完成：代码扫描确认后端出站入口；`git diff --check` 通过；文档代码块和敏感配置检查通过。完整 `scripts/check.sh` 未重复执行，原因与 Sprint 151 相同：当前 WSL 缺少 `python3.11`，且本次仅修改文档。
+- 合同：`docs/contracts/sprint-152-outbound-api-inventory.md`。
