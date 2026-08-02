@@ -1115,3 +1115,23 @@
 - 新增 `candidate-topic-source-ledgers.md` 与 `format-and-adjacent-lane-review.md`，同步更新验证报告、
   外部依赖准备清单、研究日志和目录索引。全程未调用项目频道研究 Tool、模型、媒体或发布接口，未创建
   定时任务，也未推送远端。合同：`docs/contracts/sprint-155-youtube-topic-format-research.md`。
+
+# Sprint 156 YouTube 六题矩阵、多语言与获利路径研究（已完成）
+
+- 将历史机制候选池从三个扩展为六个。新增印加道路接力通信、吴哥季风水网和江户城市消防，分别由
+  UNESCO / Smithsonian、UNESCO / APSARA 参与的同行评议研究、东京图书馆 / The Met 等不同来源类型
+  交叉支持，并逐项记录可支持主张、过度推断、可画链路与停止条件。
+- 当前来源与静态分镜适配排序为：罗马粮食、印加通信、罗马供水、江户消防、吴哥水网、摩亨佐-达罗
+  排水。六题按流动网络、水与季节、城市风险分组；排序和分组只用于后续研究 brief，不代表播放潜力，
+  也未写入 `strategy_memory.md`。
+- 核对 YouTube 多语言能力与当前项目边界：平台支持翻译标题 / 描述、自动配音，以及部分创作者可用的
+  自有多语言音轨；YouTube Data API 有原始语言和 `localizations` 字段。但当前外部 Video API 与
+  DoodleStory 发布 payload 只有标题、描述、标签、合成媒体、封面和视频等字段，不能自动设置语言、
+  翻译元数据或第二音轨。首批固定一个原始语言，上传后语言管理仍是 YouTube Studio 人工步骤。
+- 核对 YPP 双路径：500 订阅者层的早期功能与 1,000 订阅者层的广告分成，分别允许普通视频公开观看
+  小时或近 90 天有效 Shorts 观看达标；Shorts Feed 观看小时不计入普通视频 4,000 小时。门槛只作为
+  运营约束，不作为内容机制成功、格式优劣或收入预测。
+- 新增 `language-and-monetization-boundaries.md` 与 `six-topic-experiment-matrix.md`，扩展候选来源账本，
+  同步更新验证报告、外部准备清单、研究日志和目录索引。全程未调用项目频道研究、模型、媒体或发布
+  接口，未创建真实实验、定时任务或媒体产物。合同：
+  `docs/contracts/sprint-156-youtube-six-topic-language-monetization-research.md`。

@@ -172,3 +172,83 @@
 
 在用户下一次明确启动研究时，优先补齐另外三个候选题来源账本，并根据已选择的目标语言与内容类型，
 建立普通视频或 Shorts 的发布前预测模板。当前不设每日或后台自动研究任务。
+
+## 2026-08-02：候选池扩展为六个跨文明机制题
+
+### 新证据
+
+- UNESCO 将 Qhapaq Ñan 描述为跨越多种极端地形的通信、贸易和防务网络，并明确其包含道路、桥、台阶、
+  住宿与仓储等关联设施；Smithsonian NMAI 进一步说明 `chaski` 在 `chaskiwasi` 间接力传递口头消息、
+  `khipu` 和小件物品。([UNESCO](https://whc.unesco.org/en/list/1459/))
+  ([Smithsonian](https://americanindian.si.edu/inkaroad/inkauniverse/inkaroadexpansion/road-administration.html))
+- UNESCO 的吴哥遗址说明列出盆地、堤坝、蓄水池和渠道；APSARA 与多机构研究团队的考古研究说明，水网
+  同时涉及储存、分配、溢流和向洞里萨湖排水，并经历多次增建和用途变化。
+  ([UNESCO](https://whc.unesco.org/en/list/668/))
+  ([Antiquity](https://www.cambridge.org/core/journals/antiquity/article/abs/water-management-network-of-angkor-cambodia/EC4E312C23A724E6B629B4A252FF15D9))
+- 东京图书馆馆藏说明记录町火消各组、纒、灯笼、旗帜、袢纏和负责区域；大火后城市资料记录火除地、
+  宽路、土堤和部分宅邸 / 寺社迁移；The Met 实物说明区分町人消防与侧重江户城的武士消防。
+  ([Tokyo Archive](https://archive.library.metro.tokyo.lg.jp/da/detail?tilcod=0000000015-00056501))
+  ([The Met](https://www.metmuseum.org/art/collection/search/53910))
+
+### 对当前验证包的影响
+
+- 新增印加道路接力、吴哥水网和江户消防，候选池从三个扩展为六个。
+- 当前来源与静态分镜适配排序为：罗马粮食 → 印加通信 → 罗马供水 → 江户消防 → 吴哥水网 →
+  摩亨佐-达罗排水。排序仍不是市场或表现判断。
+- 六题暂分为流动网络、水与季节、城市风险三组，每组两个独立题；完整矩阵见
+  [six-topic-experiment-matrix.md](six-topic-experiment-matrix.md)。
+
+### 仍未知 / 不升级为规则
+
+- 同组两题跨越不同文明、年代与受众熟悉度，不能把发布差异严格归因于机制组。
+- 吴哥水网和摩亨佐-达罗排水的地图、用途和治理不确定性更高，必须先通过研究 brief 才能进入脚本。
+- 没有真实发布，候选排序不进入 `strategy_memory.md`。
+
+## 2026-08-02：YouTube 支持多语言，但当前发布链路尚未接入
+
+### 新证据
+
+- YouTube Studio 支持翻译标题 / 描述；符合条件的频道可使用自动配音，部分具有 Advanced features 的
+  创作者可上传自有多语言音轨。官方提醒自动配音可能误读发音、专名、习语和术语，可配置发布前人工审核。
+  ([Automatic dubbing](https://support.google.com/youtube/answer/15569972))
+  ([Multi-language features](https://support.google.com/youtube/answer/13338784))
+- YouTube Data API 的 `videos` 资源提供 `snippet.defaultLanguage`、`snippet.defaultAudioLanguage` 和
+  `localizations` 元数据。([YouTube Data API](https://developers.google.com/youtube/v3/docs/videos))
+- 本地归档的外部 Video API 上传请求只有标题、描述、标签、可见性、儿童内容、合成媒体、付费推广、
+  订阅通知、封面和视频 URL；DoodleStory `_create_payload()` 也没有语言、localizations、字幕或第二音轨。
+
+### 对当前验证包的影响
+
+- 首批六条固定一个原始语言；多语言是后续独立变量，不同时建立多个语言频道。
+- 当前上传后需要在 YouTube Studio 人工设置语言和管理配音，不能在 Agent 流程里标记为自动完成。
+- 历史专名和不确定性限定词需要目标语言审核人；自动配音不得默认全部发布。
+- 完整能力分层见 [language-and-monetization-boundaries.md](language-and-monetization-boundaries.md)。
+
+### 仍未知 / 不升级为规则
+
+- 尚未确定原始语言，也没有多地区受众数据，不能判断英语、中文或任何第二语言更优。
+- 没有真实配音样本，不能判断 YouTube 自动配音对历史内容的可用性和成本节省。
+- 外部 Video API 将来是否增加语言或音轨字段未知；文档与 smoke 出现前只记录缺口。
+
+## 2026-08-02：YPP 普通视频与 Shorts 是独立资格路径
+
+### 新证据
+
+- 扩展 YPP 的早期门槛为 500 订阅者、近 90 天 3 个有效公开上传，并满足近 12 个月 3,000 有效公开
+  观看小时或近 90 天 300 万有效公开 Shorts 观看；这一层主要开放粉丝资助和部分 Shopping。
+- 广告与 YouTube Premium 分成门槛为 1,000 订阅者，并满足近 12 个月 4,000 有效公开观看小时或
+  近 90 天 1,000 万有效公开 Shorts 观看。Shorts Feed 观看小时不计入 4,000 小时。
+  ([Expanded YPP](https://support.google.com/youtube/answer/13429240))
+  ([YPP overview](https://support.google.com/youtube/answer/72851))
+- Watch Page 与 Shorts Feed 使用不同收益模块和计算方式，不能只比较 55% 与 45% 的表面比例。
+  ([Partner earnings](https://support.google.com/youtube/answer/72902))
+
+### 对当前验证包的影响
+
+- 维持 16:9、90–180 秒普通视频作为低成本内容机制实验，不把 YPP 作为首轮成功标准。
+- 若机制出现重复正向信号，下一轮才把视频长度作为唯一主要变量，验证较长普通视频；当前不直接延长。
+- 不使用“Shorts 更快获利”或“普通视频每次观看更值钱”等未经真实频道数据支持的结论。
+
+### 下一次研究问题
+
+按六题矩阵先完成 N1 罗马粮食研究 brief 的事实主张表和标题承诺检查；仍不生成脚本、媒体或发布任务。

@@ -7,10 +7,12 @@
 
 1. [赛道比较与首轮验证建议](2026-08-youtube-niche-validation.md)
 2. [候选历史题来源账本](candidate-topic-source-ledgers.md)
-3. [格式观察、平台分流与相邻赛道压力测试](format-and-adjacent-lane-review.md)
-4. [新赛道 Agent 流程设计模板](agent-flow-design-template.md)
-5. [外部依赖准备清单](external-dependency-readiness.md)
-6. [持续研究日志](research-log.md)
+3. [历史机制六题研究矩阵](six-topic-experiment-matrix.md)
+4. [多语言与获利路径边界](language-and-monetization-boundaries.md)
+5. [格式观察、平台分流与相邻赛道压力测试](format-and-adjacent-lane-review.md)
+6. [新赛道 Agent 流程设计模板](agent-flow-design-template.md)
+7. [外部依赖准备清单](external-dependency-readiness.md)
+8. [持续研究日志](research-log.md)
 
 ## 当前结论
 
@@ -21,6 +23,10 @@
 首轮发布前还必须先锁定内容类型：默认建议以 **16:9、90–180 秒的普通视频**验证单一因果问题；
 若继续使用 3:4 竖屏且不超过 3 分钟，YouTube 会将其归为 Shorts，必须改用 Shorts 指标和缩略图规则，
 不能与普通视频混在同一实验里。
+
+候选池已扩展为六题，覆盖物流、通信、供水、季风水网、城市消防和排水证据。首批只使用一个原始语言；
+YouTube 平台支持多语言能力，但当前 DoodleStory 发布请求尚不支持原始语言、翻译元数据或第二音轨，
+不能把平台能力写成项目现成功能。YPP 普通视频与 Shorts 门槛只作运营约束，不作为首轮成功指标。
 
 ## 边界
 
