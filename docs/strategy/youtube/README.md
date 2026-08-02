@@ -8,6 +8,7 @@
 1. [赛道比较与首轮验证建议](2026-08-youtube-niche-validation.md)
 2. [新赛道 Agent 流程设计模板](agent-flow-design-template.md)
 3. [外部依赖准备清单](external-dependency-readiness.md)
+4. [持续研究日志](research-log.md)
 
 ## 当前结论
 
