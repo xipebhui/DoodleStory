@@ -58,6 +58,36 @@ SiliconFlow 是独立的后端直连链路，不是 Native Agent 的固定地址
 https://api.siliconflow.cn/v1/chat/completions
 ```
 
+### 2.1.1 SiliconFlow 免费额度模型白名单
+
+以下范围是本项目的 SiliconFlow 免费额度使用约束：任何配置到
+SILICONFLOW_BASE_URL 的模型，必须从此表选择。表中使用产品名称；环境变量应填写
+SiliconFlow 当前公布的精确 model ID，不能根据名称自行猜测别名。带 Pro/ 前缀的同名优化
+部署版本也在允许范围内。
+
+| 赛道 | 允许模型 | 简要选型 |
+| --- | --- | --- |
+| 通用文本：旗舰 | DeepSeek-V3.2；Qwen3.5-35B-A3B；DeepSeek-V3.1-Terminus | 长文、中文通用创作、复杂 Agent 任务优先；当前 SILICONFLOW_MODEL 使用 DeepSeek-V3.2。 |
+| 通用文本：稳定/高端 | Qwen3-32B；Qwen3-30B-A3B-Instruct-2507；Qwen2.5-72B-Instruct；DeepSeek-V3 | 需要成熟稠密模型或稳定生产兼容性时选用。 |
+| 通用文本：轻量 | Qwen3.5-27B；Qwen3-14B；Qwen2.5-32B-Instruct；GLM-4.5-Air；GLM-4-32B-0414；Seed-OSS-36B-Instruct；Hunyuan-A13B-Instruct；Qwen3.5-9B；Qwen2.5-7B-Instruct；Ling-flash-2.0；Ling-mini-2.0 | 简单问答、低延迟或成本优先任务。 |
+| 深度推理 | DeepSeek-R1 | 数学、复杂逻辑和竞赛级推导。 |
+| 视觉理解 | Qwen3-VL-32B-Thinking；Qwen3-VL-30B-A3B-Thinking；Qwen3-VL-32B-Instruct；Qwen3-VL-30B-A3B-Instruct；GLM-4.5V；Qwen3-VL-8B-Instruct；Qwen3-VL-8B-Thinking | 常规图文识别用 Instruct，复杂图表、多图、视频时序推理用 Thinking；当前 SILICONFLOW_VISION_MODEL 为 Qwen3-VL-32B-Instruct。 |
+| 全模态 | Qwen3-Omni-30B-A3B-Instruct；Qwen3-Omni-30B-A3B-Thinking；Qwen3-Omni-30B-A3B-Captioner | 文、图、音、视频统一理解；Captioner 适合字幕/转写。 |
+| 代码 | Qwen3-Coder-30B-A3B-Instruct | 代码生成、调试和工程任务。 |
+| 图像生成/编辑 | Qwen-Image；Qwen-Image-Edit；Qwen-Image-Edit-2509 | 文生图优先 Qwen-Image；指令编辑优先 2509。 |
+| 视频生成 | Wan2.2-T2V-A14B；Wan2.2-I2V-A14B | 分别用于文生视频和图生视频。 |
+| 向量检索 | Qwen3-Embedding-8B；bge-m3；Qwen3-Embedding-4B；Qwen3-Embedding-0.6B | RAG 召回：精度优先 8B，通用优先 bge-m3。 |
+| 检索重排 | Qwen3-Reranker-8B；bge-reranker-v2-m3；Qwen3-Reranker-4B；Qwen3-Reranker-0.6B | RAG 精排：精度优先 8B，通用优先 bge-reranker-v2-m3。 |
+| 语音合成 | CosyVoice2-0.5B；MOSS-TTSD-v0.5 | TTS 优先 CosyVoice2-0.5B；当前视频 TTS 默认模型为 FunAudioLLM/CosyVoice2-0.5B。 |
+| LoRA | 基于 Qwen2.5 的 LoRA 版本，基座限 Qwen2.5-72B、32B、14B、7B | 仅用于领域/风格适配；能力上限由基座决定。 |
+
+当前代码的接入边界也需要区分：
+
+1. 已有 SiliconFlow 直连：chat.completions 多模态、角色参考图理解、视频音频转写、参考声音注册和 TTS。
+2. Qwen-Image、Wan2.2、Embedding、Reranker 与部分全模态/代码模型虽然属于允许范围，但当前没有对应的 DoodleStory SiliconFlow 直连客户端；不能仅改环境变量就假定功能已经接入。
+3. QY 统一生图网关中的模型路由仍以 IMAGE_GATEWAY_BASE_URL 为准，即使模型属于上表，也不能把网关调用误记为 DoodleStory 直接请求 SiliconFlow。
+4. 当前代码不对模型名做运行时白名单校验；本表是配置和运营约束。若需要强制拦截白名单外模型，应单独实施并验证所有既有图片风格与媒体配置。
+
 ### 2.2 普通 OpenAI-compatible 文本/视觉链路
 
 这条链路使用 TEXT_FALLBACK_BASE_URL 和 LIO_BASE_URL，但它本身不是 Native Agent 的 Responses 调用。
@@ -368,6 +398,7 @@ GET {VITE_API_BASE_URL}/api/v1/agent-loop/runs/{run_id}/events
 | SiliconFlow 与 Native Agent | SiliconFlow 使用 chat.completions 和语音接口；Native Agent 主模型使用 TEXT_FALLBACK_BASE_URL/v1/responses，两者不是同一条固定地址 |
 | TEXT_FALLBACK_MODEL 与 AGENT_MODEL | 前者是普通文本/视觉模型；后者是 Native Agent/旧 Agent Router 模型，不能混看 |
 | SILICONFLOW_API_BASE | 根目录 .env 中存在历史变量，但 Settings 使用的是 SILICONFLOW_BASE_URL；当前代码以后一项为准 |
+| SiliconFlow 免费额度模型 | 只能选择第 2.1.1 节列出的模型；产品名称需映射为 SiliconFlow 当前有效的精确 model ID，当前代码尚未强制校验 |
 | APEXERAPI_BASE | 当前只有配置字段和统一生图模型归类，没有 DoodleStory 直连请求 |
 | DOUYIN_IMPORT_SERVICE_BASE_URL | 变量名较旧，实际同时承载抖音、微信/多平台导入和 YouTube 频道研究 |
 | YTB_PUBLISH_URL | 指向视频发布平台服务；DoodleStory 调用的是其 /api/youtube/... 服务 API，不是直接调用 Google YouTube SDK |

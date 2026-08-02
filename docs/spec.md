@@ -509,6 +509,7 @@
 - 当图片 Provider 明确返回 Google policy blocked 类错误，例如 `Unable to show the generated image`、`Generative AI Prohibited Use policy` 或 `filtered out`，说明当前 prompt 被上游策略拦截；此时先调用 LLM 改写最终生图提示词中的敏感动作意图表达，在不改变画面效果、主体、构图、风格、图片内文字和参考图关系的前提下，把疼痛、伤害、惩罚、触碰、危险意图等表达改为更中性客观的视觉状态，然后使用原图片模型和原参考图重新提交一次。该逻辑只适用于明确 policy blocked 错误，不适用于普通 Provider 响应错误。
 - 开启人物参考的任务如果没有识别到可用于参考图的主要人物，任务应失败并显示明确错误，不能静默降级为普通生图。
 - 单 panel 修改在人物参考任务中必须继续携带该 panel 已绑定的人物参考图。
+- SiliconFlow 使用免费额度模型时，配置只能选择 `docs/integrations/llm-agent-endpoints.md` 第 2.1.1 节的白名单；未接入的模型类别不能仅通过改环境变量假定可用，也不得自动切换为清单内的其它模型。当前是配置与运营约束，尚未在代码中增加模型名强制校验；如需强制校验，必须单独评估已有图片风格和媒体配置。
 - Agent Runtime 已由 Sprint 105 的真实双平台 SDK Tool Loop 锁定为 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；后续 Sprint 不得改变应用侧持久化、完整输入重放或 Router 错误分类契约。
 
 ## 非目标

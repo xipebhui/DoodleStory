@@ -11,6 +11,7 @@
 ## 范围
 
 - 模型：SiliconFlow、普通 OpenAI-compatible 文本/视觉、Native Agent Responses、旧 AgentModelRouter。
+- SiliconFlow 免费额度模型白名单：按通用文本、推理、视觉、全模态、代码、图像、视频、检索、TTS 和 LoRA 记录允许模型及当前接入边界。
 - 媒体：统一生图网关、XG、Grok CLI、SiliconFlow 语音、火山语音、Whisper、FFmpeg、Remotion、comic-video-studio。
 - 内容与发布：多平台导入、抖音下载、YouTube 频道研究、YouTube 发布服务。
 - 基础设施：七牛、阿里云 OSS、MLflow、飞书失败告警、前端到本项目 FastAPI 的内部 API 边界。
@@ -22,6 +23,7 @@
 - 不修改业务调用逻辑、Provider 选择、重试策略或认证方式。
 - 不把 API Key、Secret、Token、完整 webhook URL 或其他敏感配置写入文档。
 - 不把兄弟导入服务内部使用的 YouTube Data API 误写成 DoodleStory 的直接调用。
+- 本次不新增 SiliconFlow 模型名的运行时强制校验；该改动会影响现有配置和风格模型，需另行确认。
 
 ## 验收标准
 
@@ -31,3 +33,4 @@
 4. 文档明确 `APEXERAPI_BASE` 当前没有被 DoodleStory 直接请求。
 5. `docs/progress.md` 记录本次变更、验证结果和未执行的完整检查项。
 6. `git diff --check` 通过，且文档不包含密钥值。
+7. 文档明确 SiliconFlow 只能按免费额度白名单选型，并区分已接入的调用链与尚未接入的允许模型。
