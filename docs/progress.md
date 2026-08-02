@@ -1026,3 +1026,17 @@
   Durable Task 未完成而被标记 `failed`。最终实际调用为生图 1、TTS 2、字幕尝试 3（成功 1）、
   视频渲染 1，没有发布；本地核验产物保存在 `output/sprint-146-full-media-e2e/`，详细 ID、尺寸、
   时长与修复要求已追加到 QA 报告。
+
+# Sprint 151 Video API 文档本地归档（已完成）
+
+- 按用户确认的设置，将 `https://video.inboxlinks.top/api-docs/` 及其站内导航递归发现的 11 个公开
+  文档页面保存为 Markdown，集中放在 `docs/external-api/video-inboxlinks/`；每篇文档按独立子目录
+  保存，并保留标题、来源 URL、摘要和抓取时间 frontmatter。
+- 归档范围包含文档首页、快速开始、认证与约定、通用 CRUD、YouTube 频道管理、上传任务、已上传
+  视频、视频分析、频道分析、频道刷量任务和更新日志；新增 README 索引，未调用任何发布/分析接口。
+- 用户选择不下载媒体；质量检查确认 11 篇正文均有实质内容，标题与 URL 匹配，没有登录墙、404、
+  框架错误页或需要本地化的媒体资源。
+- `git diff --check` 和归档专属检查通过。标准 `scripts/check.sh` 已尝试，但仓库脚本为 CRLF，
+  在 WSL 中规范化执行后因环境缺少 `python3.11`、且本机没有项目虚拟环境而无法继续；未修改代码，
+  该环境限制已记录在 Sprint 151 合同中。
+- 合同：`docs/contracts/sprint-151-video-api-doc-archive.md`。
