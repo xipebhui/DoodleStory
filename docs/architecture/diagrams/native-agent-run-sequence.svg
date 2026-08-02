@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1030" role="img" aria-labelledby="title desc">
+  <title id="title">DoodleStory Native Agent Run 时序</title>
+  <desc id="desc">用户提交任务后，FastAPI 先持久化 Run 和快照，再由进程内 Worker 执行 Agent 与工具；人工审批和事件流均基于持久化状态恢复。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08111f"/><stop offset="1" stop-color="#101b31"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7dd3fc"/></marker>
+    <marker id="arrowMuted" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+    <style>
+      .title{font:700 30px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#f8fafc}.subtitle{font:400 15px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#94a3b8}.actor{fill:#10263d;stroke:#38bdf8;stroke-width:1.4}.actorDb{fill:#17283d;stroke:#a78bfa;stroke-width:1.4}.actorExternal{fill:#312414;stroke:#f59e0b;stroke-width:1.4}.actorText{font:700 14px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#f8fafc}.life{stroke:#3c506a;stroke-width:1;stroke-dasharray:7 6}.call{stroke:#7dd3fc;stroke-width:1.8;marker-end:url(#arrow)}.return{stroke:#94a3b8;stroke-width:1.2;stroke-dasharray:6 4;marker-end:url(#arrowMuted)}.msg{font:500 12px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#dbeafe}.muted{font:400 11px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#94a3b8}.num{font:700 9px 'Segoe UI',sans-serif;fill:#7dd3fc}.activation{fill:#16415f;stroke:#38bdf8;stroke-width:1}.frame{fill:rgba(15,31,51,.65);stroke:#64748b;stroke-width:1;stroke-dasharray:5 4}.tab{fill:#1e3049;stroke:#64748b;stroke-width:1}.note{fill:#1a293d;stroke:#4b6380;stroke-width:1}.noteText{font:400 11px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#cbd5e1}
+    </style>
+  </defs>
+  <rect width="1600" height="1030" fill="url(#bg)"/>
+  <text x="52" y="55" class="title">一次 Native Agent Run：从对话到可恢复结果</text>
+  <text x="52" y="83" class="subtitle">时间自上而下。先写入权威状态，再执行模型与工具；SSE 只是该状态的实时投影。</text>
+
+  <g>
+    <rect x="55" y="120" width="175" height="54" rx="10" class="actor"/><text x="142" y="153" text-anchor="middle" class="actorText">用户 / 浏览器</text>
+    <rect x="304" y="120" width="175" height="54" rx="10" class="actor"/><text x="391" y="153" text-anchor="middle" class="actorText">FastAPI</text>
+    <rect x="553" y="120" width="175" height="54" rx="10" class="actorDb"/><text x="640" y="153" text-anchor="middle" class="actorText">数据库 / 资产</text>
+    <rect x="802" y="120" width="175" height="54" rx="10" class="actor"/><text x="889" y="145" text-anchor="middle" class="actorText">进程内 Worker</text><text x="889" y="162" text-anchor="middle" class="muted">asyncio Queue</text>
+    <rect x="1051" y="120" width="175" height="54" rx="10" class="actor"/><text x="1138" y="145" text-anchor="middle" class="actorText">Native Agent</text><text x="1138" y="162" text-anchor="middle" class="muted">Responses + Function Tools</text>
+    <rect x="1300" y="120" width="230" height="54" rx="10" class="actorExternal"/><text x="1415" y="145" text-anchor="middle" class="actorText">模型 / 工具 Provider</text><text x="1415" y="162" text-anchor="middle" class="muted">媒体、研究、发布服务</text>
+    <line x1="142" y1="174" x2="142" y2="975" class="life"/><line x1="391" y1="174" x2="391" y2="975" class="life"/><line x1="640" y1="174" x2="640" y2="975" class="life"/><line x1="889" y1="174" x2="889" y2="975" class="life"/><line x1="1138" y1="174" x2="1138" y2="975" class="life"/><line x1="1415" y1="174" x2="1415" y2="975" class="life"/>
+  </g>
+  <rect x="386" y="216" width="10" height="150" rx="2" class="activation"/><rect x="635" y="260" width="10" height="84" rx="2" class="activation"/><rect x="884" y="386" width="10" height="462" rx="2" class="activation"/><rect x="1133" y="450" width="10" height="390" rx="2" class="activation"/>
+  <g>
+    <circle cx="127" cy="230" r="10" fill="#123654" stroke="#38bdf8"/><text x="127" y="234" text-anchor="middle" class="num">1</text><line x1="142" y1="230" x2="391" y2="230" class="call"/><text x="266" y="215" text-anchor="middle" class="msg">创建会话 / 提交 Run（Skill、资源、输入）</text>
+    <circle cx="376" cy="276" r="10" fill="#123654" stroke="#38bdf8"/><text x="376" y="280" text-anchor="middle" class="num">2</text><line x1="391" y1="276" x2="640" y2="276" class="call"/><text x="516" y="261" text-anchor="middle" class="msg">持久化 Run、Skill Version、上下文与初始事件</text>
+    <line x1="640" y1="322" x2="391" y2="322" class="return"/><text x="516" y="307" text-anchor="middle" class="muted">返回 Run ID（queued）</text>
+    <circle cx="376" cy="370" r="10" fill="#123654" stroke="#38bdf8"/><text x="376" y="374" text-anchor="middle" class="num">3</text><line x1="391" y1="370" x2="889" y2="370" class="call"/><text x="640" y="355" text-anchor="middle" class="msg">将 Run 入队</text>
+    <circle cx="874" cy="418" r="10" fill="#123654" stroke="#38bdf8"/><text x="874" y="422" text-anchor="middle" class="num">4</text><line x1="889" y1="418" x2="640" y2="418" class="call"/><text x="765" y="403" text-anchor="middle" class="msg">检查可恢复性，写入 running / checkpoint</text>
+    <rect x="1044" y="454" width="470" height="315" rx="8" class="frame"/><rect x="1044" y="454" width="53" height="20" rx="4" class="tab"/><text x="1070" y="468" text-anchor="middle" class="muted">loop</text><text x="1110" y="468" class="muted">[模型继续请求 Tool 或输出结果]</text>
+    <circle cx="874" cy="500" r="10" fill="#123654" stroke="#38bdf8"/><text x="874" y="504" text-anchor="middle" class="num">5</text><line x1="889" y1="500" x2="1138" y2="500" class="call"/><text x="1014" y="485" text-anchor="middle" class="msg">加载固定 Skill / 资源 / Checkpoint，启动 Agent</text>
+    <circle cx="1123" cy="548" r="10" fill="#123654" stroke="#38bdf8"/><text x="1123" y="552" text-anchor="middle" class="num">6</text><line x1="1138" y1="548" x2="1415" y2="548" class="call"/><text x="1276" y="533" text-anchor="middle" class="msg">Responses 模型调用（可流式返回 Function Call）</text>
+    <line x1="1415" y1="594" x2="1138" y2="594" class="return"/><text x="1276" y="579" text-anchor="middle" class="muted">模型文本 / Tool 参数</text>
+    <circle cx="1123" cy="642" r="10" fill="#123654" stroke="#38bdf8"/><text x="1123" y="646" text-anchor="middle" class="num">7</text><line x1="1138" y1="642" x2="640" y2="642" class="call"/><text x="889" y="627" text-anchor="middle" class="msg">prepare Tool Effect：用 Tool Call ID 取得或复用执行记录</text>
+    <circle cx="1123" cy="690" r="10" fill="#123654" stroke="#38bdf8"/><text x="1123" y="694" text-anchor="middle" class="num">8</text><line x1="1138" y1="690" x2="1415" y2="690" class="call"/><text x="1276" y="675" text-anchor="middle" class="msg">调用本地 / 外部 Tool（生图、研究、语音、渲染、发布）</text>
+    <line x1="1415" y1="736" x2="1138" y2="736" class="return"/><text x="1276" y="721" text-anchor="middle" class="muted">资产、研究结果、远程任务引用或错误</text>
+    <line x1="1138" y1="754" x2="640" y2="754" class="call"/><text x="889" y="739" text-anchor="middle" class="msg">完成 / 失败记录、Artifact、Step 与事件落库</text>
+  </g>
+  <rect x="305" y="796" width="833" height="112" rx="8" class="frame"/><rect x="305" y="796" width="43" height="20" rx="4" class="tab"/><text x="326" y="810" text-anchor="middle" class="muted">alt</text><text x="360" y="810" class="muted">[需要人工确认或发生中断]</text>
+  <circle cx="127" cy="844" r="10" fill="#123654" stroke="#38bdf8"/><text x="127" y="848" text-anchor="middle" class="num">9</text><line x1="1138" y1="844" x2="142" y2="844" class="call"/><text x="640" y="829" text-anchor="middle" class="msg">前端通过 SSE 得到等待状态；用户批准 / 退回 / 取消（带 state version）</text>
+  <circle cx="127" cy="886" r="10" fill="#123654" stroke="#38bdf8"/><text x="127" y="890" text-anchor="middle" class="num">10</text><line x1="142" y1="886" x2="391" y2="886" class="call"/><text x="266" y="871" text-anchor="middle" class="msg">提交控制命令</text><line x1="391" y1="886" x2="640" y2="886" class="call"/><text x="516" y="871" text-anchor="middle" class="msg">后端校验 owner / allowed actions 并持久化</text>
+  <line x1="640" y1="932" x2="889" y2="932" class="call"/><text x="765" y="917" text-anchor="middle" class="msg">继续同一 Run 或收敛终态</text>
+  <rect x="55" y="956" width="1475" height="42" rx="10" class="note"/><text x="75" y="982" class="noteText">恢复边界：启动时只恢复合法 Run；等待输入、终态、取消中或存在未知外部副作用的状态不会静默重跑。SSE 断线后，客户端重新读取后端投影而不是猜测本地状态。</text>
+</svg>

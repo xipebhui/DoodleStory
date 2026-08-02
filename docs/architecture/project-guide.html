@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="DoodleStory 项目架构、Native Agent 运行链路与新 Agent 流程扩展蓝图。" />
+    <title>DoodleStory 项目导览｜架构与 Agent 扩展</title>
+    <style>
+      :root {
+        --ink: #172033;
+        --muted: #5e6878;
+        --line: #d9e0e9;
+        --canvas: #f4f6fa;
+        --surface: #ffffff;
+        --navy: #10243d;
+        --cyan: #087d92;
+        --cyan-soft: #e7f7f7;
+        --green: #197043;
+        --green-soft: #eaf7ef;
+        --amber: #9a5c08;
+        --amber-soft: #fff5df;
+        --rose: #a33246;
+        --rose-soft: #fff0f2;
+        --shadow: 0 12px 34px rgba(20, 36, 57, 0.08);
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font: 16px/1.68 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      }
+      a { color: #066c80; text-underline-offset: 3px; }
+      a:hover { color: #034e5e; }
+      a:focus-visible { outline: 3px solid #74cbd4; outline-offset: 3px; border-radius: 3px; }
+      code { padding: 0.08em 0.3em; border-radius: 4px; background: #edf1f6; color: #263e5f; font-size: 0.9em; }
+      h1, h2, h3, p { margin-top: 0; }
+      h2 { margin-bottom: 0.6rem; font-size: clamp(1.45rem, 2vw, 2rem); line-height: 1.3; }
+      h3 { margin-bottom: 0.36rem; font-size: 1.08rem; line-height: 1.4; }
+
+      .page { max-width: 1520px; margin: 0 auto; padding: 26px; }
+      .hero {
+        display: grid;
+        gap: 24px;
+        grid-template-columns: minmax(0, 1fr) minmax(265px, 360px);
+        align-items: end;
+        padding: clamp(30px, 6vw, 70px);
+        border-radius: 24px;
+        color: #f8fbff;
+        background: radial-gradient(circle at 85% 8%, rgba(88, 198, 207, 0.32), transparent 33%), linear-gradient(130deg, #10243d, #163d57 62%, #176271);
+        box-shadow: var(--shadow);
+      }
+      .eyebrow { margin: 0 0 10px; color: #a9e5e8; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+      .hero h1 { margin-bottom: 12px; font-size: clamp(2rem, 4.7vw, 4.4rem); line-height: 1.06; letter-spacing: -0.04em; }
+      .hero p { max-width: 770px; margin-bottom: 0; color: #d7e7f0; font-size: 1.08rem; }
+      .snapshot { padding: 21px; border: 1px solid rgba(202, 238, 241, 0.32); border-radius: 15px; background: rgba(5, 20, 34, 0.35); }
+      .snapshot strong { display: block; margin-bottom: 7px; color: #fff; font-size: 1.06rem; }
+      .snapshot p { font-size: 0.91rem; }
+
+      .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 28px; margin-top: 28px; }
+      .toc { align-self: start; position: sticky; top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,0.86); box-shadow: 0 6px 22px rgba(20, 36, 57, 0.04); }
+      .toc strong { display: block; margin-bottom: 9px; font-size: 0.87rem; color: #344256; }
+      .toc a { display: block; padding: 5px 6px; color: #536074; font-size: 0.9rem; text-decoration: none; }
+      .toc a:hover { color: var(--cyan); background: var(--cyan-soft); border-radius: 5px; }
+      main { min-width: 0; }
+      section { scroll-margin-top: 18px; margin-bottom: 28px; padding: clamp(24px, 3vw, 40px); border: 1px solid var(--line); border-radius: 19px; background: var(--surface); box-shadow: 0 6px 20px rgba(20, 36, 57, 0.035); }
+      .intro { font-size: 1.06rem; color: #384657; }
+      .section-kicker { margin-bottom: 8px; color: var(--cyan); font-size: 0.8rem; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; }
+      .callout { margin: 20px 0 0; padding: 16px 18px; border-left: 4px solid var(--cyan); border-radius: 0 10px 10px 0; background: var(--cyan-soft); }
+      .callout strong { color: #075d6c; }
+
+      .status-grid, .card-grid, .source-grid { display: grid; gap: 15px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .status, .card, .source { padding: 18px; border-radius: 13px; border: 1px solid var(--line); background: #fff; }
+      .status h3, .card h3, .source h3 { margin-bottom: 8px; }
+      .status p, .card p, .source p { margin-bottom: 0; color: var(--muted); font-size: 0.93rem; }
+      .status.ready { border-color: #98d9b0; background: var(--green-soft); }
+      .status.config { border-color: #edca86; background: var(--amber-soft); }
+      .status.gap { border-color: #efb2bd; background: var(--rose-soft); }
+      .badge { display: inline-block; margin-bottom: 8px; padding: 3px 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 800; letter-spacing: 0.04em; }
+      .ready .badge { color: var(--green); background: #d6f0df; }
+      .config .badge { color: var(--amber); background: #ffedc9; }
+      .gap .badge { color: var(--rose); background: #ffdee4; }
+
+      figure { margin: 22px 0 0; padding: 14px; border: 1px solid #cfd8e5; border-radius: 14px; background: #0b1527; overflow: auto; }
+      figure img { display: block; min-width: 780px; width: 100%; height: auto; border-radius: 8px; }
+      figcaption { padding: 11px 7px 0; color: #d2dae6; font-size: 0.89rem; }
+      figcaption a { color: #9ce8ee; }
+
+      .flow { display: grid; gap: 0; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 22px; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; }
+      .flow-step { position: relative; min-height: 174px; padding: 18px 17px 18px 20px; background: #fff; border-right: 1px solid var(--line); }
+      .flow-step:last-child { border-right: 0; }
+      .flow-step::after { content: "→"; position: absolute; z-index: 2; top: 76px; right: -12px; width: 24px; height: 24px; border-radius: 50%; background: #e8f6f7; color: var(--cyan); font-weight: 800; line-height: 24px; text-align: center; }
+      .flow-step:last-child::after { display: none; }
+      .flow-no { display: block; margin-bottom: 7px; color: var(--cyan); font-size: 0.78rem; font-weight: 800; }
+      .flow-step p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+      table { width: 100%; border-collapse: collapse; margin-top: 16px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; font-size: 0.93rem; }
+      th, td { padding: 13px 14px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+      th { color: #344256; background: #f1f5f9; font-size: 0.82rem; letter-spacing: 0.03em; }
+      tr:last-child td { border-bottom: 0; }
+      .chip { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 800; white-space: nowrap; }
+      .chip.ready { color: var(--green); background: #dff3e6; }
+      .chip.new { color: var(--rose); background: #ffe1e6; }
+      .chip.limit { color: var(--amber); background: #fff0cf; }
+
+      .checklist { display: grid; gap: 13px; padding: 0; list-style: none; counter-reset: item; }
+      .checklist li { position: relative; padding: 15px 17px 15px 55px; border: 1px solid var(--line); border-radius: 12px; background: #fbfcfe; }
+      .checklist li::before { content: counter(item); counter-increment: item; position: absolute; left: 16px; top: 15px; width: 25px; height: 25px; border-radius: 50%; color: #fff; background: var(--cyan); font-size: 0.8rem; font-weight: 800; line-height: 25px; text-align: center; }
+      .checklist strong { display: block; margin-bottom: 3px; }
+      .checklist span { color: var(--muted); font-size: 0.92rem; }
+
+      details { margin-top: 18px; border: 1px solid var(--line); border-radius: 11px; background: #fbfcff; }
+      summary { padding: 14px 16px; cursor: pointer; font-weight: 700; }
+      details > div { padding: 0 16px 16px; color: var(--muted); }
+      .source a { font-weight: 700; }
+      .source p { margin-top: 7px; }
+      .footer { margin: 8px 0 25px; color: #6e7785; font-size: 0.85rem; text-align: center; }
+
+      @media (max-width: 980px) {
+        .hero, .layout { grid-template-columns: 1fr; }
+        .toc { position: static; display: flex; flex-wrap: wrap; gap: 3px; }
+        .toc strong { width: 100%; }
+        .status-grid, .card-grid, .source-grid { grid-template-columns: 1fr; }
+        .flow { grid-template-columns: 1fr; }
+        .flow-step { min-height: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+        .flow-step:last-child { border-bottom: 0; }
+        .flow-step::after { top: auto; right: auto; bottom: -12px; left: 50%; transform: rotate(90deg) translateX(-50%); }
+      }
+      @media print { body { background: #fff; } .page { max-width: none; padding: 0; } .toc { display: none; } section, .hero { box-shadow: none; break-inside: avoid; } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Architecture field guide · Sprint 153</p>
+          <h1>先看清现在，<br />再扩展新的 Agent。</h1>
+          <p>这是一份面向新合作者的本地项目导览。它以当前源码和已完成 Sprint 为准，解释 DoodleStory 已经拥有的运行积木、它们如何协作，以及把 YouTube 新赛道研究与视频制作做成新 Agent 时应该从哪里切入。</p>
+        </div>
+        <aside class="snapshot" aria-label="阅读方式">
+          <strong>阅读时请区分三件事</strong>
+          <p><b>已经可复用</b>的运行能力、<b>有条件可用</b>的外部依赖，以及<b>尚需建设</b>的业务流程。本文不把计划写成现状。</p>
+        </aside>
+      </header>
+
+      <div class="layout">
+        <nav class="toc" aria-label="页面目录">
+          <strong>本页目录</strong>
+          <a href="#mental-model">一句话模型</a>
+          <a href="#system">系统架构</a>
+          <a href="#run">Agent Run 时序</a>
+          <a href="#youtube">YouTube 链路</a>
+          <a href="#building-blocks">可复用积木</a>
+          <a href="#new-flow">新流程蓝图</a>
+          <a href="#boundaries">关键边界</a>
+          <a href="#sources">源码与资料</a>
+        </nav>
+
+        <main>
+          <section id="mental-model">
+            <p class="section-kicker">01 · Mental model</p>
+            <h2>一句话理解：这是一个“持久化 Agent 编排层”，外接内容与媒体工具。</h2>
+            <p class="intro">用户在 React 工作台提交目标。FastAPI 先把会话、Run、Skill 版本与资源引用写入数据库；单实例的进程内 Worker 再运行 Native Agent。模型只决定下一步意图，真正产生图片、语音、字幕、视频、研究结果或发布动作的是受控 Function Tool。每个关键步骤、产物、审批与事件会回写数据库，再通过 SSE 投影到界面。</p>
+            <div class="callout"><strong>这正是可扩展点：</strong>新 Agent 不该从“再接一个模型”开始，而应从“定义一个固定版本的 Skill、可审计的 Tool、副作用前的 Gate、可恢复的 Artifact”开始。</div>
+          </section>
+
+          <section id="system">
+            <p class="section-kicker">02 · System map</p>
+            <h2>系统由五层组成：界面、应用、Agent、权威状态、外部工具。</h2>
+            <figure>
+              <img src="diagrams/system-architecture.svg" alt="DoodleStory 系统架构：浏览器经 FastAPI 调用 Native Agent 运行时和数据库，Agent 工具连接媒体、研究、发布和存储服务。" />
+              <figcaption>系统总览。可单独打开 <a href="diagrams/system-architecture.svg">SVG 原图</a>；横向滚动可查看完整标注。</figcaption>
+            </figure>
+            <div class="status-grid" style="margin-top: 20px">
+              <article class="status ready"><span class="badge">已可复用</span><h3>Native Agent 基座</h3><p>Run、Skill Version 快照、Step、Artifact、Approval、事件、取消和启动恢复已经在当前架构内；新流程可接入这些统一语义。</p></article>
+              <article class="status config"><span class="badge">有条件可用</span><h3>外部 Provider</h3><p>模型、图片、存储、研究和发布服务依赖环境配置、账号和可用性。Tool 存在不等于 Provider 已为新赛道做好配置。</p></article>
+              <article class="status gap"><span class="badge">不应假设已具备</span><h3>分布式调度与赛道策略</h3><p>当前 Worker 是单实例进程内队列；赛道发现、策略评分、批量实验、数据回流不是一个已完成的通用工作流。</p></article>
+            </div>
+          </section>
+
+          <section id="run">
+            <p class="section-kicker">03 · Agent lifecycle</p>
+            <h2>一次 Agent Run 为什么能等待、恢复和追踪？</h2>
+            <p>关键不是对话本身，而是先把执行事实写入权威状态：输入、Skill 版本、资源、模型请求、Tool Effect、产物、审批和事件都有对应的记录。模型重试或刷新页面不应凭前端猜测继续执行。</p>
+            <figure>
+              <img src="diagrams/native-agent-run-sequence.svg" alt="Native Agent Run 时序：浏览器请求 FastAPI，Run 写入数据库并进入进程内队列，Native Agent 调用模型和工具，审批通过后继续同一 Run，SSE 投影持久化事件。" />
+              <figcaption>运行时序。可单独打开 <a href="diagrams/native-agent-run-sequence.svg">SVG 原图</a>。</figcaption>
+            </figure>
+            <div class="flow" aria-label="Native Agent Run 的五个阶段">
+              <div class="flow-step"><span class="flow-no">A. 固定输入</span><h3>创建 Run</h3><p>会话、Skill Version、用户资源和上下文快照先入库。</p></div>
+              <div class="flow-step"><span class="flow-no">B. 受控执行</span><h3>Worker 调度</h3><p>进程内队列启动合法 Run，持久化当前状态与 Checkpoint。</p></div>
+              <div class="flow-step"><span class="flow-no">C. 模型决策</span><h3>Agent Loop</h3><p>Responses 模型选择下一步，Function Tool 有明确白名单。</p></div>
+              <div class="flow-step"><span class="flow-no">D. 副作用留痕</span><h3>Tool 与 Artifact</h3><p>以 Tool Call ID 做幂等；成功、失败、资产和事件均回写。</p></div>
+              <div class="flow-step"><span class="flow-no">E. 人在回路</span><h3>Gate / 终态</h3><p>发布或高成本动作需要批准；SSE 只展示后端权威投影。</p></div>
+            </div>
+          </section>
+
+          <section id="youtube">
+            <p class="section-kicker">04 · YouTube today</p>
+            <h2>研究、制作、发布已经有连接点，但不是一条自动赛道流水线。</h2>
+            <p>目前的研究 Tool 能读取频道洞察；账号上下文 Tool 能提供频道定位、对标账号和近期视频；媒体 Tool 能产出图片、旁白、字幕和 Remotion 视频；发布 Tool 在明确确认后会调用外部视频平台创建异步上传任务。这些是构建新赛道 Agent 的原材料。</p>
+            <figure>
+              <img src="diagrams/youtube-research-to-publish-sequence.svg" alt="YouTube 研究到发布时序：DoodleStory Agent 经同级导入服务读取 YouTube 数据，利用媒体工具生成资产，经人工确认后调用 video.inboxlinks.top 的异步上传任务。" />
+              <figcaption>研究与发布由不同系统承担。可单独打开 <a href="diagrams/youtube-research-to-publish-sequence.svg">SVG 原图</a>。</figcaption>
+            </figure>
+            <details>
+              <summary>为什么要强调“不是 DoodleStory 直连 YouTube”？</summary>
+              <div>频道研究由同级多平台导入服务处理，DoodleStory 当前请求的是它的 <code>/api/v1/youtube/channel-insights</code>；视频发布由 <code>video.inboxlinks.top</code> 的 YouTube 上传任务 API 承担。新流程设计时应分别给研究失败、媒体失败和远程发布任务轮询定义状态，不要把它们归为同一个 Provider 错误。</div>
+            </details>
+          </section>
+
+          <section id="building-blocks">
+            <p class="section-kicker">05 · Reusable building blocks</p>
+            <h2>为新赛道 Agent 准备好的积木与缺口。</h2>
+            <table>
+              <thead><tr><th>目标</th><th>当前可复用的能力</th><th>你仍需要定义的部分</th><th>状态</th></tr></thead>
+              <tbody>
+                <tr><td>赛道 / 对标研究</td><td><code>inspect_youtube_channel</code> 读取频道、视频、评论、封面；账号上下文可查询已有账号资料。</td><td>候选池、研究维度、证据格式、评分模型、结论 Artifact。</td><td><span class="chip new">流程待建</span></td></tr>
+                <tr><td>策略与选题</td><td>Skill 版本固定、文本 Artifact、Gate、事件流、继续同一 Run。</td><td>策略模板、选题筛选、受众假设、风险规则和策略确认 Gate。</td><td><span class="chip new">流程待建</span></td></tr>
+                <tr><td>视频制作</td><td>生图、图检、火山语音、本地 Whisper 字幕、Remotion 渲染与资产保存。</td><td>赛道专用脚本结构、镜头规范、素材许可、质量标准、成本与重跑规则。</td><td><span class="chip ready">能力可复用</span></td></tr>
+                <tr><td>频道发布</td><td>频道 / 可发布视频登记、明确确认、异步上传任务创建与结果回写。</td><td>赛道级标题 / 标签策略、发布时间策略、发布后数据读取与归因。</td><td><span class="chip ready">基础已具备</span></td></tr>
+                <tr><td>内容实验闭环</td><td>仓库已有内容迭代控制器 Skill 与实验文件结构。</td><td>将它与 YouTube 研究、Run Artifact、发布数据和策略更新统一为可验证的产品流程。</td><td><span class="chip new">需要整合</span></td></tr>
+                <tr><td>规模化执行</td><td>单实例锁、启动恢复、取消和 Tool Effect 收敛。</td><td>跨进程 / 多实例队列、并发配额、调度、预算和更强的运维保障。</td><td><span class="chip limit">当前边界</span></td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="new-flow">
+            <p class="section-kicker">06 · Blueprint</p>
+            <h2>把“研究一个新的 YouTube 赛道”落成 Agent 的最小切面。</h2>
+            <p>建议先做一个小而可验证的 Sprint，而不是一次性做“全自动频道”。例如：给定 3–10 个对标频道，产出一份可追溯的赛道研究报告和 3 个待确认选题；确认后才进入脚本与视频制作。这个切面能够真实验证研究 Tool、策略 Artifact、Gate 和后续媒体链的交接。</p>
+            <ol class="checklist">
+              <li><strong>先写业务合同，而不是 Prompt。</strong><span>写清输入的频道数量、研究问题、允许使用的数据、报告结构、人工确认点、失败的可见结果和成本上限。这个合同应成为新 Sprint 的验收标准。</span></li>
+              <li><strong>把赛道规则封装为新 Skill。</strong><span>Skill 只描述该赛道的目标、方法、输出格式与允许的 Tool；启用后版本固定到 Run，避免用户中途改规则影响正在执行的研究。</span></li>
+              <li><strong>只新增必要的原子 Tool。</strong><span>优先复用频道研究、账号上下文和媒体 Tool。若需要搜索、指标读取或素材分析，再各自新增一个明确输入 / 输出 / 幂等边界的 Tool，而不是让模型绕过后端直接请求外部服务。</span></li>
+              <li><strong>把中间结论变成 Artifact 和 Gate。</strong><span>研究报告、赛道策略、选题列表、脚本、视觉方案和可发布视频都应可追溯。成本高、会公开发布或会改变方向的动作前设置明确 Gate。</span></li>
+              <li><strong>接入现有控制与事件面。</strong><span>API 使用 owner 校验和 <code>state_version</code>；前端从 SSE 投影读取状态。支持取消、刷新、恢复和远程 Tool 不确定结果，不另造一套状态机。</span></li>
+              <li><strong>用一条真实链路验收。</strong><span>选一个具体赛道，从对标频道研究到一支审核通过的视频；记录 Run、Artifact、Gate、媒体资产和发布任务 ID，再把真实缺口写入 QA。</span></li>
+            </ol>
+            <div class="callout"><strong>推荐第一 Sprint：</strong>“对标频道 → 赛道报告 → 3 个选题 → 人工确认”。这条链只需要复用已有研究能力和 Agent 持久化，不会在研究阶段就产生媒体成本或发布副作用。</div>
+          </section>
+
+          <section id="boundaries">
+            <p class="section-kicker">07 · Decisions and boundaries</p>
+            <h2>几个最容易误判的边界。</h2>
+            <div class="card-grid">
+              <article class="card"><h3>SiliconFlow 不是 Agent 主模型地址</h3><p>Native Agent 当前使用 <code>TEXT_FALLBACK_BASE_URL</code> 的 Responses API；SiliconFlow 负责独立的 chat.completions、多模态和语音链路。允许模型名单也不等于每项能力都已接入。</p></article>
+              <article class="card"><h3>发布必须是显式外部副作用</h3><p>当前 <code>publish_youtube_video</code> 只有在频道、可发布视频与明确确认均具备时才暴露。新流程不能把“生成成功”误当作“允许发布”。</p></article>
+              <article class="card"><h3>当前队列不是分布式基础设施</h3><p>进程内 <code>asyncio.Queue</code> 配合单实例锁适合当前规模和恢复语义。跨机器、高并发、定时批量生产要单独讨论，不应静默当作已有能力。</p></article>
+            </div>
+            <details>
+              <summary>传统任务链路、早期 Agent 与 Native / Durable Runtime 如何看？</summary>
+              <div>仓库中仍保留传统图文 / 视频任务和早期 Agent 实体与服务，它们对既有功能有价值。新 Agent 流程应优先接入当前的 Native / Durable Runtime：它具备 Skill Version 固定、Tool Effect、Gate、控制命令、恢复和 SSE 投影。不要因为旧代码仍在仓库，就把它当成新能力的默认落点。</div>
+            </details>
+          </section>
+
+          <section id="sources">
+            <p class="section-kicker">08 · Follow the evidence</p>
+            <h2>需要深入时，从这些本地文件继续读。</h2>
+            <div class="source-grid">
+              <article class="source"><h3><a href="../../README.md">README.md</a></h3><p>产品形态、开发方式、部署依赖和当前已公开的能力总览。</p></article>
+              <article class="source"><h3><a href="../spec.md">docs/spec.md</a></h3><p>完整产品规格、架构约束、Agent 运行时与媒体能力的详细定义。</p></article>
+              <article class="source"><h3><a href="../progress.md">docs/progress.md</a></h3><p>已完成 Sprint、真实验收证据与未闭合问题；判断“是否完成”优先看这里。</p></article>
+              <article class="source"><h3><a href="../../backend/app/services/native_agent_loop.py">native_agent_loop.py</a></h3><p>当前 Native Agent、Function Tool 构建、模型客户端和执行循环的核心实现。</p></article>
+              <article class="source"><h3><a href="../../backend/app/services/native_agent_persistence.py">native_agent_persistence.py</a></h3><p>Run、事件、Tool Effect、产物和取消写入规则，解释为什么运行可追踪。</p></article>
+              <article class="source"><h3><a href="../../backend/app/services/native_agent_worker.py">native_agent_worker.py</a></h3><p>进程内队列、执行、取消和启动恢复，是当前调度边界的证据。</p></article>
+              <article class="source"><h3><a href="../integrations/llm-agent-endpoints.md">全量 API 调用清单</a></h3><p>模型、媒体、存储、研究、发布、观测与内部 API 的真实出站地址和代码入口。</p></article>
+              <article class="source"><h3><a href="../external-api/video-inboxlinks/README.md">视频发布平台归档</a></h3><p>已本地化的发布平台 API 文档，共 11 篇，适合查看频道、上传任务和分析接口。</p></article>
+              <article class="source"><h3><a href="../contracts/sprint-153-project-architecture-guide.md">Sprint 153 合同</a></h3><p>本文档的范围、非目标、验证标准与后续交接建议。</p></article>
+            </div>
+          </section>
+        </main>
+      </div>
+      <footer class="footer">基于当前仓库源码与已完成 Sprint 整理 · 2026-08-02 · 本页不包含密钥、Token 或私有配置。</footer>
+    </div>
+  </body>
+</html>

@@ -1050,3 +1050,18 @@
 - 文档只保留公开 Endpoint、路径、配置名和代码入口，没有写入 API Key、Secret、Token 或完整 webhook URL。
 - 验证完成：代码扫描确认后端出站入口；`git diff --check` 通过；文档代码块和敏感配置检查通过。完整 `scripts/check.sh` 未重复执行，原因与 Sprint 151 相同：当前 WSL 缺少 `python3.11`，且本次仅修改文档。
 - 合同：`docs/contracts/sprint-152-outbound-api-inventory.md`。
+
+# Sprint 153 项目架构导览与 Agent 扩展蓝图（已完成）
+
+- 新增 `docs/architecture/project-guide.html`：可在本地浏览器直接打开的中文项目导览，集中说明
+  DoodleStory 的当前架构、Native Agent Run 生命周期、YouTube 研究到发布边界、可复用能力、
+  已知缺口，以及把新 YouTube 赛道研究 / 视频制作落为独立 Agent Sprint 的最小实施切面。
+- 新增三张独立 SVG 图：系统架构、Native Agent 持久化执行时序、YouTube 研究 / 制作 / 发布
+  三段时序。HTML 使用本地相对路径引用，不依赖 CDN、在线字体或外网资源；页面同时可跳转到
+  关键源码、规格、进度、API 调用清单与视频发布平台文档归档。
+- 文档明确区分“可复用的 Native / Durable Runtime 积木”“受环境配置约束的外部服务”与“仍需
+  实施的赛道策略、实验闭环和规模化调度”，避免把现有代码、配置字段或未来方案混为已完成能力。
+- 验证完成：HTML 的 15 个本地资料 / 图表引用与 8 个目录锚点均可解析；三张 SVG 全部通过 XML
+  解析；`git diff --check` 通过。图表 PNG 转换工具因本机缺少 `sharp` 依赖未执行；HTML 使用的
+  SVG 是正式无损资产，因此未修改项目或全局 Skill 依赖。
+- 合同：`docs/contracts/sprint-153-project-architecture-guide.md`。

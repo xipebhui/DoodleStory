@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 990" role="img" aria-labelledby="title desc">
+  <title id="title">YouTube 赛道研究到发布的当前边界</title>
+  <desc id="desc">DoodleStory 通过同级导入服务获得 YouTube 频道洞察，通过本地 Agent 与媒体工具制作资产，再经外部视频发布平台创建异步上传任务。研究和发布是不同边界。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08111f"/><stop offset="1" stop-color="#13182f"/></linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#7dd3fc"/></marker>
+    <marker id="arrowWarm" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+    <marker id="arrowMuted" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+    <style>
+      .title{font:700 30px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#f8fafc}.subtitle{font:400 15px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#94a3b8}.actor{fill:#10263d;stroke:#38bdf8;stroke-width:1.4}.agent{fill:#13394e;stroke:#2dd4bf;stroke-width:1.4}.external{fill:#312414;stroke:#f59e0b;stroke-width:1.4}.yt{fill:#351b26;stroke:#fb7185;stroke-width:1.4}.actorText{font:700 14px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#f8fafc}.life{stroke:#3c506a;stroke-width:1;stroke-dasharray:7 6}.call{stroke:#7dd3fc;stroke-width:1.8;marker-end:url(#arrow)}.warm{stroke:#fbbf24;stroke-width:1.8;marker-end:url(#arrowWarm)}.return{stroke:#94a3b8;stroke-width:1.2;stroke-dasharray:6 4;marker-end:url(#arrowMuted)}.msg{font:500 12px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#dbeafe}.warmText{font:500 12px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#fde68a}.muted{font:400 11px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#94a3b8}.frame{fill:rgba(15,31,51,.62);stroke:#64748b;stroke-width:1;stroke-dasharray:5 4}.tab{fill:#1e3049;stroke:#64748b;stroke-width:1}.note{fill:#17273b;stroke:#4b6380;stroke-width:1}.noteText{font:400 11px 'Segoe UI','Microsoft YaHei',sans-serif;fill:#cbd5e1}.num{font:700 9px 'Segoe UI',sans-serif;fill:#7dd3fc}
+    </style>
+  </defs>
+  <rect width="1600" height="990" fill="url(#bg)"/>
+  <text x="52" y="55" class="title">YouTube 赛道：研究、制作、发布三段式边界</text>
+  <text x="52" y="83" class="subtitle">当前系统已有基础积木；“选择赛道 → 形成策略 → 批量创作”的完整 Agent 流程需要作为新 Sprint 明确实现。</text>
+  <g>
+    <rect x="40" y="120" width="155" height="54" rx="10" class="actor"/><text x="117" y="153" text-anchor="middle" class="actorText">运营者</text>
+    <rect x="263" y="120" width="165" height="54" rx="10" class="actor"/><text x="345" y="153" text-anchor="middle" class="actorText">DoodleStory API</text>
+    <rect x="496" y="120" width="180" height="54" rx="10" class="agent"/><text x="586" y="145" text-anchor="middle" class="actorText">Native Agent / Skill</text><text x="586" y="162" text-anchor="middle" class="muted">研究、创作、Gate</text>
+    <rect x="744" y="120" width="192" height="54" rx="10" class="external"/><text x="840" y="145" text-anchor="middle" class="actorText">同级导入服务</text><text x="840" y="162" text-anchor="middle" class="muted">channel-insights</text>
+    <rect x="1004" y="120" width="160" height="54" rx="10" class="yt"/><text x="1084" y="145" text-anchor="middle" class="actorText">YouTube 数据</text><text x="1084" y="162" text-anchor="middle" class="muted">由导入服务访问</text>
+    <rect x="1232" y="120" width="150" height="54" rx="10" class="external"/><text x="1307" y="145" text-anchor="middle" class="actorText">媒体工具</text><text x="1307" y="162" text-anchor="middle" class="muted">图像、语音、视频</text>
+    <rect x="1450" y="120" width="120" height="54" rx="10" class="external"/><text x="1510" y="145" text-anchor="middle" class="actorText">发布平台</text><text x="1510" y="162" text-anchor="middle" class="muted">异步上传</text>
+    <line x1="117" y1="174" x2="117" y2="936" class="life"/><line x1="345" y1="174" x2="345" y2="936" class="life"/><line x1="586" y1="174" x2="586" y2="936" class="life"/><line x1="840" y1="174" x2="840" y2="936" class="life"/><line x1="1084" y1="174" x2="1084" y2="936" class="life"/><line x1="1307" y1="174" x2="1307" y2="936" class="life"/><line x1="1510" y1="174" x2="1510" y2="936" class="life"/>
+  </g>
+  <rect x="35" y="208" width="1120" height="252" rx="8" class="frame"/><rect x="35" y="208" width="62" height="20" rx="4" class="tab"/><text x="66" y="222" text-anchor="middle" class="muted">阶段 A</text><text x="110" y="222" class="muted">赛道 / 频道研究（已具备读取能力）</text>
+  <circle cx="102" cy="250" r="10" fill="#123654" stroke="#38bdf8"/><text x="102" y="254" text-anchor="middle" class="num">1</text><line x1="117" y1="250" x2="345" y2="250" class="call"/><text x="231" y="235" text-anchor="middle" class="msg">选择频道或输入对标频道</text>
+  <circle cx="330" cy="292" r="10" fill="#123654" stroke="#38bdf8"/><text x="330" y="296" text-anchor="middle" class="num">2</text><line x1="345" y1="292" x2="586" y2="292" class="call"/><text x="465" y="277" text-anchor="middle" class="msg">创建研究 Run，暴露 inspect_youtube_channel Tool</text>
+  <circle cx="571" cy="334" r="10" fill="#123654" stroke="#38bdf8"/><text x="571" y="338" text-anchor="middle" class="num">3</text><line x1="586" y1="334" x2="840" y2="334" class="call"/><text x="713" y="319" text-anchor="middle" class="msg">POST /api/v1/youtube/channel-insights</text>
+  <line x1="840" y1="376" x2="1084" y2="376" class="warm"/><text x="962" y="361" text-anchor="middle" class="warmText">频道、视频、评论、封面数据</text>
+  <line x1="1084" y1="410" x2="840" y2="410" class="return"/><line x1="840" y1="432" x2="586" y2="432" class="return"/><text x="713" y="417" text-anchor="middle" class="muted">验证后的洞察与本地素材引用</text>
+  <rect x="280" y="492" width="1040" height="258" rx="8" class="frame"/><rect x="280" y="492" width="62" height="20" rx="4" class="tab"/><text x="311" y="506" text-anchor="middle" class="muted">阶段 B</text><text x="355" y="506" class="muted">策略、内容与媒体制作（积木可复用，流程需新建）</text>
+  <circle cx="571" cy="536" r="10" fill="#123654" stroke="#38bdf8"/><text x="571" y="540" text-anchor="middle" class="num">4</text><path d="M586 536 H640 V558 H586" class="call"/><text x="648" y="541" class="msg">整合洞察、账号上下文、Skill 规则</text>
+  <circle cx="571" cy="584" r="10" fill="#123654" stroke="#38bdf8"/><text x="571" y="588" text-anchor="middle" class="num">5</text><line x1="586" y1="584" x2="117" y2="584" class="call"/><text x="351" y="569" text-anchor="middle" class="msg">输出赛道策略 / 选题 / 脚本，等待人工确认</text>
+  <circle cx="102" cy="632" r="10" fill="#123654" stroke="#38bdf8"/><text x="102" y="636" text-anchor="middle" class="num">6</text><line x1="117" y1="632" x2="586" y2="632" class="call"/><text x="351" y="617" text-anchor="middle" class="msg">批准 Gate（保留策略与版本）</text>
+  <circle cx="571" cy="678" r="10" fill="#123654" stroke="#38bdf8"/><text x="571" y="682" text-anchor="middle" class="num">7</text><line x1="586" y1="678" x2="1307" y2="678" class="call"/><text x="946" y="663" text-anchor="middle" class="msg">生成 / 检查图片 → TTS → 字幕 → Remotion 视频</text>
+  <line x1="1307" y1="720" x2="586" y2="720" class="return"/><text x="946" y="705" text-anchor="middle" class="muted">可追踪媒体资产与质量结果</text>
+  <rect x="560" y="782" width="1010" height="112" rx="8" class="frame"/><rect x="560" y="782" width="62" height="20" rx="4" class="tab"/><text x="591" y="796" text-anchor="middle" class="muted">阶段 C</text><text x="635" y="796" class="muted">审核通过后发布（当前已有异步上传对接）</text>
+  <circle cx="571" cy="830" r="10" fill="#123654" stroke="#38bdf8"/><text x="571" y="834" text-anchor="middle" class="num">8</text><line x1="586" y1="830" x2="117" y2="830" class="call"/><text x="351" y="815" text-anchor="middle" class="msg">展示可发布视频与频道，要求明确发布确认</text>
+  <circle cx="102" cy="854" r="10" fill="#123654" stroke="#38bdf8"/><text x="102" y="858" text-anchor="middle" class="num">9</text><line x1="117" y1="854" x2="586" y2="854" class="call"/><text x="351" y="874" text-anchor="middle" class="msg">确认后才暴露 publish_youtube_video</text>
+  <circle cx="571" cy="862" r="10" fill="#123654" stroke="#38bdf8"/><text x="571" y="866" text-anchor="middle" class="num">10</text><line x1="586" y1="862" x2="1510" y2="862" class="warm"/><text x="1048" y="847" text-anchor="middle" class="warmText">创建远程上传任务，保存 remote task ID</text>
+  <line x1="1510" y1="904" x2="586" y2="904" class="return"/><text x="1048" y="889" text-anchor="middle" class="muted">轮询任务状态，回写 youtube_video_id / URL</text>
+  <rect x="40" y="932" width="1530" height="38" rx="9" class="note"/><text x="60" y="956" class="noteText">重要边界：DoodleStory 当前不直接调用 YouTube Data API，也不直接上传到 YouTube；研究经同级导入服务，发布经 video.inboxlinks.top。研究工作流、策略评分、批量实验和发布后数据回流仍需要作为独立业务流程定义。</text>
+</svg>
