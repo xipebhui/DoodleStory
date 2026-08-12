@@ -2,8 +2,8 @@
 
 ## Status
 
-Active。依赖 Sprint 144 的 Durable Runtime、Task Attempt、append-only Checkpoint 和文章
-多阶段 Gate。按 2026-08-01 的最新决定，本 Sprint 只完成后端计划修订、局部修改/重试和恢复
+Complete。依赖 Sprint 144 的 Durable Runtime、Task Attempt、append-only Checkpoint 和文章
+多阶段 Gate。按 2026-08-01 的最新决定，本 Sprint 已完成后端计划修订、局部修改/重试和恢复
 语义；已验收的 Agent 页面、Skill、账号与 `@` 资源交互保持不动。
 
 ## Goal

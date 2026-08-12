@@ -2,7 +2,7 @@
 
 ## Status
 
-Active。本文按 2026-08-01 的最新决定实施：先替换后端 Durable Runtime，保留已经验收的
+Complete。本文已按 2026-08-01 的最新决定实施：先替换后端 Durable Runtime，保留已经验收的
 `/agent` 页面、Skill 管理、账号管理和 `@` 资源交互。前端正式控制与展示重构留到后续 Sprint。
 
 - 当前没有需要兼容的真实 Agent 用户和生产 Agent 数据。

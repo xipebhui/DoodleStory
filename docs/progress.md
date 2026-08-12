@@ -245,9 +245,9 @@
 - Complete：`docs/contracts/sprint-150-single-instance-startup-recovery.md`
 - Complete：`docs/contracts/sprint-149-grokcli-image-provider.md`
 - Complete：`docs/contracts/sprint-148-explicit-follow-up-run.md`
-- Draft：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
-- Draft：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`
-- Draft：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`
+- Complete：`docs/contracts/sprint-144-native-agent-durable-task-control-plane.md`
+- Complete：`docs/contracts/sprint-145-agent-dynamic-task-planning-and-chat-projection.md`
+- Complete：`docs/contracts/sprint-146-agent-media-quality-gates-and-partial-rerun.md`
 - Complete：`docs/contracts/sprint-147-agent-durable-control-and-recovery-acceptance.md`
 - Complete：`docs/contracts/sprint-143-native-agent-account-context.md`
 - Complete：`docs/contracts/sprint-142-system-skill-disable.md`
