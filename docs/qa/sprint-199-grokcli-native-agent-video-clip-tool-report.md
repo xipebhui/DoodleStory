@@ -1,6 +1,6 @@
 # Sprint 199 grokcli Native Agent AI 视频短镜头验收记录
 
-状态：代码验收通过，真实媒体验收被 `xai_video_credits_or_subscription` 阻断。
+状态：Complete，代码与真实媒体验收均通过。
 
 ## 已通过
 
@@ -33,12 +33,17 @@
 ## 真实调用
 
 - Windows 项目虚拟环境已安装并确认 `grokcli 0.2.0`；浏览器 OAuth 登录成功。
-- 只提交一次 Paynes Creek S03、8 秒、16:9、720p I2V。
-- xAI 在提交阶段返回退出码 4 / HTTP 403，含义为视频额度或订阅不可用；没有生成 MP4。
-- 未重试、未切换到 SiliconFlow、Wan 或其他 Provider。
-- 脱敏记录：`docs/testing/paynes-creek-grok-video-smoke-2026-08-13.json`。
+- 初始账号状态曾返回退出码 4 / HTTP 403，脱敏记录保留在
+  `docs/testing/paynes-creek-grok-video-smoke-2026-08-13.json`，没有自动重试或切换 Provider。
+- 账号恢复后，第一次显式复验已生成视频，但本地 `.env` 仍指向 macOS
+  `/opt/homebrew/bin/ffprobe`，校验失败且临时文件按设计清理；记录保留在 attempt 02。
+- 明确改用 Windows `C:/ProgramData/chocolatey/bin/ffprobe.exe` 后，7 项适配器测试通过；后续显式调用
+  成功保存 8.042 秒、1280×720、24fps、H.264 MP4。最终选中版本为 attempt 04，文件 10,091,881
+  bytes，SHA-256 `5b6a1f9bb3e141eade11ec388be1b4e8ef0588b22193790c436ab026bb0457ec`。
+- 四点接触表确认盐土托盘、漏斗、液流与陶罐关系在运镜中保持；未出现文字、现代器件或明显形变。
+- 所有 attempt 均未切换到 SiliconFlow、Wan 或其他视频 Provider。
 
-## 剩余条件
+## 结论
 
-账号恢复 xAI 视频 credits 或对应订阅后，显式重新运行一次 smoke 并验收真实 MP4；在此之前不能把
-Sprint 199 状态改为 Complete，也不能把当前结果描述成已生成可上传视频。
+Sprint 199 的“Native Agent 可生成、校验、保存真实 Grok 短镜头”目标已满足。该 8 秒资产仍只是镜头，
+不是可上传完整成片；五镜 AI 样片的合成与验收由 Sprint 200 独立承担。

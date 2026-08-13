@@ -554,6 +554,12 @@
   产品入口或数据库工作流。旁白允许一次直连 SiliconFlow `FunAudioLLM/CosyVoice2-0.5B` 系统预置音色，
   不需要上传音频参考；渲染必须固定 1920×1080、30fps、H.264/AAC、yuv420p，并保存 Manifest、真实
   ffprobe、hash 和逐镜帧证据。该路径始终保存 `publication_authorized=false`，不授权上传。
+- Paynes Creek 还允许使用独立的 Grok AI 五镜本地短片路径验证真实生成媒体：五个选中首帧由
+  `grok-imagine-image-quality` 生成，五个短镜头由 `grok-imagine-video-1.5` I2V 生成并逐一通过
+  ffprobe 与人工接触表检查；Remotion `paynes-creek-grok-ai-short-v1` 模板只读取已冻结 hash 的 MP4，
+  根据一次 SiliconFlow `FunAudioLLM/CosyVoice2-0.5B` 中文旁白的真实时长有界调整播放速率并显示逐镜
+  字幕。该路径固定 1920×1080、30fps、H.264/AAC、yuv420p、无 BGM、无 Provider fallback，且始终保存
+  `publication_authorized=false`；它不改写原 G4 随机图片 Gate，也不自动上传。
 - 视频任务执行采用进程内队列 + 数据库状态。上游图片任务成功后自动入队视频任务；服务启动时恢复 `waiting_for_images`、`ready_for_audio`、`audio_generating`、`audio_ready` 和 `video_generating` 等可恢复状态。视频任务按 panel 生成旁白音频，因为 `comic-video-studio` 的 `episode.shots[*].audio` 是每个 shot 的时间基准。每段生成音频必须保存为 `generated_audio` 资产；最终 MP4 必须保存为 `generated_video` 资产。`comic-video-studio` 默认通过 `COMIC_VIDEO_SERVICE_BASE_URL` 指向 `http://127.0.0.1:51103`，如配置 `COMIC_VIDEO_SERVICE_API_KEY` 则请求必须携带 `X-API-Key`。TTS 第一版使用 SiliconFlow `/uploads/audio/voice` 和 `/audio/speech`；参考音频没有已注册 voice uri 时，必须用参考音频文件和参考文本注册声音。参考文本在音频参考创建时由本地 Whisper 自动转写并保存；转写失败或缺少参考文本时，音频参考不能保存或视频任务必须明确失败。视频任务生成旁白音频时必须使用创建任务时保存的音频参考语速快照，不受后续音频参考编辑影响。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 

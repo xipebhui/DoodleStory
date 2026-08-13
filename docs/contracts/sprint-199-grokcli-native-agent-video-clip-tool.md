@@ -1,10 +1,11 @@
 # Sprint 199：grokcli Native Agent AI 视频短镜头 Tool
 
-状态：In progress
+状态：Complete
 
-当前阻断：`xai_video_credits_or_subscription`。2026-08-13 本机 OAuth 登录成功；唯一一次 8 秒 I2V
-提交由 xAI 返回 403 额度/订阅错误，未生成 MP4，且未自动重试或切换 Provider。代码与离线验证继续
-完成，真实媒体验收需账号恢复视频额度后再执行一次显式 smoke。
+真实媒体验收已于 2026-08-13 完成。账号恢复视频能力后，项目通过 `grokcli 0.2.0` 成功生成并下载
+8.042 秒、1280×720、24fps、H.264 的 Paynes Creek I2V；适配器使用 Windows FFprobe 完成校验，
+没有自动重试或切换 Provider。选中镜头 SHA-256 为
+`5b6a1f9bb3e141eade11ec388be1b4e8ef0588b22193790c436ab026bb0457ec`。
 
 ## Goal
 

@@ -9,6 +9,12 @@ import {
   type PaynesCreekPilotProps,
 } from "./PaynesCreekPilot";
 import {
+  PaynesCreekGrokShort,
+  PAYNES_CREEK_GROK_SHORT_TEMPLATE_ID,
+  paynesCreekGrokShortDurationInFrames,
+  type PaynesCreekGrokShortProps,
+} from "./PaynesCreekGrokShort";
+import {
   compositionDurationInFrames,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
@@ -71,6 +77,33 @@ const calculatePaynesCreekMetadata: CalculateMetadataFunction<PaynesCreekPilotPr
   defaultPixelFormat: "yuv420p",
 });
 
+const paynesCreekGrokShortDefaultProps: PaynesCreekGrokShortProps = {
+  title: "Paynes Creek Grok AI 样片",
+  scenes: [{
+    id: "S01",
+    title: "预览",
+    narration: "Paynes Creek Grok AI 五镜短片。",
+    evidence: "解释",
+    video: "preview.mp4",
+    durationInFrames: 270,
+    playbackRate: 1,
+  }],
+  narrationAudio: "preview.mp3",
+  width: 1920,
+  height: 1080,
+};
+
+const calculatePaynesCreekGrokShortMetadata: CalculateMetadataFunction<PaynesCreekGrokShortProps> = ({props}) => ({
+  durationInFrames: paynesCreekGrokShortDurationInFrames(props),
+  width: props.width,
+  height: props.height,
+  props,
+  defaultCodec: "h264",
+  defaultAudioCodec: "aac",
+  defaultVideoImageFormat: "jpeg",
+  defaultPixelFormat: "yuv420p",
+});
+
 export const RemotionRoot: React.FC = () => <>
   <Composition
       id={TEMPLATE_ID}
@@ -91,5 +124,15 @@ export const RemotionRoot: React.FC = () => <>
     height={1080}
     defaultProps={paynesCreekDefaultProps}
     calculateMetadata={calculatePaynesCreekMetadata}
+  />
+  <Composition
+    id={PAYNES_CREEK_GROK_SHORT_TEMPLATE_ID}
+    component={PaynesCreekGrokShort}
+    durationInFrames={270}
+    fps={30}
+    width={1920}
+    height={1080}
+    defaultProps={paynesCreekGrokShortDefaultProps}
+    calculateMetadata={calculatePaynesCreekGrokShortMetadata}
   />
 </>;

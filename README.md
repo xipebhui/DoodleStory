@@ -153,6 +153,9 @@ Native Agent 的 `generate_video_clip` 固定通过 Grok 生成 1–15 秒 T2V /
 使用 `grok-imagine-video-1.5` 与 720p；每次 Tool Call 只发起一次生成，失败或结果未知时不会自动
 重试，也不会切换到其他视频 Provider。
 
+Paynes Creek 本地验证另有一个五镜 AI 短片模板：使用真实 Grok 2K 首帧与 720p I2V 镜头、一次
+SiliconFlow 中文旁白和 Remotion 合成 1920×1080 MP4。该路径只用于本地样片，固定不自动发布。
+
 ## 抖音热门样本采集环境
 
 项目内的 `douyin-hot-sample-research` Skill 使用当前仓库里的封装脚本调用外部 MediaCrawler，不需要在新对话里记住外部脚本路径。
@@ -311,6 +314,8 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Ready for review：Sprint 187 Native Agent 同会话跨 Run 媒体 Lineage（G7-0）](docs/contracts/sprint-187-native-agent-cross-run-media-lineage.md)
 - [Ready for review：Sprint 188 Native Agent YouTube 1080p 固定渲染 Profile（G8-A）](docs/contracts/sprint-188-native-agent-youtube-1080p-render-profile.md)
 - [Ready for review：Sprint 189 Native Agent 冻结 Render Manifest Run（G8-B）](docs/contracts/sprint-189-native-agent-frozen-render-manifest-run.md)
+- [Complete：Sprint 199 grokcli Native Agent AI 视频短镜头 Tool](docs/contracts/sprint-199-grokcli-native-agent-video-clip-tool.md)
+- [In progress：Sprint 200 Paynes Creek Grok AI 五镜短片样片](docs/contracts/sprint-200-paynes-creek-grok-ai-short-pilot.md)
 - [Ready for review：Sprint 190 Native Agent 成片逐镜帧证据包（G8-C）](docs/contracts/sprint-190-native-agent-video-frame-evidence-pack.md)
 - [Ready for review：Sprint 191 Native Agent 不可变本地样片验收与发布登记门禁](docs/contracts/sprint-191-native-agent-immutable-local-pilot-acceptance.md)
 - [产品设计](docs/design/README.md)

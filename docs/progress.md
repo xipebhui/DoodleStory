@@ -1957,3 +1957,25 @@
   不代表市场验证，也未授权 YouTube 上传。ASR 发音转写因可用 Skill 要求另一次显式确认而未执行。
 - 可审计摘要保存在 `docs/testing/paynes-creek-vector-pilot-2026-08-13.json`；完整媒体、Manifest、帧证据和
   运行报告保存在 `storage/exports/paynes-creek/vector-pilot-v1/`。
+
+# Sprint 199 grokcli Native Agent AI 视频短镜头（已完成）
+
+- xAI 账号恢复视频能力后，项目 `grokcli 0.2.0` 已真实生成 Paynes Creek 8 秒 I2V；首次成功下载暴露
+  本机 `.env` 遗留 macOS FFprobe 路径，临时视频按安全设计清理，没有自动重试。
+- 显式改用 Windows FFprobe 后，7 项视频适配器测试通过；最终选中镜头为 8.042 秒、1280×720、24fps、
+  H.264，SHA-256 `5b6a1f9bb3e141eade11ec388be1b4e8ef0588b22193790c436ab026bb0457ec`。
+- 四点接触表确认盐土托盘、漏斗、液流与陶罐关系稳定，无文字、现代器件或明显形变；未切换 Provider。
+  Sprint 199 的真实媒体阻断解除，状态改为 Complete。
+
+# Sprint 200 Paynes Creek Grok AI 五镜短片（实现就绪，待真实渲染）
+
+- 明确选中海岸钩子、卤水浓缩、火上结晶、独木舟运输、证据边界五个 16:9 Grok 首帧与 I2V。一次
+  火上结晶图片因火焰和陶器关系错误被人工否决后才建立新 attempt；五个选中视频均通过四点抽帧检查。
+- 新增 `paynes-creek-grok-ai-short-v1` 生产计划，记录选中图片 / 视频路径、hash、真实时长、旁白、证据
+  标签和 attempt 统计。整个会话共 6 次 Grok 图片调用、7 次视频调用，选中 5 图 / 5 视频，无自动重试
+  或 Provider fallback。
+- 新增独立 Remotion 五镜模板、Manifest 校验与一次性 Python Runner；Runner 会复验所有媒体 hash 与
+  1280×720/24fps/H.264，按一次 CosyVoice2 中文旁白真实时长分配场景帧并限制 playback rate，最终输出
+  1920×1080/30fps/H.264/AAC/yuv420p、接触表和审计报告。
+- Python 聚焦 3 项、Remotion 11 项测试、TypeScript typecheck、compileall 与 `git diff --check` 通过。
+  下一步先提交代码形成干净 source commit，再执行一次 TTS、一次 Remotion 和一次 FFmpeg 规范化。
