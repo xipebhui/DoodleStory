@@ -1,5 +1,30 @@
 # 进度记录
 
+## Sprint 199（进行中）
+
+- 已审计 `ele-yufo/grokcli` 最新主线并把依赖从 0.1.0 精确升级到 commit
+  `2dcd4d4b2dc6c35f013a6b2a826721e4b98bfe13`（0.2.0）；继续复用持久化浏览器 OAuth，项目不直接
+  实现 xAI token 或视频 HTTP 请求。
+- 新增独立 Grok 视频适配器，固定使用 `grok-imagine-video-1.5`，支持 1–15 秒 T2V 和当前会话单图
+  I2V。命令使用参数数组与独立输出目录；每次 Tool Call 只执行一个 `grokcli video`，失败、超时或
+  网络结果未知时不重试、不切模型或 Provider。
+- 输出必须是隔离目录中的唯一文件，并由本地 ffprobe 验证 H.264、MP4、宽高、时长、帧率与帧数；
+  CLI 的认证、额度、网络、超时与内容审核退出码保留为明确错误，日志中的 token 字段会脱敏。
+- grokcli 0.2.0 上游 352 项测试在 Windows 通过 346 项；POSIX 权限位、回调端口复用与 `fcntl`
+  文件锁共 6 项不通过。OAuth 实测成功；针对 Windows `fcntl` 不可用的问题，DoodleStory 图片与
+  视频适配器共用单进程串行锁，避免并发刷新凭据。项目单实例约束继续是该锁成立的运行前提。
+- Native Agent 新增 `generate_video_clip`，已接入 Skill Tool Catalog、Capability API 和前端名称；
+  复用 `generated_video` 与 `NativeAgentVideo`，保存 Provider、模型、T2V/I2V 模式、Prompt、源图片、
+  请求参数和 grokcli 版本。成功 Tool Call 重放只返回原视频，不再次调用 Grok。
+- 65 项 Grok/Native 聚焦回归与 432 项后端全量测试已通过，另有前端 14 项、Remotion 8 项、
+  前端 build、空库迁移和控制器校验通过；覆盖参数边界、目录逃逸、非 MP4、退出码、禁止自动重试、
+  当前会话图片权限、资产保存和幂等重放。本机 OAuth 已成功；唯一一次 Paynes Creek 8 秒 I2V 在提交阶段
+  返回 xAI 403 额度/订阅错误，未生成 MP4，未自动重试或切换 Provider。失败记录见
+  `docs/testing/paynes-creek-grok-video-smoke-2026-08-13.json`，当前外部阻断为
+  `xai_video_credits_or_subscription`。
+- 合同：`docs/contracts/sprint-199-grokcli-native-agent-video-clip-tool.md`。
+  实现验收记录：`docs/qa/sprint-199-grokcli-native-agent-video-clip-tool-report.md`。
+
 ## Sprint 144（已完成）
 
 - 已根据 2026-08-01 的最新决定收紧为后端优先：保留已调试的 Agent 页面、Skill、账号与 `@`

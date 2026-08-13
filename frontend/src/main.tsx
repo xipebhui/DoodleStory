@@ -1394,6 +1394,7 @@ const agentToolDisplayNames: Record<string, string> = {
   inspect_youtube_channel: "读取 YouTube 频道",
   generate_speech: "生成语音",
   generate_subtitles: "生成字幕",
+  generate_video_clip: "生成 AI 视频短镜头",
   render_story_video: "生成故事视频",
   publish_youtube_video: "发布 YouTube 视频",
 };
@@ -3551,7 +3552,7 @@ function NativeAgentSidebar({
           <Sparkles size={16} />
           <span>
             <strong>Skill 驱动真实 Tools</strong>
-            <small>generate_image · generate_speech · generate_subtitles · render_story_video · publish_youtube_video</small>
+            <small>generate_image · generate_speech · generate_subtitles · generate_video_clip · render_story_video · publish_youtube_video</small>
           </span>
         </div>
         <div className="agent-account-credit">

@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     grokcli_timeout_seconds: int = Field(default=300, ge=30)
     grokcli_request_max_attempts: int = Field(default=2, ge=1, le=5)
     grokcli_retry_backoff_seconds: float = Field(default=2.0, ge=0)
+    grokcli_video_model: str = "grok-imagine-video-1.5"
+    grokcli_video_resolution: str = "720p"
+    grokcli_video_timeout_seconds: int = Field(default=660, ge=60)
     apexerapi_api_key: str = ""
     apexerapi_base: str = ""
     apexerapi_proxy_url: str = ""

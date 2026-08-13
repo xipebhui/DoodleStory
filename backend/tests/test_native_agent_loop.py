@@ -68,6 +68,7 @@ from app.services.image_generation import (
     GeneratedImageFile,
     ImageProviderResponseError,
 )
+from app.services.grok_video_generation import GeneratedGrokVideo
 from app.services import (
     agent_observability,
     native_agent_loop,
@@ -80,6 +81,7 @@ from app.services.native_agent_loop import (
     build_generate_image_tool,
     build_inspect_image_tool,
     build_generate_speech_tool,
+    build_generate_video_clip_tool,
     build_capture_wechat_article_tool,
     build_inspect_youtube_channel_tool,
     build_publish_youtube_video_tool,
@@ -1277,6 +1279,227 @@ class NativeAgentLoopTests(unittest.TestCase):
             self.assertEqual("video/mp4", asset.content_type)
             self.assertTrue(can_read_asset(asset, owner, db))
             self.assertFalse(can_read_asset(asset, other, db))
+
+    def test_generate_video_clip_uses_conversation_image_persists_and_reuses(self) -> None:
+        run_id = self.create_durable_run(
+            tool_names_json='["generate_video_clip"]'
+        )
+        with self.Session() as db:
+            source_asset = FileAsset(
+                purpose=FileAssetPurpose.generated_image,
+                storage_backend=StorageBackend.local,
+                storage_key="generated_image/grok-source.png",
+                content_type="image/png",
+                byte_size=3,
+                checksum_sha256="a" * 64,
+                width=1280,
+                height=720,
+            )
+            db.add(source_asset)
+            db.flush()
+            source_image = NativeAgentImage(
+                run_id=run_id,
+                asset_id=source_asset.id,
+                prompt="Paynes Creek 源图",
+                image_model_snapshot="gpt-image-2",
+                aspect_ratio_snapshot="16:9",
+            )
+            db.add(source_image)
+            db.commit()
+            source_image_id = source_image.id
+            source_asset_id = source_asset.id
+
+        generator_calls = 0
+        with TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "source.png"
+            source_path.write_bytes(b"png")
+
+            def fake_generator(**kwargs):
+                nonlocal generator_calls
+                generator_calls += 1
+                self.assertEqual("Paynes Creek cinematic pan", kwargs["prompt"])
+                self.assertEqual(source_path, kwargs["image_path"])
+                self.assertEqual(8, kwargs["duration_seconds"])
+                self.assertEqual("16:9", kwargs["aspect_ratio"])
+                return GeneratedGrokVideo(
+                    content=b"persisted-grok-mp4",
+                    content_type="video/mp4",
+                    template_id="grok-video-clip-v1",
+                    renderer_version="grokcli/0.2.0",
+                    provider="grok",
+                    model="grok-imagine-video-1.5",
+                    mode="image_to_video",
+                    duration_ms=8000,
+                    duration_in_frames=240,
+                    fps=30,
+                    width=1280,
+                    height=720,
+                )
+
+            tool = build_generate_video_clip_tool(
+                run_id,
+                settings=native_agent_loop.Settings(
+                    grokcli_video_model="grok-imagine-video-1.5",
+                    grokcli_video_resolution="720p",
+                ),
+                video_generator=fake_generator,
+                store=NativeAgentStore(run_id, session_factory=self.Session),
+            )
+            stored = StoredFile(
+                storage_backend=StorageBackend.local,
+                storage_key="generated_video/grok-test.mp4",
+                byte_size=18,
+                checksum_sha256="b" * 64,
+            )
+            arguments = {
+                "prompt": "Paynes Creek cinematic pan",
+                "image_id": source_image_id,
+                "duration_seconds": 8,
+                "aspect_ratio": "16:9",
+            }
+            invocation_context = ToolContext(
+                context=None,
+                tool_name="generate_video_clip",
+                tool_call_id="persisted-grok-video-call",
+                tool_arguments=json.dumps(arguments, ensure_ascii=False),
+            )
+            with (
+                patch("app.services.native_agent_loop.SessionLocal", self.Session),
+                patch(
+                    "app.services.native_agent_loop.materialize_asset_to_local",
+                    return_value=source_path,
+                ),
+                patch(
+                    "app.services.native_agent_persistence.save_binary_file",
+                    return_value=stored,
+                ) as save_file,
+            ):
+                output = asyncio.run(
+                    tool.on_invoke_tool(
+                        invocation_context,
+                        json.dumps(arguments, ensure_ascii=False),
+                    )
+                )
+                replayed = asyncio.run(
+                    tool.on_invoke_tool(
+                        invocation_context,
+                        json.dumps(arguments, ensure_ascii=False),
+                    )
+                )
+
+        self.assertEqual(1, generator_calls)
+        save_file.assert_called_once_with(
+            "generated_video",
+            b"persisted-grok-mp4",
+            ".mp4",
+        )
+        result = json.loads(output[0].text)
+        self.assertEqual(result, json.loads(replayed[0].text))
+        self.assertEqual("grok", result["provider"])
+        self.assertEqual("grok-imagine-video-1.5", result["model"])
+        self.assertEqual("image_to_video", result["mode"])
+        with self.Session() as db:
+            run = db.get(NativeAgentRun, run_id)
+            video = db.get(NativeAgentVideo, result["video_id"])
+            asset = db.get(FileAsset, result["asset_id"])
+            snapshot = json.loads(video.scenes_json)[0]
+            self.assertEqual(1, run.video_call_count)
+            self.assertEqual("grok-video-clip-v1", video.template_id_snapshot)
+            self.assertEqual(source_image_id, snapshot["source_image_id"])
+            self.assertEqual(source_asset_id, snapshot["source_image_asset_id"])
+            self.assertEqual("720p", snapshot["resolution_requested"])
+            self.assertEqual("grok", snapshot["provider"])
+            self.assertEqual("video/mp4", asset.content_type)
+
+    def test_generate_video_clip_rejects_image_from_other_conversation(self) -> None:
+        source_run_id = self.create_durable_run(
+            tool_names_json='["generate_video_clip"]'
+        )
+        with self.Session() as db:
+            source_run = db.get(NativeAgentRun, source_run_id)
+            target_conversation = NativeAgentConversation(
+                owner_user_id=source_run.conversation.owner_user_id,
+                title="另一个会话",
+            )
+            db.add(target_conversation)
+            db.flush()
+            target_run = NativeAgentRun(
+                conversation_id=target_conversation.id,
+                skill_version_id=source_run.skill_version_id,
+                status=AgentRunStatus.queued,
+                model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
+                skill_name_snapshot=source_run.skill_name_snapshot,
+                skill_version_snapshot=source_run.skill_version_snapshot,
+                skill_content_hash_snapshot=source_run.skill_content_hash_snapshot,
+                style_name_snapshot="测试风格",
+                style_prompt_snapshot="测试风格提示词",
+                image_model_snapshot="gpt-image-2",
+                aspect_ratio_snapshot="16:9",
+                style_reference_urls_json="[]",
+            )
+            db.add(target_run)
+            db.flush()
+            target_run_id = target_run.id
+            source_asset = FileAsset(
+                purpose=FileAssetPurpose.generated_image,
+                storage_backend=StorageBackend.local,
+                storage_key="generated_image/other-conversation.png",
+                content_type="image/png",
+                byte_size=3,
+                width=1280,
+                height=720,
+            )
+            db.add(source_asset)
+            db.flush()
+            source_image = NativeAgentImage(
+                run_id=source_run_id,
+                asset_id=source_asset.id,
+                prompt="其他会话图片",
+                image_model_snapshot="gpt-image-2",
+                aspect_ratio_snapshot="16:9",
+            )
+            db.add(source_image)
+            db.commit()
+            source_image_id = source_image.id
+
+        generator = Mock(side_effect=AssertionError("无权图片不应调用 grokcli"))
+        tool = build_generate_video_clip_tool(
+            target_run_id,
+            settings=native_agent_loop.Settings(),
+            video_generator=generator,
+            store=NativeAgentStore(target_run_id, session_factory=self.Session),
+        )
+        arguments = {
+            "prompt": "animate",
+            "image_id": source_image_id,
+            "duration_seconds": 8,
+            "aspect_ratio": "16:9",
+        }
+        with patch("app.services.native_agent_loop.SessionLocal", self.Session):
+            asyncio.run(
+                tool.on_invoke_tool(
+                    ToolContext(
+                        context=None,
+                        tool_name="generate_video_clip",
+                        tool_call_id="unauthorized-grok-video-call",
+                        tool_arguments=json.dumps(arguments, ensure_ascii=False),
+                    ),
+                    json.dumps(arguments, ensure_ascii=False),
+                )
+            )
+        generator.assert_not_called()
+        with self.Session() as db:
+            step = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.run_id == target_run_id,
+                    NativeAgentStep.tool_call_id == "unauthorized-grok-video-call",
+                )
+            )
+            self.assertEqual(NativeAgentStepStatus.failed, step.status)
+            self.assertIn("不属于当前会话", step.error_message)
 
     def test_generate_image_requires_style_but_has_no_hidden_default(self) -> None:
         def fail_generator(**kwargs):

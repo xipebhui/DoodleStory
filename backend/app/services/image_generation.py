@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from PIL import Image, UnidentifiedImageError
 
 from app.core.config import get_settings
+from app.services.grokcli_runtime import serialized_grokcli_call
 from app.models.enums import FileAssetPurpose, StorageBackend
 from app.services.storage import save_bytes
 
@@ -1172,15 +1173,16 @@ def request_grokcli_image(
             environment["GROKCLI_OUTPUT_DIR"] = str(output_root)
             started_at = monotonic()
             try:
-                completed = subprocess.run(
-                    command,
-                    cwd=working_directory,
-                    env=environment,
-                    capture_output=True,
-                    text=True,
-                    timeout=settings.grokcli_timeout_seconds + 15,
-                    check=False,
-                )
+                with serialized_grokcli_call():
+                    completed = subprocess.run(
+                        command,
+                        cwd=working_directory,
+                        env=environment,
+                        capture_output=True,
+                        text=True,
+                        timeout=settings.grokcli_timeout_seconds + 15,
+                        check=False,
+                    )
             except FileNotFoundError as exc:
                 raise ImageProviderConfigError(
                     f"找不到 grokcli 可执行文件：{command[0]}"

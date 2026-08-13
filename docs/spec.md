@@ -25,6 +25,13 @@
   图片保存实际 Provider；未指定时使用部署默认值。任何 Provider 失败后都不得自动改走其他
   Provider。Grok 通过 `grokcli` 和持久化 OAuth 凭据使用订阅能力，无参考图走 image、最多三张
   公网参考图走 image-edit。
+- AI 视频短镜头：Native Agent 可选择 `generate_video_clip(prompt, image_id?, duration_seconds,
+  aspect_ratio)`。工具固定通过精确版本的 `grokcli` 调用 `grok-imagine-video-1.5`，支持 1–15 秒
+  文生视频，或使用当前 Conversation 中一张 `NativeAgentImage` 作为首帧执行图生视频；默认
+  720p。每次 Tool Call 只启动一次真实生成，不自动重试、不切模型或 Provider。输出必须经
+  ffprobe 验证为 H.264/MP4 后保存为 `generated_video` 与 `NativeAgentVideo`，并记录 Prompt、
+  Provider、模型、模式、源图片、请求参数和 grokcli 版本。该短镜头不是完整成片，现阶段也不会
+  自动输入 `render_story_video`。
 - 任务：用户发起的一次文本转图片请求。
 - 音频参考：管理员上传并管理的参考音频资产，用于后续视频任务的旁白音色或参考音频选择。音频管理只对管理员可见，普通用户不能访问音频参考列表、详情、上传、转写、试听、编辑、删除或音频参考文件资产。音频参考创建时由后端本地 Whisper 自动从上传文件转写参考文本，并统一转换为简体中文；管理员不手动填写参考文本、Provider、模型或音色名。管理员可以为音频参考设置产出语速，后续视频任务会在创建时快照该语速。
 - 视频任务：管理员发起的一次故事转图文视频请求。视频任务不对普通用户可见。视频任务不重写故事切分或生图逻辑，而是先创建并关联一个普通生成任务，由现有 `GenerationTask` 负责把 `故事文本 + 风格` 转成 panels、旁白结构和图片；视频任务在上游图片任务成功后继续承接旁白转音频、提交图文视频生成服务和最终视频资产状态。

@@ -214,14 +214,23 @@ https://api.xgapi.top/v1/images/edits
 
 ### 3.3 Grok
 
-IMAGE_PROVIDER=grok 时，DoodleStory 不直接构造 HTTP 请求，而是启动本地 grokcli：
+IMAGE_PROVIDER=grok 或 Native Agent 使用 Grok 视频 Tool 时，DoodleStory 不直接构造 HTTP 请求，
+而是启动固定版本的本地 grokcli：
 
 ```text
 grokcli image <prompt> --model <GROKCLI_IMAGE_MODEL> ...
 grokcli image-edit <prompt> --model <GROKCLI_IMAGE_EDIT_MODEL> --image <public-url> ...
+grokcli video <prompt> --model <GROKCLI_VIDEO_MODEL> [--image <local-path>] ...
 ```
 
-代码位置是 backend/app/services/image_generation.py 的 request_grokcli_image。grokcli 自己如何访问其 Provider、如何认证，不由 DoodleStory 的 HTTP 客户端控制；DoodleStory 只读取 CLI 返回的 JSON 和输出目录中的图片文件。
+图片代码位置是 backend/app/services/image_generation.py 的 request_grokcli_image；视频代码位置是
+backend/app/services/grok_video_generation.py 的 request_grokcli_video。DoodleStory 固定安装 grokcli
+0.2.0 的 commit `2dcd4d4b2dc6c35f013a6b2a826721e4b98bfe13`，不复制凭据或上游源码。
+grokcli 自己通过 OAuth 访问 xAI `/v1/videos/generations` 和 `/v1/videos/{request_id}`；这些不是
+DoodleStory 直接发出的 HTTP 请求。项目只传递参数数组、读取 CLI JSON 与隔离输出目录，并用本地
+ffprobe 验证返回的 H.264/MP4。视频错误不自动重试或切换 Provider。
+上游 grokcli 的凭据锁依赖 POSIX `fcntl`，Windows 下会退化为 no-op；DoodleStory 因此在图片与
+视频适配器之间使用共享的进程内串行锁。项目现有的单后端实例约束是该保护成立的前提。
 
 ### 3.4 APEXERAPI 配置的实际状态
 
@@ -272,6 +281,9 @@ Native Agent 的 render_story_video 默认使用 backend/app/services/remotion_v
 ```text
 node remotion/render.mjs --input <manifest.json> --output <output.mp4>
 ```
+
+Native Agent 的 `generate_video_clip` 是另一条链路：它通过 grokcli 生成独立 AI 短镜头，支持 T2V
+和当前会话单图 I2V，结果保存为 `NativeAgentVideo`；它不会自动进入上述 Remotion 拼接链路。
 
 传统视频任务链路使用可配置的本地 comic-video-studio 兄弟服务：
 
@@ -431,7 +443,7 @@ GET {VITE_API_BASE_URL}/api/v1/agent-loop/runs/{run_id}/events
 | APEXERAPI_BASE | 当前只有配置字段和统一生图模型归类，没有 DoodleStory 直连请求 |
 | DOUYIN_IMPORT_SERVICE_BASE_URL | 变量名较旧，实际同时承载抖音、微信/多平台导入和 YouTube 频道研究 |
 | YTB_PUBLISH_URL | 指向视频发布平台服务；DoodleStory 调用的是其 /api/youtube/... 服务 API，不是直接调用 Google YouTube SDK |
-| 本地 Whisper、FFmpeg、Remotion、grokcli | 都是本地依赖或子进程，不应在 Provider 地址表中当作 HTTP API |
+| 本地 Whisper、FFmpeg、Remotion、grokcli | 都是本地依赖或子进程，不应在 Provider 地址表中当作 DoodleStory 直接 HTTP API；grokcli 内部会通过 OAuth 访问 xAI 图片/视频 API |
 
 ## 11. 维护规则
 

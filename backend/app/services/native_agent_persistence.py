@@ -31,6 +31,7 @@ from app.models.enums import (
     NativeAgentStepStatus,
     NativeAgentStepType,
 )
+from app.services.grok_video_generation import GeneratedGrokVideo
 from app.services.image_generation import GeneratedImageFile
 from app.services.remotion_video import GeneratedRemotionVideo
 from app.services.storage import save_binary_file
@@ -181,6 +182,9 @@ class CompletedNativeVideo:
     width: int
     height: int
     bgm_asset_id: str | None
+    provider: str | None = None
+    model: str | None = None
+    mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1293,6 +1297,92 @@ class NativeAgentStore:
             db.refresh(step)
             return step
 
+    def prepare_grok_video_tool(
+        self,
+        *,
+        tool_call_id: str,
+        prompt: str,
+        image_id: str | None,
+        duration_seconds: int,
+        aspect_ratio: str,
+    ) -> CompletedNativeVideo | NativeAgentStep:
+        idempotency_key = (
+            f"native:{self.run_id}:generate_video_clip:{tool_call_id}"
+        )
+        arguments = {
+            "prompt": prompt,
+            "image_id": image_id,
+            "duration_seconds": duration_seconds,
+            "aspect_ratio": aspect_ratio,
+        }
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
+            retry_step = self._claim_retry_step(
+                db,
+                name="generate_video_clip",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                arguments=arguments,
+            )
+            if retry_step is not None:
+                return retry_step
+            existing = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None:
+                if existing.status == NativeAgentStepStatus.succeeded:
+                    return self._completed_video(db, existing)
+                raise RuntimeError(
+                    "同一 generate_video_clip 调用已存在未确认执行，拒绝重复调用"
+                )
+            step = NativeAgentStep(
+                run_id=self.run_id,
+                sequence=_next_sequence(db, NativeAgentStep, self.run_id),
+                step_type=NativeAgentStepType.tool_call,
+                status=NativeAgentStepStatus.prepared,
+                name="generate_video_clip",
+                tool_call_id=tool_call_id,
+                idempotency_key=idempotency_key,
+                input_summary_json=_json_dumps(arguments),
+                attempts=0,
+            )
+            db.add(step)
+            db.flush()
+            db.add(
+                NativeAgentItem(
+                    run_id=self.run_id,
+                    sequence=_next_sequence(db, NativeAgentItem, self.run_id),
+                    item_type=NativeAgentItemType.tool_call,
+                    payload_json=_json_dumps(
+                        {
+                            "tool": "generate_video_clip",
+                            "tool_call_id": tool_call_id,
+                            "step_id": step.id,
+                            **arguments,
+                        }
+                    ),
+                )
+            )
+            _add_event(
+                db,
+                self.run_id,
+                "tool.prepared",
+                {
+                    "step_sequence": step.sequence,
+                    "tool": "generate_video_clip",
+                    "tool_call_id": tool_call_id,
+                    "arguments": arguments,
+                },
+            )
+            db.commit()
+            db.refresh(step)
+            return step
+
     def prepare_external_content_tool(
         self,
         *,
@@ -1730,7 +1820,8 @@ class NativeAgentStore:
         *,
         scenes: list[dict[str, object]],
         bgm_asset_id: str | None,
-        generated: GeneratedRemotionVideo,
+        generated: GeneratedRemotionVideo | GeneratedGrokVideo,
+        tool_name: str = "render_story_video",
     ) -> CompletedNativeVideo:
         with self._session_factory() as db:
             run = db.get(NativeAgentRun, self.run_id)
@@ -1791,7 +1882,7 @@ class NativeAgentStore:
             )
             run.video_call_count += 1
             result_payload = {
-                "tool": "render_story_video",
+                "tool": tool_name,
                 "status": "succeeded",
                 "tool_call_id": step.tool_call_id,
                 "step_id": step.id,
@@ -1805,6 +1896,15 @@ class NativeAgentStore:
                 "width": generated.width,
                 "height": generated.height,
             }
+            provider = getattr(generated, "provider", None)
+            model = getattr(generated, "model", None)
+            mode = getattr(generated, "mode", None)
+            if provider is not None:
+                result_payload["provider"] = provider
+            if model is not None:
+                result_payload["model"] = model
+            if mode is not None:
+                result_payload["mode"] = mode
             db.add(
                 NativeAgentItem(
                     run_id=self.run_id,
@@ -2514,6 +2614,15 @@ class NativeAgentStore:
         )
         if video is None:
             raise RuntimeError("成功 Tool Step 引用的视频不存在")
+        scenes = json.loads(video.scenes_json)
+        clip_snapshot = (
+            scenes[0]
+            if isinstance(scenes, list)
+            and scenes
+            and isinstance(scenes[0], dict)
+            and scenes[0].get("kind") == "ai_video_clip"
+            else {}
+        )
         return CompletedNativeVideo(
             step_id=step.id,
             video_id=video.id,
@@ -2528,6 +2637,21 @@ class NativeAgentStore:
             width=video.width,
             height=video.height,
             bgm_asset_id=video.bgm_asset_id,
+            provider=(
+                str(clip_snapshot["provider"])
+                if clip_snapshot.get("provider") is not None
+                else None
+            ),
+            model=(
+                str(clip_snapshot["model"])
+                if clip_snapshot.get("model") is not None
+                else None
+            ),
+            mode=(
+                str(clip_snapshot["mode"])
+                if clip_snapshot.get("mode") is not None
+                else None
+            ),
         )
 
     @staticmethod

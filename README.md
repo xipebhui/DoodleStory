@@ -127,7 +127,7 @@ tmp-project/
 
 生产容器默认监听 `8000`，SQLite 数据库和本地资产默认写入 `/app/data`，部署时必须把 `/app/data` 配成持久化 volume。
 
-### Grok 订阅生图认证
+### Grok 订阅图片 / 视频认证
 
 项目固定安装 `grokcli`，本地通过浏览器 OAuth 登录一次即可：
 
@@ -135,6 +135,7 @@ tmp-project/
 grokcli login
 grokcli status --output json
 grokcli image "一只橘猫程序员" --aspect 3:4 --resolution 1k --output json
+grokcli video "镜头缓慢掠过山谷中的溪流" --aspect 16:9 --resolution 720p --duration 8 --output json
 ```
 
 本地默认凭据目录是 `~/.config/grokcli`。Coolify Compose 把 `GROKCLI_HOME` 固定为
@@ -148,6 +149,9 @@ docker compose -f docker-compose.coolify.yml exec doodlestory grokcli status --o
 OAuth 凭据不得提交到 Git。`grokcli doctor` 会检查 `/v1/models` 等更宽的 API surface；若它
 单独报告 403，仍应以真实 `grokcli image` smoke 判断订阅生图权限。Provider 失败不会自动切换：
 Native Agent 对话可明确要求 `Grok`、`QY` 或 `xgapi`，普通任务使用 `IMAGE_PROVIDER`。
+Native Agent 的 `generate_video_clip` 固定通过 Grok 生成 1–15 秒 T2V / 单图 I2V 短镜头，默认
+使用 `grok-imagine-video-1.5` 与 720p；每次 Tool Call 只发起一次生成，失败或结果未知时不会自动
+重试，也不会切换到其他视频 Provider。
 
 ## 抖音热门样本采集环境
 

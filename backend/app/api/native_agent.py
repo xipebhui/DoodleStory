@@ -557,6 +557,7 @@ def get_native_agent_capabilities(
                 "generate_image",
                 "generate_speech",
                 "generate_subtitles",
+                "generate_video_clip",
                 "render_story_video",
                 "publish_youtube_video",
                 "capture_wechat_article",

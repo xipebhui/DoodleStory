@@ -73,6 +73,10 @@ from app.services.image_generation import (
     generate_xg_image,
     resolve_image_provider,
 )
+from app.services.grok_video_generation import (
+    GeneratedGrokVideo,
+    request_grokcli_video,
+)
 from app.services.native_agent_persistence import (
     CompletedNativeSpeech,
     CompletedNativeImageInspection,
@@ -182,6 +186,7 @@ ImageGenerator = Callable[..., GeneratedImageFile]
 SpeechGenerator = Callable[..., GeneratedSpeech]
 SubtitleGenerator = Callable[..., GeneratedSubtitles]
 VideoRenderer = Callable[..., GeneratedRemotionVideo]
+GrokVideoGenerator = Callable[..., GeneratedGrokVideo]
 ImageInspector = Callable[..., tuple[InspectionResult, str, str, int]]
 SocialContentImporter = Callable[[str], SocialContentImportResult]
 YoutubeInsightsFetcher = Callable[..., YoutubeChannelInsightsResult]
@@ -191,6 +196,7 @@ NATIVE_RUNTIME_TOOL_NAMES = frozenset(
         "inspect_image",
         "generate_speech",
         "generate_subtitles",
+        "generate_video_clip",
         "render_story_video",
         "publish_youtube_video",
         "capture_wechat_article",
@@ -414,6 +420,18 @@ def _video_tool_description() -> str:
         "允许的 motion_preset 只有 static、zoom_in、zoom_out、pan_left、pan_right、"
         "pan_up、pan_down。Scene 时长严格使用对应语音的真实 duration_ms；不要编造 ID、"
         "时间、URL、React/CSS 或渲染参数。"
+    )
+
+
+def _grok_video_tool_description(settings: Settings) -> str:
+    return (
+        "使用 Grok Imagine 生成一个真实 AI 视频短镜头并保存到当前 Run。"
+        "不传 image_id 时是文生视频；传入 image_id 时，该图片必须来自当前会话，"
+        "并作为首帧执行图生视频。duration_seconds 只允许 1–15 秒，aspect_ratio "
+        "只允许 1:1、16:9、9:16、4:3、3:4、3:2、2:3。"
+        f"模型固定为 {settings.grokcli_video_model.strip()}，"
+        f"分辨率固定为 {settings.grokcli_video_resolution.strip()}。"
+        "每次调用都会触发一次真实生成；失败不会自动重试或切换 Provider。"
     )
 
 
@@ -1367,22 +1385,206 @@ def build_render_story_video_tool(
     )
 
 
-def _video_tool_outputs(
-    completed: CompletedNativeVideo,
-) -> list[ToolOutputText]:
-    return [
-        ToolOutputText(
-            text=json.dumps(
+def _resolve_grok_video_source(
+    run_id: str,
+    image_id: str | None,
+) -> tuple[Path | None, dict[str, object]]:
+    if image_id is None:
+        return None, {
+            "source_image_id": None,
+            "source_image_asset_id": None,
+            "source_image_run_id": None,
+        }
+    with SessionLocal() as db:
+        run = db.get(NativeAgentRun, run_id)
+        if run is None:
+            raise NativeAgentLoopError("Native Agent Run 不存在")
+        image = db.scalar(
+            select(NativeAgentImage)
+            .join(NativeAgentRun, NativeAgentRun.id == NativeAgentImage.run_id)
+            .where(
+                NativeAgentImage.id == image_id,
+                NativeAgentRun.conversation_id == run.conversation_id,
+            )
+            .options(selectinload(NativeAgentImage.asset))
+        )
+        if image is None:
+            raise NativeAgentLoopError("image_id 不属于当前会话")
+        if not image.asset.content_type.startswith("image/"):
+            raise NativeAgentLoopError("image_id 引用的资产不是图片")
+        return materialize_asset_to_local(image.asset), {
+            "source_image_id": image.id,
+            "source_image_asset_id": image.asset_id,
+            "source_image_run_id": image.run_id,
+        }
+
+
+def build_generate_video_clip_tool(
+    run_id: str,
+    *,
+    settings: Settings,
+    video_generator: GrokVideoGenerator,
+    store: NativeAgentStore,
+) -> FunctionTool:
+    async def generate_video_clip(
+        tool_context: ToolContext[None],
+        prompt: str,
+        image_id: str | None = None,
+        duration_seconds: int = 8,
+        aspect_ratio: Literal[
+            "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"
+        ] = "16:9",
+    ) -> list[ToolOutputText]:
+        cleaned_prompt = prompt.strip()
+        if not cleaned_prompt:
+            raise NativeAgentLoopError("generate_video_clip prompt 不能为空")
+        cleaned_image_id = image_id.strip() if image_id else None
+        prepared = store.prepare_grok_video_tool(
+            tool_call_id=tool_context.tool_call_id,
+            prompt=cleaned_prompt,
+            image_id=cleaned_image_id,
+            duration_seconds=duration_seconds,
+            aspect_ratio=aspect_ratio,
+        )
+        if isinstance(prepared, CompletedNativeVideo):
+            store.append_event(
+                "tool.reused",
+                {
+                    "tool": "generate_video_clip",
+                    "tool_call_id": tool_context.tool_call_id,
+                    "step_id": prepared.step_id,
+                    "video_id": prepared.video_id,
+                },
+            )
+            return _video_tool_outputs(prepared)
+        store.start_tool(prepared.id)
+        with agent_span(
+            "native_agent.generate_video_clip",
+            agent_run_id=run_id,
+            span_type="TOOL",
+            attributes={
+                "tool_name": "generate_video_clip",
+                "provider": "grok",
+                "model": settings.grokcli_video_model.strip(),
+                "mode": "image_to_video" if cleaned_image_id else "text_to_video",
+            },
+        ) as tool_span:
+            set_span_inputs(
+                tool_span,
+                {
+                    "prompt": cleaned_prompt,
+                    "image_id": cleaned_image_id,
+                    "duration_seconds": duration_seconds,
+                    "aspect_ratio": aspect_ratio,
+                },
+            )
+            started = time.perf_counter()
+            try:
+                image_path, source_snapshot = await asyncio.to_thread(
+                    _resolve_grok_video_source,
+                    run_id,
+                    cleaned_image_id,
+                )
+                generated = await asyncio.to_thread(
+                    video_generator,
+                    prompt=cleaned_prompt,
+                    image_path=image_path,
+                    duration_seconds=duration_seconds,
+                    aspect_ratio=aspect_ratio,
+                    settings=settings,
+                )
+                snapshot = {
+                    "kind": "ai_video_clip",
+                    "provider": generated.provider,
+                    "model": generated.model,
+                    "mode": generated.mode,
+                    "prompt": cleaned_prompt,
+                    **source_snapshot,
+                    "duration_seconds_requested": duration_seconds,
+                    "aspect_ratio_requested": aspect_ratio,
+                    "resolution_requested": settings.grokcli_video_resolution.strip(),
+                    "renderer_version": generated.renderer_version,
+                }
+                completed = store.complete_video_tool(
+                    prepared.id,
+                    scenes=[snapshot],
+                    bgm_asset_id=None,
+                    generated=generated,
+                    tool_name="generate_video_clip",
+                )
+            except Exception as exc:
+                latency_ms = round((time.perf_counter() - started) * 1000)
+                store.fail_tool(prepared.id, exc)
+                set_span_result(
+                    tool_span,
+                    {
+                        "result_status": "failed",
+                        "latency_ms": latency_ms,
+                        "error_code": type(exc).__name__,
+                    },
+                )
+                set_span_status(tool_span, "ERROR", agent_run_id=run_id)
+                raise
+            latency_ms = round((time.perf_counter() - started) * 1000)
+            set_span_result(
+                tool_span,
+                {
+                    "result_status": "succeeded",
+                    "latency_ms": latency_ms,
+                    "byte_size": completed.byte_size,
+                    "duration_ms": completed.duration_ms,
+                },
+            )
+            set_span_outputs(
+                tool_span,
                 {
                     "status": "succeeded",
                     "video_id": completed.video_id,
                     "asset_id": completed.asset_id,
-                    "template_id": completed.template_id,
-                    "duration_ms": completed.duration_ms,
-                    "fps": completed.fps,
-                    "width": completed.width,
-                    "height": completed.height,
+                    "provider": completed.provider,
+                    "model": completed.model,
+                    "mode": completed.mode,
                 },
+            )
+            set_span_status(tool_span, "OK", agent_run_id=run_id)
+            return _video_tool_outputs(completed)
+
+    return function_tool(
+        generate_video_clip,
+        name_override="generate_video_clip",
+        description_override=_grok_video_tool_description(settings),
+    )
+
+
+def _video_tool_outputs(
+    completed: CompletedNativeVideo,
+) -> list[ToolOutputText]:
+    payload: dict[str, object] = {
+        "status": "succeeded",
+        "video_id": completed.video_id,
+        "asset_id": completed.asset_id,
+        "template_id": completed.template_id,
+        "duration_ms": completed.duration_ms,
+        "fps": completed.fps,
+        "width": completed.width,
+        "height": completed.height,
+    }
+    if completed.provider is not None:
+        payload.update(
+            {
+                "content_type": completed.content_type,
+                "byte_size": completed.byte_size,
+                "renderer_version": completed.renderer_version,
+                "duration_in_frames": completed.duration_in_frames,
+                "provider": completed.provider,
+                "model": completed.model,
+                "mode": completed.mode,
+            }
+        )
+    return [
+        ToolOutputText(
+            text=json.dumps(
+                payload,
                 ensure_ascii=False,
             )
         )
@@ -2187,6 +2389,7 @@ async def execute_native_agent_run(
     image_generator: ImageGenerator = generate_xg_image,
     speech_generator: SpeechGenerator | None = None,
     subtitle_generator: SubtitleGenerator = generate_whisper_subtitles,
+    grok_video_generator: GrokVideoGenerator = request_grokcli_video,
     video_renderer: VideoRenderer = render_remotion_video,
 ) -> None:
     resolved_settings = settings or get_settings()
@@ -2374,6 +2577,15 @@ async def execute_native_agent_run(
                         run_id,
                         settings=resolved_settings,
                         subtitle_generator=subtitle_generator,
+                        store=store,
+                    )
+                )
+            if "generate_video_clip" in exposed_tool_names:
+                tools.append(
+                    build_generate_video_clip_tool(
+                        run_id,
+                        settings=resolved_settings,
+                        video_generator=grok_video_generator,
                         store=store,
                     )
                 )

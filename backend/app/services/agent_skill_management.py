@@ -37,6 +37,10 @@ TOOL_PRESENTATION = {
         "生成字幕",
         "使用本地 OpenAI Whisper 为当前 Run 音频生成带时间轴的 WebVTT 字幕资产。",
     ),
+    "generate_video_clip": (
+        "生成 AI 视频短镜头",
+        "使用 Grok Imagine 文生视频或当前会话单图生视频，保存为可播放 MP4。",
+    ),
     "render_story_video": (
         "渲染故事视频",
         "用固定 Remotion 模板把图片、旁白、整段字幕和可选 BGM 渲染为竖屏 MP4。",
@@ -78,6 +82,11 @@ NATIVE_ONLY_TOOL_CATALOG = (
     },
     {
         "name": "generate_subtitles",
+        "has_side_effects": True,
+        "may_wait": True,
+    },
+    {
+        "name": "generate_video_clip",
         "has_side_effects": True,
         "may_wait": True,
     },

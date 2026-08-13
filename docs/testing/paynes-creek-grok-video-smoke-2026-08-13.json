@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "record_kind": "grokcli_video_smoke",
+  "record_status": "failed",
+  "created_at": "2026-08-13T06:44:19.9147411Z",
+  "call_count": 1,
+  "automatic_retry": false,
+  "provider_fallback": false,
+  "provider": "grok",
+  "model": "grok-imagine-video-1.5",
+  "mode": "image_to_video",
+  "prompt": "Animate this museum cut-paper reconstruction as a cinematic archaeological explainer shot. Preserve the deep navy background, wooden tray, saline earth, teal brine and clay jar. Add gentle liquid shimmer, drifting salt dust, soft amber rim light, layered paper parallax and a slow controlled dolly-in with a subtle rightward camera arc. Keep the composition stable. No text, labels, logos, new objects, object morphing, camera shake or abrupt cuts.",
+  "source_image": "storage/exports/paynes-creek/g4-attempt-04/PC-S03-v03.png",
+  "output": null,
+  "error_type": "GrokVideoGenerationError",
+  "error_message": "grokcli 视频额度或计费限制（退出码 4）：Submitting video job... HTTP 403: account has no available credits or required Grok subscription",
+  "blocked_by": "xai_video_credits_or_subscription"
+}
