@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_grok_ai_english_short_acceptance",
+  "date": "2026-08-13",
+  "status": "pass_local_english_ai_short",
+  "publication_authorized": false,
+  "accepted_attempt": 2,
+  "source_git_commit": "cfc4b83652e621426c473c99dbc2a2a440d8f477",
+  "source_plan": "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v2.json",
+  "source_plan_sha256": "6e79af0c4ef1cb7ac6c8fa8d2136cd659ff63c6740d200f63dc28f731ff50956",
+  "rejected_attempts": [
+    {
+      "attempt": 1,
+      "artifact_slug": "paynes-creek-grok-ai-short-en-v1",
+      "reason": "Final English proofreading found an ungrammatical opening sentence.",
+      "published": false
+    }
+  ],
+  "calls": {
+    "attempt_2_grok_image": 0,
+    "attempt_2_grok_video": 0,
+    "reused_grok_images": 5,
+    "reused_grok_videos": 5,
+    "attempt_2_siliconflow_tts": 1,
+    "attempt_2_remotion_render": 1,
+    "attempt_2_ffmpeg_normalization": 1,
+    "provider_fallback": 0,
+    "automatic_retry": 0,
+    "publish": 0
+  },
+  "audio": {
+    "provider": "siliconflow",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "voice": "FunAudioLLM/CosyVoice2-0.5B:alex",
+    "duration_ms": 46224,
+    "sha256": "0b5d0eb74c25976dca3d6f2d7b23f0b64a8511896403d0d2e0ab6f28d60d3fef"
+  },
+  "video": {
+    "path": "storage/exports/paynes-creek/grok-ai-short-en-v2/paynes-creek-grok-ai-short-en-v2-yuv420p.mp4",
+    "sha256": "53426ef1aa64724ba05e1e03ca923e3fd151201fe8afe2c8062b17742842ecdf",
+    "bytes": 41032034,
+    "duration_ms": 46293,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "frames": 1387,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "pixel_format": "yuv420p",
+    "color_range": "tv"
+  },
+  "scene_playback_rates": {
+    "S01": 1.119925650557621,
+    "S03": 0.9650399999999999,
+    "S04": 1.0645229681978798,
+    "S09": 1.1814117647058824,
+    "S12": 0.9129090909090909
+  },
+  "checks": {
+    "clean_preflight": "pass",
+    "selected_media_hashes": "pass",
+    "complete_audio_video_decode": "pass",
+    "duration_and_profile": "pass",
+    "playback_rate_range_0_65_to_1_35": "pass",
+    "silence_over_1_5_seconds": false,
+    "five_scene_midpoint_contact_sheet": "pass",
+    "twenty_frame_dense_contact_sheet": "pass",
+    "titles_labels_and_subtitles_visible": "pass",
+    "subtitle_overflow_seen": false,
+    "user_full_watch": "pending"
+  },
+  "evidence": {
+    "contact_sheet": "storage/exports/paynes-creek/grok-ai-short-en-v2/paynes-creek-grok-ai-short-en-v2-contact-sheet.png",
+    "dense_contact_sheet": "storage/exports/paynes-creek/grok-ai-short-en-v2/paynes-creek-grok-ai-short-en-v2-dense-contact-sheet.png",
+    "render_report": "storage/exports/paynes-creek/grok-ai-short-en-v2/paynes-creek-grok-ai-short-en-v2-report.json"
+  },
+  "notes": [
+    "The English narration is an independently written explainer script, not a sentence-by-sentence translation.",
+    "Attempt 2 reused all approved Grok visuals and made no new Grok image or video request.",
+    "The local acceptance status does not authorize YouTube upload or claim market validation."
+  ]
+}

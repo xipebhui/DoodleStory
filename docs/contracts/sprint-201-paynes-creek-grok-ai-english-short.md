@@ -1,6 +1,6 @@
 # Sprint 201：Paynes Creek Grok AI 英文五镜短片
 
-状态：In progress
+状态：Complete（`pass_local_english_ai_short`）
 
 ## Goal
 
@@ -42,3 +42,15 @@
 - Attempt 2（`paynes-creek-grok-ai-short-en-v2`）只修正 S01 / S03 语法和 S09 英语自然度，复用相同五图、
   五视频与媒体 hash；允许重新执行一次 TTS、Remotion 和 FFmpeg。新增 Grok 图片 / 视频调用仍为 0，
   这不是自动重试，也不改变 Provider。
+
+## Result
+
+- Attempt 2 使用 source commit `cfc4b83652e621426c473c99dbc2a2a440d8f477` 通过干净 preflight，所选
+  五图 / 五视频 hash 全部一致；真实执行恰好为 1 次 SiliconFlow TTS、1 次 Remotion、1 次 FFmpeg，
+  新增 Grok 图片 / 视频和发布调用均为 0。
+- 最终 MP4 时长 46.293 秒，1920×1080、30fps、H.264/AAC、yuv420p/tv range、1387 帧，SHA-256 为
+  `53426ef1aa64724ba05e1e03ca923e3fd151201fe8afe2c8062b17742842ecdf`。
+- 五镜 playback rate 为 0.91–1.18；完整解码、长静音检测、中点与 20 帧高密度接触表均通过。标题、
+  证据标签和字幕未见溢出，用户完整观看仍待执行。
+- 审计摘要保存于 `docs/testing/paynes-creek-grok-ai-short-en-2026-08-13.json`；终态只表示本地英文样片通过，
+  不代表市场验证或上传授权。

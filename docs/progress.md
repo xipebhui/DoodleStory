@@ -1986,7 +1986,7 @@
   标签与字幕稳定可读。终态 `pass_local_ai_short`，本地视频可播放；未运行 ASR 逐字核对，仍需用户完整
   观看，且 `publication_authorized=false`、上传调用为 0。
 
-# Sprint 201 Paynes Creek Grok AI 英文五镜短片（Attempt 2 待真实渲染）
+# Sprint 201 Paynes Creek Grok AI 英文五镜短片（已完成：pass_local_english_ai_short）
 
 - 复盘中文版后保留五个已验收 Grok 镜头，英文版不逐句翻译：脚本改为问题钩子、制盐机制、独木舟
   证据和“过程可重建、具体旅程未知”的英语 Story-style 叙事，共约 126 词。
@@ -2002,3 +2002,11 @@
 - 新增不可变 `paynes-creek-grok-ai-short-en-v2.json`：修正 S01 / S03 语法并让 S09 更自然，保持同一视觉、
   Provider、TTS 声音和媒体 hash；允许 Attempt 2 各执行一次 TTS、Remotion 与 FFmpeg。两次英文 attempt
   的新增 Grok 图片 / 视频调用仍均为 0，也没有自动重试或 Provider fallback。
+- Attempt 2 source commit 为 `cfc4b83652e621426c473c99dbc2a2a440d8f477`；修正本次进程的 Windows
+  FFprobe 路径后，干净 preflight 的 commit、worktree、凭据、工具链与五个媒体 hash 全部通过。
+- 一次 SiliconFlow 英文旁白生成 46.224 秒 MP3；一次 Remotion 与一次 FFmpeg 输出 46.293 秒 MP4。
+  成片为 1920×1080、30fps、H.264/AAC、yuv420p/tv range、1387 帧、41,032,034 bytes，SHA-256
+  `53426ef1aa64724ba05e1e03ca923e3fd151201fe8afe2c8062b17742842ecdf`。
+- 完整音视频流解码通过，五镜 playback rate 为 0.91–1.18，没有超过 1.5 秒的静音；五镜中点与 20 帧
+  高密度接触表确认英文标题、证据标签、字幕和过渡稳定可读。终态为 `pass_local_english_ai_short`，用户
+  完整观看仍待执行；`publication_authorized=false`、发布调用为 0。
