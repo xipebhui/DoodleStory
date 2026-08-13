@@ -27,6 +27,7 @@ WIDTH = 1920
 HEIGHT = 1080
 SUPPORTED_LOCALES = frozenset({"zh-CN", "en-US"})
 SUPPORTED_EDIT_MODES = frozenset({"classic", "retention"})
+SUPPORTED_TIMING_MODES = frozenset({"weighted", "source_aligned"})
 RETENTION_MOTIONS = frozenset({"push_in", "drift_left", "drift_right"})
 RETENTION_VISUAL_TREATMENTS = (
     "coast_to_inland",
@@ -66,6 +67,10 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
         raise RuntimeError("Grok AI 短片 locale 只支持 zh-CN 或 en-US")
     if value.get("edit_mode") not in SUPPORTED_EDIT_MODES:
         raise RuntimeError("Grok AI 短片 edit_mode 只支持 classic 或 retention")
+    if value.get("timing_mode") not in SUPPORTED_TIMING_MODES:
+        raise RuntimeError("Grok AI 短片 timing_mode 只支持 weighted 或 source_aligned")
+    if value["timing_mode"] == "source_aligned" and value["edit_mode"] != "retention":
+        raise RuntimeError("source_aligned timing 只能用于 retention edit")
     if not str(value.get("footer") or "").strip():
         raise RuntimeError("Grok AI 短片计划缺少页脚")
     artifact_slug = str(value.get("artifact_slug") or "")
@@ -95,8 +100,20 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
                 or " ".join(captions) != narration
             ):
                 raise RuntimeError(f"Retention Scene {scene_ids[index]} 短语字幕未完整重建旁白")
-            if not isinstance(scene.get("timing_weight"), int) or not 1 <= scene["timing_weight"] <= 100:
-                raise RuntimeError(f"Retention Scene {scene_ids[index]} timing_weight 无效")
+            if value["timing_mode"] == "weighted":
+                if not isinstance(scene.get("timing_weight"), int) or not 1 <= scene["timing_weight"] <= 100:
+                    raise RuntimeError(f"Retention Scene {scene_ids[index]} timing_weight 无效")
+            else:
+                caption_frames = scene.get("caption_frames")
+                if (
+                    not isinstance(scene.get("duration_in_frames"), int)
+                    or scene["duration_in_frames"] < 120
+                    or not isinstance(caption_frames, list)
+                    or len(caption_frames) != len(captions)
+                    or any(not isinstance(frame, int) or frame <= 0 for frame in caption_frames)
+                    or sum(caption_frames) != scene["duration_in_frames"]
+                ):
+                    raise RuntimeError(f"Retention Scene {scene_ids[index]} source-aligned 帧数无效")
             if scene.get("motion") not in RETENTION_MOTIONS:
                 raise RuntimeError(f"Retention Scene {scene_ids[index]} motion 无效")
             if scene.get("visual_treatment") != RETENTION_VISUAL_TREATMENTS[index]:
@@ -110,6 +127,25 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
             raise RuntimeError("Retention edit 缺少前三秒钩子")
         if not 90 <= word_count <= 115:
             raise RuntimeError("Retention edit 英文旁白必须控制在 90–115 词")
+        if value["timing_mode"] == "source_aligned":
+            source = value.get("narration_source")
+            if (
+                not isinstance(source, dict)
+                or not str(source.get("source_attempt") or "").strip()
+                or not str(source.get("path") or "").strip()
+                or not isinstance(source.get("duration_ms"), int)
+                or source["duration_ms"] <= 0
+                or not isinstance(source.get("alignment_ratio"), (int, float))
+                or not 0.5 <= source["alignment_ratio"] <= 1
+                or not isinstance(source.get("max_weighted_timing_delta_ms"), int)
+                or source["max_weighted_timing_delta_ms"] < 0
+                or not isinstance(source.get("sha256"), str)
+                or len(source["sha256"]) != 64
+            ):
+                raise RuntimeError("source_aligned timing 缺少可审计旁白来源")
+            expected_frames = math.ceil(source["duration_ms"] / 1000 * FPS)
+            if sum(scene["duration_in_frames"] for scene in value["scenes"]) != expected_frames:
+                raise RuntimeError("source_aligned Scene 帧数与旁白时长不一致")
     return value
 
 
@@ -248,6 +284,21 @@ def resolve_plan_media(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return resolved
 
 
+def resolve_narration_source(plan: dict[str, Any]) -> Path | None:
+    if plan["timing_mode"] != "source_aligned":
+        return None
+    source = plan["narration_source"]
+    source_path = (PROJECT_ROOT / source["path"]).resolve()
+    if not source_path.is_relative_to(PROJECT_ROOT) or not source_path.is_file():
+        raise RuntimeError("source_aligned 旁白来源不存在或不在项目目录内")
+    if sha256_file(source_path) != source["sha256"]:
+        raise RuntimeError("source_aligned 旁白来源 hash 漂移")
+    source_probe = ffprobe(source_path)
+    if abs(media_duration_ms(source_probe) - int(source["duration_ms"])) > 25:
+        raise RuntimeError("source_aligned 旁白来源时长漂移")
+    return source_path
+
+
 def build_render_manifest(
     *,
     plan: dict[str, Any],
@@ -258,23 +309,33 @@ def build_render_manifest(
     source_plan_path: Path = DEFAULT_PLAN_PATH,
 ) -> dict[str, Any]:
     total_frames = math.ceil((audio_duration_ms / 1000) * FPS)
-    scene_frames = allocate_scene_frames(
-        total_frames,
-        [
-            int(scene.get("timing_weight", len(str(scene["narration"]))))
-            for scene in resolved_scenes
-        ],
-    )
+    if plan["timing_mode"] == "source_aligned":
+        scene_frames = [int(scene["duration_in_frames"]) for scene in resolved_scenes]
+        if sum(scene_frames) != total_frames:
+            raise RuntimeError("source_aligned Scene 帧数与真实音频不一致")
+    else:
+        scene_frames = allocate_scene_frames(
+            total_frames,
+            [
+                int(scene.get("timing_weight", len(str(scene["narration"]))))
+                for scene in resolved_scenes
+            ],
+        )
+    maximum_playback_rate = 1.45 if plan["timing_mode"] == "source_aligned" else 1.35
     scenes = []
     for scene, duration_in_frames in zip(resolved_scenes, scene_frames, strict=True):
         scene_duration_ms = (duration_in_frames / FPS) * 1000
         playback_rate = int(scene["video_duration_ms"]) / scene_duration_ms
-        if not 0.65 <= playback_rate <= 1.35:
+        if not 0.65 <= playback_rate <= maximum_playback_rate:
             raise RuntimeError(
                 f"{scene['id']} 需要的 playback rate {playback_rate:.4f} 超出安全范围"
             )
         caption_texts = list(scene.get("captions") or [str(scene["narration"])])
-        caption_frames = allocate_caption_frames(duration_in_frames, caption_texts)
+        caption_frames = (
+            list(scene["caption_frames"])
+            if plan["timing_mode"] == "source_aligned"
+            else allocate_caption_frames(duration_in_frames, caption_texts)
+        )
         caption_offset = 0
         caption_cues = []
         for caption, caption_duration in zip(
@@ -313,6 +374,8 @@ def build_render_manifest(
         "title": plan["title"],
         "locale": plan["locale"],
         "editMode": plan["edit_mode"],
+        "timingMode": plan["timing_mode"],
+        "maxPlaybackRate": maximum_playback_rate,
         "footer": plan["footer"],
         "width": WIDTH,
         "height": HEIGHT,
@@ -465,12 +528,19 @@ def preflight(
     except Exception as exc:  # noqa: BLE001 - preflight must report the exact blocker
         media_error = str(exc)
     checks["selected_media_verified"] = media_error is None
+    narration_source_error = None
+    try:
+        resolve_narration_source(plan)
+    except Exception as exc:  # noqa: BLE001 - preflight must report the exact blocker
+        narration_source_error = str(exc)
+    checks["narration_source_verified"] = narration_source_error is None
     blockers = [name for name, passed in checks.items() if not passed]
     return {
         "all_passed": not blockers,
         "blockers": blockers,
         "checks": checks,
         "media_error": media_error,
+        "narration_source_error": narration_source_error,
         "source_commit": source_commit,
         "observed_commit": current_commit,
         "source_plan": str(plan_path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
@@ -490,21 +560,27 @@ def execute(
     plan = load_plan(plan_path)
     names = output_names(plan)
     resolved_scenes = resolve_plan_media(plan)
-    narration = narration_text(plan)
     audio_path = output_dir / names["audio"]
     tts = plan["tts"]
-    audio_content, audio_content_type = SiliconFlowVoiceClient().generate_speech(
-        text=narration,
-        voice_uri=tts["voice"],
-        model=tts["model"],
-        response_format=tts["response_format"],
-        sample_rate=int(tts["sample_rate"]),
-        speed=float(tts["speed"]),
-        gain=0.0,
-        timeout=get_settings().video_tts_timeout_seconds,
-    )
+    narration_source_path = resolve_narration_source(plan)
+    if narration_source_path is None:
+        audio_content, audio_content_type = SiliconFlowVoiceClient().generate_speech(
+            text=narration_text(plan),
+            voice_uri=tts["voice"],
+            model=tts["model"],
+            response_format=tts["response_format"],
+            sample_rate=int(tts["sample_rate"]),
+            speed=float(tts["speed"]),
+            gain=0.0,
+            timeout=get_settings().video_tts_timeout_seconds,
+        )
+        tts_calls = 1
+    else:
+        audio_content = narration_source_path.read_bytes()
+        audio_content_type = "audio/mpeg"
+        tts_calls = 0
     if not audio_content:
-        raise RuntimeError("SiliconFlow TTS 返回空音频")
+        raise RuntimeError("Grok AI 短片旁白音频为空")
     audio_path.write_bytes(audio_content)
     audio_probe = ffprobe(audio_path)
     audio_duration_ms = media_duration_ms(audio_probe)
@@ -583,7 +659,7 @@ def execute(
         },
         "calls": {
             **plan["attempt_accounting"],
-            "siliconflow_tts": 1,
+            "siliconflow_tts": tts_calls,
             "remotion_render": 1,
             "ffmpeg_normalization": 1,
             "publish": 0,
@@ -597,6 +673,9 @@ def execute(
             "bytes": audio_path.stat().st_size,
             "duration_ms": audio_duration_ms,
             "content_type": audio_content_type,
+            "source_attempt": (
+                plan.get("narration_source", {}).get("source_attempt")
+            ),
             "probe": audio_probe,
         },
         "render": {

@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "status": "retention_cut_awaiting_render",
+  "status": "source_aligned_retention_cut_awaiting_render",
   "template_id": "paynes-creek-grok-ai-short-v1",
   "locale": "en-US",
   "edit_mode": "retention",
-  "timing_mode": "weighted",
+  "timing_mode": "source_aligned",
   "footer": "PAYNES CREEK · EVIDENCE-LED AI SHORT",
-  "artifact_slug": "paynes-creek-grok-ai-short-en-v4",
+  "artifact_slug": "paynes-creek-grok-ai-short-en-v5",
   "title": "No Shipping Records: How Did Maya Salt Travel Inland?",
   "publication_authorized": false,
   "bgm": false,
@@ -24,6 +24,15 @@
     "sample_rate": 32000,
     "automatic_retry": false
   },
+  "narration_source": {
+    "source_attempt": "paynes-creek-grok-ai-short-en-v4",
+    "path": "storage/exports/paynes-creek/grok-ai-short-en-v4/paynes-creek-grok-ai-short-en-v4-narration.mp3",
+    "sha256": "299ba986c8a1aaae5188b3826b870170a61a010fea0fdf911e6e34f3f06385ef",
+    "duration_ms": 38988,
+    "alignment_model": "faster-whisper:tiny/cpu/int8",
+    "alignment_ratio": 0.9864253393665159,
+    "max_weighted_timing_delta_ms": 1624
+  },
   "scenes": [
     {
       "id": "S01",
@@ -36,7 +45,8 @@
         "So how did it travel?",
         "Paynes Creek preserves a chain of clues."
       ],
-      "timing_weight": 20,
+      "duration_in_frames": 228,
+      "caption_frames": [72, 52, 41, 63],
       "motion": "push_in",
       "visual_treatment": "coast_to_inland",
       "hook": {
@@ -61,7 +71,8 @@
         "That concentrated the liquid",
         "before it drained through a wooden funnel."
       ],
-      "timing_weight": 16,
+      "duration_in_frames": 173,
+      "caption_frames": [86, 34, 53],
       "motion": "drift_right",
       "visual_treatment": "process_filter",
       "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s03-v2/20260813_181403_Create_a_cinematic_169_museum_cut-paper.png",
@@ -81,7 +92,8 @@
         "Water evaporated,",
         "leaving crystallized salt beside ordinary coastal homes."
       ],
-      "timing_weight": 20,
+      "duration_in_frames": 209,
+      "caption_frames": [81, 34, 94],
       "motion": "push_in",
       "visual_treatment": "process_boil",
       "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s04-v2/20260813_181942_Create_one_cinematic_169_handcrafted_cu.png",
@@ -102,7 +114,8 @@
         "Canoes make sense.",
         "But no boat tells us its cargo or destination."
       ],
-      "timing_weight": 20,
+      "duration_in_frames": 241,
+      "caption_frames": [73, 51, 37, 80],
       "motion": "drift_left",
       "visual_treatment": "transport_clue",
       "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s09/20260813_182032_Create_a_cinematic_169_handcrafted_cut-.png",
@@ -122,7 +135,8 @@
         "concentrate, boil, crystallize, then move salt by water.",
         "The route, buyer, and shipment remain unknown."
       ],
-      "timing_weight": 24,
+      "duration_in_frames": 319,
+      "caption_frames": [106, 127, 86],
       "motion": "push_in",
       "visual_treatment": "evidence_chain",
       "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s12/20260813_182138_Create_a_cinematic_169_handcrafted_cut-.png",
@@ -138,7 +152,8 @@
     "grok_video_calls": 0,
     "reused_grok_images": 5,
     "reused_grok_videos": 5,
-    "previous_rejected_english_attempts": 2,
+    "reused_siliconflow_narration": 1,
+    "previous_rejected_english_attempts": 3,
     "previous_accepted_english_attempts": 1,
     "music_calls": 0,
     "provider_fallback": false,

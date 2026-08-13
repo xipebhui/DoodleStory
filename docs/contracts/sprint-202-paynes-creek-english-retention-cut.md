@@ -30,9 +30,11 @@
 - v3 计划的文案、短语字幕、timing weight、钩子和视觉处理字段通过严格校验。
 - 中文 classic、英文 classic 与英文 retention Manifest 测试通过，Python 聚焦测试与 TypeScript typecheck
   通过。
-- 最终时长位于 35–43 秒，五镜 playback rate 位于 0.65–1.35，完整音视频解码通过。
+- 最终时长位于 35–43 秒；weighted timing 的 playback rate 位于 0.65–1.35，冻结真实语音边界的
+  source-aligned timing 可显式放宽到 0.65–1.45；完整音视频解码通过。
 - 高密度接触表确认钩子、地图 / 步骤提示、短语字幕和切镜没有明显溢出或黑场。
-- 记录未执行 BGM / ASR、零新增 Grok、零发布，并把用户完整观看保留为待确认。
+- 记录未执行 BGM、零新增 Grok、零发布；如执行项目本地 Whisper，只保存模型、匹配率与时间偏差，
+  并把用户完整观看保留为待确认。
 
 ## Attempt records
 
@@ -42,3 +44,9 @@
 - Attempt 4（`paynes-creek-grok-ai-short-en-v4`）保持相同脚本、五个 Grok 媒体 hash、Provider 和视觉处理，
   只把同一 CosyVoice2 声音速度从 1.00 调整到 1.08，并提高字幕层级；允许各执行一次 TTS、Remotion 与
   FFmpeg。新增 Grok、音乐和发布调用仍为 0，这不是 Attempt 3 内自动重试。
+- Attempt 4 实际输出 39.061 秒，完整解码、长静音、视觉与字幕对比度检查通过；但项目本地
+  `faster-whisper tiny/cpu/int8` 对 TTS 原文的匹配率为 98.6%，并测得 weighted timing 在中段最大偏差
+  1.624 秒，声音与字幕 / 切镜不同步，因此明确 rejected，不发布。
+- Attempt 5（`paynes-creek-grok-ai-short-en-v5`）复用 Attempt 4 音频 hash，不再调用 TTS；把 Whisper
+  校准出的场景和短语边界冻结为帧数。为贴合两个较短的过程旁白，source-aligned 模式显式允许最高 1.45
+  playback rate，计划实值最高约 1.44；只允许一次 Remotion 和一次 FFmpeg，其他 Provider 调用仍为 0。

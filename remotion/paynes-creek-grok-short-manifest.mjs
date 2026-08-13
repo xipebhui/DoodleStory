@@ -20,6 +20,7 @@ const EVIDENCE_LEVELS_BY_LOCALE = {
   ]),
 };
 const EDIT_MODES = new Set(["classic", "retention"]);
+const TIMING_MODES = new Set(["weighted", "source_aligned"]);
 const RETENTION_MOTIONS = new Set(["push_in", "drift_left", "drift_right"]);
 const RETENTION_VISUAL_TREATMENTS = [
   "coast_to_inland",
@@ -40,6 +41,18 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
   }
   if (!EDIT_MODES.has(manifest.editMode)) {
     throw new Error("Paynes Creek Grok 样片 editMode 无效");
+  }
+  if (!TIMING_MODES.has(manifest.timingMode)) {
+    throw new Error("Paynes Creek Grok 样片 timingMode 无效");
+  }
+  const expectedMaximumPlaybackRate = manifest.timingMode === "source_aligned"
+    ? 1.45
+    : 1.35;
+  if (
+    manifest.maxPlaybackRate !== expectedMaximumPlaybackRate ||
+    (manifest.timingMode === "source_aligned" && manifest.editMode !== "retention")
+  ) {
+    throw new Error("Paynes Creek Grok 样片 timingMode 与播放速率上限无效");
   }
   if (manifest.editMode === "retention" && manifest.locale !== "en-US") {
     throw new Error("Paynes Creek Grok retention edit 当前只支持 en-US");
@@ -124,7 +137,7 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
     if (
       !Number.isFinite(scene.playbackRate) ||
       scene.playbackRate < 0.65 ||
-      scene.playbackRate > 1.35
+      scene.playbackRate > manifest.maxPlaybackRate
     ) {
       throw new Error(`第 ${index + 1} 个 Grok Scene playback rate 超出安全范围`);
     }

@@ -24,6 +24,7 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         self.assertFalse(plan["publication_authorized"])
         self.assertFalse(plan["bgm"])
         self.assertEqual(plan["locale"], "zh-CN")
+        self.assertEqual(plan["timing_mode"], "weighted")
 
     def test_english_plan_reuses_exact_selected_media(self) -> None:
         chinese = load_plan()
@@ -61,7 +62,7 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         )
         retention_path = (
             PROJECT_ROOT
-            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v4.json"
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v5.json"
         )
         retention = load_plan(retention_path)
         self.assertEqual(retention["edit_mode"], "retention")
@@ -72,9 +73,11 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         self.assertEqual(retention["attempt_accounting"]["grok_video_calls"], 0)
         self.assertEqual(retention["attempt_accounting"]["music_calls"], 0)
         self.assertEqual(retention["tts"]["speed"], 1.08)
+        self.assertEqual(retention["timing_mode"], "source_aligned")
+        self.assertEqual(retention["narration_source"]["source_attempt"], "paynes-creek-grok-ai-short-en-v4")
         self.assertEqual(
             output_names(retention)["video"],
-            "paynes-creek-grok-ai-short-en-v4-yuv420p.mp4",
+            "paynes-creek-grok-ai-short-en-v5-yuv420p.mp4",
         )
         self.assertTrue(retention["scenes"][0]["hook"]["headline"])
         for scene in retention["scenes"]:
@@ -122,10 +125,10 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
             self.assertEqual(scene["captions"][0]["startFrame"], 0)
             self.assertEqual(scene["captions"][-1]["endFrame"], scene["durationInFrames"])
 
-    def test_retention_manifest_is_safe_at_expected_english_duration(self) -> None:
+    def test_source_aligned_retention_manifest_uses_frozen_frames(self) -> None:
         plan_path = (
             PROJECT_ROOT
-            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v4.json"
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v5.json"
         )
         plan = load_plan(plan_path)
         with tempfile.TemporaryDirectory() as temporary_dir:
@@ -141,7 +144,7 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
                     for scene in plan["scenes"]
                 ],
                 audio_path=audio_path,
-                audio_duration_ms=39000,
+                audio_duration_ms=38988,
                 audio_sha256="b" * 64,
                 source_plan_path=plan_path,
             )
@@ -149,11 +152,13 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         self.assertEqual(manifest["totalFrames"], 1170)
         for scene in manifest["scenes"]:
             self.assertGreaterEqual(scene["playbackRate"], 0.65)
-            self.assertLessEqual(scene["playbackRate"], 1.35)
+            self.assertLessEqual(scene["playbackRate"], 1.45)
             self.assertEqual(
                 " ".join(caption["text"] for caption in scene["captions"]),
                 scene["narration"],
             )
+        self.assertEqual(manifest["timingMode"], "source_aligned")
+        self.assertEqual(manifest["maxPlaybackRate"], 1.45)
 
 
 if __name__ == "__main__":

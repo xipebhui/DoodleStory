@@ -2032,3 +2032,12 @@
 - 新增不可变 `paynes-creek-grok-ai-short-en-v4.json`：保持脚本、视觉、媒体 hash 与 Provider 不变，只把
   CosyVoice2 `alex` 速度从 1.00 调到 1.08，并把短语字幕提高到钩子遮罩之上。下一步完成离线复验并提交
   新 source commit，再执行 Attempt 4 各一次 TTS / Remotion / FFmpeg。
+- Attempt 4 输出 39.061 秒 MP4，完整解码、长静音、五镜 1.07–1.29 playback rate 和高密度接触表通过，
+  首条字幕在钩子期间已清晰可见。项目本地 `faster-whisper tiny/cpu/int8` 识别语言为英文，TTS 原文字符
+  匹配率 98.6%，但测得 weighted timing 中段最大偏差 1.624 秒，声音与字幕 / 场景切换不同步；该 attempt
+  因此明确 rejected、未发布。
+- 新增 `source_aligned` timing：Runner 会复验项目内复用音频的 SHA-256 与时长，并读取冻结逐镜 / 逐短语
+  帧数，不再调用 TTS或回退 weighted。为贴合真实语音中的短过程段，显式 playback rate 上限为 1.45。
+- `paynes-creek-grok-ai-short-en-v5.json` 复用 Attempt 4 的 38.988 秒旁白，冻结五镜帧数
+  `228/173/209/241/319` 和 17 条短语帧数；计划最高 playback rate 约 1.44，新增 Grok / TTS / 音乐 / 发布
+  调用均为 0。下一步离线复验并提交 source commit，再只执行一次 Remotion 与一次 FFmpeg。
