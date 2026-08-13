@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_grok_ai_short_local_pilot_audit",
+  "status": "pass_local_ai_short",
+  "date": "2026-08-13",
+  "publication_authorized": false,
+  "source": {
+    "git_commit": "07d9b23f9bac56f7e2776a2d8202b56b7e1b7b43",
+    "plan": "docs/strategy/youtube/paynes-creek-grok-ai-short-v1.json",
+    "plan_sha256": "527eb149ec418665c9ee6f36b55e3d15491c48d05c313ad2ba24e4a46268f4fe",
+    "scene_count": 5
+  },
+  "calls": {
+    "grok_image": 6,
+    "selected_images": 5,
+    "rejected_images": 1,
+    "grok_video": 7,
+    "selected_videos": 5,
+    "technical_or_rejected_videos": 2,
+    "siliconflow_tts": 1,
+    "remotion_render": 1,
+    "ffmpeg_normalization": 1,
+    "automatic_retry": 0,
+    "provider_fallback": 0,
+    "publish": 0
+  },
+  "audio": {
+    "provider": "siliconflow",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "voice": "FunAudioLLM/CosyVoice2-0.5B:alex",
+    "path": "storage/exports/paynes-creek/grok-ai-short-v1/paynes-creek-grok-ai-short-narration-v1.mp3",
+    "sha256": "16dcc118b679c477fd0d0877f0adf1174508862cbe2e00ad45cdffb07b748545",
+    "duration_ms": 41796
+  },
+  "video": {
+    "path": "storage/exports/paynes-creek/grok-ai-short-v1/paynes-creek-grok-ai-short-v1-yuv420p.mp4",
+    "sha256": "e6b1089b084b21411ef4ee73df16920dfd6c0ee5be29aaa670258da0d5ac7b98",
+    "bytes": 37294529,
+    "container_duration_ms": 41856,
+    "video_stream_duration_ms": 41800,
+    "frames": 1254,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "pixel_format": "yuv420p",
+    "color_range": "tv"
+  },
+  "evidence": {
+    "manifest": "storage/exports/paynes-creek/grok-ai-short-v1/paynes-creek-grok-ai-short-manifest-v1.json",
+    "manifest_sha256": "b97bcd2419cb0bf337b2ac9d1aa12c2f64611940b3d3cc33624139c85b65b779",
+    "five_scene_contact_sheet": "storage/exports/paynes-creek/grok-ai-short-v1/paynes-creek-grok-ai-short-contact-sheet-v1.png",
+    "dense_contact_sheet": "storage/exports/paynes-creek/grok-ai-short-v1/paynes-creek-grok-ai-short-dense-contact-sheet-v1.png"
+  },
+  "qa": {
+    "full_video_audio_decode": "pass",
+    "media_profile": "pass",
+    "five_scene_contact_sheet": "pass",
+    "dense_twenty_frame_review": "pass",
+    "subtitle_readability": "pass",
+    "silence_over_1_5_seconds_at_minus_45_db": 0,
+    "audio_content_asr_review": "not_run",
+    "user_full_watch_review": "pending"
+  },
+  "decision": {
+    "local_video_ready": true,
+    "publication_authorized": false,
+    "upload_allowed": false,
+    "market_validation": false,
+    "note": "This passes only the local Grok AI short pilot. User full-watch review remains required before any upload decision."
+  },
+  "sensitive_values_removed": true
+}

@@ -1,6 +1,6 @@
 # Sprint 200：Paynes Creek Grok AI 五镜短片样片
 
-状态：In progress
+状态：Complete
 
 ## Goal
 
@@ -33,6 +33,16 @@ Remotion 合成为 1920×1080、H.264 / AAC MP4。该样片用于验证新的 Yo
 - 输出报告记录所有选中 / 否决 attempt、Provider 调用数、hash、编码和 `publication_authorized=false`。
 - Remotion typecheck / tests、Python 聚焦测试、`git diff --check` 通过。
 
+## Result
+
+- 一次 SiliconFlow `FunAudioLLM/CosyVoice2-0.5B:alex` 旁白生成成功，真实时长 41.796 秒。
+- 一次 Remotion 渲染和一次 FFmpeg 规范化成功；最终 MP4 为 1920×1080、30fps、H.264/AAC、
+  yuv420p/tv range、1254 帧、41.856 秒、37,294,529 bytes。
+- 最终 SHA-256：`e6b1089b084b21411ef4ee73df16920dfd6c0ee5be29aaa670258da0d5ac7b98`。
+- 完整音视频解码通过，没有超过 1.5 秒的静音；五镜中点和 20 帧高密度接触表人工抽检通过。
+- 终态为 `pass_local_ai_short`：本地视频可播放并可交给用户观看，但仍保持
+  `publication_authorized=false`，没有创建 YouTube 发布任务。
+
 ## Verification
 
 ```powershell
@@ -42,4 +52,3 @@ npm run typecheck --prefix remotion
 npm test --prefix remotion
 git diff --check
 ```
-

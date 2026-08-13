@@ -315,7 +315,7 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Ready for review：Sprint 188 Native Agent YouTube 1080p 固定渲染 Profile（G8-A）](docs/contracts/sprint-188-native-agent-youtube-1080p-render-profile.md)
 - [Ready for review：Sprint 189 Native Agent 冻结 Render Manifest Run（G8-B）](docs/contracts/sprint-189-native-agent-frozen-render-manifest-run.md)
 - [Complete：Sprint 199 grokcli Native Agent AI 视频短镜头 Tool](docs/contracts/sprint-199-grokcli-native-agent-video-clip-tool.md)
-- [In progress：Sprint 200 Paynes Creek Grok AI 五镜短片样片](docs/contracts/sprint-200-paynes-creek-grok-ai-short-pilot.md)
+- [Complete：Sprint 200 Paynes Creek Grok AI 五镜短片样片](docs/contracts/sprint-200-paynes-creek-grok-ai-short-pilot.md)
 - [Ready for review：Sprint 190 Native Agent 成片逐镜帧证据包（G8-C）](docs/contracts/sprint-190-native-agent-video-frame-evidence-pack.md)
 - [Ready for review：Sprint 191 Native Agent 不可变本地样片验收与发布登记门禁](docs/contracts/sprint-191-native-agent-immutable-local-pilot-acceptance.md)
 - [产品设计](docs/design/README.md)

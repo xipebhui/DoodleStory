@@ -1967,7 +1967,7 @@
 - 四点接触表确认盐土托盘、漏斗、液流与陶罐关系稳定，无文字、现代器件或明显形变；未切换 Provider。
   Sprint 199 的真实媒体阻断解除，状态改为 Complete。
 
-# Sprint 200 Paynes Creek Grok AI 五镜短片（实现就绪，待真实渲染）
+# Sprint 200 Paynes Creek Grok AI 五镜短片（已完成：pass_local_ai_short）
 
 - 明确选中海岸钩子、卤水浓缩、火上结晶、独木舟运输、证据边界五个 16:9 Grok 首帧与 I2V。一次
   火上结晶图片因火焰和陶器关系错误被人工否决后才建立新 attempt；五个选中视频均通过四点抽帧检查。
@@ -1978,4 +1978,10 @@
   1280×720/24fps/H.264，按一次 CosyVoice2 中文旁白真实时长分配场景帧并限制 playback rate，最终输出
   1920×1080/30fps/H.264/AAC/yuv420p、接触表和审计报告。
 - Python 聚焦 3 项、Remotion 11 项测试、TypeScript typecheck、compileall 与 `git diff --check` 通过。
-  下一步先提交代码形成干净 source commit，再执行一次 TTS、一次 Remotion 和一次 FFmpeg 规范化。
+  源码已提交为 `07d9b23f9bac56f7e2776a2d8202b56b7e1b7b43`，干净 preflight 全部通过。
+- 一次 CosyVoice2 旁白成功生成 41.796 秒音频；一次 Remotion 和一次 FFmpeg 规范化生成最终
+  41.856 秒 MP4。文件为 1920×1080、30fps、H.264/AAC、yuv420p/tv range、1254 帧、37,294,529
+  bytes，SHA-256 `e6b1089b084b21411ef4ee73df16920dfd6c0ee5be29aaa670258da0d5ac7b98`。
+- 完整音视频流解码通过，没有超过 1.5 秒的静音；五镜中点和 20 帧高密度接触表确认镜头、标题、证据
+  标签与字幕稳定可读。终态 `pass_local_ai_short`，本地视频可播放；未运行 ASR 逐字核对，仍需用户完整
+  观看，且 `publication_authorized=false`、上传调用为 0。

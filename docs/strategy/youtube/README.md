@@ -226,6 +226,11 @@ Video 和 succeeded Pack 的两阶段 exact-hash 签署，终态只能是不可�
 把四维检查、preview 与提交顺序固定下来；通过仍保存 `publication_authorized=false`，只允许进入严格发布
 资料登记，不创建 YouTube 任务。Sprint 181 / G2-A 与 Sprint 192 / G2-B 已完成，当前入口是 G3 独立授权评审。
 
+[Paynes Creek Grok AI 五镜短片计划](paynes-creek-grok-ai-short-v1.json)记录了另一条已完成的本地媒体验证：
+五个 2K Grok 首帧、五个 720p Grok I2V、一次免费模型 CosyVoice2 中文旁白和独立 Remotion 模板已经
+合成为 41.856 秒 1080p MP4。它证明真实 AI 图片 / 视频可进入项目成片，但终态仅为
+`pass_local_ai_short`；不覆盖原 G4 Gate，不等于市场验证，也没有发布授权。
+
 ## 边界
 
 - 本目录不保存 API Key、频道登录信息、受版权保护的脚本、下载的视频或私有数据。
