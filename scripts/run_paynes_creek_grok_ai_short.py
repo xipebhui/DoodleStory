@@ -26,6 +26,15 @@ FPS = 30
 WIDTH = 1920
 HEIGHT = 1080
 SUPPORTED_LOCALES = frozenset({"zh-CN", "en-US"})
+SUPPORTED_EDIT_MODES = frozenset({"classic", "retention"})
+RETENTION_MOTIONS = frozenset({"push_in", "drift_left", "drift_right"})
+RETENTION_VISUAL_TREATMENTS = (
+    "coast_to_inland",
+    "process_filter",
+    "process_boil",
+    "transport_clue",
+    "evidence_chain",
+)
 
 
 def _git(*args: str) -> str:
@@ -55,6 +64,8 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
         raise RuntimeError("Grok AI 短片计划模板无效")
     if value.get("locale") not in SUPPORTED_LOCALES:
         raise RuntimeError("Grok AI 短片 locale 只支持 zh-CN 或 en-US")
+    if value.get("edit_mode") not in SUPPORTED_EDIT_MODES:
+        raise RuntimeError("Grok AI 短片 edit_mode 只支持 classic 或 retention")
     if not str(value.get("footer") or "").strip():
         raise RuntimeError("Grok AI 短片计划缺少页脚")
     artifact_slug = str(value.get("artifact_slug") or "")
@@ -70,6 +81,35 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
     scene_ids = tuple(str(scene.get("id")) for scene in value["scenes"])
     if scene_ids != SCENE_IDS:
         raise RuntimeError("Grok AI 短片场景顺序必须固定为 S01/S03/S04/S09/S12")
+    if value["edit_mode"] == "retention":
+        if value["locale"] != "en-US":
+            raise RuntimeError("Retention edit 当前只支持 en-US")
+        word_count = 0
+        for index, scene in enumerate(value["scenes"]):
+            narration = str(scene.get("narration") or "").strip()
+            captions = scene.get("captions")
+            if (
+                not isinstance(captions, list)
+                or not 2 <= len(captions) <= 4
+                or any(not isinstance(caption, str) or not caption.strip() for caption in captions)
+                or " ".join(captions) != narration
+            ):
+                raise RuntimeError(f"Retention Scene {scene_ids[index]} 短语字幕未完整重建旁白")
+            if not isinstance(scene.get("timing_weight"), int) or not 1 <= scene["timing_weight"] <= 100:
+                raise RuntimeError(f"Retention Scene {scene_ids[index]} timing_weight 无效")
+            if scene.get("motion") not in RETENTION_MOTIONS:
+                raise RuntimeError(f"Retention Scene {scene_ids[index]} motion 无效")
+            if scene.get("visual_treatment") != RETENTION_VISUAL_TREATMENTS[index]:
+                raise RuntimeError(f"Retention Scene {scene_ids[index]} visual_treatment 无效")
+            word_count += len(narration.split())
+        hook = value["scenes"][0].get("hook")
+        if not isinstance(hook, dict) or any(
+            not str(hook.get(key) or "").strip()
+            for key in ("eyebrow", "headline", "question")
+        ):
+            raise RuntimeError("Retention edit 缺少前三秒钩子")
+        if not 90 <= word_count <= 115:
+            raise RuntimeError("Retention edit 英文旁白必须控制在 90–115 词")
     return value
 
 
@@ -106,6 +146,22 @@ def allocate_scene_frames(total_frames: int, weights: list[int]) -> list[int]:
         frames[index] += 1
     if any(frame < 120 for frame in frames):
         raise RuntimeError("旁白权重导致某个场景不足四秒")
+    return frames
+
+
+def allocate_caption_frames(total_frames: int, captions: list[str]) -> list[int]:
+    weights = [max(1, len(caption.split())) for caption in captions]
+    weight_sum = sum(weights)
+    raw = [total_frames * weight / weight_sum for weight in weights]
+    frames = [math.floor(value) for value in raw]
+    for index in sorted(
+        range(len(raw)),
+        key=lambda item: raw[item] - frames[item],
+        reverse=True,
+    )[: total_frames - sum(frames)]:
+        frames[index] += 1
+    if any(frame <= 0 for frame in frames):
+        raise RuntimeError("短语字幕未获得有效帧数")
     return frames
 
 
@@ -204,7 +260,10 @@ def build_render_manifest(
     total_frames = math.ceil((audio_duration_ms / 1000) * FPS)
     scene_frames = allocate_scene_frames(
         total_frames,
-        [len(str(scene["narration"])) for scene in resolved_scenes],
+        [
+            int(scene.get("timing_weight", len(str(scene["narration"]))))
+            for scene in resolved_scenes
+        ],
     )
     scenes = []
     for scene, duration_in_frames in zip(resolved_scenes, scene_frames, strict=True):
@@ -214,6 +273,23 @@ def build_render_manifest(
             raise RuntimeError(
                 f"{scene['id']} 需要的 playback rate {playback_rate:.4f} 超出安全范围"
             )
+        caption_texts = list(scene.get("captions") or [str(scene["narration"])])
+        caption_frames = allocate_caption_frames(duration_in_frames, caption_texts)
+        caption_offset = 0
+        caption_cues = []
+        for caption, caption_duration in zip(
+            caption_texts,
+            caption_frames,
+            strict=True,
+        ):
+            caption_cues.append(
+                {
+                    "text": caption,
+                    "startFrame": caption_offset,
+                    "endFrame": caption_offset + caption_duration,
+                }
+            )
+            caption_offset += caption_duration
         scenes.append(
             {
                 "id": scene["id"],
@@ -225,6 +301,10 @@ def build_render_manifest(
                 "videoDurationMs": scene["video_duration_ms"],
                 "durationInFrames": duration_in_frames,
                 "playbackRate": playback_rate,
+                "captions": caption_cues,
+                "motion": scene.get("motion", "none"),
+                "visualTreatment": scene.get("visual_treatment", "none"),
+                "hook": scene.get("hook"),
             }
         )
     return {
@@ -232,6 +312,7 @@ def build_render_manifest(
         "templateId": TEMPLATE_ID,
         "title": plan["title"],
         "locale": plan["locale"],
+        "editMode": plan["edit_mode"],
         "footer": plan["footer"],
         "width": WIDTH,
         "height": HEIGHT,
@@ -404,7 +485,7 @@ def execute(
 ) -> dict[str, Any]:
     initial = preflight(source_commit, output_dir, plan_path)
     if not initial["all_passed"]:
-        raise RuntimeError(f"Sprint 200 preflight 未通过：{initial['blockers']}")
+        raise RuntimeError(f"Grok AI 短片 preflight 未通过：{initial['blockers']}")
     output_dir.mkdir(parents=True, exist_ok=False)
     plan = load_plan(plan_path)
     names = output_names(plan)
@@ -497,6 +578,7 @@ def execute(
             "plan": str(plan_path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
             "plan_sha256": sha256_file(plan_path),
             "locale": plan["locale"],
+            "edit_mode": plan["edit_mode"],
             "scene_count": 5,
         },
         "calls": {

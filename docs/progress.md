@@ -2010,3 +2010,19 @@
 - 完整音视频流解码通过，五镜 playback rate 为 0.91–1.18，没有超过 1.5 秒的静音；五镜中点与 20 帧
   高密度接触表确认英文标题、证据标签、字幕和过渡稳定可读。终态为 `pass_local_english_ai_short`，用户
   完整观看仍待执行；`publication_authorized=false`、发布调用为 0。
+
+# Sprint 202 Paynes Creek 英文留存优化剪辑（实现就绪，待真实渲染）
+
+- 根据 Sprint 201 发布评审，把优化目标收敛为 38–42 秒留存剪辑：约 106 词的新英文旁白从“航运记录
+  没有留下”切入，继续按浓缩、加热结晶、木桨运输证据和未知路线收束，不扩大考古事实结论。
+- 新增 `paynes-creek-grok-ai-short-en-v3.json`，继续复用相同五个 Grok 图片 / 视频 hash，冻结前三秒钩子、
+  2–4 条逐镜短语字幕、timing weight、轻微推镜和五种问题 / 过程 / 运输 / 边界视觉图层；新增 Grok 调用
+  预算为 0。
+- 五镜计划与 Manifest 现在显式区分 `classic` / `retention`。经典中英文保留整句字幕和原有淡入淡出；
+  retention 只允许英文、90–115 词，并严格验证短语字幕连续覆盖场景帧且能完整重建旁白。Retention
+  Renderer 使用无中间黑场切镜、短语字幕、前三秒全屏钩子、轻微推镜与结构化证据图层。
+- Python 5 项、Remotion Manifest 5 项测试、TypeScript typecheck、四份计划 JSON 与 `git diff --check`
+  通过。`music` Skill 的共享配置 / 认证引用在本机缺失，本 Sprint 因此明确 `bgm=false`、音乐调用为 0，
+  没有静默改用其他 Provider 或占位配乐。
+- 下一步提交形成干净 source commit，再执行 Attempt 3 唯一一次英文 TTS、Remotion 与 FFmpeg；成片通过
+  媒体和接触表检查后仍须用户完整观看，才可决定是否进入发布准备。

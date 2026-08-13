@@ -8,6 +8,7 @@ from scripts.run_paynes_creek_grok_ai_short import (
     DEFAULT_PLAN_PATH,
     PROJECT_ROOT,
     SCENE_IDS,
+    allocate_caption_frames,
     allocate_scene_frames,
     build_render_manifest,
     load_plan,
@@ -53,10 +54,40 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         self.assertIn("route. Workers", narration)
         self.assertNotIn("route.Workers", narration)
 
+    def test_retention_plan_freezes_hook_phrase_captions_and_media(self) -> None:
+        classic = load_plan(
+            PROJECT_ROOT
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v2.json"
+        )
+        retention_path = (
+            PROJECT_ROOT
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v3.json"
+        )
+        retention = load_plan(retention_path)
+        self.assertEqual(retention["edit_mode"], "retention")
+        self.assertEqual(
+            [scene["video_sha256"] for scene in retention["scenes"]],
+            [scene["video_sha256"] for scene in classic["scenes"]],
+        )
+        self.assertEqual(retention["attempt_accounting"]["grok_video_calls"], 0)
+        self.assertEqual(retention["attempt_accounting"]["music_calls"], 0)
+        self.assertEqual(
+            output_names(retention)["video"],
+            "paynes-creek-grok-ai-short-en-v3-yuv420p.mp4",
+        )
+        self.assertTrue(retention["scenes"][0]["hook"]["headline"])
+        for scene in retention["scenes"]:
+            self.assertEqual(" ".join(scene["captions"]), scene["narration"])
+        self.assertGreaterEqual(len(narration_text(retention).split()), 90)
+        self.assertLessEqual(len(narration_text(retention).split()), 115)
+
     def test_allocates_every_frame_and_keeps_four_second_minimum(self) -> None:
         frames = allocate_scene_frames(1500, [42, 36, 47, 48, 52])
         self.assertEqual(sum(frames), 1500)
         self.assertTrue(all(frame >= 120 for frame in frames))
+        caption_frames = allocate_caption_frames(241, ["one two", "three", "four five"])
+        self.assertEqual(sum(caption_frames), 241)
+        self.assertTrue(all(frame > 0 for frame in caption_frames))
 
     def test_build_manifest_binds_playback_rate_to_real_duration(self) -> None:
         plan = load_plan()
@@ -87,6 +118,41 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
             self.assertAlmostEqual(scene["playbackRate"], expected)
             self.assertGreaterEqual(scene["playbackRate"], 0.65)
             self.assertLessEqual(scene["playbackRate"], 1.35)
+            self.assertEqual(scene["captions"][0]["startFrame"], 0)
+            self.assertEqual(scene["captions"][-1]["endFrame"], scene["durationInFrames"])
+
+    def test_retention_manifest_is_safe_at_expected_english_duration(self) -> None:
+        plan_path = (
+            PROJECT_ROOT
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v3.json"
+        )
+        plan = load_plan(plan_path)
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            audio_path = Path(temporary_dir) / "narration.mp3"
+            audio_path.write_bytes(b"audio")
+            manifest = build_render_manifest(
+                plan=plan,
+                resolved_scenes=[
+                    {
+                        **scene,
+                        "video_path_resolved": Path(temporary_dir) / f"{scene['id']}.mp4",
+                    }
+                    for scene in plan["scenes"]
+                ],
+                audio_path=audio_path,
+                audio_duration_ms=39000,
+                audio_sha256="b" * 64,
+                source_plan_path=plan_path,
+            )
+        self.assertEqual(manifest["editMode"], "retention")
+        self.assertEqual(manifest["totalFrames"], 1170)
+        for scene in manifest["scenes"]:
+            self.assertGreaterEqual(scene["playbackRate"], 0.65)
+            self.assertLessEqual(scene["playbackRate"], 1.35)
+            self.assertEqual(
+                " ".join(caption["text"] for caption in scene["captions"]),
+                scene["narration"],
+            )
 
 
 if __name__ == "__main__":

@@ -80,6 +80,7 @@ const calculatePaynesCreekMetadata: CalculateMetadataFunction<PaynesCreekPilotPr
 const paynesCreekGrokShortDefaultProps: PaynesCreekGrokShortProps = {
   title: "Paynes Creek Grok AI 样片",
   locale: "zh-CN",
+  editMode: "classic",
   footer: "PAYNES CREEK · AI VISUAL PILOT",
   scenes: [{
     id: "S01",
@@ -89,6 +90,10 @@ const paynesCreekGrokShortDefaultProps: PaynesCreekGrokShortProps = {
     video: "preview.mp4",
     durationInFrames: 270,
     playbackRate: 1,
+    captions: [{text: "Paynes Creek Grok AI 五镜短片。", startFrame: 0, endFrame: 270}],
+    motion: "none",
+    visualTreatment: "none",
+    hook: null,
   }],
   narrationAudio: "preview.mp3",
   width: 1920,

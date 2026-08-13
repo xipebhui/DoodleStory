@@ -19,6 +19,15 @@ const EVIDENCE_LEVELS_BY_LOCALE = {
     "Evidence limit",
   ]),
 };
+const EDIT_MODES = new Set(["classic", "retention"]);
+const RETENTION_MOTIONS = new Set(["push_in", "drift_left", "drift_right"]);
+const RETENTION_VISUAL_TREATMENTS = [
+  "coast_to_inland",
+  "process_filter",
+  "process_boil",
+  "transport_clue",
+  "evidence_chain",
+];
 
 export const validatePaynesCreekGrokShortManifest = (manifest) => {
   if (manifest?.templateId !== PAYNES_CREEK_GROK_SHORT_TEMPLATE_ID) {
@@ -28,6 +37,12 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
   }
   if (manifest.width !== 1920 || manifest.height !== 1080 || manifest.fps !== 30) {
     throw new Error("Paynes Creek Grok 样片必须固定为 1920×1080、30fps");
+  }
+  if (!EDIT_MODES.has(manifest.editMode)) {
+    throw new Error("Paynes Creek Grok 样片 editMode 无效");
+  }
+  if (manifest.editMode === "retention" && manifest.locale !== "en-US") {
+    throw new Error("Paynes Creek Grok retention edit 当前只支持 en-US");
   }
   if (manifest.publicationAuthorized !== false || manifest.bgm !== false) {
     throw new Error(
@@ -65,6 +80,41 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
     if (!EVIDENCE_LEVELS_BY_LOCALE[manifest.locale].has(scene.evidence)) {
       throw new Error(`第 ${index + 1} 个 Grok Scene 证据标签无效`);
     }
+    if (!Array.isArray(scene.captions) || scene.captions.length < 1 || scene.captions.length > 4) {
+      throw new Error(`第 ${index + 1} 个 Grok Scene 短语字幕数量无效`);
+    }
+    if (manifest.editMode === "retention" && scene.captions.length < 2) {
+      throw new Error(`第 ${index + 1} 个 retention Scene 至少需要两条短语字幕`);
+    }
+    let captionFrame = 0;
+    for (const caption of scene.captions) {
+      if (
+        !String(caption?.text ?? "").trim() ||
+        !Number.isInteger(caption.startFrame) ||
+        !Number.isInteger(caption.endFrame) ||
+        caption.startFrame !== captionFrame ||
+        caption.endFrame <= caption.startFrame
+      ) {
+        throw new Error(`第 ${index + 1} 个 Grok Scene 短语字幕时间轴无效`);
+      }
+      captionFrame = caption.endFrame;
+    }
+    if (
+      captionFrame !== scene.durationInFrames ||
+      scene.captions.map((caption) => caption.text).join(" ") !== scene.narration
+    ) {
+      throw new Error(`第 ${index + 1} 个 Grok Scene 短语字幕未覆盖完整旁白`);
+    }
+    if (manifest.editMode === "retention") {
+      if (!RETENTION_MOTIONS.has(scene.motion)) {
+        throw new Error(`第 ${index + 1} 个 retention Scene motion 无效`);
+      }
+      if (scene.visualTreatment !== RETENTION_VISUAL_TREATMENTS[index]) {
+        throw new Error(`第 ${index + 1} 个 retention Scene visualTreatment 无效`);
+      }
+    } else if (scene.motion !== "none" || scene.visualTreatment !== "none") {
+      throw new Error(`第 ${index + 1} 个 classic Scene 不得启用 retention 视觉处理`);
+    }
     if (!Number.isFinite(scene.videoDurationMs) || scene.videoDurationMs <= 0) {
       throw new Error(`第 ${index + 1} 个 Grok Scene 视频时长无效`);
     }
@@ -87,6 +137,16 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
   }
   if (totalFrames !== manifest.totalFrames) {
     throw new Error("Paynes Creek Grok Scene 帧数之和与 totalFrames 不一致");
+  }
+  if (manifest.editMode === "retention") {
+    const hook = manifest.scenes[0]?.hook;
+    if (
+      !String(hook?.eyebrow ?? "").trim() ||
+      !String(hook?.headline ?? "").trim() ||
+      !String(hook?.question ?? "").trim()
+    ) {
+      throw new Error("Paynes Creek Grok retention edit 缺少前三秒钩子");
+    }
   }
   const expectedFrames = Math.ceil(
     (manifest.audioDurationMs / 1000) * manifest.fps,
@@ -125,6 +185,7 @@ export const stagePaynesCreekGrokShortManifest = async (
   return {
     title: manifest.title,
     locale: manifest.locale,
+    editMode: manifest.editMode,
     footer: manifest.footer,
     scenes,
     narrationAudio: audioName,

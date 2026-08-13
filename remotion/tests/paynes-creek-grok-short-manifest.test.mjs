@@ -11,6 +11,7 @@ const validManifest = {
   templateId: PAYNES_CREEK_GROK_SHORT_TEMPLATE_ID,
   title: "测试短片",
   locale: "zh-CN",
+  editMode: "classic",
   footer: "PAYNES CREEK · AI VISUAL PILOT",
   width: 1920,
   height: 1080,
@@ -31,6 +32,10 @@ const validManifest = {
     videoDurationMs: 9000,
     durationInFrames: 270,
     playbackRate: 1,
+    captions: [{text: `旁白 ${index + 1}`, startFrame: 0, endFrame: 270}],
+    motion: "none",
+    visualTreatment: "none",
+    hook: null,
   })),
 };
 
@@ -90,5 +95,49 @@ test("accepts English localization and rejects mixed evidence labels", () => {
       ),
     }),
     /证据标签无效/,
+  );
+});
+
+test("accepts retention edit and rejects broken phrase captions", () => {
+  const treatments = [
+    "coast_to_inland",
+    "process_filter",
+    "process_boil",
+    "transport_clue",
+    "evidence_chain",
+  ];
+  const scenes = validManifest.scenes.map((scene, index) => ({
+    ...scene,
+    narration: `Clue ${index + 1} survives here today.`,
+    evidence: index === 3 ? "Direct evidence" : "Interpretation",
+    captions: [
+      {text: `Clue ${index + 1}`, startFrame: 0, endFrame: 120},
+      {text: "survives here today.", startFrame: 120, endFrame: 270},
+    ],
+    motion: index % 2 === 0 ? "push_in" : "drift_left",
+    visualTreatment: treatments[index],
+    hook: index === 0 ? {
+      eyebrow: "A LOST SUPPLY CHAIN",
+      headline: "NO RECORDS SURVIVE.",
+      question: "SO HOW DID IT MOVE?",
+    } : null,
+  }));
+  const retention = {
+    ...validManifest,
+    locale: "en-US",
+    editMode: "retention",
+    scenes,
+  };
+  assert.doesNotThrow(() => validatePaynesCreekGrokShortManifest(retention));
+  assert.throws(
+    () => validatePaynesCreekGrokShortManifest({
+      ...retention,
+      scenes: scenes.map((scene, index) =>
+        index === 2
+          ? {...scene, captions: [{...scene.captions[0], endFrame: 119}, scene.captions[1]]}
+          : scene,
+      ),
+    }),
+    /短语字幕时间轴无效/,
   );
 });
