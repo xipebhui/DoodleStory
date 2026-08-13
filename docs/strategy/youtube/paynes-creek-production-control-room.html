@@ -727,8 +727,8 @@
     <!--
       THESIS: 首片控制台是一张影片接触印样与制作登记账本；拒绝把“文档已备齐”包装成“媒体已开工”。
       OWN-WORLD: 深海墨、沉积蓝灰、盐白纸面与青绿/琥珀/红三种证据语义；直角帧孔、登记线、测量字和无阴影平面。
-      STORY: 操作者先确认赛道与首片，再看十二镜、成片验收、唯一故障和十三道 Gate，最后看到 G3 真实零媒体 Gate 已通过且只开放 G4 的一张 S03。
-      FIRST VIEWPORT: 左侧大标题与赛道结论，右侧红色停止判定；下方七站生产线停在媒体前，下一动作直接可见。
+      STORY: 操作者先确认赛道与首片，再看十二镜、三次随机图片失败和十三道 Gate，最后看到确定性矢量路径已产出一支完整本地样片，但发布仍未授权。
+      FIRST VIEWPORT: 左侧大标题与赛道结论，右侧绿色本地成片判定；下方七站生产线显示已渲染与待发布前复核。
       FORM: 影片接触印样 + 命令账本，结构候选 5，seed d231c8ec。
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
@@ -741,16 +741,16 @@
             <h1>第一条片，已经选定。</h1>
             <p class="lead">
               赛道是“考古证据驱动的古代技术与日常生活机制解释”；首片是 Paynes Creek 玛雅盐业。
-              研究、来源、版权、十二镜和中文旁白都已收敛。现在真正需要解决的不是再选题，而是让
-              Native Agent 安全走到第一张 S03 图片。
+              研究、来源、版权、十二镜和中文旁白都已收敛。三次随机 S03 图片仍未通过，但确定性
+              矢量路径已经生成一支可播放、可审计的完整本地样片。
             </p>
           </div>
           <aside class="decision-block" aria-label="当前决策">
-            <strong>G3 已真实通过；现在只做一张 S03。</strong>
+            <strong>12 镜本地矢量样片已完成并通过技术与视觉复核。</strong>
             <p>
-              当前状态为 <code>g3_pass / stop_before_g4</code>。G3 的 5 次真实请求全部成功，媒体调用仍为 0。
+              当前状态为 <code>pass_local_vector_pilot</code>。原 G4 随机图片仍失败，矢量成片不代表市场验证或发布授权。
             </p>
-            <a href="#next-gate">查看唯一下一步：执行 G4 单张 S03 Gate</a>
+            <a href="#next-gate">查看成片事实与下一步边界</a>
           </aside>
         </div>
 
@@ -758,9 +758,9 @@
           <span><b>研究</b>来源与主张已审计</span>
           <span><b>分镜</b>12 镜 / 138 秒</span>
           <span><b>脚本</b>536 字 / 12 Prompt</span>
-          <span class="stopped"><b>Agent</b>G3 已通过，只开放 G4 单图</span>
-          <span><b>媒体</b>图片 / 音频均为 0</span>
-          <span><b>成片</b>未渲染；验收设计就绪</span>
+          <span class="stopped"><b>Agent</b>随机图片 G4 仍失败</span>
+          <span><b>媒体</b>矢量 12 镜 / 旁白 115.704 秒</span>
+          <span><b>成片</b>1080p / 30fps / 115.776 秒</span>
           <span><b>发布</b>未授权</span>
         </div>
 
@@ -768,7 +768,7 @@
           <div><b>赛道</b><span>已锁定，生产适配</span></div>
           <div><b>首片</b><span>Paynes Creek 盐业</span></div>
           <div><b>市场证据</b><span>未发布、未验证</span></div>
-          <div><b>当前 Gate</b><span class="stop">G3 PASS / G4 单张 S03</span></div>
+          <div><b>当前状态</b><span class="ready">LOCAL VECTOR PILOT PASS / 未授权发布</span></div>
         </div>
       </div>
     </header>
@@ -1001,7 +1001,7 @@
             <article class="gate-row" data-state="pass"><div class="gate-code">G1</div><div class="gate-name">分镜与脚本</div><div class="gate-state pass">PASS</div><div><p>12 镜、536 字旁白、12 段 Prompt；四处不确定性进入原文。</p></div><div><p>内容 / 事实审核完成。</p></div></article>
             <article class="gate-row" data-state="pass"><div class="gate-code">G2</div><div class="gate-name">Native 离线适配（A → B）</div><div class="gate-state pass">PASS OFFLINE</div><div><p>火苗 Run 快照与受限 SiliconFlow Chat Adapter、调用身份、能力 Profile、消息边界和迁移均已离线通过。</p></div><div><p>不代表真实 Provider 已验证。</p></div></article>
             <article class="gate-row" data-state="pass"><div class="gate-code">G3</div><div class="gate-name">SiliconFlow 零媒体</div><div class="gate-state pass">PASS</div><div><p>5 次真实请求完成普通流、Tool Loop、恢复与 10 / 11 messages 边界验证。</p></div><div><p>Tool 仅执行一次，媒体与发布调用为 0。</p></div></article>
-            <article class="gate-row current" data-state="next" id="next-gate"><div class="gate-code">G4</div><div class="gate-name">S03 单镜媒体</div><div class="gate-state next">AUTHORIZED · NOT RUN</div><div><p>只生成一张 S03，再做 VL 文本 verdict 与人工事实、视觉复核。</p></div><div><p>失败保留证据并停止，不生成第二镜。</p></div></article>
+            <article class="gate-row" data-state="blocked"><div class="gate-code">G4</div><div class="gate-name">S03 随机图片媒体</div><div class="gate-state stop">ATTEMPT 04 · NEEDS REVISION</div><div><p>候选 1664×928；机器 accept，但陶罐 / 木槽关系倒置，液流向画外扩张并占用字幕区。</p></div><div><p>Attempt 02–04 均已锁定；没有 approved 随机图片。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G5</div><div class="gate-name">视觉锚点</div><div class="gate-state stop">NOT OPEN</div><div><p>S01 地图锚点、S04 陶器 / 火候锚点；验证画幅与视觉语法。</p></div><div><p>S03 通过后才可评审。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G6</div><div class="gate-name">九镜串行余图</div><div class="gate-state stop">NOT OPEN</div><div><p>S02 → S08 → S11 → S05 → S09 → S07 → S06 → S10 → S12；每镜独立授权与留证。</p></div><div><p>首个失败镜停止；通过也不自动生成下一镜。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G7</div><div class="gate-name">逐镜语音与字幕</div><div class="gate-state stop">BLOCKED BY G7-0</div><div><p>S01 → S02 → S08 → S03 → S07 → S09 → S10 → S11 → S12 → S04 → S05 → S06；每镜 Speech + Subtitle 成对验收。</p></div><div><p>G8 尚不能读取来源 Run 音频；未补 lineage 不调用 TTS。</p></div></article>
@@ -1009,26 +1009,26 @@
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G8-B</div><div class="gate-name">冻结 Render Manifest Run</div><div class="gate-state stop">DESIGN READY</div><div><p>认证用户确认 S01–S12 后，由服务端编译 canonical Manifest 与 SHA-256。</p></div><div><p>专用 Skill 只允许零参数渲染。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G8-C</div><div class="gate-name">逐镜帧证据包能力</div><div class="gate-state stop">DESIGN READY</div><div><p>完整解码同一 MP4，并按每镜固定五角色与四组限定词 cue 抽帧。</p></div><div><p>确定性 ZIP / 离线 HTML 通过后才允许真实 G8。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G8</div><div class="gate-name">单次成片与不可变人工验收</div><div class="gate-state stop">NOT OPEN</div><div><p>按冻结 Manifest 只渲染一次；同一 MP4 的 Pack 成功后完整观看，并 preview / commit exact hashes。</p></div><div><p>终态只能 pass_local_pilot 或 needs_revision；不直接提交 approved。</p></div></article>
+            <article class="gate-row current" data-state="pass" id="next-gate"><div class="gate-code">PILOT</div><div class="gate-name">确定性矢量本地样片</div><div class="gate-state pass">PASS LOCAL VECTOR PILOT</div><div><p>12 镜、3472 帧、1920×1080、30fps、H.264 / AAC、yuv420p；完整解码与逐镜视觉复核通过。</p></div><div><p>一次 TTS、一次 Remotion、一次规范化、零重试；发布调用为 0。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G9</div><div class="gate-name">发布准备</div><div class="gate-state stop">NOT OPEN</div><div><p>先有 pass Acceptance，再补频道、预测、单一变量、语言、标题、封面权利、披露和回流。</p></div><div><p>Acceptance 仍保存 publication_authorized=false。</p></div></article>
           </div>
 
           <div class="next-gate">
             <div>
-              <h3>G3 已真实通过；当前只开放 G4 的一张 S03。</h3>
+              <h3>本地矢量样片已完成；随机生图失败与矢量交付结论分别保留。</h3>
               <ul>
-                <li>已把火苗 Responses 的 route、provider、API shape、model 固定为 Run 快照。</li>
-                <li>普通执行、文章角色、重试、恢复与 Follow-up 已统一只读该 Run 快照。</li>
-                <li>历史 Run 已回填当时唯一存在的 Responses 路径，并保留原模型值。</li>
-                <li>旧 Router 的 <code>AGENT_MODEL</code> 已与 Native 模型配置明确分离。</li>
-                <li><code>siliconflow_chat_v1</code> 已实现稳定调用身份、Chat Event Adapter、精确 S03 Profile 和 10 / 11 消息 wrapper。</li>
-                <li>Chat 生图只返回文本 ID，同 Run 仅一次 attempt，必须检查唯一图片且不允许 Follow-up。</li>
-                <li>G3 共发送 5 次真实模型请求并全部成功；图片、VL、语音、视频与发布仍为 0。</li>
+                <li>最终 MP4 时长 115.776 秒，SHA-256 为 <code>e063e020…d6a09</code>。</li>
+                <li>12 个中点帧均已复核；S03 明确为木槽在上、陶罐在下、液流终止罐内。</li>
+                <li>完整视频 / 音频解码通过，没有超过 1.5 秒的长静音。</li>
+                <li>11 个镜头边界距最近自然停顿最大 0.780 秒。</li>
+                <li>图片、VL、视频生成 Provider 和发布调用均为 0。</li>
+                <li>未执行独立 ASR 转写；公开发布前仍需语言与包装审核。</li>
               </ul>
             </div>
             <aside class="authorization-copy">
-              <b>G4 必须锁住这一边界</b>
-              <p>只允许一个新 Run、一次图片 Provider attempt、一张 S03、一次 VL 和两类人工复核。</p>
-              <code>当前：g3_pass / stop_before_g4；图片调用数保持 0。</code>
+              <b>本地成片通过不等于公开发布</b>
+              <p>先观看 MP4；若方向确认，再单独确认发音、字幕、标题、封面、频道和上传。</p>
+              <code>当前：pass_local_vector_pilot；publication_authorized=false。</code>
             </aside>
           </div>
         </div>
@@ -1049,7 +1049,11 @@
             <div class="asset-row"><a href="paynes-creek-production-draft.json">生产草案 JSON</a><p>Scene、来源、运动和预期文件名；没有伪造媒体 ID。</p><span class="ready">READY</span></div>
             <div class="asset-row"><a href="paynes-creek-local-pilot-charter.md">本地样片验收章程</a><p>单一验证问题、固定变量、四维成片门槛和结果解释边界。</p><span class="ready">READY</span></div>
             <div class="asset-row"><a href="paynes-creek-local-pilot-acceptance-template.json">空白成片验收模板</a><p>未来记录真实尺寸、时长、调用、审核与唯一成功终态。</p><span class="ready">NOT RUN</span></div>
-            <div class="asset-row"><a href="paynes-creek-s03-media-gate.md">S03 Gate 记录</a><p>唯一 Run、429、图片调用 0 与停止结论。</p><span class="ready">RECORDED</span></div>
+            <div class="asset-row"><a href="../../testing/paynes-creek-vector-pilot-2026-08-13.json">矢量样片审计摘要</a><p>最终 MP4、音频、Manifest、调用次数、技术 QA、视觉复核与发布边界。</p><span class="ready">PASS LOCAL</span></div>
+            <div class="asset-row"><a href="../../../storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-vector-pilot-v1-yuv420p.mp4">最终本地 MP4</a><p>1920×1080、30fps、115.776 秒、H.264 / AAC、yuv420p。</p><span class="ready">READY</span></div>
+            <div class="asset-row"><a href="../../testing/paynes-creek-s03-g4-2026-08-13-attempt-02.json">S03 G4 Attempt 02</a><p>真实候选、一次 VL、机器 / 事实 / 视觉失败与停止结论。</p><span class="stop">NEEDS REVISION</span></div>
+            <div class="asset-row"><a href="../../testing/paynes-creek-s03-g4-2026-08-13-attempt-03.json">S03 G4 Attempt 03</a><p>正向白名单候选、一次 VL、乱码 / 多余对象 / 字幕区失败与停止结论。</p><span class="stop">NEEDS REVISION</span></div>
+            <div class="asset-row"><a href="../../testing/paynes-creek-s03-g4-2026-08-13-attempt-04.json">S03 G4 Attempt 04</a><p>机器 accept 被事实 / 视觉复核否决，记录机制倒置与字幕区失败。</p><span class="stop">NEEDS REVISION</span></div>
             <div class="asset-row"><a href="paynes-creek-g5-serial-anchor-protocol.md">G5 串行视觉锚点协议</a><p>S01 与 S04 分别授权、分别验收、分别停止。</p><span class="ready">DESIGN READY</span></div>
             <div class="asset-row"><a href="paynes-creek-g6-serial-production-protocol.md">G6 九镜串行协议</a><p>按依赖与风险固定余图顺序；首个失败阻断所有后继镜头。</p><span class="ready">DESIGN READY</span></div>
             <div class="asset-row"><a href="paynes-creek-g6-scene-profiles.json">G6 九镜 Profile</a><p>九镜 Prompt 哈希、前置状态、机器 / 人工检查与唯一通过状态。</p><span class="ready">PROFILE READY</span></div>
@@ -1112,13 +1116,13 @@
           <div>
             <h2>现在不是继续研究更多赛道的时候。</h2>
             <p>
-              赛道、首片、来源、脚本和十二镜都已足够支持一次本地生产验证。G3 真实零媒体 Gate 已经通过，
-              当前唯一合理动作是按重试协议生成并验收一张 S03；继续翻榜不会让样片更接近完成。
+              赛道、首片、来源、脚本和十二镜都已足够支持一次本地生产验证。G4 Attempt 04 证明静默画面
+              能消除文字和多余对象，但自由生图仍会破坏关键坐标关系；下一步改用能锁定几何关系的方法。
             </p>
           </div>
           <div class="verdict">
             <b>控制器判定：lane selected / media stopped</b>
-            <p>允许执行 G4 单张 S03；禁止同一 attempt 二次生图、提前批量生成或发布。</p>
+            <p>允许准备新的 G4 单图方案；禁止覆盖 Attempt 02–04、直接生成 G5、批量生图或发布。</p>
             <a href="paynes-creek-production-control-room.md">阅读 Markdown 权威运行手册</a>
           </div>
         </div>

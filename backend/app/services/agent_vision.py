@@ -8,8 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.core.config import get_settings
 from app.models.entities import FileAsset, GeneratedImage
 from app.services.media_text_extraction import (
+    LLMConfigError,
     LLMProviderError,
-    _chat_text_fallback_multimodal,
+    _chat_multimodal,
     data_url_from_bytes,
 )
 from app.services.storage import materialize_asset_to_local
@@ -64,9 +65,9 @@ def inspect_image_asset(
     expected: dict[str, object],
 ) -> tuple[InspectionResult, str, str, int]:
     settings = get_settings()
-    model = settings.text_fallback_model.strip()
+    model = settings.siliconflow_vision_model.strip()
     if not model:
-        raise AgentVisionError("TEXT_FALLBACK_MODEL 未配置，无法执行图片检查")
+        raise AgentVisionError("SILICONFLOW_VISION_MODEL 未配置，无法执行图片检查")
     path = materialize_asset_to_local(asset)
     content = path.read_bytes()
     if not content:
@@ -81,9 +82,10 @@ def inspect_image_asset(
     )
     started = monotonic()
     try:
-        raw = _chat_text_fallback_multimodal(
+        raw = _chat_multimodal(
             model=model,
             prompt_name="agent_inspect_image",
+            max_retries=0,
             content=[
                 {"type": "text", "text": prompt},
                 {
@@ -95,7 +97,7 @@ def inspect_image_asset(
                 },
             ],
         )
-    except LLMProviderError as exc:
+    except (LLMConfigError, LLMProviderError) as exc:
         raise AgentVisionError(str(exc)) from exc
     try:
         result = InspectionResult.model_validate(_json_object(raw))
@@ -105,4 +107,4 @@ def inspect_image_asset(
     unknown = set(result.scores).difference(checks)
     if missing or unknown or any(score < 0 or score > 1 for score in result.scores.values()):
         raise AgentVisionError("VL 检查评分项与请求 checks 不一致")
-    return result, "text_fallback", model, round((monotonic() - started) * 1000)
+    return result, "siliconflow", model, round((monotonic() - started) * 1000)

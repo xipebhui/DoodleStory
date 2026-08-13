@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "historical_mechanism_alignment",
+    "reconstruction_boundary",
+    "modern_object_exclusion",
+    "composition_and_subtitle_safety",
+    "pan_right_crop_safety",
+    "visual_artifacts_and_text_exclusion"
+  ],
+  "expected": {
+    "story_beat": "A cautious non-photoreal horizontal reconstruction of brine concentration. Show only one compact elevated wooden tray with low-detail saline earth, one short wooden drip spout, one teal liquid path, and one rough unglazed ceramic jar. A subtle amber rim may distinguish the reconstructed tray and spout; no in-image annotation, arrow, bracket, label or dashed reconstruction contour is required because the narration explicitly states the reconstruction boundary. Keep the entire mechanism high in the center and leave the lower 42 percent as uniform empty deep marine ink space for Chinese subtitles. Exclude modern devices, extra objects, text, pseudo-writing, logos and watermarks.",
+    "characters": [],
+    "required_text": []
+  }
+}

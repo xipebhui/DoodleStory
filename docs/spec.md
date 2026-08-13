@@ -276,6 +276,7 @@
 - Agent 用户安全进度使用数据库持久化 Event 和 SSE 展示，包括 Skill 加载、Artifact、Approval、Tool 开始/进度/完成/失败和最终消息；不得展示 chain-of-thought、完整系统 Prompt、Provider 原始响应或敏感 URL。断线重连从事件 cursor 补发，不得重复副作用；未经明确授权不增加隐藏轮询兜底。
 - `@风格/@角色/@任务/@Panel/@图片版本` 是用户显式选择的结构化上下文。Runtime 必须在消息入队前完成所有权、状态、父子关系与组合校验，并用数据库规范数据覆盖客户端 display name。引用已有 Task 表示继续同一个 GenerationTask，不创建新任务；引用 Character 必须真实进入任务角色快照和图片参考链路。
 - Panel 修改只为目标 Panel 创建新的 GeneratedImage 版本；恢复历史版本只切换 `is_current`，不调用图片 Provider、不扣积分。`inspect_image` 提供真实视觉证据，单个用户修改 Turn 最多自动创建一个额外版本；VL 失败、预算耗尽或需要判断时进入 `waiting_for_input`，不允许无限自动循环。
+- Native `inspect_image` 使用 `SILICONFLOW_VISION_MODEL` 对当前 Run 的真实图片执行检查；该调用禁用客户端自动重试，技术失败明确结束当前媒体 Gate，不回退 `TEXT_FALLBACK_MODEL` 或其他 VL Provider。
 - MLflow 只承担 Agent/Skill/Tool/Provider/Approval 的观测和 Evaluation 输入，DoodleStory 数据库仍是业务状态、恢复与权限事实来源。默认不记录用户全文、完整 Prompt、图片 URL、API key 或 Provider 原始响应。
 - Agent MLflow 基线锁定 `mlflow==3.14.0`。默认 `MLFLOW_TRACING_ENABLED=false`，关闭时不导入 MLflow、不连接 Tracking URI；启用时 URI 与 Experiment 必须在启动阶段验证。每个 Agent Run 使用 `agent_run_id` 根 trace tag 唯一检索，模型 attempt、Tool Call、图片等待、Tool Result 和 finalize 作为同一 trace 的子 span；不新增 MLflow trace 数据库列，不用 trace 驱动恢复、权限、预算或取消。
 - `MLFLOW_TRACE_CONTENT=false` 时，MLflow span processor 在客户端导出前覆盖 inputs/outputs，并拒绝 Prompt、消息正文、完整 URL、内部路径、Authorization 和已配置密钥。观测初始化或运行时上报错误必须记录明确 `observability_error`；上报错误不能回滚已经提交的图片、消息、积分或 Agent Run 业务状态。
@@ -540,6 +541,12 @@
 - 内容提取创建使用轻量后台处理：提交后立即保存记录并返回列表，后台分阶段完成解析下载和内容提取；下载媒体登记后先提交，内容提取完成后标记成功。列表按需刷新处理状态；如果后端进程重启导致同进程后台任务中断，启动恢复会把遗留 `processing` 记录标记失败并提示重新提取。仍保留显式重新提取接口用于用户在详情中重新执行，不引入外部队列或复杂状态机。
 - DY 爆款复刻复用内容提取轻量后台处理；复刻请求中的风格、图片数量和人物参考配置只作为当前同进程后台任务参数使用，内容提取成功后通过普通任务创建服务创建 `提取分镜` 任务，任务执行仍由现有进程内任务队列负责。
 - 视频任务第一版复用现有图片任务轻量后台处理。视频任务自身保存独立状态，但上游 `GenerationTask` 仍是图片、panel、旁白结构和人物参考的事实来源。音频参考和后续生成音频、最终视频都必须保存为明确文件资产，不得返回 mock 路径或占位 URL。
+- Paynes Creek 首片允许使用独立的确定性矢量本地样片路径验证内容与渲染：该路径只读取已审计的 12 镜
+  生产草案，用 Remotion 内联 SVG / CSS 图形表达机制，不把随机生图失败候选伪装为 approved 图片，也不
+  改写事实旁白。它只用于当前首片的本地 MP4 交付，不替换通用视频任务的上游图片事实来源，不新增前端
+  产品入口或数据库工作流。旁白允许一次直连 SiliconFlow `FunAudioLLM/CosyVoice2-0.5B` 系统预置音色，
+  不需要上传音频参考；渲染必须固定 1920×1080、30fps、H.264/AAC、yuv420p，并保存 Manifest、真实
+  ffprobe、hash 和逐镜帧证据。该路径始终保存 `publication_authorized=false`，不授权上传。
 - 视频任务执行采用进程内队列 + 数据库状态。上游图片任务成功后自动入队视频任务；服务启动时恢复 `waiting_for_images`、`ready_for_audio`、`audio_generating`、`audio_ready` 和 `video_generating` 等可恢复状态。视频任务按 panel 生成旁白音频，因为 `comic-video-studio` 的 `episode.shots[*].audio` 是每个 shot 的时间基准。每段生成音频必须保存为 `generated_audio` 资产；最终 MP4 必须保存为 `generated_video` 资产。`comic-video-studio` 默认通过 `COMIC_VIDEO_SERVICE_BASE_URL` 指向 `http://127.0.0.1:51103`，如配置 `COMIC_VIDEO_SERVICE_API_KEY` 则请求必须携带 `X-API-Key`。TTS 第一版使用 SiliconFlow `/uploads/audio/voice` 和 `/audio/speech`；参考音频没有已注册 voice uri 时，必须用参考音频文件和参考文本注册声音。参考文本在音频参考创建时由本地 Whisper 自动转写并保存；转写失败或缺少参考文本时，音频参考不能保存或视频任务必须明确失败。视频任务生成旁白音频时必须使用创建任务时保存的音频参考语速快照，不受后续音频参考编辑影响。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 

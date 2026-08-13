@@ -1,7 +1,7 @@
 # Paynes Creek S03 单镜重试与验收协议
 
 更新时间：2026-08-12<br>
-状态：`ready_as_template / not_authorized / not_run`<br>
+状态：`attempt_04_needs_revision / three_immutable_failed_attempts / stopped`<br>
 适用 Gate：`G4 S03 single-image media gate`
 
 配套空白记录：[S03 Gate 证据模板](paynes-creek-s03-gate-evidence-template.json)
@@ -12,13 +12,13 @@
 图片调用、视觉检查和资产数全部为 0。下一次不能只写“再试一次”，而要把一次真实媒体授权的边界、
 观测字段和通过条件提前锁定。
 
-本协议是未来 G4 的执行表，不是运行结果。现在仍然：
+Attempt 02、03 与 04 均已按协议各执行一次并停止。当前真实状态：
 
 ```text
 G2 离线适配      PASS_OFFLINE
 G3 零媒体 Gate   PASS / ATTEMPT 2 / 5 REQUESTS / ZERO MEDIA
-G4 S03 单镜       NOT AUTHORIZED / NOT RUN
-图片、VL、视频    0 / 0 / 0
+G4 S03 单镜       NEEDS_REVISION / ATTEMPT 04 STOPPED
+累计图片、VL、视频 3 / 3 / 0
 ```
 
 ## 1. 不可变输入
@@ -190,5 +190,10 @@ provider + model + latency_ms
 
 ## 7. 完成边界
 
-这份协议完成后，首片状态仍是：赛道已选、脚本已定、媒体未开始。它只把未来一张 S03 的成本和证据
-边界写清楚，不替代 G3 或 G4 授权。当前唯一可进入的决策是单独评审 G3 小额零媒体真实调用授权。
+Attempt 02、03 与 04 的权威结果分别见
+[Attempt 02](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-02.json)和
+[Attempt 03](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-03.json)、
+[Attempt 04](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-04.json)。Attempt 03 的正向白名单消除了
+现代器件，但仍产生底部乱码、未获准木块、延伸虚线和字幕区占用；机器 `revise`、委托事实 `fail`、委托
+视觉 `fail`。Attempt 04 消除了文字和多余对象，机器误给 `accept`，但陶罐 / 木槽关系倒置且液流向画外
+扩张，委托事实 / 视觉仍 `fail`。三轮均无批准文件；当前不开放 G5、语音、视频或发布。

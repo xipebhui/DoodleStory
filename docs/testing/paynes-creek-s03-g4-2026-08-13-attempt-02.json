@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_s03_single_image_gate",
+  "record_status": "completed",
+  "created_at": "2026-08-13",
+  "gate": {
+    "gate_id": "G4",
+    "purpose": "local_production_validation",
+    "attempt_label": "g4-2026-08-13-attempt-02",
+    "previous_attempt": {
+      "gate_record": "paynes-creek-s03-media-gate.md",
+      "run_id": "de8b148d122343fd984a9d646801c12b",
+      "outcome": "failed_before_image",
+      "image_call_count": 0
+    }
+  },
+  "locked_inputs": {
+    "topic_id": "paynes-creek-salt-production-transport",
+    "scene": {
+      "scene_id": "S03",
+      "target_duration_seconds": 11,
+      "han_characters": 44,
+      "narration": "下面这一步，是依据遗迹和类比做的重建：盐工可能让盐水经过含盐土，提高浓度，再把更浓的卤水收进陶罐。",
+      "fact_ids": [
+        "F3"
+      ],
+      "source_ids": [
+        "S3",
+        "S4"
+      ],
+      "rights_ids": [
+        "R2",
+        "R3"
+      ],
+      "evidence_level": "A_plus_B_reconstruction",
+      "motion_preset": "pan_right",
+      "expected_candidate_filename": "PC-S03-v01.png",
+      "approved_filename_only_after_full_pass": "PC-S03-approved.png"
+    },
+    "source_lock": {
+      "input_baseline_git_commit": "ff3033cefd1bf3ea0128f8719694b683b9b2e73a",
+      "production_draft": "docs/strategy/youtube/paynes-creek-production-draft.json",
+      "prompt_document": "docs/strategy/youtube/paynes-creek-chinese-script-prompt-pack.md",
+      "prompt_selector": "S03｜依据遗迹与类比重建浓缩步骤 / text code block",
+      "canonical_prompt_encoding": "UTF-8",
+      "canonical_prompt_newline": "LF",
+      "canonical_prompt_trailing_newline": false,
+      "expected_prompt_sha256": "3cd1a0820096f3b3804aad06ced282265559adf40460401a6b0b47f980303729",
+      "submitted_prompt_sha256": "3cd1a0820096f3b3804aad06ced282265559adf40460401a6b0b47f980303729",
+      "prompt_hash_matches": true
+    },
+    "style_and_skill": {
+      "required_style_name": "Paynes Creek Evidence Desk 16:9",
+      "required_image_model": "Qwen/Qwen-Image",
+      "required_aspect_ratio": "16:9",
+      "required_tool_names": [
+        "generate_image",
+        "inspect_image"
+      ],
+      "observed_style_id": "4443d2412c994ec298b635e6c63806e7",
+      "observed_skill_version_id": "ba3a4875771248c4870b1ab6cf6afabd",
+      "observed_at": "2026-08-12T18:21:31.972Z"
+    }
+  },
+  "preflight": {
+    "g2_offline_adapter": {
+      "required_status": "pass_offline",
+      "observed_status": "pass_offline",
+      "evidence_ref": "docs/contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md",
+      "verified_at": "2026-08-12T18:21:31.972Z"
+    },
+    "g3_zero_media_gate": {
+      "required_status": "pass_for_s03_single_image_review",
+      "observed_status": "pass_for_s03_single_image_review",
+      "evidence_ref": "docs/testing/siliconflow-native-agent-compatibility-report.json",
+      "verified_at": "2026-08-12T18:21:31.972Z"
+    },
+    "g4_media_authorization": {
+      "authorized_by": "workspace_owner",
+      "authorized_at": "2026-08-12T18:21:31.972Z",
+      "authorization_ref": "user-current-task-full-local-video-authorization",
+      "authorized_run_count": 1,
+      "authorized_image_tool_calls": 1,
+      "authorized_inspect_image_tool_calls": 1,
+      "automatic_retry_authorized": false,
+      "provider_switch_authorized": false,
+      "prompt_change_authorized": false
+    },
+    "cost_cap": {
+      "currency": "existing_provider_quota_only",
+      "amount": 0,
+      "basis": "user_approved_maximum_for_this_gate",
+      "approved_by": "workspace_owner",
+      "approved_at": "2026-08-12T18:21:31.972Z"
+    },
+    "reviewers": {
+      "fact_reviewer": "Codex delegated production reviewer (AI)",
+      "visual_reviewer": "Codex delegated production reviewer (AI)"
+    },
+    "all_passed": true,
+    "blockers": []
+  },
+  "run_snapshot": {
+    "conversation_id": "a8d6e78628184a2d8da8ae28b2d7d16d",
+    "run_id": "64332bdfc1cd4111b0da5ec532e13bb2",
+    "execution_attempt": 1,
+    "created_at": "2026-08-12T18:19:55.000Z",
+    "finished_at": "2026-08-12T18:21:31.961Z",
+    "terminal_status": "succeeded",
+    "route_id": "siliconflow_chat_v1",
+    "provider": "siliconflow",
+    "api_shape": "chat_completions",
+    "agent_model": "deepseek-ai/DeepSeek-V3.2",
+    "image_provider": "qy",
+    "image_model": "Qwen/Qwen-Image",
+    "aspect_ratio": "16:9"
+  },
+  "observed_call_counts": {
+    "model_call_count": 3,
+    "generate_image_tool_call_count": 1,
+    "image_provider_call_count": 1,
+    "inspect_image_tool_call_count": 1,
+    "speech_call_count": 0,
+    "subtitle_call_count": 0,
+    "video_call_count": 0,
+    "publish_call_count": 0
+  },
+  "generate_image": {
+    "tool_call_id": "019ff733fbe0720b0fde761f511fdd6d",
+    "step_id": "1034c1da3f1d4475bfc8d9bb0e95f45b",
+    "status": "succeeded",
+    "started_at": "2026-08-12T18:20:18.947Z",
+    "finished_at": "2026-08-12T18:20:38.405Z",
+    "provider": "qy",
+    "model": "Qwen/Qwen-Image",
+    "provider_request_id": "202608121820192229020228268d9d6Z4Etkavt",
+    "image_id": "914b6e7680b344acae72f208db40f1dc",
+    "asset_id": "736f329635ac407db7f5921dd587028a",
+    "error_type": null,
+    "error_code": null,
+    "error_summary": null,
+    "retryable": false
+  },
+  "candidate_asset": {
+    "status": "observed",
+    "candidate_filename": "storage/exports/paynes-creek/g4-attempt-02/PC-S03-v01.png",
+    "approved_filename": null,
+    "mime_type": "image/png",
+    "byte_size": 1267885,
+    "sha256": "d6a6941a61b9ccc08785273aa933ac3f72c06a142cd9de0810607a6b4383eada",
+    "actual_width_px": 1664,
+    "actual_height_px": 928,
+    "actual_aspect_ratio": 1.793103,
+    "gateway_request_target_px": {
+      "width": 1792,
+      "height": 1024,
+      "status": "code_target_not_observed_output"
+    },
+    "delivery_target_px": {
+      "width": 1920,
+      "height": 1080,
+      "status": "target_not_observed_output"
+    },
+    "motion_probe": {
+      "preset": "pan_right",
+      "zoom_percent": 8,
+      "pan_percent": 3,
+      "safe_after_probe": false,
+      "evidence_ref": "storage/exports/paynes-creek/g4-attempt-02/PC-S03-pan-right-contact-sheet.png"
+    }
+  },
+  "inspect_image": {
+    "tool_call_id": "019ff7349daccc18b8532c806024ee57",
+    "step_id": "86c22addea774658bff39892b605ef19",
+    "status": "succeeded",
+    "request": {
+      "image_id": "914b6e7680b344acae72f208db40f1dc",
+      "checks": [
+        "historical_mechanism_alignment",
+        "reconstruction_boundary",
+        "modern_object_exclusion",
+        "composition_and_subtitle_safety",
+        "pan_right_crop_safety",
+        "visual_artifacts_and_text_exclusion"
+      ],
+      "expected": {
+        "story_beat": "A cautious non-photoreal horizontal reconstruction of brine concentration. Show only a simple elevated wooden container with low-detail saline earth, liquid passing through a funnel-like outlet into one rough unglazed ceramic jar. Use one teal liquid path and amber dashed reconstruction contours. Keep essential objects inside the central 84% and upper 70%, with the bottom 30% quiet for Chinese subtitles. Exclude modern filters, pipes, valves, precision machinery, copied Sacapulas installations, text, logos and watermarks.",
+        "characters": [],
+        "required_text": []
+      }
+    },
+    "response": {
+      "image_id": "914b6e7680b344acae72f208db40f1dc",
+      "verdict": "revise",
+      "scores": {
+        "historical_mechanism_alignment": 0.6,
+        "reconstruction_boundary": 0.7,
+        "modern_object_exclusion": 0.3,
+        "composition_and_subtitle_safety": 0.5,
+        "pan_right_crop_safety": 0.8,
+        "visual_artifacts_and_text_exclusion": 0.4
+      },
+      "issues": [
+        {
+          "code": "modern_object_inclusion",
+          "message": "Image includes a modern metal faucet and piping system, which violates the requirement to exclude modern filters, pipes, valves, and precision machinery.",
+          "suggested_change": "Remove the metal faucet and piping. Replace with a simple, historically plausible drainage or overflow structure, such as a wooden spout or earthen channel."
+        },
+        {
+          "code": "text_inclusion",
+          "message": "The logo 'EVIDENCE LEAD SACALOGY' and a line of non-English text near the faucet are present, violating the exclusion of text, logos, and watermarks.",
+          "suggested_change": "Remove all text, logos, and watermarks from the image."
+        },
+        {
+          "code": "composition_unbalanced",
+          "message": "The bottom 30% is not quiet for Chinese subtitles as required; instead, the reconstruction extends into the lower area with the faucet and underground section, and the teal pipe intrudes too far downward.",
+          "suggested_change": "Restrict the reconstruction's vertical extent to the upper 70% and ensure the lower 30% is clean and uncluttered for subtitle space."
+        },
+        {
+          "code": "reconstruction_overflow",
+          "message": "The amber dashed reconstruction contours extend beyond the central 84% area, particularly on the left and right sides, partially touching the edges.",
+          "suggested_change": "Trim the dashed contours to fit neatly within the central 84% and upper 70% boundaries."
+        }
+      ],
+      "provider": "siliconflow",
+      "model": "Qwen/Qwen3-VL-32B-Instruct",
+      "latency_ms": 21687,
+      "error_type": null,
+      "error_summary": null
+    }
+  },
+  "human_fact_review": {
+    "status": "reviewed",
+    "reviewer": "Codex delegated production reviewer (AI; not human publication approval)",
+    "reviewed_at": "2026-08-12T18:22:05.393Z",
+    "checks": [
+      {
+        "id": "fact_reconstruction_not_artifact_claim",
+        "status": "pass",
+        "note": "琥珀虚线和编辑切面能表达重建语义，没有伪装成出土照片。"
+      },
+      {
+        "id": "fact_only_allowed_mechanism_objects",
+        "status": "fail",
+        "note": "除木容器、漏斗和陶罐外，画面加入大型青绿管路、金属水龙头和地下剖面。"
+      },
+      {
+        "id": "fact_no_modern_device_or_fixed_workstation",
+        "status": "fail",
+        "note": "右侧明确出现现代金属阀门、水龙头和管件，构成硬性禁区。"
+      },
+      {
+        "id": "fact_no_sacapulas_or_paper_figure_copy",
+        "status": "pass",
+        "note": "未观察到对 Sacapulas 现代装置照片或论文图版排版的直接复制。"
+      },
+      {
+        "id": "fact_no_unsupported_historical_claim",
+        "status": "fail",
+        "note": "现代管线和固定地下工位新增了来源未支持的历史机制。"
+      }
+    ],
+    "verdict": "fail"
+  },
+  "human_visual_review": {
+    "status": "reviewed",
+    "reviewer": "Codex delegated production reviewer (AI; not human publication approval)",
+    "reviewed_at": "2026-08-12T18:22:05.393Z",
+    "checks": [
+      {
+        "id": "visual_actual_ratio_recorded",
+        "status": "pass",
+        "note": "真实文件为 1664×928，宽高比 1.793103，已按实际值记录且接近 16:9。"
+      },
+      {
+        "id": "visual_central84_upper70_bottom30",
+        "status": "fail",
+        "note": "漏斗、陶罐、水龙头、地下剖面和乱码占据底部 30%，没有形成安静字幕区。"
+      },
+      {
+        "id": "visual_pan_right_probe_safe",
+        "status": "fail",
+        "note": "8% 放大与 ±3% 平移后，琥珀虚线贴边并被裁，边缘 Logo 也进入裁切风险。"
+      },
+      {
+        "id": "visual_teal_path_amber_dashed_reconstruction",
+        "status": "fail",
+        "note": "青绿流向形成不合理的大型回路和地下排出，琥珀虚线包围整个现代化工位。"
+      },
+      {
+        "id": "visual_palette_and_editorial_cutaway",
+        "status": "pass",
+        "note": "平面编辑插画、深海墨背景和琥珀 / 青绿色板总体符合视觉语言。"
+      },
+      {
+        "id": "visual_no_text_logo_watermark_or_artifact",
+        "status": "fail",
+        "note": "左上存在 EVIDENCE LEAD SACALOGY 伪 Logo，右下存在数字、英文和中文乱码。"
+      },
+      {
+        "id": "visual_mechanism_readable_at_video_size",
+        "status": "fail",
+        "note": "缩小时主视觉更像现代供排水装置，不能准确读成含盐土过滤浓缩到陶罐。"
+      }
+    ],
+    "verdict": "fail"
+  },
+  "gate_decision": {
+    "allowed_statuses": [
+      "not_run",
+      "blocked_precondition",
+      "failed_before_image",
+      "failed_during_image",
+      "failed_during_inspection",
+      "needs_revision",
+      "pass_for_s01_anchor"
+    ],
+    "status": "needs_revision",
+    "machine_verdict": "revise",
+    "fact_verdict": "fail",
+    "visual_verdict": "fail",
+    "decided_by": "G4 execution runner + Codex delegated production reviewer",
+    "decided_at": "2026-08-12T18:22:05.393Z",
+    "decision_note": "机器 revise 与独立原图 / pan_right 探针复核一致：现代水龙头、管件、伪 Logo、乱码和底部字幕区占用均为硬失败。本 Attempt 停止，不生成 v02。",
+    "stop_reason": "modern_plumbing_text_and_subtitle_safe_area_failure",
+    "next_allowed_gate": null
+  },
+  "audit": {
+    "evidence_refs": [
+      "storage/exports/paynes-creek/g4-attempt-02/PC-S03-v01.png",
+      "storage/exports/paynes-creek/g4-attempt-02/PC-S03-pan-right-start.png",
+      "storage/exports/paynes-creek/g4-attempt-02/PC-S03-pan-right-end.png",
+      "storage/exports/paynes-creek/g4-attempt-02/PC-S03-pan-right-contact-sheet.png",
+      "docs/contracts/sprint-195-youtube-paynes-creek-g4-single-image-gate.md",
+      "docs/testing/siliconflow-native-agent-compatibility-report.json",
+      "native_agent_run:64332bdfc1cd4111b0da5ec532e13bb2",
+      "source_git_commit:55ce2be24c9761d85e0ff1bad5c19e4f328b748a",
+      "local_owner_promoted_to_admin:true"
+    ],
+    "sensitive_values_removed": true,
+    "record_validated_at": "2026-08-12T18:22:05.393Z",
+    "record_git_commit": "55ce2be24c9761d85e0ff1bad5c19e4f328b748a"
+  }
+}

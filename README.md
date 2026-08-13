@@ -297,6 +297,8 @@ python .agents/skills/content-iteration-controller/scripts/submit_generation_tas
 - [Complete：Sprint 192 Native Agent SiliconFlow Chat 有界适配（G2-B）](docs/contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md)
 - [Complete：Sprint 193 SiliconFlow Native Agent G3 真实零媒体 Gate](docs/contracts/sprint-193-siliconflow-native-agent-g3-real-zero-media-gate.md)
 - [Complete：Sprint 194 Windows SQLite 绝对路径 URL 解析修复](docs/contracts/sprint-194-windows-sqlite-absolute-url-resolution.md)
+- [Complete：Sprint 195 Paynes Creek G4 单张 S03 真实媒体 Gate（Attempt 02 needs revision）](docs/contracts/sprint-195-youtube-paynes-creek-g4-single-image-gate.md)
+- [In progress：Sprint 196 Paynes Creek G4 Attempt 03 正向对象白名单](docs/contracts/sprint-196-youtube-paynes-creek-g4-attempt-03-positive-object-prompt.md)
 - [Complete：Sprint 182 Paynes Creek 本地样片验收包](docs/contracts/sprint-182-youtube-paynes-creek-local-pilot-acceptance-packet.md)
 - [Complete：Sprint 183 Paynes Creek Style 状态对账](docs/contracts/sprint-183-youtube-paynes-creek-style-state-reconciliation.md)
 - [Complete：Sprint 184 Paynes Creek G5 串行视觉锚点 Gate](docs/contracts/sprint-184-youtube-paynes-creek-g5-serial-anchor-gates.md)

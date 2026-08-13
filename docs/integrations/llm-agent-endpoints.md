@@ -103,7 +103,8 @@ SiliconFlow 当前公布的精确 model ID，不能根据名称自行猜测别�
 | HTTP 调用 | 代码入口 | 业务用途 |
 | --- | --- | --- |
 | POST {TEXT_FALLBACK_OPENAI_BASE_URL}/chat/completions | backend/app/services/llm.py 的 call_text_fallback_json | 文本结构化请求；模型为 TEXT_FALLBACK_MODEL |
-| POST {TEXT_FALLBACK_OPENAI_BASE_URL}/chat/completions | backend/app/services/media_text_extraction.py、agent_vision.py | 风格提示词、单图内容、Agent 图片检查等多模态请求 |
+| POST {TEXT_FALLBACK_OPENAI_BASE_URL}/chat/completions | backend/app/services/media_text_extraction.py | 风格提示词、单图内容等既有多模态请求 |
+| POST {SILICONFLOW_BASE_URL}/chat/completions | backend/app/services/agent_vision.py | Native `inspect_image`；固定读取 `SILICONFLOW_VISION_MODEL`，单次调用不自动重试或回退 |
 | POST {LIO_OPENAI_BASE_URL}/chat/completions | backend/app/services/llm.py 的 call_lio_json | LIO 结构化文本请求 |
 | POST {LIO_OPENAI_BASE_URL}/chat/completions | backend/app/services/media_text_extraction.py | 单图内容提取在主平台失败后的 LIO 路径 |
 

@@ -1,8 +1,8 @@
 # Paynes Creek 首片生产控制室
 
 更新时间：2026-08-13<br>
-状态：`lane_selected / g2_pass_offline / g3_pass / stop_before_g4 / no_media / no_publish_authorization`<br>
-用途：首片生产验证的权威运行手册；不是 YouTube 市场实验，也不是已完成视频
+状态：`lane_selected / g4_attempt_04_needs_revision / local_vector_pilot_pass / no_publish_authorization`<br>
+用途：首片生产验证的权威运行手册；本地矢量样片已完成，但不是 YouTube 市场实验或发布授权
 
 本地可视化入口：[HTML 生产控制台](paynes-creek-production-control-room.html)
 
@@ -51,8 +51,8 @@
 | 镜头 | S01–S12，共 12 镜 | 已锁定 |
 | 计划时长 | 138 秒 | 计划值 |
 | 旁白 | 536 个汉字，`zh-CN`，`speed=1.0` | 文本已定；真实时长未测 |
-| 图片模型 | `Qwen/Qwen-Image` | 本地 Prompt Style 为 `active`；Style Test 0、图片 0，输出未验证 |
-| 图片请求目标 | 当前 Gateway 对 16:9 请求 1792×1024 | 代码事实；Provider 实际返回未验证 |
+| 图片模型 | `Qwen/Qwen-Image` | Attempt 02–04 已各出一图；调用链可用但三张均被拒绝 |
+| 图片请求目标 | 当前 Gateway 对 16:9 请求 1792×1024 | 三次实际均返回 1664×928，按真实值记录 |
 | 交付目标 | 1920×1080，30 fps | 目标；当前 Remotion 不自动标准化 |
 | BGM | 无 | 已锁定 |
 | 发布 | 禁止 | 未指定频道、责任人和发布确认 |
@@ -63,7 +63,7 @@
 | --- | ---: | --- | --- | --- |
 | S01 | 8 | 海岸的盐如何到达内陆 | 解释 | 旁白 + Prompt 已就绪，图片禁止 |
 | S02 | 10 | 地点与公元 600–900 年时间边界 | 直接 | 旁白 + Prompt 已就绪，图片禁止 |
-| S03 | 11 | 依据遗迹与类比重建卤水浓缩 | 直接 + 重建 | **当前媒体 Gate；图片 0** |
+| S03 | 11 | 依据遗迹与类比重建卤水浓缩 | 直接 + 重建 | **Attempt 04 机器 accept，但事实 / 视觉否决；累计拒绝 3 张** |
 | S04 | 12 | 陶器与黏土支座支持加热结晶 | 直接 + 解释 | 旁白 + Prompt 已就绪，图片禁止 |
 | S05 | 13 | 盐厨房与居住空间相邻 | 直接 + 解释 | 旁白 + Prompt 已就绪，图片禁止 |
 | S06 | 14 | 专门作业空间支持超出日常自用的生产 | 解释 | 旁白 + Prompt 已就绪，图片禁止 |
@@ -88,28 +88,32 @@
 本地 Style 配置                 ACTIVE / PROMPT / STYLE TEST 0
 本地最小 Skill                  PUBLISHED / RUN SNAPSHOT ONLY
 S03 Native Agent 规划           FAILED: gpt-5.5 / 429 usage_limit_reached
-S03 图片调用                    0
+S03 Attempt 02                  NEEDS_REVISION / RUN SUCCEEDED
+S03 Attempt 03                  NEEDS_REVISION / RUN SUCCEEDED
+S03 Attempt 04                  MACHINE ACCEPT / DELEGATED REVIEW FAILED
 SiliconFlow Chat 适配设计        COMPLETE / OFFLINE VERIFIED
 SiliconFlow Chat 运行时代码      IMPLEMENTED / ADMIN-ONLY S03
 G2-A Run 路由快照                COMPLETE / OFFLINE VERIFIED
 G2-B Chat 有界适配               COMPLETE / OFFLINE VERIFIED
-零媒体真实兼容性 Gate            NOT RUN
+零媒体真实兼容性 Gate            PASS
 G3 零媒体 Attempt 1              STOPPED AT LOCAL DB PREFLIGHT / PROVIDER REQUESTS 0
 G3 零媒体 Attempt 2              PASS / 5 REQUESTS / TOOL ONCE / MEDIA 0
 G8-A 1080p Profile 设计          READY / NOT IMPLEMENTED
 G8-B 冻结 Manifest 设计          READY / NOT IMPLEMENTED
 G8-C 逐镜帧证据包设计             READY / NOT IMPLEMENTED
 G8 不可变人工验收设计             READY / NOT IMPLEMENTED
-S03 图片 / VL / 人工复核         NOT RUN
+S03 图片 / VL / 委托复核         1 / 1 / FAIL
 其余 11 镜、TTS、字幕、视频      BLOCKED
 公开发布                        NOT AUTHORIZED
 ```
 
-唯一一次 S03 Run 在 Agent 第一轮规划阶段失败，`generate_image` 与 `inspect_image` 都没有执行。
-因此当前问题不是图片 Prompt 或画风质量，不能通过继续改 Prompt、直接调用更多图片或换 Provider 绕过。
-完整事实见 [S03 单镜 Gate 记录](paynes-creek-s03-media-gate.md)。未来重试必须使用
-[S03 单镜重试协议](paynes-creek-s03-retry-protocol.md)和
-[空白证据模板](paynes-creek-s03-gate-evidence-template.json)另建记录；模板已准备不代表 G4 已开放。
+历史首次 S03 Run 在规划阶段失败；G4 Attempt 02 的唯一候选含现代水龙头 / 管件、伪 Logo、乱码并占用
+字幕区。Attempt 03 消除了现代器件，但仍有乱码、多余木块和字幕区占用。Attempt 04 又消除了文字和多余
+对象，但把陶罐放入木槽土层、让液流向画外扩张并占满字幕区；机器 `accept` 被委托事实 / 视觉复核否决。
+三轮记录见
+[Attempt 02](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-02.json)和
+[Attempt 03](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-03.json)、
+[Attempt 04](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-04.json)。三图只保留审计，不得批准或进入 G5。
 
 ## 本地样片最终验收
 
@@ -143,17 +147,18 @@ attempt 内变化。
 | G1 分镜与脚本 | 已通过 | 内容 / 事实审核 | 12 镜、536 字旁白、12 段 Prompt | 138 秒计划、四处不确定性进入原文 | 回脚本，不生图 |
 | G2 Native 路由离线适配 | **通过：`pass_offline`** | 开发负责人 | [G2-A 合同](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)；[G2-B 合同](../../contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md) | 路由快照、Chat Adapter、迁移、能力边界和离线测试全部通过 | 开放 G3 授权评审，不开放外部调用 |
 | G3 SiliconFlow 零媒体 Gate | **通过：`pass_for_s03_single_image_review`** | 开发 + 成本批准人 | Attempt 2、V3.2、[真实报告](../../testing/siliconflow-native-agent-compatibility-report.json) | 5 次请求内普通流、Tool + 跨进程恢复、10 / 11 消息边界全部通过；媒体 0 | 已开放 G4 单张授权 |
-| G4 S03 单镜媒体 Gate | **当前下一步；已获用户授权，尚未执行** | 视觉审核人 + 事实审核人 | 一张 S03、`inspect_image` 文本 verdict、[重试协议](paynes-creek-s03-retry-protocol.md) | 真实尺寸、机制对象、重建表达、安全区、人工复核全通过 | 保留证据并停止，不生成第二镜 |
+| G4 S03 单镜媒体 Gate | **Attempt 04：`needs_revision`；累计三次失败** | 视觉审核人 + 事实审核人 | 每次一张 S03、一次 `inspect_image`；[Attempt 02](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-02.json)、[Attempt 03](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-03.json)、[Attempt 04](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-04.json) | 真实尺寸、机制对象、重建表达、安全区、复核全通过 | 第三次机器 accept 仍被事实 / 视觉否决；G5 未开放 |
 | G5 视觉锚点检查 | 未开放；[串行协议已准备](paynes-creek-g5-serial-anchor-protocol.md) | 视觉 + 事实审核人 | G5-A 一张 S01；通过并停止后，G5-B 一张 S04 | 地图抽象边界、器物关系、前序图同尺寸和中心缩放探针分别通过 | 返回对应单镜；两个子 Gate 不共用授权，不启动余图 |
 | G6 剩余图片 | 未开放；[九镜串行协议已准备](paynes-creek-g6-serial-production-protocol.md) | 制作负责人 | 已批准锚点；S02 → S08 → S11 → S05 → S09 → S07 → S06 → S10 → S12 | 九个子 Gate 分别留下资产、尺寸、来源边界和人工 verdict | 在首个失败镜停止；不自动生成下一镜 |
 | G7 语音与字幕 | 未开放；[协议已准备但受 G7-0 阻断](paynes-creek-g7-audio-subtitle-protocol.md) | 语言审核人 + 开发负责人 | G7-0 同会话跨 Run 渲染 lineage；最终 536 字原文 | S01 → S02 → S08 → S03 → S07 → S09 → S10 → S11 → S12 → S04 → S05 → S06 逐镜通过；总长 120–150 秒 | G7-0 未实现不调用 TTS；单镜失败阻断后继镜 |
 | G8-A 1080p Profile | 未开放；设计已准备 | 开发负责人 | 版本化 preset、裁切预算、真实 MP4 probe | 离线模板与真实校准通过，产生 `pass_for_g8_render_manifest` | 不生成 Paynes Creek 视频 |
 | G8-B 冻结 Manifest Run | 未开放；[协议已准备](paynes-creek-g8-render-manifest-protocol.md) | 制作负责人 + 确认人 | 12 组已审核媒体、review refs、固定顺序 / Motion / preset | Run 级 canonical Manifest、SHA-256、认证确认与零参数 Tool 离线通过，产生 `pass_for_g8_frame_evidence_pack` | 不允许 Prompt 转抄或普通 Run 绕过 |
 | G8-C 逐镜帧证据包能力 | 未开放；[协议已准备](paynes-creek-g8-frame-evidence-protocol.md) | 开发负责人 + 质量审核 | 固定采样 Profile、完整 decode、Archive 权限与恢复 | 合成校准、权限、恢复、确定性 ZIP / HTML 通过，产生 `pass_for_single_g8_render` | 不生成 Paynes Creek 视频；不把机器指标当人工 verdict |
-| G8 本地成片与不可变验收 | 未开放；[人工验收设计已准备](paynes-creek-g8-human-acceptance-protocol.md) | 制作 + 质量审核 owner | 已确认 Manifest-bound Run、已通过 Evidence Pack 能力与 succeeded Pack | 唯一 MP4 先进入 `rendered_awaiting_frame_evidence`；同一 hash 的 Pack 成功后完整观看，并以 exact hash preview / commit 保存 `pass_local_pilot | needs_revision` | 不直接提交 `review_status=approved`；Pack 或验收失败不重渲染、不登记 |
+| G8 本地成片与不可变验收 | 原 Native Agent 路径未开放；[人工验收设计已准备](paynes-creek-g8-human-acceptance-protocol.md) | 制作 + 质量审核 owner | 已确认 Manifest-bound Run、已通过 Evidence Pack 能力与 succeeded Pack | 唯一 MP4 先进入 `rendered_awaiting_frame_evidence`；同一 hash 的 Pack 成功后完整观看，并以 exact hash preview / commit 保存 `pass_local_pilot | needs_revision` | 不直接提交 `review_status=approved`；Pack 或验收失败不重渲染、不登记 |
+| Sprint 198 确定性矢量样片 | **通过：`pass_local_vector_pilot`** | 本地制作 + AI 视觉复核 | 锁定的 12 镜脚本、一次 TTS、本地 SVG / CSS 矢量画面、一次 Remotion | [审计摘要](../../testing/paynes-creek-vector-pilot-2026-08-13.json)、最终 MP4、3472 帧、完整解码、接触表与 S03 专项帧通过 | 只交付本地样片；不改变 G4 / G5 状态，不自动进入发布 |
 | G9 发布准备 | 未开放 | 频道 owner + 发布责任人 | `pass_local_pilot` Acceptance、标题、描述、缩略图、披露决定 | 频道、预测、单一变量、语言、封面权利、数据回流和明确发布确认齐全 | 保持本地样片 |
 
-### G2 已离线完成，G3 已真实通过；停在 G4 单镜执行前
+### G2 / G3 已通过；G4 Attempt 04 的机器 accept 被复核否决
 
 G2 的离线 Phase A 拆成两个串行子 Gate，避免同时改持久化事实、Responses 回归和 Chat 事件。
 [Sprint 181 / G2-A](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md) 已完成：
@@ -173,8 +178,9 @@ G2 的离线 Phase A 拆成两个串行子 Gate，避免同时改持久化事实
 - revision `w4x5y6z7a8b9` 的空库、历史升级与降级通过，历史模型 Step 新字段保持 `NULL`。
 
 因此 G2 记录为 `pass_offline`。G3 Attempt 1 在本地 SQLite 前置停止且 Provider 请求为 0；Sprint 194 修复后，
-Attempt 2 用恰好 5 次真实请求通过 Z1–Z4，Tool 执行一次，媒体与发布仍为 0。当前只开放 G4 的唯一一张
-S03，不开放第二张图片或后继媒体。
+Attempt 2 用恰好 5 次真实请求通过 Z1–Z4。G4 Attempt 02–04 随后各以图片 / VL 各一次完成主路径，
+但三张候选均未通过。Attempt 04 说明机器 VL 满分也不能替代事实与画面检查；当前需改用能锁定对象坐标
+关系的制作方法，不开放 G5 或后继媒体。
 
 ## 发布前仍缺的外部输入
 
@@ -221,6 +227,7 @@ S03，不开放第二张图片或后继媒体。
 | 如何快速浏览 12 镜 | [逐镜 HTML 阅读板](paynes-creek-shot-board.html) |
 | 最终旁白和图片 Prompt | [中文旁白与 Prompt 包](paynes-creek-chinese-script-prompt-pack.md) |
 | 程序可读 Scene | [生产草案 JSON](paynes-creek-production-draft.json) |
+| 已完成的本地矢量样片 | [审计摘要](../../testing/paynes-creek-vector-pilot-2026-08-13.json)；[最终 MP4](../../../storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-vector-pilot-v1-yuv420p.mp4) |
 | Style 是否已经建立和验证 | [16:9 Style 状态审计](paynes-creek-style-state-audit.md) |
 | 第一次真实运行发生了什么 | [S03 媒体 Gate](paynes-creek-s03-media-gate.md) |
 | 下一次 S03 如何授权、记录与停止 | [S03 重试协议](paynes-creek-s03-retry-protocol.md)；[空白 JSON 模板](paynes-creek-s03-gate-evidence-template.json) |
@@ -237,14 +244,13 @@ S03，不开放第二张图片或后继媒体。
 
 ## 控制器决策
 
-- `input_used`：YouTube 赛道研究、Paynes Creek 来源 / 版权 / 分镜 / 旁白 / Prompt / Run 记录、
-  SiliconFlow 兼容性决策与适配蓝图。
-- `artifact`：G2-A / G2-B 离线适配、模型调用证据迁移、本运行手册、配套 HTML 控制台、Style 状态审计、G5 串行锚点协议、G6 九镜串行协议、
-  G7 语音字幕与 Run 边界协议、
-  本地样片生产验证章程、G8 不可变人工验收协议与空白模板。
-- `decision`：G2=`pass_offline`，G3 Attempt 2=`pass_for_s03_single_image_review`；真实 Provider 兼容性已在
-  固定 5 次零媒体范围内通过，但不能把它扩大为媒体质量已通过或跳过 G4。
-- `next_step`：按既有授权和 S03 协议生成唯一一张 S03，执行 VL 与人工事实 / 视觉复核；失败即停止。
+- `input_used`：YouTube 赛道研究、Paynes Creek 来源 / 版权 / 分镜 / 旁白、三次 G4 失败记录、Sprint 198
+  矢量样片 Manifest、最终 MP4、完整解码与逐镜视觉证据。
+- `artifact`：115.776 秒本地最终 MP4、一次 TTS 音频、12 镜确定性 SVG / CSS Composition、Manifest、
+  接触表、S03 专项帧与[审计摘要](../../testing/paynes-creek-vector-pilot-2026-08-13.json)。
+- `decision`：确定性矢量路径=`pass_local_vector_pilot`；G4 Attempt 04 仍为 `needs_revision`、G5 未开放。
+  本地制作成功不等于原 Native Agent Gate 通过、市场验证或公开发布授权。
+- `next_step`：先观看本地 MP4；若内容方向确认，再独立执行发音 / 字幕、标题、封面、频道和上传确认。
 
-本轮完成：G3 已以 5 次真实零媒体请求通过，Tool 恢复、消息边界和证据链一致，媒体仍为 0。
-下一步建议：进入 G4，只生成并审核唯一一张 S03。
+本轮完成：12 镜 Paynes Creek 本地矢量样片已生成并通过媒体与视觉复核，发布仍为 0。
+下一步建议：先观看成片，再决定是否进入发布前语言与包装审核。

@@ -1525,3 +1525,104 @@ YouTube。
 
 本轮完成：G3 在 5 次真实请求和零媒体边界内通过，S03 单镜 Gate 已具备执行前提。
 下一步建议：只执行 G4 单张 S03，不跳到批量图片、语音、视频或发布。
+
+## 2026-08-13：G4 S03 Attempt 02 真实出图但质量失败
+
+### 新证据
+
+- Run `64332bdfc1cd4111b0da5ec532e13bb2` 使用锁定 Prompt、DeepSeek-V3.2、Qwen-Image 与
+  Qwen3-VL-32B-Instruct；Agent 3 次、图片 1 次、VL 1 次，均无重试，其他媒体与发布调用为 0。
+- 候选为 1664×928 PNG，SHA-256
+  `d6a6941a61b9ccc08785273aa933ac3f72c06a142cd9de0810607a6b4383eada`。图片 Prompt hash 与 canonical
+  S03 完全一致，所以不是 Agent 改写输入。
+- VL `revise` 与原图 / pan 探针复核一致：现代水龙头和管线、伪 Logo、乱码、底部字幕区占用均为硬失败。
+
+### 控制器决策
+
+- `input_used`：Attempt 02 Run / Step / Asset、原始候选、pan_right 首尾探针、S03 事实与视觉禁区。
+- `artifact`：[不可变 G4 记录](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-02.json)与本地候选 / 探针。
+- `decision`：Attempt 02=`needs_revision`；候选只保留审计，不生成 approved 文件，不开放 G5。
+- `next_step`：另建 Attempt 03，把包含大量负面现代物件名的 Prompt 改为“只允许五个对象”的正向白名单；
+  保持 Style、模型和 Provider 不变，仍只允许一张图片和一次 VL。
+
+本轮完成：首次真实 S03 图片链路可用，但画面质量未通过，失败边界已明确。
+下一步建议：先冻结 Attempt 03 的正向对象白名单 Prompt，再执行新的一图 Gate。
+
+## 2026-08-13：G4 S03 Attempt 03 消除现代器件但仍因乱码与多余对象失败
+
+### 新证据
+
+- Run `0759b5260bbe4e0da21c82fb8332fec4` 使用提交后锁定的正向对象白名单 Prompt；规范化 SHA-256 为
+  `ecf5820ca7912cb5a5ba955abc17a4fa6575937f547a1c8b3bb3ffe9bb70195e`，Style、Skill、Provider 和
+  DeepSeek-V3.2 / Qwen-Image / Qwen3-VL-32B-Instruct 均未改变。
+- Agent 3 次、图片 Provider 1 次、VL 1 次且零重试；语音、字幕、视频和发布调用均为 0。候选为
+  1664×928 PNG，SHA-256 `c61811900129a461ddbc9fa719c440c338a9e8b2ee786b252a1ddd1c82c40e9e`。
+- 正向白名单成功消除了 Attempt 02 的现代水龙头和管件，主要机制也更清楚；但模型在底部生成不可读伪
+  中文，又增加右下木块与延伸虚线，陶罐和乱码侵入字幕安全区。机器 `revise` 与委托事实 / 视觉 `fail`
+  一致。
+
+### 控制器决策
+
+- `input_used`：Attempt 03 Run / Step / Asset、原始候选、pan_right 接触表、机器问题清单与 S03 对象白名单。
+- `artifact`：[不可变 G4 Attempt 03 记录](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-03.json)、本地
+  候选和运动探针。
+- `decision`：Attempt 03=`needs_revision`；不得产生 approved 文件或开放 G5。正向白名单是有效改进，
+  但不能把“没有现代器件”误判为整图通过。
+- `next_step`：另建新 Attempt，继续保持 Provider / 模型 / Style 不变，只修改 Prompt：去掉会诱发说明图
+  注释与箭头的虚线要求，把主体整体缩小并上移，要求纯色空白下三分之一；仍只允许一图一 VL。
+
+本轮完成：第二次真实 S03 尝试已完成并留下不可变失败证据，现代器件问题已定位为已修复变量。
+下一步建议：冻结新的极简无标注 Prompt 后执行独立单图 Attempt，继续停在 G4。
+
+## 2026-08-13：G4 S03 Attempt 04 机器 accept 被事实与视觉复核否决
+
+### 新证据
+
+- Attempt 04 使用全幅深海墨空场与无信息图标注语法，Run `1ea7b158e16349b1a4477798b2edf617` 的 Agent、
+  图片、VL 调用分别为 3 / 1 / 1，全部零重试，其他媒体和发布为 0。
+- 候选 1664×928，SHA-256 `b5d75374896162dc0da3b3df54c247e52f778fe85799ead6db96ee1fa94ad5cd`；
+  现代器件、伪文字和多余对象问题消失，说明“静默动画帧”语法对这些变量有效。
+- VL 返回 `accept` 且六项 1.0，但原图明确把陶罐放在木槽土层内，滴嘴 / 木槽关系倒置，液流穿过木槽
+  后向底边扩张并出画，下方 42% 字幕区完全失守。委托事实与视觉复核均为 `fail`。
+- 报告器一度显示模板旧 request；数据库真实 Tool Item 证明 Provider 使用了新 request。Runner 现从真实
+  Tool Item 计算 observed inspection hash，并把不一致作为硬停止条件。
+
+### 控制器决策
+
+- `input_used`：Attempt 04 原图、pan_right 接触表、真实 Tool Item、VL 满分结果与锁定 Prompt / inspection。
+- `artifact`：[Attempt 04 记录](../../testing/paynes-creek-s03-g4-2026-08-13-attempt-04.json)、候选与修正后的
+  真实 inspection request 证据链。
+- `decision`：Attempt 04=`needs_revision`；不能用机器 `accept` 覆盖明显的机制错误或打开 G5。
+- `next_step`：不再只迭代同一抽象英文 Prompt；应先评审确定性矢量机制画面或受控图像编辑方案，明确
+  陶罐必须位于出液口正下方、液流必须终止在罐内，再决定独立新 Attempt。
+
+本轮完成：识别并阻止了一次 VL 假阳性，真实检查参数与报告证据也已对齐。
+下一步建议：改用能锁定对象坐标关系的制作方法，仍先过 S03，再扩展到十二镜。
+
+## 2026-08-13：Paynes Creek 确定性矢量本地样片通过
+
+### 新证据
+
+- 三次自由生图没有得到可批准的 S03，因此本轮没有继续消耗随机图片调用，而是把 12 镜全部实现为
+  Remotion 内联 SVG / CSS 矢量动画；S03 的木槽、出液口、陶罐与液流终点均由代码坐标锁定。
+- 锁定的 536 字旁白只调用一次 SiliconFlow `FunAudioLLM/CosyVoice2-0.5B:alex`，获得 115.704 秒 MP3；
+  本地 Remotion 渲染与 yuv420p 色域规范化各一次，无重试，图片 / VL / 视频生成 Provider 与发布调用为 0。
+- 最终 MP4 为 1920×1080、30fps、H.264 / AAC、3472 帧、115.776 秒，SHA-256 为
+  `e063e02009c8dfc109781b8f030134fd36dc327c368816efd86f919d523d6a09`。完整解码、12 镜接触表、
+  S03 专项帧、字幕可读性和音频技术检查通过。
+- 11 个镜头边界均靠近自然停顿，最大偏差 0.780 秒；未发现超过 1.5 秒的长静音。当前没有执行独立
+  ASR 转写，因为可用 ASR Skill 要求另一次显式确认，所以发音准确性仍是公开发布前的单独检查项。
+
+### 控制器决策
+
+- `input_used`：Sprint 198 合同、锁定的 12 镜生产草案与旁白 hash、三次 G4 失败证据、最终 MP4、
+  ffprobe / decode / 音量 / 静音检查、12 镜接触表与 S03 专项帧。
+- `artifact`：[矢量样片审计摘要](../../testing/paynes-creek-vector-pilot-2026-08-13.json)、本地最终 MP4、
+  Manifest、运行报告、接触表和 S03 中点帧。
+- `decision`：`pass_local_vector_pilot`；只证明确定性矢量方法能产出一支完整本地样片。G4 随机图片仍为
+  `needs_revision`，G5 未开放，市场适配未验证，`publication_authorized=false`。
+- `next_step`：先由用户观看本地 MP4；若要准备上传，再独立确认发音 / 字幕、标题、封面、频道和发布授权，
+  不把本地技术通过自动升级为公开实验。
+
+本轮完成：Paynes Creek 12 镜确定性矢量本地样片已真实生成并通过技术与视觉复核。
+下一步建议：先观看成片；确认内容方向后再补发布前语言与包装审核。

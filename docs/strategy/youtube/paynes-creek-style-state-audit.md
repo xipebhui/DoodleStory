@@ -1,7 +1,7 @@
 # Paynes Creek 16:9 Style 状态审计
 
 审计日期：2026-08-12<br>
-状态：`local_record_active / untested / no_media / no_channel_binding`<br>
+状态：`local_record_active / media_observed_but_rejected / no_channel_binding`<br>
 审计方式：仓库本地验证库只读查询 + 当前 Style / Agent / 图片代码静态核对
 
 ## 结论
@@ -17,7 +17,7 @@
 | --- | --- | --- | --- |
 | Style 记录 | `style_record_created=true` | 本地存在唯一可引用记录 | 其他环境也有同一记录 |
 | 配置状态 | `config_active=true` | 名称、Prompt、模型和比例满足当前启用条件 | Prompt 会稳定生成合格画面 |
-| 媒体验证 | `media_output_verified=false` | 尚无真实图片质量、尺寸或成本证据 | Provider、构图、安全区或风格一致性已通过 |
+| 媒体验证 | `media_output_verified=false` | Attempt 02 已观察到真实输出，但因现代器件、文字与安全区失败被拒绝 | Provider、构图、安全区或风格一致性已通过 |
 | 频道关系 | `youtube_channel_binding_count=0` | 当前没有生产频道绑定 | 频道已选定或允许发布 |
 
 ## 只读事实快照
@@ -85,8 +85,8 @@ Style、切换模型 / Provider、补参考图或把历史本地 ID 直接写入
 - `input_used`：当前本地 Style / Test / Task / Run / Image / Channel Binding 只读事实，Style API 与图片
   Gateway 代码，S03 历史 Gate。
 - `artifact`：本状态审计、生产草案 v2 与相关生产入口的状态同步。
-- `decision`：保留现有 Style，不重复创建；配置可追溯，但视觉与媒体仍为未验证。
-- `next_step`：维持 G4 停止；G2 已离线完成，当前先评审 G3，而不是测试 Style 或生成图片。
+- `decision`：保留现有 Style；Attempt 02 证明 Provider 可出图，但当前 Prompt 输出质量不通过。
+- `next_step`：另建 G4 Attempt 03 的 Prompt 修订评审；不重复创建 Style、不换模型或 Provider。
 
 本轮完成：把 Style 记录、启用、媒体验证和频道绑定四种状态拆开，并固定未来重新解析规则。<br>
-下一步建议：G3 已通过；只按 G4 协议生成并检查唯一一张 S03，不调用 Style Test 或批量媒体接口。
+下一步建议：先把 Attempt 02 的硬失败固化，再以正向对象白名单冻结 Attempt 03；仍只生成一张 S03。

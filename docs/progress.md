@@ -1864,3 +1864,71 @@
   Prompt 与签名 URL 扫描，终态为 `pass_for_s03_single_image_review`。
 - G3 只开放 G4 的一张 S03：下一步必须是一个新 Run、最多一次图片 Provider attempt、一张候选、一次 VL
   和人工事实 / 视觉复核；不得直接批量生成或进入语音、视频和发布 Gate。
+
+# Sprint 195 Paynes Creek G4 单张 S03 真实媒体 Gate（预检实现已就绪）
+
+- Sprint 194 修正 SQLite URL 后，正确 `doodlestory.db` 尚未承接旧 URL 编码文件中的本地验证数据；本轮先
+  对旧文件执行只读完整性、schema、Style / Skill 和 SHA-256 校验，再只在目标为 0 字节时非破坏性复制。
+  两份文件 hash 均为 `ee25e2fce58bcc958c6280b9fbbb095ef736b83f279bea3974a601216fb71b32`，
+  `integrity_check=ok`、64 张表、head `w4x5y6z7a8b9`；旧文件继续保留作恢复副本。
+- 当前数据库重新解析到唯一 active Style：`Qwen/Qwen-Image / 16:9 / prompt / 0 references`，以及唯一
+  published Skill Version 1：只含 `generate_image + inspect_image`。S03 完整 Prompt hash 与锁定值一致。
+- Native `inspect_image` 已从 `TEXT_FALLBACK_MODEL` 改为用户许可清单内的
+  `SILICONFLOW_VISION_MODEL=Qwen/Qwen3-VL-32B-Instruct`；调用明确 `max_retries=0`，技术失败不回退其他
+  VL Provider。端点总表与规格同步更新。
+- Agent Vision 3 项、Native 受影响 41 项、完整后端 412 项测试通过；Python compileall、控制器校验与
+  `git diff --check` 通过。真实 G4 Run 尚未创建，新增图片、VL、语音、字幕、视频和发布调用仍为 0。
+- 新增一次性 G4 Runner，执行前逐项复核 Git / Prompt / G3 / Style / Skill / Route / Provider 和关闭重试
+  配置；执行时只创建一个 Conversation / Run，并把候选原始 bytes、真实尺寸及 `pan_right` 两端探针保存到
+  本地 `storage/exports`。机器 `accept` 仍不会自动写最终 Gate 通过；脚本聚焦 3 项测试通过。
+- G4 Attempt 02 Run `64332bdfc1cd4111b0da5ec532e13bb2` 成功结束；Agent 模型调用 3 次、图片 Provider
+  1 次、SiliconFlow VL 1 次，全部零重试，语音 / 字幕 / 视频 / 发布均为 0。候选 PNG 为 1664×928，
+  SHA-256 `d6a6941a61b9ccc08785273aa933ac3f72c06a142cd9de0810607a6b4383eada`。
+- VL 返回 `revise`；原图与 `pan_right` 探针确认现代金属水龙头 / 管件、伪 Logo、乱码与底部字幕区占用。
+  委托事实和视觉复核均为 `fail`，Gate 终态 `needs_revision`；没有 approved 文件或第二张图片，G5 未开放。
+
+# Sprint 196 Paynes Creek G4 Attempt 03 正向对象白名单（已完成并停止）
+
+- 基于 Attempt 02 的真实失败，新 Prompt 移除现代器件负面关键词枚举，改为只允许五组视觉元素、四角全空、
+  底部 32% 全空的正向白名单；规范化 SHA-256 为
+  `ecf5820ca7912cb5a5ba955abc17a4fa6575937f547a1c8b3bb3ffe9bb70195e`。
+- G4 Runner 已支持显式 Prompt 文件 / hash、previous attempt、候选 stem 和独立输出路径；Attempt 02 默认
+  入口保持兼容。聚焦 4 项测试与 compileall、`git diff --check` 通过。
+- 本 Attempt 只改变图片 Prompt；Style、Skill、Agent / 图片 / VL 模型、Provider、比例、旁白和 Gate 门槛
+  保持不变。Run `0759b5260bbe4e0da21c82fb8332fec4` 成功结束，Agent 模型 3 次、图片 Provider 1 次、
+  SiliconFlow VL 1 次且零重试，语音 / 字幕 / 视频 / 发布均为 0。
+- 候选 `PC-S03-v02.png` 为 1664×928，SHA-256
+  `c61811900129a461ddbc9fa719c440c338a9e8b2ee786b252a1ddd1c82c40e9e`。现代器件已消失，但底部
+  乱码、未获准木块、延伸虚线和字幕安全区占用仍存在；机器 `revise`、委托事实 / 视觉复核均为 `fail`。
+- Gate 终态保持 `needs_revision`；未产生 approved 文件，G5 未开放。新尝试必须使用新合同和新 Prompt
+  hash，不能在 Attempt 03 内重试或把失败候选用于成片。
+
+# Sprint 197 Paynes Creek G4 Attempt 04 静默博物馆动画帧（已完成并停止）
+
+- 根据 Attempt 03 的乱码、木块和虚线问题，冻结全幅深海墨空场、主体上移缩小的新 Prompt，并把重建
+  边界保留在原旁白中；Prompt 与独立 inspection request 分别以 SHA-256 锁定。
+- G4 Runner 已支持检查文件 / hash，并在真实运行后进一步修正证据路径：从实际 `inspect_image` Tool Item
+  提取 checks / expected 与 observed hash，不再把模板 request 当成真实调用；未来不匹配会直接停止。
+- Attempt 04 Run `1ea7b158e16349b1a4477798b2edf617` 成功结束；Agent 3 次、图片 Provider 1 次、VL 1 次
+  且零重试，其他媒体与发布为 0。候选 1664×928，SHA-256
+  `b5d75374896162dc0da3b3df54c247e52f778fe85799ead6db96ee1fa94ad5cd`。
+- VL 给出 `accept` 和全项 1.0，但原图 / pan 探针人工委托复核否决：陶罐位于木槽土层内，滴嘴与木槽
+  关系倒置，青绿液流向画外扩张并占用下方 42% 字幕区。事实 / 视觉均 `fail`，Gate=`needs_revision`。
+- 未产生 approved 文件，G5 未开放；机器满分不能覆盖可见的事实与构图错误。
+
+# Sprint 198 Paynes Creek 确定性矢量本地样片（已完成：pass_local_vector_pilot）
+
+- 在三次随机 S03 图片均被事实 / 视觉复核否决后，改用本地 Remotion 内联 SVG / CSS 矢量动画制作完整
+  12 镜样片；该路径不修改 G4 失败结论，也不把矢量样片伪装为已批准的随机图片资产。
+- 使用生产草案锁定的 536 字中文旁白，一次调用 SiliconFlow
+  `FunAudioLLM/CosyVoice2-0.5B:alex` 生成 115.704 秒 MP3；图片、VL、视频生成 Provider 调用均为 0，
+  TTS、Remotion 与 FFmpeg 规范化各执行一次且无重试。
+- 最终 MP4 为 1920×1080、30fps、H.264 / AAC、`yuv420p / color_range=tv`、3472 帧，容器时长
+  115.776 秒，SHA-256 `e063e02009c8dfc109781b8f030134fd36dc327c368816efd86f919d523d6a09`。
+- 完整视频 / 音频解码、媒体 Profile、12 镜接触表和 S03 专项构图复核均通过；S03 现已确定性锁定为
+  木槽在上、陶罐在下、液流终止罐内。音频没有超过 1.5 秒的长静音，11 个场景边界到最近自然停顿的
+  最大偏差为 0.780 秒。
+- 当前终态为 `pass_local_vector_pilot`：本地成片可播放、可审计，但不代表原 G4 / G5 产品 Gate 通过，
+  不代表市场验证，也未授权 YouTube 上传。ASR 发音转写因可用 Skill 要求另一次显式确认而未执行。
+- 可审计摘要保存在 `docs/testing/paynes-creek-vector-pilot-2026-08-13.json`；完整媒体、Manifest、帧证据和
+  运行报告保存在 `storage/exports/paynes-creek/vector-pilot-v1/`。

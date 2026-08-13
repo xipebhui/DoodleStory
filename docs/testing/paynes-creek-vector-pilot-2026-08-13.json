@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_deterministic_vector_local_pilot_audit",
+  "status": "pass_local_vector_pilot",
+  "date": "2026-08-13",
+  "publication_authorized": false,
+  "source": {
+    "raw_render_source_git_commit": "4afc05f225cbc3b72c2ffc31b0284128a61df584",
+    "finalization_source_git_commit": "e3c4e9d04498e1e1ad943276b2a8dc5a714ce8e1",
+    "draft": "docs/strategy/youtube/paynes-creek-production-draft.json",
+    "draft_sha256": "cf51a723e441c6635b7fdf3f1984f2e935e0d3155dc7b8a95892c7ccb88c32e4",
+    "narration_sha256": "adca90d4366d27d05b62a4b79063d596826d798bac39f95c6cff73c7df57f7dd",
+    "scene_count": 12
+  },
+  "calls": {
+    "siliconflow_tts": 1,
+    "image_provider": 0,
+    "vision_provider": 0,
+    "video_generation_provider": 0,
+    "remotion_local_render": 1,
+    "ffmpeg_color_normalization": 1,
+    "publish": 0,
+    "automatic_retry": 0
+  },
+  "audio": {
+    "provider": "siliconflow",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "voice": "FunAudioLLM/CosyVoice2-0.5B:alex",
+    "path": "storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-narration-v1.mp3",
+    "sha256": "edc097f0623da8e2d4fe9a245bea3ebbd6756e4ee2548283ad044d84ee11875f",
+    "duration_ms": 115704
+  },
+  "video": {
+    "path": "storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-vector-pilot-v1-yuv420p.mp4",
+    "sha256": "e063e02009c8dfc109781b8f030134fd36dc327c368816efd86f919d523d6a09",
+    "bytes": 10240459,
+    "container_duration_ms": 115776,
+    "video_stream_duration_ms": 115733,
+    "frames": 3472,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "pixel_format": "yuv420p",
+    "color_range": "tv"
+  },
+  "evidence": {
+    "manifest": "storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-vector-manifest-v1.json",
+    "manifest_sha256": "56b409e425b15d4cc90141a64db435517c81ccdd29624bc5a45ca77920439342",
+    "contact_sheet": "storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-vector-contact-sheet-v1.png",
+    "s03_midpoint": "storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-s03-midpoint-v1.png",
+    "full_report": "storage/exports/paynes-creek/vector-pilot-v1/paynes-creek-vector-pilot-v1-report.json"
+  },
+  "qa": {
+    "full_video_audio_decode": "pass",
+    "media_profile": "pass",
+    "twelve_scene_contact_sheet": "pass",
+    "s03_mechanism_relationship": "pass",
+    "controlled_text_readability": "pass",
+    "silence_over_1_5_seconds_at_minus_45_db": 0,
+    "audio_mean_db": -28.3,
+    "audio_max_db": -0.8,
+    "scene_boundaries_checked": 11,
+    "maximum_boundary_to_natural_pause_delta_seconds": 0.78,
+    "speech_to_text_review": "not_run_separate_confirmation_required"
+  },
+  "decision": {
+    "local_video_ready": true,
+    "publication_authorized": false,
+    "upload_allowed": false,
+    "original_random_image_gate": "needs_revision",
+    "next_product_gate": "not_open",
+    "note": "This passes only the local deterministic vector pilot and is not YouTube market validation."
+  },
+  "sensitive_values_removed": true
+}

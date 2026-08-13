@@ -1,0 +1,331 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_s03_single_image_gate",
+  "record_status": "awaiting_delegated_review",
+  "created_at": "2026-08-13",
+  "gate": {
+    "gate_id": "G4",
+    "purpose": "local_production_validation",
+    "attempt_label": "g4-2026-08-13-attempt-04",
+    "previous_attempt": {
+      "gate_record": "docs/testing/paynes-creek-s03-g4-2026-08-13-attempt-03.json",
+      "run_id": "0759b5260bbe4e0da21c82fb8332fec4",
+      "outcome": "needs_revision",
+      "image_call_count": 1
+    }
+  },
+  "locked_inputs": {
+    "topic_id": "paynes-creek-salt-production-transport",
+    "scene": {
+      "scene_id": "S03",
+      "target_duration_seconds": 11,
+      "han_characters": 44,
+      "narration": "下面这一步，是依据遗迹和类比做的重建：盐工可能让盐水经过含盐土，提高浓度，再把更浓的卤水收进陶罐。",
+      "fact_ids": [
+        "F3"
+      ],
+      "source_ids": [
+        "S3",
+        "S4"
+      ],
+      "rights_ids": [
+        "R2",
+        "R3"
+      ],
+      "evidence_level": "A_plus_B_reconstruction",
+      "motion_preset": "pan_right",
+      "expected_candidate_filename": "PC-S03-v03.png",
+      "approved_filename_only_after_full_pass": "PC-S03-approved.png"
+    },
+    "source_lock": {
+      "input_baseline_git_commit": "ff3033cefd1bf3ea0128f8719694b683b9b2e73a",
+      "production_draft": "docs/strategy/youtube/paynes-creek-production-draft.json",
+      "prompt_document": "docs/strategy/youtube/paynes-creek-s03-attempt-04-prompt.txt",
+      "prompt_selector": "entire file",
+      "canonical_prompt_encoding": "UTF-8",
+      "canonical_prompt_newline": "LF",
+      "canonical_prompt_trailing_newline": false,
+      "expected_prompt_sha256": "7405efec3ac5522cb256239d0a901abdc7f6db05a2c8063ccba440c7d5984634",
+      "submitted_prompt_sha256": "7405efec3ac5522cb256239d0a901abdc7f6db05a2c8063ccba440c7d5984634",
+      "prompt_hash_matches": true,
+      "inspection_document": "docs/strategy/youtube/paynes-creek-s03-attempt-04-inspection.json",
+      "expected_inspection_sha256": "78f4f7007590109a45190a3588742b828d5ffbf961ce16f6b89eeec95d49f55f",
+      "submitted_inspection_sha256": "78f4f7007590109a45190a3588742b828d5ffbf961ce16f6b89eeec95d49f55f",
+      "inspection_hash_matches": true,
+      "observed_inspection_sha256": "78f4f7007590109a45190a3588742b828d5ffbf961ce16f6b89eeec95d49f55f",
+      "inspection_tool_request_matches": true
+    },
+    "style_and_skill": {
+      "required_style_name": "Paynes Creek Evidence Desk 16:9",
+      "required_image_model": "Qwen/Qwen-Image",
+      "required_aspect_ratio": "16:9",
+      "required_tool_names": [
+        "generate_image",
+        "inspect_image"
+      ],
+      "observed_style_id": "4443d2412c994ec298b635e6c63806e7",
+      "observed_skill_version_id": "ba3a4875771248c4870b1ab6cf6afabd",
+      "observed_at": "2026-08-12T18:37:00.435Z"
+    }
+  },
+  "preflight": {
+    "g2_offline_adapter": {
+      "required_status": "pass_offline",
+      "observed_status": "pass_offline",
+      "evidence_ref": "docs/contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md",
+      "verified_at": "2026-08-12T18:37:00.435Z"
+    },
+    "g3_zero_media_gate": {
+      "required_status": "pass_for_s03_single_image_review",
+      "observed_status": "pass_for_s03_single_image_review",
+      "evidence_ref": "docs/testing/siliconflow-native-agent-compatibility-report.json",
+      "verified_at": "2026-08-12T18:37:00.435Z"
+    },
+    "g4_media_authorization": {
+      "authorized_by": "workspace_owner",
+      "authorized_at": "2026-08-12T18:37:00.435Z",
+      "authorization_ref": "user-current-task-full-local-video-authorization",
+      "authorized_run_count": 1,
+      "authorized_image_tool_calls": 1,
+      "authorized_inspect_image_tool_calls": 1,
+      "automatic_retry_authorized": false,
+      "provider_switch_authorized": false,
+      "prompt_change_authorized": false
+    },
+    "cost_cap": {
+      "currency": "existing_provider_quota_only",
+      "amount": 0,
+      "basis": "user_approved_maximum_for_this_gate",
+      "approved_by": "workspace_owner",
+      "approved_at": "2026-08-12T18:37:00.435Z"
+    },
+    "reviewers": {
+      "fact_reviewer": "Codex delegated production reviewer (AI)",
+      "visual_reviewer": "Codex delegated production reviewer (AI)"
+    },
+    "all_passed": true,
+    "blockers": []
+  },
+  "run_snapshot": {
+    "conversation_id": "8942974f69014f28a2471204431da807",
+    "run_id": "1ea7b158e16349b1a4477798b2edf617",
+    "execution_attempt": 1,
+    "created_at": "2026-08-12T18:35:34.000Z",
+    "finished_at": "2026-08-12T18:37:00.424Z",
+    "terminal_status": "succeeded",
+    "route_id": "siliconflow_chat_v1",
+    "provider": "siliconflow",
+    "api_shape": "chat_completions",
+    "agent_model": "deepseek-ai/DeepSeek-V3.2",
+    "image_provider": "qy",
+    "image_model": "Qwen/Qwen-Image",
+    "aspect_ratio": "16:9"
+  },
+  "observed_call_counts": {
+    "model_call_count": 3,
+    "generate_image_tool_call_count": 1,
+    "image_provider_call_count": 1,
+    "inspect_image_tool_call_count": 1,
+    "speech_call_count": 0,
+    "subtitle_call_count": 0,
+    "video_call_count": 0,
+    "publish_call_count": 0
+  },
+  "generate_image": {
+    "tool_call_id": "019ff7425f20d918e2e8615f486db782",
+    "step_id": "afdecb85d4714963b5df18de2299522e",
+    "status": "succeeded",
+    "started_at": "2026-08-12T18:36:02.557Z",
+    "finished_at": "2026-08-12T18:36:20.660Z",
+    "provider": "qy",
+    "model": "Qwen/Qwen-Image",
+    "provider_request_id": "202608121836028333566858268d9d6lkTIBks6",
+    "image_id": "11350d2ee6d84ec78fe7d6482673e3f4",
+    "asset_id": "d478121765174252a2b7eb18f2430eaf",
+    "error_type": null,
+    "error_code": null,
+    "error_summary": null,
+    "retryable": false
+  },
+  "candidate_asset": {
+    "status": "observed",
+    "candidate_filename": "storage/exports/paynes-creek/g4-attempt-04/PC-S03-v03.png",
+    "approved_filename": null,
+    "mime_type": "image/png",
+    "byte_size": 1028854,
+    "sha256": "b5d75374896162dc0da3b3df54c247e52f778fe85799ead6db96ee1fa94ad5cd",
+    "actual_width_px": 1664,
+    "actual_height_px": 928,
+    "actual_aspect_ratio": 1.793103,
+    "gateway_request_target_px": {
+      "width": 1792,
+      "height": 1024,
+      "status": "code_target_not_observed_output"
+    },
+    "delivery_target_px": {
+      "width": 1920,
+      "height": 1080,
+      "status": "target_not_observed_output"
+    },
+    "motion_probe": {
+      "preset": "pan_right",
+      "zoom_percent": 8,
+      "pan_percent": 3,
+      "safe_after_probe": false,
+      "evidence_ref": "storage/exports/paynes-creek/g4-attempt-04/PC-S03-pan-right-contact-sheet.png"
+    }
+  },
+  "inspect_image": {
+    "tool_call_id": "019ff742f4bd9471714d1ba2d47bae14",
+    "step_id": "5694feae4c164eefb9585d1d8dc97ae4",
+    "status": "succeeded",
+    "request": {
+      "image_id": "11350d2ee6d84ec78fe7d6482673e3f4",
+      "checks": [
+        "historical_mechanism_alignment",
+        "reconstruction_boundary",
+        "modern_object_exclusion",
+        "composition_and_subtitle_safety",
+        "pan_right_crop_safety",
+        "visual_artifacts_and_text_exclusion"
+      ],
+      "expected": {
+        "story_beat": "A cautious non-photoreal horizontal reconstruction of brine concentration. Show only one compact elevated wooden tray with low-detail saline earth, one short wooden drip spout, one teal liquid path, and one rough unglazed ceramic jar. A subtle amber rim may distinguish the reconstructed tray and spout; no in-image annotation, arrow, bracket, label or dashed reconstruction contour is required because the narration explicitly states the reconstruction boundary. Keep the entire mechanism high in the center and leave the lower 42 percent as uniform empty deep marine ink space for Chinese subtitles. Exclude modern devices, extra objects, text, pseudo-writing, logos and watermarks.",
+        "characters": [],
+        "required_text": []
+      },
+      "canonical_sha256": "78f4f7007590109a45190a3588742b828d5ffbf961ce16f6b89eeec95d49f55f",
+      "matches_locked_request": true
+    },
+    "response": {
+      "image_id": "11350d2ee6d84ec78fe7d6482673e3f4",
+      "verdict": "accept",
+      "scores": {
+        "historical_mechanism_alignment": 1.0,
+        "reconstruction_boundary": 1.0,
+        "modern_object_exclusion": 1.0,
+        "composition_and_subtitle_safety": 1.0,
+        "pan_right_crop_safety": 1.0,
+        "visual_artifacts_and_text_exclusion": 1.0
+      },
+      "issues": [],
+      "provider": "siliconflow",
+      "model": "Qwen/Qwen3-VL-32B-Instruct",
+      "latency_ms": 7546,
+      "error_type": null,
+      "error_summary": null
+    }
+  },
+  "human_fact_review": {
+    "status": "reviewed",
+    "reviewer": "Codex delegated production reviewer (AI; not a human publication reviewer)",
+    "reviewed_at": "2026-08-13T02:38:40.264+08:00",
+    "checks": [
+      {
+        "id": "fact_reconstruction_not_artifact_claim",
+        "status": "pass",
+        "note": "画面保持示意性切纸风格，没有把重建组合伪装成出土原物。"
+      },
+      {
+        "id": "fact_only_allowed_mechanism_objects",
+        "status": "pass",
+        "note": "可见对象仅为木槽、含盐土、木滴嘴、液体和一个陶罐，没有额外器件。"
+      },
+      {
+        "id": "fact_no_modern_device_or_fixed_workstation",
+        "status": "pass",
+        "note": "未出现现代设备、管路、阀门或固定工作站。"
+      },
+      {
+        "id": "fact_no_sacapulas_or_paper_figure_copy",
+        "status": "pass",
+        "note": "未复制 Sacapulas 装置或论文图版。"
+      },
+      {
+        "id": "fact_no_unsupported_historical_claim",
+        "status": "fail",
+        "note": "陶罐被放在木槽土层内，滴嘴和液体与木槽关系倒置，青绿液流穿过木槽后向画外扩张，没有表达盐水经含盐土后收进陶罐的主张。"
+      }
+    ],
+    "verdict": "fail"
+  },
+  "human_visual_review": {
+    "status": "reviewed",
+    "reviewer": "Codex delegated production reviewer (AI; not a human publication reviewer)",
+    "reviewed_at": "2026-08-13T02:38:40.264+08:00",
+    "checks": [
+      {
+        "id": "visual_actual_ratio_recorded",
+        "status": "pass",
+        "note": "已从真实 PNG 记录 1664×928 和 1.793103；未冒充 1920×1080。"
+      },
+      {
+        "id": "visual_central84_upper70_bottom30",
+        "status": "fail",
+        "note": "木槽及大段青绿液体占据下方 42% 空场，液流直接延伸并裁断在底边，字幕安全区没有保留。"
+      },
+      {
+        "id": "visual_pan_right_probe_safe",
+        "status": "fail",
+        "note": "水平平移没有切掉主体，但青绿液体在起止帧都已从底边出画，运动探针不能判为安全。"
+      },
+      {
+        "id": "visual_teal_path_amber_dashed_reconstruction",
+        "status": "fail",
+        "note": "琥珀边缘光存在，但青绿液流方向和终点错误，不能作为正确机制视觉编码。"
+      },
+      {
+        "id": "visual_palette_and_editorial_cutaway",
+        "status": "pass",
+        "note": "深海墨、青绿、琥珀、蓝灰、木与陶土配色统一，切纸质感清楚。"
+      },
+      {
+        "id": "visual_no_text_logo_watermark_or_artifact",
+        "status": "pass",
+        "note": "未观察到文字、伪文字、Logo、水印或签名。"
+      },
+      {
+        "id": "visual_mechanism_readable_at_video_size",
+        "status": "fail",
+        "note": "对象清晰但空间关系传达了错误机制：陶罐不在出液口下方，液流也未终止于陶罐。"
+      }
+    ],
+    "verdict": "fail"
+  },
+  "gate_decision": {
+    "allowed_statuses": [
+      "not_run",
+      "blocked_precondition",
+      "failed_before_image",
+      "failed_during_image",
+      "failed_during_inspection",
+      "needs_revision",
+      "pass_for_s01_anchor"
+    ],
+    "status": "needs_revision",
+    "machine_verdict": "accept",
+    "fact_verdict": "fail",
+    "visual_verdict": "fail",
+    "decided_by": "G4 execution runner + Codex delegated production reviewer (AI)",
+    "decided_at": "2026-08-12T18:37:01.421Z",
+    "decision_note": "机器 accept 不能覆盖委托复核：陶罐与木槽关系倒置、液流向画外扩张且下方 42% 字幕区被占用；本 Attempt 停止，不产生 approved 文件。",
+    "stop_reason": "delegated_fact_and_visual_review_failed",
+    "next_allowed_gate": null
+  },
+  "audit": {
+    "evidence_refs": [
+      "storage/exports/paynes-creek/g4-attempt-04/PC-S03-v03.png",
+      "storage/exports/paynes-creek/g4-attempt-04/PC-S03-pan-right-start.png",
+      "storage/exports/paynes-creek/g4-attempt-04/PC-S03-pan-right-end.png",
+      "storage/exports/paynes-creek/g4-attempt-04/PC-S03-pan-right-contact-sheet.png",
+      "docs/contracts/sprint-195-youtube-paynes-creek-g4-single-image-gate.md",
+      "docs/testing/siliconflow-native-agent-compatibility-report.json",
+      "native_agent_run:1ea7b158e16349b1a4477798b2edf617",
+      "source_git_commit:319600fc4c550e40d8612e8712e847c0286c02ef",
+      "local_owner_promoted_to_admin:false"
+    ],
+    "sensitive_values_removed": true,
+    "record_validated_at": "2026-08-12T18:37:01.421Z",
+    "record_git_commit": "319600fc4c550e40d8612e8712e847c0286c02ef"
+  }
+}

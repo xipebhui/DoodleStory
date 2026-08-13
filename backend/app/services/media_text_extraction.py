@@ -130,7 +130,7 @@ class StylePromptImageReference:
     source_name: str
 
 
-def create_multimodal_client():
+def create_multimodal_client(*, max_retries: int = 2):
     settings = get_settings()
     if not settings.siliconflow_api_key.strip():
         raise LLMConfigError("SILICONFLOW_API_KEY 未配置")
@@ -138,7 +138,11 @@ def create_multimodal_client():
         from openai import OpenAI
     except ImportError as exc:
         raise LLMConfigError("缺少 openai 依赖，请安装 backend/requirements.txt") from exc
-    return OpenAI(api_key=settings.siliconflow_api_key, base_url=settings.siliconflow_base_url)
+    return OpenAI(
+        api_key=settings.siliconflow_api_key,
+        base_url=settings.siliconflow_base_url,
+        max_retries=max_retries,
+    )
 
 
 def _data_url_summary(url: str) -> str:
@@ -210,10 +214,16 @@ def data_url_from_bytes(content: bytes, content_type: str) -> str:
     return f"data:{content_type};base64,{encoded}"
 
 
-def _chat_multimodal(*, model: str, content: list[dict[str, object]], prompt_name: str) -> str:
+def _chat_multimodal(
+    *,
+    model: str,
+    content: list[dict[str, object]],
+    prompt_name: str,
+    max_retries: int = 2,
+) -> str:
     if not model.strip():
         raise LLMConfigError("SiliconFlow 多模态模型未配置")
-    client = create_multimodal_client()
+    client = create_multimodal_client(max_retries=max_retries)
     trace_context = {"model": model, "prompt_name": prompt_name}
     started = monotonic()
     logger.info(
