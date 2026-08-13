@@ -16,7 +16,11 @@ export type GrokShortEvidenceLevel =
   | "直接证据"
   | "解释"
   | "重建"
-  | "未知边界";
+  | "未知边界"
+  | "Direct evidence"
+  | "Interpretation"
+  | "Reconstruction"
+  | "Evidence limit";
 
 export type PaynesCreekGrokShortScene = {
   id: string;
@@ -30,6 +34,8 @@ export type PaynesCreekGrokShortScene = {
 
 export type PaynesCreekGrokShortProps = {
   title: string;
+  locale: "zh-CN" | "en-US";
+  footer: string;
   scenes: PaynesCreekGrokShortScene[];
   narrationAudio: string;
   width: number;
@@ -52,13 +58,19 @@ const evidenceColor: Record<GrokShortEvidenceLevel, string> = {
   "解释": COLORS.amber,
   "重建": COLORS.reconstruction,
   "未知边界": COLORS.unknown,
+  "Direct evidence": COLORS.teal,
+  "Interpretation": COLORS.amber,
+  "Reconstruction": COLORS.reconstruction,
+  "Evidence limit": COLORS.unknown,
 };
 
 const GrokShortScene: React.FC<{
   scene: PaynesCreekGrokShortScene;
   index: number;
   count: number;
-}> = ({scene, index, count}) => {
+  locale: "zh-CN" | "en-US";
+  footer: string;
+}> = ({scene, index, count, locale, footer}) => {
   const frame = useCurrentFrame();
   const end = Math.max(1, scene.durationInFrames - 1);
   const opacity = interpolate(
@@ -72,13 +84,16 @@ const GrokShortScene: React.FC<{
     extrapolateRight: "clamp",
   });
   const color = evidenceColor[scene.evidence];
+  const isEnglish = locale === "en-US";
 
   return (
     <AbsoluteFill
       style={{
         backgroundColor: COLORS.deep,
         color: COLORS.salt,
-        fontFamily: '"Microsoft YaHei", "Noto Sans CJK SC", sans-serif',
+        fontFamily: isEnglish
+          ? 'Inter, "Segoe UI", Arial, sans-serif'
+          : '"Microsoft YaHei", "Noto Sans CJK SC", sans-serif',
         opacity,
       }}
     >
@@ -125,7 +140,15 @@ const GrokShortScene: React.FC<{
           >
             {String(index + 1).padStart(2, "0")}
           </span>
-          <span style={{fontSize: 44, lineHeight: 1.2, fontWeight: 900}}>
+          <span
+            style={{
+              maxWidth: isEnglish ? 1320 : 1480,
+              fontSize: isEnglish ? 39 : 44,
+              lineHeight: 1.18,
+              fontWeight: 900,
+              letterSpacing: isEnglish ? -0.5 : 0,
+            }}
+          >
             {scene.title}
           </span>
         </div>
@@ -135,7 +158,7 @@ const GrokShortScene: React.FC<{
             border: `3px solid ${color}`,
             borderRadius: 999,
             color,
-            fontSize: 27,
+            fontSize: isEnglish ? 23 : 27,
             fontWeight: 900,
             padding: "10px 22px",
             backgroundColor: "rgba(6,25,34,.72)",
@@ -162,10 +185,10 @@ const GrokShortScene: React.FC<{
         <div
           style={{
             maxWidth: 1580,
-            fontSize: 45,
-            fontWeight: 800,
-            lineHeight: 1.48,
-            letterSpacing: 1.1,
+            fontSize: isEnglish ? 42 : 45,
+            fontWeight: isEnglish ? 750 : 800,
+            lineHeight: isEnglish ? 1.4 : 1.48,
+            letterSpacing: isEnglish ? 0.1 : 1.1,
           }}
         >
           {scene.narration}
@@ -178,7 +201,7 @@ const GrokShortScene: React.FC<{
             letterSpacing: 3,
           }}
         >
-          PAYNES CREEK · AI VISUAL PILOT · {index + 1}/{count}
+          {footer} · {index + 1}/{count}
         </div>
       </div>
 
@@ -212,6 +235,8 @@ export const PaynesCreekGrokShort: React.FC<PaynesCreekGrokShortProps> = (
             scene={scene}
             index={index}
             count={props.scenes.length}
+            locale={props.locale}
+            footer={props.footer}
           />
         </Series.Sequence>
       ))}
@@ -219,4 +244,3 @@ export const PaynesCreekGrokShort: React.FC<PaynesCreekGrokShortProps> = (
     <Html5Audio src={staticFile(props.narrationAudio)} volume={1} />
   </AbsoluteFill>
 );
-

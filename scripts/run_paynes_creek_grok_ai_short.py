@@ -14,7 +14,7 @@ from app.services.siliconflow_voice import SiliconFlowVoiceClient
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-PLAN_PATH = (
+DEFAULT_PLAN_PATH = (
     PROJECT_ROOT
     / "docs/strategy/youtube/paynes-creek-grok-ai-short-v1.json"
 )
@@ -25,14 +25,7 @@ SCENE_IDS = ("S01", "S03", "S04", "S09", "S12")
 FPS = 30
 WIDTH = 1920
 HEIGHT = 1080
-OUTPUT_NAMES = {
-    "audio": "paynes-creek-grok-ai-short-narration-v1.mp3",
-    "manifest": "paynes-creek-grok-ai-short-manifest-v1.json",
-    "raw_video": "paynes-creek-grok-ai-short-v1.mp4",
-    "video": "paynes-creek-grok-ai-short-v1-yuv420p.mp4",
-    "contact_sheet": "paynes-creek-grok-ai-short-contact-sheet-v1.png",
-    "report": "paynes-creek-grok-ai-short-v1-report.json",
-}
+SUPPORTED_LOCALES = frozenset({"zh-CN", "en-US"})
 
 
 def _git(*args: str) -> str:
@@ -54,12 +47,24 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
 
 
-def load_plan() -> dict[str, Any]:
-    value = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
+def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
+    value = json.loads(plan_path.read_text(encoding="utf-8"))
     if not isinstance(value, dict) or not isinstance(value.get("scenes"), list):
         raise RuntimeError("Grok AI 短片计划结构无效")
     if value.get("template_id") != TEMPLATE_ID:
         raise RuntimeError("Grok AI 短片计划模板无效")
+    if value.get("locale") not in SUPPORTED_LOCALES:
+        raise RuntimeError("Grok AI 短片 locale 只支持 zh-CN 或 en-US")
+    if not str(value.get("footer") or "").strip():
+        raise RuntimeError("Grok AI 短片计划缺少页脚")
+    artifact_slug = str(value.get("artifact_slug") or "")
+    if (
+        not artifact_slug
+        or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in artifact_slug)
+        or artifact_slug.startswith("-")
+        or artifact_slug.endswith("-")
+    ):
+        raise RuntimeError("Grok AI 短片 artifact_slug 无效")
     if value.get("publication_authorized") is not False or value.get("bgm") is not False:
         raise RuntimeError("Grok AI 短片必须保持禁止发布且无 BGM")
     scene_ids = tuple(str(scene.get("id")) for scene in value["scenes"])
@@ -68,8 +73,21 @@ def load_plan() -> dict[str, Any]:
     return value
 
 
+def output_names(plan: dict[str, Any]) -> dict[str, str]:
+    slug = str(plan["artifact_slug"])
+    return {
+        "audio": f"{slug}-narration.mp3",
+        "manifest": f"{slug}-manifest.json",
+        "raw_video": f"{slug}.mp4",
+        "video": f"{slug}-yuv420p.mp4",
+        "contact_sheet": f"{slug}-contact-sheet.png",
+        "report": f"{slug}-report.json",
+    }
+
+
 def narration_text(plan: dict[str, Any]) -> str:
-    return "".join(str(scene["narration"]) for scene in plan["scenes"])
+    separator = " " if plan["locale"] == "en-US" else ""
+    return separator.join(str(scene["narration"]) for scene in plan["scenes"])
 
 
 def allocate_scene_frames(total_frames: int, weights: list[int]) -> list[int]:
@@ -181,6 +199,7 @@ def build_render_manifest(
     audio_path: Path,
     audio_duration_ms: int,
     audio_sha256: str,
+    source_plan_path: Path = DEFAULT_PLAN_PATH,
 ) -> dict[str, Any]:
     total_frames = math.ceil((audio_duration_ms / 1000) * FPS)
     scene_frames = allocate_scene_frames(
@@ -212,13 +231,15 @@ def build_render_manifest(
         "schemaVersion": 1,
         "templateId": TEMPLATE_ID,
         "title": plan["title"],
+        "locale": plan["locale"],
+        "footer": plan["footer"],
         "width": WIDTH,
         "height": HEIGHT,
         "fps": FPS,
         "publicationAuthorized": False,
         "bgm": False,
-        "sourcePlan": str(PLAN_PATH.relative_to(PROJECT_ROOT)).replace("\\", "/"),
-        "sourcePlanSha256": sha256_file(PLAN_PATH),
+        "sourcePlan": str(source_plan_path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+        "sourcePlanSha256": sha256_file(source_plan_path),
         "narrationAudioPath": str(audio_path.resolve()),
         "narrationSha256": audio_sha256,
         "audioDurationMs": audio_duration_ms,
@@ -333,8 +354,13 @@ def extract_contact_sheet(
     return frames
 
 
-def preflight(source_commit: str, output_dir: Path) -> dict[str, Any]:
-    plan = load_plan()
+def preflight(
+    source_commit: str,
+    output_dir: Path,
+    plan_path: Path = DEFAULT_PLAN_PATH,
+) -> dict[str, Any]:
+    plan = load_plan(plan_path)
+    names = output_names(plan)
     current_commit = _git("rev-parse", "HEAD")
     checks = {
         "source_commit_matches": source_commit == current_commit,
@@ -349,7 +375,7 @@ def preflight(source_commit: str, output_dir: Path) -> dict[str, Any]:
         "remotion_renderer_exists": RENDER_SCRIPT.is_file(),
         "remotion_dependencies_exist": (REMOTION_ROOT / "node_modules").is_dir(),
         "output_files_absent": not any(
-            (output_dir / name).exists() for name in OUTPUT_NAMES.values()
+            (output_dir / name).exists() for name in names.values()
         ),
     }
     media_error = None
@@ -366,19 +392,25 @@ def preflight(source_commit: str, output_dir: Path) -> dict[str, Any]:
         "media_error": media_error,
         "source_commit": source_commit,
         "observed_commit": current_commit,
-        "source_plan_sha256": sha256_file(PLAN_PATH),
+        "source_plan": str(plan_path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+        "source_plan_sha256": sha256_file(plan_path),
     }
 
 
-def execute(source_commit: str, output_dir: Path) -> dict[str, Any]:
-    initial = preflight(source_commit, output_dir)
+def execute(
+    source_commit: str,
+    output_dir: Path,
+    plan_path: Path = DEFAULT_PLAN_PATH,
+) -> dict[str, Any]:
+    initial = preflight(source_commit, output_dir, plan_path)
     if not initial["all_passed"]:
         raise RuntimeError(f"Sprint 200 preflight 未通过：{initial['blockers']}")
     output_dir.mkdir(parents=True, exist_ok=False)
-    plan = load_plan()
+    plan = load_plan(plan_path)
+    names = output_names(plan)
     resolved_scenes = resolve_plan_media(plan)
     narration = narration_text(plan)
-    audio_path = output_dir / OUTPUT_NAMES["audio"]
+    audio_path = output_dir / names["audio"]
     tts = plan["tts"]
     audio_content, audio_content_type = SiliconFlowVoiceClient().generate_speech(
         text=narration,
@@ -401,14 +433,15 @@ def execute(source_commit: str, output_dir: Path) -> dict[str, Any]:
         audio_path=audio_path,
         audio_duration_ms=audio_duration_ms,
         audio_sha256=sha256_bytes(audio_content),
+        source_plan_path=plan_path,
     )
-    manifest_path = output_dir / OUTPUT_NAMES["manifest"]
+    manifest_path = output_dir / names["manifest"]
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
-    raw_video_path = output_dir / OUTPUT_NAMES["raw_video"]
+    raw_video_path = output_dir / names["raw_video"]
     completed = subprocess.run(
         [
             "node",
@@ -440,7 +473,7 @@ def execute(source_commit: str, output_dir: Path) -> dict[str, Any]:
     if renderer_result is None or renderer_result.get("status") != "succeeded":
         raise RuntimeError("Remotion 成功退出但没有 Grok AI 短片结构化结果")
 
-    final_video_path = output_dir / OUTPUT_NAMES["video"]
+    final_video_path = output_dir / names["video"]
     normalize_video(raw_video_path, final_video_path)
     final_probe = ffprobe(final_video_path)
     validate_final_video(
@@ -448,7 +481,7 @@ def execute(source_commit: str, output_dir: Path) -> dict[str, Any]:
         audio_duration_ms=audio_duration_ms,
         total_frames=int(manifest["totalFrames"]),
     )
-    contact_path = output_dir / OUTPUT_NAMES["contact_sheet"]
+    contact_path = output_dir / names["contact_sheet"]
     midpoint_frames = extract_contact_sheet(
         final_video_path,
         contact_path,
@@ -461,8 +494,9 @@ def execute(source_commit: str, output_dir: Path) -> dict[str, Any]:
         "source_git_commit": source_commit,
         "publication_authorized": False,
         "source": {
-            "plan": str(PLAN_PATH.relative_to(PROJECT_ROOT)).replace("\\", "/"),
-            "plan_sha256": sha256_file(PLAN_PATH),
+            "plan": str(plan_path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+            "plan_sha256": sha256_file(plan_path),
+            "locale": plan["locale"],
             "scene_count": 5,
         },
         "calls": {
@@ -504,7 +538,7 @@ def execute(source_commit: str, output_dir: Path) -> dict[str, Any]:
         },
         "sensitive_values_removed": True,
     }
-    report_path = output_dir / OUTPUT_NAMES["report"]
+    report_path = output_dir / names["report"]
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -521,6 +555,10 @@ def parse_args() -> argparse.Namespace:
     action.add_argument("--execute", action="store_true")
     parser.add_argument("--source-git-commit", required=True)
     parser.add_argument(
+        "--plan",
+        default="docs/strategy/youtube/paynes-creek-grok-ai-short-v1.json",
+    )
+    parser.add_argument(
         "--output-dir",
         default="storage/exports/paynes-creek/grok-ai-short-v1",
     )
@@ -529,12 +567,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    plan_path = (PROJECT_ROOT / args.plan).resolve()
+    if not plan_path.is_relative_to(PROJECT_ROOT) or not plan_path.is_file():
+        raise RuntimeError("--plan 必须是项目内存在的 JSON 文件")
     output_dir = (PROJECT_ROOT / args.output_dir).resolve()
     if args.preflight:
-        result = preflight(args.source_git_commit, output_dir)
+        result = preflight(args.source_git_commit, output_dir, plan_path)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["all_passed"] else 2
-    report = execute(args.source_git_commit, output_dir)
+    report = execute(args.source_git_commit, output_dir, plan_path)
     print(
         json.dumps(
             {
@@ -554,4 +595,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

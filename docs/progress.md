@@ -1985,3 +1985,16 @@
 - 完整音视频流解码通过，没有超过 1.5 秒的静音；五镜中点和 20 帧高密度接触表确认镜头、标题、证据
   标签与字幕稳定可读。终态 `pass_local_ai_short`，本地视频可播放；未运行 ASR 逐字核对，仍需用户完整
   观看，且 `publication_authorized=false`、上传调用为 0。
+
+# Sprint 201 Paynes Creek Grok AI 英文五镜短片（实现就绪，待真实渲染）
+
+- 复盘中文版后保留五个已验收 Grok 镜头，英文版不逐句翻译：脚本改为问题钩子、制盐机制、独木舟
+  证据和“过程可重建、具体旅程未知”的英语 Story-style 叙事，共约 126 词。
+- 新增 `paynes-creek-grok-ai-short-en-v1.json`，冻结 `en-US` 标题、证据标签、旁白、页脚、独立 artifact
+  slug 和五个既有媒体 hash；Grok 图片 / 视频新增调用预算均为 0。
+- 现有 Remotion 模板和 Manifest 已扩展 `zh-CN` / `en-US` locale：标签按语言白名单验证，英文使用
+  Segoe UI / Inter 字体栈和较紧凑字号；Runner 改为可选择项目内计划文件与独立产物名，并在英文场景
+  之间加入 TTS 所需空格，中文版保持回归兼容。
+- 英文时长预演表明 45–55 秒区间的五镜 playback rate 为 0.76–1.24，无需循环镜头。Python 4 项、
+  Remotion 12 项测试、TypeScript typecheck、JSON 校验、compileall 和 `git diff --check` 已通过。
+  下一步提交形成干净 source commit，再执行一次英文 TTS、一次 Remotion 和一次 FFmpeg 规范化。

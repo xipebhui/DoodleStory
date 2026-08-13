@@ -10,6 +10,8 @@ import {
 const validManifest = {
   templateId: PAYNES_CREEK_GROK_SHORT_TEMPLATE_ID,
   title: "测试短片",
+  locale: "zh-CN",
+  footer: "PAYNES CREEK · AI VISUAL PILOT",
   width: 1920,
   height: 1080,
   fps: 30,
@@ -68,3 +70,25 @@ test("rejects unsafe or inconsistent playback rates", () => {
   );
 });
 
+test("accepts English localization and rejects mixed evidence labels", () => {
+  const scenes = validManifest.scenes.map((scene, index) => ({
+    ...scene,
+    evidence: index === 1 ? "Reconstruction" : "Interpretation",
+  }));
+  const english = {
+    ...validManifest,
+    locale: "en-US",
+    footer: "PAYNES CREEK · EVIDENCE-LED AI SHORT",
+    scenes,
+  };
+  assert.doesNotThrow(() => validatePaynesCreekGrokShortManifest(english));
+  assert.throws(
+    () => validatePaynesCreekGrokShortManifest({
+      ...english,
+      scenes: scenes.map((scene, index) =>
+        index === 0 ? {...scene, evidence: "解释"} : scene,
+      ),
+    }),
+    /证据标签无效/,
+  );
+});

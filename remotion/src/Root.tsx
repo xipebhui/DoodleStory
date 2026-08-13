@@ -79,6 +79,8 @@ const calculatePaynesCreekMetadata: CalculateMetadataFunction<PaynesCreekPilotPr
 
 const paynesCreekGrokShortDefaultProps: PaynesCreekGrokShortProps = {
   title: "Paynes Creek Grok AI 样片",
+  locale: "zh-CN",
+  footer: "PAYNES CREEK · AI VISUAL PILOT",
   scenes: [{
     id: "S01",
     title: "预览",

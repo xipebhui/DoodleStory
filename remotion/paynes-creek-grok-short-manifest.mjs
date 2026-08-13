@@ -10,12 +10,15 @@ export const PAYNES_CREEK_GROK_SHORT_SCENE_IDS = [
   "S09",
   "S12",
 ];
-const EVIDENCE_LEVELS = new Set([
-  "直接证据",
-  "解释",
-  "重建",
-  "未知边界",
-]);
+const EVIDENCE_LEVELS_BY_LOCALE = {
+  "zh-CN": new Set(["直接证据", "解释", "重建", "未知边界"]),
+  "en-US": new Set([
+    "Direct evidence",
+    "Interpretation",
+    "Reconstruction",
+    "Evidence limit",
+  ]),
+};
 
 export const validatePaynesCreekGrokShortManifest = (manifest) => {
   if (manifest?.templateId !== PAYNES_CREEK_GROK_SHORT_TEMPLATE_ID) {
@@ -33,6 +36,8 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
   }
   if (
     !String(manifest.title ?? "").trim() ||
+    !String(manifest.footer ?? "").trim() ||
+    !EVIDENCE_LEVELS_BY_LOCALE[manifest.locale] ||
     !manifest.narrationAudioPath ||
     !/^[a-f0-9]{64}$/.test(String(manifest.narrationSha256 ?? "")) ||
     !Number.isFinite(manifest.audioDurationMs)
@@ -57,7 +62,7 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
     ) {
       throw new Error(`第 ${index + 1} 个 Grok Scene 缺少文案、视频或 hash`);
     }
-    if (!EVIDENCE_LEVELS.has(scene.evidence)) {
+    if (!EVIDENCE_LEVELS_BY_LOCALE[manifest.locale].has(scene.evidence)) {
       throw new Error(`第 ${index + 1} 个 Grok Scene 证据标签无效`);
     }
     if (!Number.isFinite(scene.videoDurationMs) || scene.videoDurationMs <= 0) {
@@ -119,10 +124,11 @@ export const stagePaynesCreekGrokShortManifest = async (
   }
   return {
     title: manifest.title,
+    locale: manifest.locale,
+    footer: manifest.footer,
     scenes,
     narrationAudio: audioName,
     width: manifest.width,
     height: manifest.height,
   };
 };
-
