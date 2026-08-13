@@ -113,42 +113,49 @@ SiliconFlow 当前公布的精确 model ID，不能根据名称自行猜测别�
 2. call_lio_json 的调用链在 LIO 失败时会回到 call_text_fallback_json。
 3. call_siliconflow_json 和 call_lio_json 是 llm.py 中的结构化请求封装；具体业务使用点以同文件的调用者为准。
 
-### 2.3 Native Agent：Responses API
+### 2.3 Native Agent：Run 快照选择 Responses 或受限 Chat API
 
-Native Agent 的主循环在 backend/app/services/native_agent_loop.py 创建：
+Native Agent 在 Run 创建前由 `backend/app/services/native_agent_model_routes.py` 解析 route，并把 route、
+provider、API shape 与 model 固化到 Run。未传 `model_route` 时仍选择部署默认的火苗 Responses；Admin 可在
+API 中显式选择受限 SiliconFlow Chat Route。执行器只按四个快照构造 Provider：
 
 ```python
-client = AsyncOpenAI(
-    api_key=resolved_settings.text_fallback_api_key,
-    base_url=resolved_settings.text_fallback_openai_base_url,
-)
-provider = OpenAIProvider(openai_client=client, use_responses=True)
+route = resolve_native_agent_model_route(settings, requested_route=payload.model_route)
+# default: huomiao_responses / huomiao / responses / model
+# admin-only S03: siliconflow_chat_v1 / siliconflow / chat_completions / DeepSeek-V3.2
+binding = resolve_native_agent_run_model_provider(run, settings=settings)
 ```
 
-因此 Native Agent 的逻辑请求地址是：
+因此 Native Agent 有两个不互相 fallback 的逻辑请求地址：
 
 ```text
 https://api.huomiao.art/v1/responses
+https://api.siliconflow.cn/v1/chat/completions
 ```
 
 | 项目 | 当前配置 |
 | --- | --- |
 | 客户端 | AsyncOpenAI + OpenAI Agents SDK OpenAIProvider |
-| API 形状 | Responses API，不是 chat.completions |
-| 主地址 | TEXT_FALLBACK_BASE_URL → https://api.huomiao.art/v1 |
-| 模型 | AGENT_MODEL；当前 .env 未覆盖，代码默认 gpt-5.5 |
+| Run route | 默认 `huomiao_responses`；Admin 可显式选择 `siliconflow_chat_v1` |
+| API 形状 | 分别快照为 `responses` 或 `chat_completions` |
+| 地址 | 火苗读 `TEXT_FALLBACK_BASE_URL`；SiliconFlow 读 `SILICONFLOW_BASE_URL` |
+| 模型 | 火苗读 `NATIVE_AGENT_HUOMIAO_MODEL`；SiliconFlow 必须精确为 `deepseek-ai/DeepSeek-V3.2` |
+| 旧 Router 隔离 | `AGENT_MODEL` 只继续服务旧 `AgentModelRouter`，不作为 Native fallback |
 | 工具 | Native Agent Function Tool，工具执行后再把结果返回给模型 |
 
 Native Agent 的 generate_image、generate_speech、generate_subtitles、render_story_video、capture_wechat_article、inspect_youtube_channel、publish_youtube_video 等是本地工具，不是模型供应商地址；工具内部会继续调用本文后面的各个 Provider。
 
-SiliconFlow 不能直接替换该地址。其[官方 API 索引](https://docs.siliconflow.cn/llms.txt)当前列出
+SiliconFlow 仍不能通过只替换火苗地址接管 Responses。G2-B 新增的是独立且受限的
+`siliconflow_chat_v1`：只允许 Admin、精确 `generate_image + inspect_image` Tool 集、有效 Style 和零创作 /
+发布上下文；最终 Chat messages 含 system 最多 10 条，同一 Run 最多一次生图 Provider attempt，图片 Tool
+Output 只返回文本 ID，且必须完成唯一图片的真实检查终态。其[官方 API 索引](https://docs.siliconflow.cn/llms.txt)列出
 Chat Completions 与 Anthropic Messages，没有列出 Responses；官方 Function Calling 也使用
 `/v1/chat/completions`。已安装 Agents SDK 可通过 `OpenAIProvider(use_responses=False)` 把 Chat
 Completions 流转换为部分 `response.*` 事件，因此静态结论是 `adapter_required`，而不是
 `direct_config_compatible`。完整源码审计进一步确认 Chat 兼容层为 Response / Item 复用固定
-`__fake_id__`，且不发当前持久化代码等待的 arguments done；直接切换会造成第二模型回合 Step 冲突和
-多 Tool 参数覆盖。官方文档另把 `messages` 数组记录为 1–10 条，与当前完整 Session 重放和 12 回合
-上限存在待验证风险。详见
+`__fake_id__`，且不发 Responses 原生 arguments done；当前 Event Adapter 已用应用调用 ID、output index 和
+Item done 消除离线可证明的冲突，并在 HTTP 前执行 10 / 11 消息边界。真实 Provider 流兼容仍未执行，必须
+经过独立 G3 零媒体 Gate。详见
 [兼容性决策](siliconflow-native-agent-compatibility-decision.md)与
 [适配实施蓝图](../architecture/siliconflow-native-agent-adapter-blueprint.md)。
 
@@ -163,7 +170,9 @@ backend/app/services/agent_model_router.py 仍被 Skill 编写等旧流程使用
 
 旧 Router 的 LIO 备用逻辑地址是 `https://api.apilio.ai/v1/responses`。
 
-该 Router 只在主请求满足代码定义的可重试失败条件时切换到 LIO。它和 Native Agent 主循环是两条代码路径：Native Agent 主循环当前直接创建主地址客户端，旧 Router 显式实现 Huomiao → LIO 的路由。
+该 Router 只在主请求满足代码定义的可重试失败条件时切换到 LIO。它和 Native Agent 主循环是两条代码路径：
+Native Provider 工厂只接受两个精确一致的 Run 快照且没有 route fallback；旧 Router 则显式实现 Huomiao →
+LIO 的路由。
 
 ## 3. 图片生成
 
@@ -414,10 +423,10 @@ GET {VITE_API_BASE_URL}/api/v1/agent-loop/runs/{run_id}/events
 
 | 项目 | 结论 |
 | --- | --- |
-| SiliconFlow 与 Native Agent | SiliconFlow 使用 chat.completions 和语音接口；Native Agent 当前主模型使用 TEXT_FALLBACK_BASE_URL/v1/responses，两者不是同一条固定地址；SiliconFlow Chat Route 只有设计蓝图，尚未实现 |
-| TEXT_FALLBACK_MODEL 与 AGENT_MODEL | 前者是普通文本/视觉模型；后者当前同时被 Native Agent 与旧 Agent Router 使用；未来适配必须为 Native Agent 单独配置模型，不能改全局字段造成旧 Router 路由漂移 |
+| SiliconFlow 与 Native Agent | 默认 Native Route 仍请求 TEXT_FALLBACK_BASE_URL/v1/responses；Admin-only `siliconflow_chat_v1` 已离线实现为 SILICONFLOW_BASE_URL/v1/chat/completions，G3 以 5 次零媒体真实请求通过文本、Tool 恢复和 10 / 11 消息边界；只开放 G4 单张 S03 |
+| TEXT_FALLBACK_MODEL、AGENT_MODEL 与 NATIVE_AGENT_HUOMIAO_MODEL | 前者服务普通文本/视觉；`AGENT_MODEL` 只服务旧 Agent Router；Native Run 创建时单独快照 `NATIVE_AGENT_HUOMIAO_MODEL`，两条 Agent 路径不再共享模型配置 |
 | SILICONFLOW_API_BASE | 根目录 .env 中存在历史变量，但 Settings 使用的是 SILICONFLOW_BASE_URL；当前代码以后一项为准 |
-| SiliconFlow 账号免费额度模型 | 只能选择第 2.1.1 节列出的模型；产品名称需映射为 SiliconFlow 当前有效的精确 model ID，当前代码尚未强制校验，公开价格不等于账号赠送额度 |
+| SiliconFlow 账号免费额度模型 | 只能选择第 2.1.1 节列出的模型；Native Chat Route 已强制唯一模型 `deepseek-ai/DeepSeek-V3.2`，其它旧 SiliconFlow 媒体配置仍按各自业务校验；公开价格不等于账号赠送额度 |
 | APEXERAPI_BASE | 当前只有配置字段和统一生图模型归类，没有 DoodleStory 直连请求 |
 | DOUYIN_IMPORT_SERVICE_BASE_URL | 变量名较旧，实际同时承载抖音、微信/多平台导入和 YouTube 频道研究 |
 | YTB_PUBLISH_URL | 指向视频发布平台服务；DoodleStory 调用的是其 /api/youtube/... 服务 API，不是直接调用 Google YouTube SDK |

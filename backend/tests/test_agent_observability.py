@@ -81,7 +81,7 @@ class AgentObservabilityTests(unittest.TestCase):
         )
         Base.metadata.create_all(engine)
         self.Session = sessionmaker(bind=engine)
-        self.temp_dir = TemporaryDirectory()
+        self.temp_dir = TemporaryDirectory(ignore_cleanup_errors=True)
         self.tracking_uri = f"sqlite:///{Path(self.temp_dir.name) / 'mlflow.db'}"
         self.settings = make_settings(self.tracking_uri)
 

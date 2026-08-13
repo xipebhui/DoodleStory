@@ -114,6 +114,9 @@ class NativeArticleWorkflowTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=AgentRunStatus.running,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=version.version,
                 skill_content_hash_snapshot=version.content_hash,
@@ -368,7 +371,7 @@ class NativeArticleWorkflowTests(unittest.TestCase):
 
     def test_model_request_metric_counts_concurrent_child_calls(self) -> None:
         database_path = Path(self._testMethodName + ".db")
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             engine = create_engine(
                 f"sqlite:///{Path(temp_dir) / database_path}",
                 connect_args={"check_same_thread": False, "timeout": 30},
@@ -492,7 +495,7 @@ class NativeArticleWorkflowTests(unittest.TestCase):
             self.assertEqual(404, raised.exception.status_code)
 
     def test_parent_stream_and_child_artifact_allocate_unique_events(self) -> None:
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             database_path = Path(temp_dir) / "concurrent-events.db"
             engine = create_engine(
                 f"sqlite:///{database_path}",

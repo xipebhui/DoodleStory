@@ -1,7 +1,7 @@
 # Paynes Creek 首片生产控制室
 
 更新时间：2026-08-13<br>
-状态：`lane_selected / stop_before_batch / no_media / no_publish_authorization`<br>
+状态：`lane_selected / g2_pass_offline / g3_pass / stop_before_g4 / no_media / no_publish_authorization`<br>
 用途：首片生产验证的权威运行手册；不是 YouTube 市场实验，也不是已完成视频
 
 本地可视化入口：[HTML 生产控制台](paynes-creek-production-control-room.html)
@@ -89,10 +89,13 @@
 本地最小 Skill                  PUBLISHED / RUN SNAPSHOT ONLY
 S03 Native Agent 规划           FAILED: gpt-5.5 / 429 usage_limit_reached
 S03 图片调用                    0
-SiliconFlow Chat 适配设计        READY FOR REVIEW
-SiliconFlow Chat 运行时代码      NOT IMPLEMENTED
+SiliconFlow Chat 适配设计        COMPLETE / OFFLINE VERIFIED
+SiliconFlow Chat 运行时代码      IMPLEMENTED / ADMIN-ONLY S03
+G2-A Run 路由快照                COMPLETE / OFFLINE VERIFIED
+G2-B Chat 有界适配               COMPLETE / OFFLINE VERIFIED
 零媒体真实兼容性 Gate            NOT RUN
-G3 零媒体协议 / 空白证据模板       READY / NOT AUTHORIZED
+G3 零媒体 Attempt 1              STOPPED AT LOCAL DB PREFLIGHT / PROVIDER REQUESTS 0
+G3 零媒体 Attempt 2              PASS / 5 REQUESTS / TOOL ONCE / MEDIA 0
 G8-A 1080p Profile 设计          READY / NOT IMPLEMENTED
 G8-B 冻结 Manifest 设计          READY / NOT IMPLEMENTED
 G8-C 逐镜帧证据包设计             READY / NOT IMPLEMENTED
@@ -138,9 +141,9 @@ attempt 内变化。
 | --- | --- | --- | --- | --- | --- |
 | G0 赛道与事实 | 已通过 | 研究 / 事实审核 | 来源账本、10 条主张、视觉权利矩阵 | 题目、主张和禁区可追溯 | 回研究，不制作 |
 | G1 分镜与脚本 | 已通过 | 内容 / 事实审核 | 12 镜、536 字旁白、12 段 Prompt | 138 秒计划、四处不确定性进入原文 | 回脚本，不生图 |
-| G2 Native 路由离线适配 | **G2-A 合同待用户批准** | 开发负责人 | Sprint 177 蓝图；[G2-A 合同](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md) | G2-A 路由快照与 G2-B Chat 适配、迁移和聚焦测试全部通过 | `stop_before_external_call` |
-| G3 SiliconFlow 零媒体 Gate | 未开放；协议已准备 | 开发 + 成本批准人 | 独立明确授权、V3.2、[零媒体协议](../../testing/siliconflow-native-agent-zero-media-gate-protocol.md) | 最多 5 次请求内普通流、Tool + 跨进程恢复、10 / 11 消息边界有真实记录 | `stop_before_media` |
-| G4 S03 单镜媒体 Gate | 未开放；协议已准备 | 视觉审核人 + 事实审核人 | 一张 S03、`inspect_image` 文本 verdict、[重试协议](paynes-creek-s03-retry-protocol.md) | 真实尺寸、机制对象、重建表达、安全区、人工复核全通过 | 保留证据并停止，不生成第二镜 |
+| G2 Native 路由离线适配 | **通过：`pass_offline`** | 开发负责人 | [G2-A 合同](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)；[G2-B 合同](../../contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md) | 路由快照、Chat Adapter、迁移、能力边界和离线测试全部通过 | 开放 G3 授权评审，不开放外部调用 |
+| G3 SiliconFlow 零媒体 Gate | **通过：`pass_for_s03_single_image_review`** | 开发 + 成本批准人 | Attempt 2、V3.2、[真实报告](../../testing/siliconflow-native-agent-compatibility-report.json) | 5 次请求内普通流、Tool + 跨进程恢复、10 / 11 消息边界全部通过；媒体 0 | 已开放 G4 单张授权 |
+| G4 S03 单镜媒体 Gate | **当前下一步；已获用户授权，尚未执行** | 视觉审核人 + 事实审核人 | 一张 S03、`inspect_image` 文本 verdict、[重试协议](paynes-creek-s03-retry-protocol.md) | 真实尺寸、机制对象、重建表达、安全区、人工复核全通过 | 保留证据并停止，不生成第二镜 |
 | G5 视觉锚点检查 | 未开放；[串行协议已准备](paynes-creek-g5-serial-anchor-protocol.md) | 视觉 + 事实审核人 | G5-A 一张 S01；通过并停止后，G5-B 一张 S04 | 地图抽象边界、器物关系、前序图同尺寸和中心缩放探针分别通过 | 返回对应单镜；两个子 Gate 不共用授权，不启动余图 |
 | G6 剩余图片 | 未开放；[九镜串行协议已准备](paynes-creek-g6-serial-production-protocol.md) | 制作负责人 | 已批准锚点；S02 → S08 → S11 → S05 → S09 → S07 → S06 → S10 → S12 | 九个子 Gate 分别留下资产、尺寸、来源边界和人工 verdict | 在首个失败镜停止；不自动生成下一镜 |
 | G7 语音与字幕 | 未开放；[协议已准备但受 G7-0 阻断](paynes-creek-g7-audio-subtitle-protocol.md) | 语言审核人 + 开发负责人 | G7-0 同会话跨 Run 渲染 lineage；最终 536 字原文 | S01 → S02 → S08 → S03 → S07 → S09 → S10 → S11 → S12 → S04 → S05 → S06 逐镜通过；总长 120–150 秒 | G7-0 未实现不调用 TTS；单镜失败阻断后继镜 |
@@ -150,20 +153,28 @@ attempt 内变化。
 | G8 本地成片与不可变验收 | 未开放；[人工验收设计已准备](paynes-creek-g8-human-acceptance-protocol.md) | 制作 + 质量审核 owner | 已确认 Manifest-bound Run、已通过 Evidence Pack 能力与 succeeded Pack | 唯一 MP4 先进入 `rendered_awaiting_frame_evidence`；同一 hash 的 Pack 成功后完整观看，并以 exact hash preview / commit 保存 `pass_local_pilot | needs_revision` | 不直接提交 `review_status=approved`；Pack 或验收失败不重渲染、不登记 |
 | G9 发布准备 | 未开放 | 频道 owner + 发布责任人 | `pass_local_pilot` Acceptance、标题、描述、缩略图、披露决定 | 频道、预测、单一变量、语言、封面权利、数据回流和明确发布确认齐全 | 保持本地样片 |
 
-### G2-A 是当前唯一可授权的下一步
+### G2 已离线完成，G3 已真实通过；停在 G4 单镜执行前
 
-G2 的离线 Phase A 已拆成两个串行子 Gate，避免同时改持久化事实、Responses 回归和 Chat 事件。当前只
-允许批准 [Sprint 181 / G2-A](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)：
+G2 的离线 Phase A 拆成两个串行子 Gate，避免同时改持久化事实、Responses 回归和 Chat 事件。
+[Sprint 181 / G2-A](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md) 已完成：
 
 - 分离 Native 当前火苗模型与旧 Router 的 `AGENT_MODEL`；
 - 保存并返回 Run 级 route、provider、API shape 与 model 快照；
 - 让普通执行、文章角色、重试、恢复和 Follow-up 全部只读该快照；
 - 迁移历史 Run 为当时唯一存在的 `huomiao_responses` 路径，保留原模型值；
-- 本切片仍只允许 Responses，不增加 `siliconflow_chat_v1` 或 `use_responses=False`；
-- 只运行迁移和离线测试，不调用任何外部模型或媒体服务。
+- 保持默认 Route 为火苗 Responses，不从旧 Router 模型回退。
 
-G2-A 通过后再建立并批准 G2-B，处理 Chat Event Adapter、应用调用身份、Tool 参数完成、能力 Profile 和
-10 条消息 wrapper。G2-A、G2-B、G3、G4 不能合并授权；G2-A 单独通过不产生 `pass_offline`。
+[Sprint 192 / G2-B](../../contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md) 也已完成：
+
+- 只有 Admin 可显式选择 `siliconflow_chat_v1`，模型固定为 `deepseek-ai/DeepSeek-V3.2`；
+- 只接受 `generate_image + inspect_image`、有效 Style、零创作 / 发布上下文的 S03 Profile；
+- 稳定模型调用身份、Provider ID、Chat Tool 参数完成和 10 / 11 消息预检均已离线验证；
+- Chat 生图只返回文本 ID，同 Run 只有一次 Provider attempt，必须形成真实检查终态且不能 Follow-up；
+- revision `w4x5y6z7a8b9` 的空库、历史升级与降级通过，历史模型 Step 新字段保持 `NULL`。
+
+因此 G2 记录为 `pass_offline`。G3 Attempt 1 在本地 SQLite 前置停止且 Provider 请求为 0；Sprint 194 修复后，
+Attempt 2 用恰好 5 次真实请求通过 Z1–Z4，Tool 执行一次，媒体与发布仍为 0。当前只开放 G4 的唯一一张
+S03，不开放第二张图片或后继媒体。
 
 ## 发布前仍缺的外部输入
 
@@ -219,7 +230,7 @@ G2-A 通过后再建立并批准 G2-B，处理 Chat Event Adapter、应用调用
 | 完整观看如何形成不可变 G8 决定 | [G8 人工验收协议](paynes-creek-g8-human-acceptance-protocol.md)；[空白请求](paynes-creek-g8-human-acceptance-request-template.json)；[交接蓝图](../../architecture/native-agent-local-pilot-acceptance-handoff-blueprint.md)；[Sprint 191 合同](../../contracts/sprint-191-native-agent-immutable-local-pilot-acceptance.md) |
 | SiliconFlow 为什么不能直接切地址 | [兼容性决策](../../integrations/siliconflow-native-agent-compatibility-decision.md) |
 | 如何实施适配 | [适配蓝图](../../architecture/siliconflow-native-agent-adapter-blueprint.md) |
-| 当前最小可批准代码切片 | [Sprint 181 / G2-A 路由快照合同](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md) |
+| 已完成的路由基础 | [Sprint 181 / G2-A 路由快照合同](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md) |
 | 整支本地样片最终怎样算通过 | [本地样片生产验证章程](paynes-creek-local-pilot-charter.md)；[空白成片验收模板](paynes-creek-local-pilot-acceptance-template.json) |
 | G3 如何测试且不触发媒体 | [零媒体 Gate 协议](../../testing/siliconflow-native-agent-zero-media-gate-protocol.md)；[空白证据模板](../../testing/siliconflow-native-agent-zero-media-gate-evidence-template.json) |
 | 进入公开实验还缺什么 | [外部依赖清单](external-dependency-readiness.md) |
@@ -228,11 +239,12 @@ G2-A 通过后再建立并批准 G2-B，处理 Chat Event Adapter、应用调用
 
 - `input_used`：YouTube 赛道研究、Paynes Creek 来源 / 版权 / 分镜 / 旁白 / Prompt / Run 记录、
   SiliconFlow 兼容性决策与适配蓝图。
-- `artifact`：本运行手册、配套 HTML 控制台、Style 状态审计、G5 串行锚点协议、G6 九镜串行协议、
+- `artifact`：G2-A / G2-B 离线适配、模型调用证据迁移、本运行手册、配套 HTML 控制台、Style 状态审计、G5 串行锚点协议、G6 九镜串行协议、
   G7 语音字幕与 Run 边界协议、
   本地样片生产验证章程、G8 不可变人工验收协议与空白模板。
-- `decision`：允许锁定赛道和首片，允许整理生产入口；禁止把它写成市场结论，禁止跳过 G2–G4。
-- `next_step`：用户明确批准后，只执行 Sprint 181 / G2-A 的路由快照、迁移与离线测试。
+- `decision`：G2=`pass_offline`，G3 Attempt 2=`pass_for_s03_single_image_review`；真实 Provider 兼容性已在
+  固定 5 次零媒体范围内通过，但不能把它扩大为媒体质量已通过或跳过 G4。
+- `next_step`：按既有授权和 S03 协议生成唯一一张 S03，执行 VL 与人工事实 / 视觉复核；失败即停止。
 
-本轮完成：把“还要不要继续研究”收敛为一条可实际制作、但不越过成本和发布权限的首片生产路径。
-下一步建议：批准或拒绝 Sprint 181 / G2-A；未批准前不修改运行代码，也不调用任何模型或媒体。
+本轮完成：G3 已以 5 次真实零媒体请求通过，Tool 恢复、消息边界和证据链一致，媒体仍为 0。
+下一步建议：进入 G4，只生成并审核唯一一张 S03。

@@ -166,6 +166,7 @@ class CreditsTest(unittest.TestCase):
                 .count(),
             )
             check_db.close()
+            engine.dispose()
 
     def test_insufficient_credit_blocks_reserve(self) -> None:
         db = self.Session()

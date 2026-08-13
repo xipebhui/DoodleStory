@@ -39,6 +39,7 @@ class NativeAgentRunCreate(BaseModel):
 
     content: str = Field(min_length=1, max_length=20_000)
     skill_version_id: str = Field(min_length=1, max_length=32)
+    model_route: Literal["huomiao_responses", "siliconflow_chat_v1"] | None = None
     style_id: str | None = Field(default=None, max_length=32)
     creation_channel_id: str | None = Field(default=None, max_length=32)
     youtube_channel_id: str | None = Field(default=None, max_length=32)
@@ -176,6 +177,15 @@ class NativeAgentStepRead(BaseModel):
     status: NativeAgentStepStatus
     name: str
     tool_call_id: str | None
+    model_call_id: str | None
+    model_provider: str | None
+    model_api_shape: str | None
+    model_name: str | None
+    provider_response_id: str | None
+    execution_attempt: int | None
+    model_call_ordinal: int | None
+    converted_message_count: int | None
+    latency_ms: int | None
     attempts: int
     started_at: datetime | None
     finished_at: datetime | None
@@ -408,6 +418,9 @@ class NativeAgentRunRead(BaseModel):
     youtube_publishable_video_title: str | None
     youtube_publish_confirmation: dict[str, object] | None
     status: AgentRunStatus
+    model_route: str
+    model_provider: str
+    model_api_shape: str
     model: str
     model_call_count: int
     image_call_count: int

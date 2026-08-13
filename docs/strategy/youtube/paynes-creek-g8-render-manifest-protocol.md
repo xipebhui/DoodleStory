@@ -199,7 +199,7 @@ ffprobe 不证明视觉质量。Sprint 190 / G8-C 已把后续步骤固定为独
   或把技术成功写成样片通过。
 - `next_step`：完整观看与 G9 入口已由
   [G8 不可变人工验收协议](paynes-creek-g8-human-acceptance-protocol.md)和 Sprint 191 固定；当前实际开发仍
-  等待 Sprint 181。
+  G3 已独立通过；等待 G4–G7 前序媒体 Gate 与 G8-A / G8-B / G8-C 实施完成。
 
 本轮完成：把 12 组媒体从人工审核结果到一次确定性本地渲染的操作步骤和停止条件锁定。
 

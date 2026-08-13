@@ -1,0 +1,324 @@
+{
+  "schema_version": 1,
+  "record_kind": "siliconflow_native_agent_zero_media_gate",
+  "record_status": "completed",
+  "created_at": "2026-08-12",
+  "gate": {
+    "gate_id": "G3",
+    "purpose": "native_agent_provider_compatibility_before_media",
+    "attempt_label": "g3-2026-08-12-01",
+    "previous_attempt_ref": null,
+    "output_report_path": "docs/testing/siliconflow-native-agent-compatibility-report.json"
+  },
+  "preflight": {
+    "g2_offline_adapter": {
+      "required_status": "pass_offline",
+      "observed_status": "pass_offline",
+      "implementation_commit": "59e5f9fca6bf2ebc60079969f9bc81f61cfe5ab0",
+      "contract_ref": "docs/contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md",
+      "test_evidence_ref": "backend/tests/test_native_agent_chat_model.py",
+      "migration_head": "w4x5y6z7a8b9",
+      "verified_at": "2026-08-12T17:59:18.605024Z"
+    },
+    "external_call_authorization": {
+      "authorized_by": "workspace_owner",
+      "authorized_at": "2026-08-12T17:59:18.605024Z",
+      "authorization_ref": "user-current-task-full-local-video-authorization",
+      "provider_request_budget": 5,
+      "automatic_retry_authorized": false,
+      "fallback_authorized": false,
+      "model_switch_authorized": false,
+      "thinking_switch_authorized": false,
+      "stream_buffer_switch_authorized": false
+    },
+    "cost_cap": {
+      "currency": "existing_provider_quota_only",
+      "amount": 0,
+      "account_credit_or_balance_confirmed_by": "workspace_owner",
+      "confirmed_at": "2026-08-12T17:59:18.605024Z",
+      "evidence_ref": "user-current-task-full-local-video-authorization"
+    },
+    "script_lock": {
+      "script_path": "scripts/check_siliconflow_native_agent_compatibility.py",
+      "script_sha256": "95b46b3cfee1decc59859b7a6884e54ce4bc0f8979781da407171808e3dd9902",
+      "source_git_commit": "d774ed9",
+      "report_template_sha256": "b9e675002e7e1062f632ecae12f3dd1cf94a330cc86b4aab701c6a206eda4802"
+    },
+    "all_passed": true,
+    "blockers": []
+  },
+  "locked_profile": {
+    "route_id": "siliconflow_chat_v1",
+    "provider": "siliconflow",
+    "api_shape": "chat_completions",
+    "model": "deepseek-ai/DeepSeek-V3.2",
+    "enable_thinking": false,
+    "stream": true,
+    "strict_feature_validation": true,
+    "buffer_streamed_tool_calls": false,
+    "client_max_retries": 0,
+    "runner_max_retries": 0,
+    "fallback": "none",
+    "store_parameter": "omitted",
+    "parallel_tool_calls_parameter": "omitted",
+    "include_usage_parameter": "omitted",
+    "production_message_limit": 10,
+    "expected_agents_sdk_version": "0.18.3",
+    "expected_openai_client_version": "2.45.0"
+  },
+  "environment": {
+    "platform": "Windows",
+    "python_version": "3.11.9",
+    "agents_sdk_version": "0.18.3",
+    "openai_client_version": "2.45.0",
+    "temporary_database_kind": "sqlite",
+    "temporary_database_fingerprint": null,
+    "temporary_database_was_new": true,
+    "production_database_touched": false,
+    "default_route_before": "huomiao_responses",
+    "default_route_after": "huomiao_responses",
+    "started_at": "2026-08-12T17:59:18.605024Z",
+    "finished_at": "2026-08-12T17:59:22.965557Z"
+  },
+  "tool_registration": {
+    "expected_tools": [
+      "echo_probe"
+    ],
+    "observed_tools": [
+      "echo_probe"
+    ],
+    "expected_media_or_publish_tool_count": 0,
+    "observed_media_or_publish_tool_count": 0
+  },
+  "echo_probe": {
+    "input_schema": {
+      "additional_properties": false,
+      "required": [
+        "probe_id",
+        "value"
+      ]
+    },
+    "locked_input": {
+      "probe_id": "g3-echo-01",
+      "value": "PAYNES-CREEK-G3"
+    },
+    "locked_output": {
+      "probe_id": "g3-echo-01",
+      "echo": "PAYNES-CREEK-G3"
+    },
+    "observed_execution_count": null,
+    "observed_input": null,
+    "observed_output": null
+  },
+  "cases": {
+    "z1_plain_stream": {
+      "status": "not_run",
+      "provider_request_budget": 1,
+      "required_marker": "G3-TEXT-OK",
+      "run_id": null,
+      "execution_attempt": null,
+      "converted_message_count": null,
+      "model_call_id": null,
+      "provider_response_id": null,
+      "provider_response_id_is_fake": null,
+      "text_delta_count": null,
+      "terminal_event_count": null,
+      "usage": {
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "latency_ms": null,
+      "final_marker_observed": null,
+      "model_step_id": null,
+      "error": null,
+      "verdict": null
+    },
+    "z2_tool_loop_and_process_recovery": {
+      "status": "not_run",
+      "provider_request_budget": 2,
+      "required_final_markers": [
+        "G3-TOOL-OK",
+        "PAYNES-CREEK-G3"
+      ],
+      "run_id": null,
+      "first_process": {
+        "process_fingerprint": null,
+        "execution_attempt": null,
+        "model_call_id": null,
+        "provider_response_id": null,
+        "provider_response_id_is_fake": null,
+        "tool_call_id": null,
+        "tool_name": null,
+        "arguments_delta_count": null,
+        "arguments_done_count": null,
+        "arguments": null,
+        "final_arguments_match_deltas": null,
+        "terminal_event_count": null,
+        "usage": {
+          "input_tokens": null,
+          "output_tokens": null,
+          "total_tokens": null
+        },
+        "phase_terminal_status": null
+      },
+      "persisted_tool": {
+        "step_id": null,
+        "execution_count": null,
+        "input": null,
+        "output": null,
+        "status": null
+      },
+      "second_process": {
+        "process_fingerprint": null,
+        "execution_attempt": null,
+        "model_call_id": null,
+        "provider_response_id": null,
+        "provider_response_id_is_fake": null,
+        "completed_tool_reexecuted": null,
+        "session_item_count_before_request": null,
+        "terminal_event_count": null,
+        "usage": {
+          "input_tokens": null,
+          "output_tokens": null,
+          "total_tokens": null
+        },
+        "final_markers_observed": null
+      },
+      "identity_assertions": {
+        "processes_are_distinct": null,
+        "model_call_ids_are_distinct": null,
+        "provider_response_ids_are_distinct": null,
+        "tool_call_id_is_consistent": null,
+        "fake_ids_persisted_count": null,
+        "model_step_count": null,
+        "tool_step_count": null
+      },
+      "error": null,
+      "verdict": null
+    },
+    "z3_messages_10": {
+      "status": "not_run",
+      "provider_request_budget": 1,
+      "required_converted_message_count": 10,
+      "required_marker": "G3-MSG10-OK",
+      "run_id": null,
+      "execution_attempt": null,
+      "model_call_id": null,
+      "model_step_id": null,
+      "wrapper_decision": null,
+      "converted_message_count": null,
+      "provider_response_id": null,
+      "provider_response_id_is_fake": null,
+      "terminal_event_count": null,
+      "usage": {
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "latency_ms": null,
+      "final_marker_observed": null,
+      "messages_truncated_or_summarized": null,
+      "error": null,
+      "verdict": null
+    },
+    "z4_messages_11_provider_boundary": {
+      "status": "not_run",
+      "provider_request_budget": 1,
+      "required_converted_message_count": 11,
+      "probe_call_id": null,
+      "production_wrapper_decision": null,
+      "test_only_wrapper_bypass_used": null,
+      "converted_message_count": null,
+      "provider_outcome": null,
+      "accepted": {
+        "provider_response_id": null,
+        "provider_response_id_is_fake": null,
+        "terminal_event_count": null,
+        "usage": {
+          "input_tokens": null,
+          "output_tokens": null,
+          "total_tokens": null
+        },
+        "latency_ms": null,
+        "nonempty_text_observed": null
+      },
+      "rejected": {
+        "http_status": null,
+        "provider_error_code": null,
+        "safe_error_summary": null,
+        "provider_request_or_trace_id": null
+      },
+      "production_limit_remains_10": null,
+      "error": null,
+      "verdict": null
+    }
+  },
+  "aggregate_observations": {
+    "provider_request_count": 0,
+    "successful_provider_request_count": null,
+    "failed_provider_request_count": null,
+    "retry_count": 0,
+    "fallback_count": 0,
+    "model_switch_count": 0,
+    "tool_execution_count": null,
+    "registered_media_or_publish_tool_count": 0,
+    "image_call_count": 0,
+    "inspect_image_call_count": 0,
+    "speech_call_count": 0,
+    "subtitle_call_count": 0,
+    "video_call_count": 0,
+    "publish_call_count": 0,
+    "fake_id_persisted_count": null,
+    "unknown_or_unmatched_event_count": null
+  },
+  "persistence_cross_check": {
+    "run_snapshots_match_locked_profile": null,
+    "model_steps_match_calls": null,
+    "tool_steps_match_execution": null,
+    "events_have_unique_sequences": null,
+    "session_items_replay_in_order": null,
+    "completed_tool_not_reexecuted": null,
+    "provider_ids_are_nonfake_and_unique": null,
+    "usage_present_for_all_successful_requests": null,
+    "evidence_refs": []
+  },
+  "security_review": {
+    "status": "pass",
+    "api_key_absent": true,
+    "authorization_header_absent": true,
+    "credentials_absent": true,
+    "absolute_database_path_absent": true,
+    "raw_prompt_absent": true,
+    "signed_url_absent": true,
+    "safe_error_allowlist_passed": true,
+    "reviewed_by": "g3-report-allowlist-validator",
+    "reviewed_at": "2026-08-12T17:59:22.965557Z"
+  },
+  "gate_decision": {
+    "allowed_statuses": [
+      "not_run",
+      "blocked_precondition",
+      "stop_before_media",
+      "pass_for_s03_single_image_review"
+    ],
+    "status": "stop_before_media",
+    "z1_verdict": null,
+    "z2_verdict": null,
+    "z3_verdict": null,
+    "z4_verdict": null,
+    "decided_by": "g3-gate-script",
+    "decided_at": "2026-08-12T17:59:22.965557Z",
+    "decision_note": "G3 stopped at preflight: OperationalError",
+    "next_allowed_gate": null
+  },
+  "audit": {
+    "template_contract": "docs/contracts/sprint-180-siliconflow-native-agent-zero-media-gate-evidence-packet.md",
+    "protocol": "docs/testing/siliconflow-native-agent-zero-media-gate-protocol.md",
+    "source_blueprint": "docs/architecture/siliconflow-native-agent-adapter-blueprint.md",
+    "source_compatibility_decision": "docs/integrations/siliconflow-native-agent-compatibility-decision.md",
+    "sensitive_values_removed": true,
+    "record_validated_at": "2026-08-12T17:59:22.965557Z",
+    "record_git_commit": null
+  }
+}

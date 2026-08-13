@@ -1776,3 +1776,91 @@
   日志、控制室、样片章程和 G8 模板。本轮没有修改运行代码、数据库、前端或配置，没有调用模型、媒体、
   Remotion、YouTube、发布或账单接口；下一研究切片是 G9-A 不可变发布包，当前实际开发入口仍是 Sprint 181 /
   G2-A。
+
+# Sprint 181 Native Agent Run 路由快照基础（G2-A，已完成）
+
+- 新增独立配置 `NATIVE_AGENT_DEFAULT_ROUTE=huomiao_responses` 与
+  `NATIVE_AGENT_HUOMIAO_MODEL=gpt-5.5`。旧 `AgentModelRouter` 继续读取 `AGENT_MODEL`，Native 创建与执行
+  不从该字段 fallback。
+- 新增 fail-closed route resolver / Provider factory。创建 Run 前检查 route、Native 模型、火苗凭据和合法
+  HTTP(S) Base URL；配置错误返回 503，Run、Item、Workflow 和 enqueue 均无新增。执行时只接受
+  `huomiao_responses / huomiao / responses` 的一致快照，未知或矛盾组合在 Provider 请求前使 Run 失败。
+- `native_agent_runs` 新增 route / provider / API shape 三个非空快照字段；revision `v3w4x5y6z7a8` 把历史
+  Run 固定回填为当时唯一 Responses 路径并保持原 `model_snapshot`。空库 upgrade、历史 upgrade、downgrade、
+  无 server default 和无 route 索引均已验证；当前本地开发库为该 head，1 条历史 Run 无异常快照。
+- 普通 Agent、Workflow Compiler、Director、Writer、Reviewer、重试、启动恢复、Follow-up、API 投影和
+  MLflow trace 已统一使用 Run 四字段快照。Follow-up 逐字段继承，retry / recovery 不重新解析环境默认值。
+- 新增 `test_native_agent_model_routes.py`，并扩充 Native Loop / Follow-up / recovery / article 测试。聚焦 47 项
+  与受影响模块 32 项通过；Windows SQLite / MLflow 测试夹具补齐连接释放、容错清理与路径归一化，不改变
+  业务断言。完整后端 386 项、前端 14 项与 production build、Remotion 5 项与 typecheck、Python compileall、
+  内容迭代控制器状态校验和 `git diff --check` 均通过。
+- 为执行 TypeScript 构建按 lockfile 安装了本地依赖；`npm ci` 报告 frontend 3 个、Remotion 2 个 high severity
+  依赖告警。本 Sprint 未擅自执行会改变依赖版本的 `npm audit fix`，后续应建立独立安全审计与升级切片。
+- 本 Sprint 没有增加 `siliconflow_chat_v1`、`use_responses=False`、Chat Event Adapter 或能力 Profile，也没有
+  调用火苗、SiliconFlow、图片、VL、TTS、Whisper、Remotion、YouTube、发布或账单接口。G2 总 Gate 仍未
+  通过；下一步是冻结 G2-B 独立合同。
+
+# Sprint 192 Native Agent SiliconFlow Chat 有界适配（G2-B，已完成）
+
+- 新增 API-only 的 `model_route` 显式选择。默认仍为 `huomiao_responses`；只有 Admin 可选择
+  `siliconflow_chat_v1`，并固定为 `siliconflow / chat_completions / deepseek-ai/DeepSeek-V3.2`。创建前精确
+  校验凭据、URL、`generate_image + inspect_image` Tool Profile、有效 Style 和零创作 / 发布上下文，失败不
+  写 Run、Item、Workflow 或 enqueue，也不回退火苗。
+- 新增有界 Chat Provider / Model wrapper：`use_responses=False`、strict feature validation、关闭流式 Tool
+  buffering 与 client / Runner retry、`enable_thinking=false`。使用锁定 SDK 同一 Converter 对最终 messages
+  计数，含 system 最多 10 条；11 条在 HTTP 前失败，不截断、摘要或删除上下文。
+- 新增 route-independent Model Event Adapter。每次调用使用
+  `native:{run_id}:attempt:{execution_attempt}:call:{ordinal}`；SDK `__fake_id__` 不入模型调用或 Provider ID。
+  Function Call 按 output index / call ID 隔离，Chat Item done 合成唯一参数完成，参数不一致、缺真实 call ID、
+  Provider ID 冲突或未完成调用均 fail closed。Responses 文本、Tool、usage 与 Session 重放回归保持通过。
+- revision `w4x5y6z7a8b9` 为未来模型 Step 增加调用 ID、route、model、Provider ID、attempt、ordinal、消息数与
+  latency 观测字段；API 同步返回。空库、历史升级和降级实测通过，历史字段保持 `NULL`，旧 Step / Event /
+  Session 内容不变；当前本地开发库已升级到该 head。
+- Chat 图片 Tool 成功或重放只向模型返回文本 ID，不 materialize data URL；同一 Run 最多一次新的图片
+  Provider attempt，必须为唯一图片形成一次真实 `inspect_image` 终态后才能结束。SiliconFlow S03 Follow-up
+  明确拒绝，不能绕过单镜预算；`accept` 不会被写成人工审核通过。
+- 完整后端 398 项、frontend 14 项与 production build、Remotion 5 项与 typecheck、Python compileall、
+  内容迭代控制器状态和 `git diff --check` 均通过。npm 依赖仍保留既有 frontend 3 个、Remotion 2 个 high
+  severity 报告，本 Sprint 未修改 lockfile 或执行 `npm audit fix`。
+- 本 Sprint 没有调用火苗、SiliconFlow、图片、VL、TTS、Whisper、Remotion、YouTube、发布或账单接口。
+  G2 现记为 `pass_offline`，当前状态为 `stop_before_g3`；真实兼容性与 S03 媒体仍需 G3 / G4 独立授权。
+
+# Sprint 193 SiliconFlow Native Agent G3 真实零媒体 Gate（执行器已就绪，真实请求 0）
+
+- 用户已明确授权为了首支本地视频执行真实 SiliconFlow、图片、VL、语音、字幕和 Remotion；本 Sprint 仍只
+  执行 G3，最多 5 次 SiliconFlow Chat 请求，使用账号现有额度且不充值，不注册或调用任何媒体 / 发布 Tool。
+- 新增测试专用 G3 执行器，固定 Z1 文本流、Z2 单 `echo_probe` 两回合跨进程恢复、Z3 转换后 10 条消息和
+  Z4 11 条 Provider 边界；复用生产 Chat wrapper、Event Adapter、数据库 Session 和模型 Step 证据。
+- 执行器只使用新建临时 SQLite，记录请求数、Run / Step / Event / Session / Tool 身份；报告按 allowlist
+  脱敏，不保存密钥、Authorization、完整 Provider 请求、绝对数据库路径或用户凭据。
+- 离线 Mock 已通过真实 Agents SDK 流式文本与 Tool Call 事件形态，验证 Tool Output 持久化后可恢复且不
+  重执行；G3 聚焦 13 项和完整后端 406 项测试通过，Python compileall 与 `git diff --check` 通过。
+- 下一步先把执行器提交为不可变来源 commit，再把该 commit 与脚本 SHA-256 写进一次真实 G3 报告；提交
+  前外部 Provider 请求仍为 0，图片、VL、语音、字幕、视频和发布调用仍为 0。
+
+# Sprint 194 Windows SQLite 绝对路径 URL 解析（已完成）
+
+- G3 Attempt 1 在临时数据库建表后、创建测试用户前因 `no such table: users` 停止；HTTP 记录确认 Provider
+  请求为 0，媒体与发布调用均为 0，失败报告已保存为不可变 Attempt 1。
+- 根因是 `Settings.resolved_database_url` 对 Windows 绝对路径整体执行 URL quote，把盘符和分隔符变成
+  `%3A / %5C` 字面文件名；Alembic 因此升级了工作区里的错误文件，而 G3 Session 读取的真实临时文件为空。
+- 本 Sprint 只修正 SQLite URL 路径解析并补测试，不改变 schema、默认数据库、Provider 或 G3 用例。
+- 修复已完成：SQLite URL 改为 SQLAlchemy 可识别的绝对 POSIX 分隔路径；所有探针连接显式关闭，避免
+  Windows 临时文件句柄滞留。配置与 G3 聚焦 11 项、完整后端 409 项测试通过。
+- 真实 Alembic 对含空格的临时绝对路径升级后，目标文件包含 64 张表、`users` 与 head
+  `w4x5y6z7a8b9`；工作区编码路径孤儿为 0。下一步提交修复和 Attempt 1 报告，再执行 G3 Attempt 2。
+
+# Sprint 193 SiliconFlow Native Agent G3 真实零媒体 Gate（已完成）
+
+- Attempt 2 锁定来源 commit `b701126` 与脚本 SHA-256
+  `c1a1b3200e667067e2ed6bfe99edb52517dbe0e7b97a4752aebf3e351abed492`，并关联保留 Attempt 1 的
+  Windows SQLite preflight 失败记录，没有覆盖历史证据。
+- 真实执行共发送 5 次 `deepseek-ai/DeepSeek-V3.2` Chat 请求且全部成功：Z1 文本流、Z2 单 Tool 跨进程
+  恢复、Z3 转换后 10 条消息和 Z4 Provider 接受 11 条消息均通过；生产 wrapper 仍保持 10 条上限并在
+  HTTP 前拒绝第 11 条。
+- `echo_probe` 恰好执行 1 次；所有成功请求都有非伪 Provider ID 和 usage，Run / Step / Event / Session
+  交叉复核通过，重试、fallback、模型切换、未知事件与持久化伪 ID 均为 0。
+- 图片、VL、语音、字幕、视频和发布调用均为 0；报告通过凭据、Authorization、绝对数据库路径、原始
+  Prompt 与签名 URL 扫描，终态为 `pass_for_s03_single_image_review`。
+- G3 只开放 G4 的一张 S03：下一步必须是一个新 Run、最多一次图片 Provider attempt、一张候选、一次 VL
+  和人工事实 / 视觉复核；不得直接批量生成或进入语音、视频和发布 Gate。

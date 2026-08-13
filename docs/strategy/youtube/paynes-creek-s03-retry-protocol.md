@@ -15,8 +15,8 @@
 本协议是未来 G4 的执行表，不是运行结果。现在仍然：
 
 ```text
-G2 离线适配      NOT AUTHORIZED / NOT IMPLEMENTED
-G3 零媒体 Gate   NOT OPEN
+G2 离线适配      PASS_OFFLINE
+G3 零媒体 Gate   PASS / ATTEMPT 2 / 5 REQUESTS / ZERO MEDIA
 G4 S03 单镜       NOT AUTHORIZED / NOT RUN
 图片、VL、视频    0 / 0 / 0
 ```
@@ -191,4 +191,4 @@ provider + model + latency_ms
 ## 7. 完成边界
 
 这份协议完成后，首片状态仍是：赛道已选、脚本已定、媒体未开始。它只把未来一张 S03 的成本和证据
-边界写清楚，不替代 G2、G3 或 G4 授权。当前唯一可进入的实施决策仍是 G2 离线适配。
+边界写清楚，不替代 G3 或 G4 授权。当前唯一可进入的决策是单独评审 G3 小额零媒体真实调用授权。

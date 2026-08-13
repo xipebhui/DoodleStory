@@ -1446,3 +1446,82 @@ Paynes Creek 操作层见
 进入 G9-A：把目标频道、`prediction.json`、单一实验变量、标题、封面 FileAsset / SHA-256 / 权利、描述、
 标签、AI 合成披露、可见性、计划时间、发布责任人与 24 / 72 小时回流检查点锁成不可变发布包；仍不调用
 YouTube。
+
+## 2026-08-13：G2-A Run 路由快照离线实现完成
+
+### 新证据
+
+- 新 Run 现在在入库前解析并锁定 `huomiao_responses / huomiao / responses / model`；Native 模型配置已经与
+  旧 Router 的 `AGENT_MODEL` 分离。
+- 执行、文章 Compiler / Director / Writer / Reviewer、retry、startup recovery 和 Follow-up 都只读同一
+  Run 快照。即使环境模型在排队后变化，测试捕获到的执行模型仍是持久化值。
+- revision `v3w4x5y6z7a8` 的空库、历史回填与 downgrade 已实测。历史自定义模型原样保留，三个路由字段
+  固定回填且非空、无默认值、无新索引。
+- 当前本地开发库已升级到新 head；历史 Run 对账没有未知或矛盾快照。整个实现与测试过程没有外部模型、
+  图片、语音、视频或发布请求。
+
+### 控制器决策
+
+- `input_used`：Sprint 181 合同、SiliconFlow 适配蓝图、当前 Native 创建 / 执行 / 恢复 / Follow-up / 文章
+  工作流实现和 Paynes Creek 生产控制室。
+- `artifact`：G2-A route resolver / Provider factory、数据库迁移、API / trace 投影、聚焦测试和同步文档。
+- `decision`：G2-A 记为离线通过；G2 总 Gate 仍禁止通过，不能把路由快照解释为 SiliconFlow Chat 已接通。
+- `next_step`：建立 G2-B 独立合同，固定 Chat 模型调用身份、事件适配、Tool Output、S03 能力 Profile 与
+  10 条消息边界；外部请求保持 0。
+
+本轮完成：Native Agent 当前 Responses 路由已成为不可漂移、可恢复、可审计的 Run 事实。
+下一步建议：先冻结 G2-B 合同，不提前执行真实 SiliconFlow Gate 或 S03 生图。
+
+## 2026-08-13：G2-B SiliconFlow Chat 有界适配离线完成
+
+### 新证据
+
+- Admin-only `siliconflow_chat_v1` 已以独立 Route 实现；默认 Route 仍为火苗 Responses，二者不存在 fallback。
+- Chat 最终消息在 Provider HTTP 前按 SDK 同一 Converter 计数，10 条通过、11 条明确拒绝；测试使用
+  MockTransport，真实外部请求为 0。
+- 应用模型调用 ID、Provider response ID、output index / call ID 参数映射与 Chat Item done 合成均已持久化
+  测试。连续两个 SDK `__fake_id__` 产生不同模型 Step，同 Item ID 的两个 Function Call 不覆盖。
+- S03 Profile 精确限制 Tool、Style、上下文、单次图片 Provider attempt、文本图片 Tool Output、检查终态与
+  Follow-up；缺检查结果不能完成，已有 verdict 不会被解释为人工审核通过。
+- revision `w4x5y6z7a8b9` 的空库、历史升级和降级通过；完整后端 398 项、前端、Remotion 与控制器检查通过。
+
+### 控制器决策
+
+- `input_used`：Sprint 192 合同、锁定 SDK 源码、G2-A Run 快照、Paynes Creek S03 Skill / Style 能力边界、
+  G3 零媒体协议和本地迁移 / 测试结果。
+- `artifact`：受限 Chat Provider、统一 Model Event Adapter、模型调用证据迁移、S03 capability validator、
+  单图与检查完成门禁、同步 API / 架构 / 端点 / HTML 控制室文档。
+- `decision`：G2-A / G2-B 均离线通过，G2=`pass_offline`；这不是 SiliconFlow 真实兼容通过，也不开放 S03。
+- `next_step`：保持 `stop_before_g3`；只有用户另行明确批准小额外部调用与成本上限后，才执行 G3 零媒体
+  真实兼容性协议。没有新增市场结果，因此不更新 `strategy_memory.md`。
+
+本轮完成：Native Agent 已具备受限、可恢复、可审计的 SiliconFlow Chat 离线路径，外部请求与媒体仍为 0。
+下一步建议：停在 G3 前，等待独立小额调用授权；不得直接生成 S03 或进入后续媒体 Gate。
+
+## 2026-08-13：G3 SiliconFlow 真实零媒体兼容性通过
+
+### 新证据
+
+- Attempt 2 绑定来源 commit `b701126` 和脚本 SHA-256
+  `c1a1b3200e667067e2ed6bfe99edb52517dbe0e7b97a4752aebf3e351abed492`，同时以
+  `previous_attempt_ref` 关联并保留首次 Windows SQLite preflight 失败记录。
+- `deepseek-ai/DeepSeek-V3.2` 共收到 5 次真实 Chat 请求并全部成功：普通文本流、一次 `echo_probe` Tool
+  两回合、跨进程恢复、10 条转换消息和 Provider 侧 11 条消息接受均取得可追溯终态。
+- 生产 wrapper 的 10 条消息上限未被放宽，第 11 条仍在 HTTP 前拒绝；Tool 只执行 1 次，fake ID、重试、
+  fallback、模型切换和未知事件均为 0。
+- 图片、VL、语音、字幕、视频和发布调用均为 0；报告通过安全 allowlist，未保存密钥、Authorization、
+  绝对数据库路径、原始 Prompt 或签名 URL。
+
+### 控制器决策
+
+- `input_used`：Sprint 193 合同、G3 零媒体协议、锁定的生产 Chat wrapper / Event Adapter、Attempt 1 失败证据
+  与当前用户对完成本地视频的 Provider 授权。
+- `artifact`：[G3 Attempt 2 真实报告](../../testing/siliconflow-native-agent-compatibility-report.json)、同步后的
+  端点说明、架构蓝图、样片章程和生产控制室。
+- `decision`：G3 终态为 `pass_for_s03_single_image_review`；只证明当前固定 Profile 的受限 Chat 路径，
+  不证明图片质量、整片生产或发布能力。
+- `next_step`：进入新的 G4 attempt，只生成一张 S03 并执行一次 VL、人工事实与视觉复核；任一硬条件失败
+  即保留证据并停止，不生成第二镜。
+
+本轮完成：G3 在 5 次真实请求和零媒体边界内通过，S03 单镜 Gate 已具备执行前提。
+下一步建议：只执行 G4 单张 S03，不跳到批量图片、语音、视频或发布。

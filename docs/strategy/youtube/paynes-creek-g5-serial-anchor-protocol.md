@@ -211,7 +211,7 @@ visual_style_and_text_exclusion
   当前实现。
 - `artifact`：本协议、机器可读 Profile 和空白 attempt 模板。
 - `decision`：G5 拆成两个串行单图 Gate；禁止共享授权、自动连跑或把模板写成通过结果。
-- `next_step`：维持 G5 关闭；用户明确批准后仍先执行 Sprint 181 / G2-A。
+- `next_step`：维持 G5 关闭；G2 已离线完成，当前先单独评审 G3，再按序执行 G4。
 
 本轮完成：把两个视觉锚点拆成可分别失败、分别停止、分别追溯的 G5-A / G5-B。<br>
-下一步建议：批准或拒绝 Sprint 181 / G2-A；未批准前不创建 Run 或媒体。
+下一步建议：停在 G3 授权前；G3 / G4 通过前不创建 G5 Run 或媒体。

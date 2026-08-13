@@ -14,7 +14,8 @@
 
 ## Preconditions and ordering
 
-- 当前实际开发入口仍是 Sprint 181 / G2-A；本合同不授权跳过前序实现或运行真实媒体。
+- Sprint 181 / G2-A 已完成；当前仍须先完成 G2-B 与后续前置 Gate，本合同不授权跳过前序实现或运行真实
+  媒体。
 - 实施顺序保持：Sprint 181 / G2-A → G2-B → G3–G7 → Sprint 187 / G7-0 → Sprint 188 / G8-A →
   Sprint 189 / G8-B → Sprint 190 / G8-C → 一次真实 G8 Render → Evidence Pack → Sprint 191 人工验收。
 - 只接受 Sprint 190 中 `succeeded` 的 Evidence Pack，其 Video 必须仍绑定同一 Render Manifest、同一

@@ -194,8 +194,8 @@ S01 → S02 → S08 → S03 → S07 → S09 → S10 → S11 → S12 → S04 → 
 [G7-0 架构蓝图](../../architecture/native-agent-cross-run-media-lineage-blueprint.md)与
 [Sprint 187 合同](../../contracts/sprint-187-native-agent-cross-run-media-lineage.md)已把这一阻塞收敛为单个
 离线切片：Tool 输入不增加来源 Run ID，服务端只允许当前 Run 或同 Conversation、同 owner、已成功来源
-Run 的 Audio / Subtitle，并把图片、音频、字幕来源写入 Scene 快照。设计已可评审但未实施；当前实际开发
-入口仍是 Sprint 181 / G2-A。
+Run 的 Audio / Subtitle，并把图片、音频、字幕来源写入 Scene 快照。设计已可评审但未实施；Sprint 181 /
+G2-A / G2-B 已完成并离线验证，当前实际顺序是先评审 G3 零媒体真实 Gate 的独立授权。
 
 [G8-A 固定渲染 Profile 蓝图](../../architecture/native-agent-youtube-1080p-render-profile-blueprint.md)进一步发现：
 图片 Gateway 的 `16:9` 请求目标是 1792×1024，当前 Remotion 又跟随首图尺寸，不能满足样片锁定的精确
@@ -224,7 +224,7 @@ S01–S12 成片顺序、审核记录映射和一次渲染预算；所有真实 
 Video 和 succeeded Pack 的两阶段 exact-hash 签署，终态只能是不可编辑的
 `pass_local_pilot | needs_revision`。[Paynes Creek 人工完整观看协议](paynes-creek-g8-human-acceptance-protocol.md)
 把四维检查、preview 与提交顺序固定下来；通过仍保存 `publication_authorized=false`，只允许进入严格发布
-资料登记，不创建 YouTube 任务。当前实际开发入口仍是 Sprint 181 / G2-A。
+资料登记，不创建 YouTube 任务。Sprint 181 / G2-A 与 Sprint 192 / G2-B 已完成，当前入口是 G3 独立授权评审。
 
 ## 边界
 

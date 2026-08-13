@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "record_kind": "siliconflow_native_agent_zero_media_gate",
+  "record_status": "completed",
+  "created_at": "2026-08-12",
+  "gate": {
+    "gate_id": "G3",
+    "purpose": "native_agent_provider_compatibility_before_media",
+    "attempt_label": "g3-2026-08-13-02",
+    "previous_attempt_ref": "docs/testing/siliconflow-native-agent-compatibility-report-attempt-01-local-db-preflight-failure.json",
+    "output_report_path": "docs/testing/siliconflow-native-agent-compatibility-report.json"
+  },
+  "preflight": {
+    "g2_offline_adapter": {
+      "required_status": "pass_offline",
+      "observed_status": "pass_offline",
+      "implementation_commit": "59e5f9fca6bf2ebc60079969f9bc81f61cfe5ab0",
+      "contract_ref": "docs/contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md",
+      "test_evidence_ref": "backend/tests/test_native_agent_chat_model.py",
+      "migration_head": "w4x5y6z7a8b9",
+      "verified_at": "2026-08-12T18:04:39.800162Z"
+    },
+    "external_call_authorization": {
+      "authorized_by": "workspace_owner",
+      "authorized_at": "2026-08-12T18:04:39.800162Z",
+      "authorization_ref": "user-current-task-full-local-video-authorization",
+      "provider_request_budget": 5,
+      "automatic_retry_authorized": false,
+      "fallback_authorized": false,
+      "model_switch_authorized": false,
+      "thinking_switch_authorized": false,
+      "stream_buffer_switch_authorized": false
+    },
+    "cost_cap": {
+      "currency": "existing_provider_quota_only",
+      "amount": 0,
+      "account_credit_or_balance_confirmed_by": "workspace_owner",
+      "confirmed_at": "2026-08-12T18:04:39.800162Z",
+      "evidence_ref": "user-current-task-full-local-video-authorization"
+    },
+    "script_lock": {
+      "script_path": "scripts/check_siliconflow_native_agent_compatibility.py",
+      "script_sha256": "c1a1b3200e667067e2ed6bfe99edb52517dbe0e7b97a4752aebf3e351abed492",
+      "source_git_commit": "b701126",
+      "report_template_sha256": "b9e675002e7e1062f632ecae12f3dd1cf94a330cc86b4aab701c6a206eda4802"
+    },
+    "all_passed": true,
+    "blockers": []
+  },
+  "locked_profile": {
+    "route_id": "siliconflow_chat_v1",
+    "provider": "siliconflow",
+    "api_shape": "chat_completions",
+    "model": "deepseek-ai/DeepSeek-V3.2",
+    "enable_thinking": false,
+    "stream": true,
+    "strict_feature_validation": true,
+    "buffer_streamed_tool_calls": false,
+    "client_max_retries": 0,
+    "runner_max_retries": 0,
+    "fallback": "none",
+    "store_parameter": "omitted",
+    "parallel_tool_calls_parameter": "omitted",
+    "include_usage_parameter": "omitted",
+    "production_message_limit": 10,
+    "expected_agents_sdk_version": "0.18.3",
+    "expected_openai_client_version": "2.45.0"
+  },
+  "environment": {
+    "platform": "Windows",
+    "python_version": "3.11.9",
+    "agents_sdk_version": "0.18.3",
+    "openai_client_version": "2.45.0",
+    "temporary_database_kind": "sqlite",
+    "temporary_database_fingerprint": "3c236a718c910bb650fbc75233e70886436589c55d9319107a2d3c7298ff16ce",
+    "temporary_database_was_new": true,
+    "production_database_touched": false,
+    "default_route_before": "huomiao_responses",
+    "default_route_after": "huomiao_responses",
+    "started_at": "2026-08-12T18:04:39.800162Z",
+    "finished_at": "2026-08-12T18:05:23.955570Z"
+  },
+  "tool_registration": {
+    "expected_tools": [
+      "echo_probe"
+    ],
+    "observed_tools": [
+      "echo_probe"
+    ],
+    "expected_media_or_publish_tool_count": 0,
+    "observed_media_or_publish_tool_count": 0
+  },
+  "echo_probe": {
+    "input_schema": {
+      "additional_properties": false,
+      "required": [
+        "probe_id",
+        "value"
+      ]
+    },
+    "locked_input": {
+      "probe_id": "g3-echo-01",
+      "value": "PAYNES-CREEK-G3"
+    },
+    "locked_output": {
+      "probe_id": "g3-echo-01",
+      "echo": "PAYNES-CREEK-G3"
+    },
+    "observed_execution_count": 1,
+    "observed_input": {
+      "probe_id": "g3-echo-01",
+      "value": "PAYNES-CREEK-G3"
+    },
+    "observed_output": {
+      "probe_id": "g3-echo-01",
+      "echo": "PAYNES-CREEK-G3"
+    }
+  },
+  "cases": {
+    "z1_plain_stream": {
+      "status": "completed",
+      "provider_request_budget": 1,
+      "required_marker": "G3-TEXT-OK",
+      "run_id": "38875c7cc3e549f2ab12fa1b3842d3d6",
+      "execution_attempt": 1,
+      "converted_message_count": 2,
+      "model_call_id": "native:38875c7cc3e549f2ab12fa1b3842d3d6:attempt:1:call:1",
+      "provider_response_id": "019ff725eed82a8f362ebb525b261fdd",
+      "provider_response_id_is_fake": false,
+      "text_delta_count": 2,
+      "terminal_event_count": 1,
+      "usage": {
+        "input_tokens": 35,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 6,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 41
+      },
+      "latency_ms": 1959,
+      "final_marker_observed": true,
+      "model_step_id": "95960159b612466bbc2ae9185395a949",
+      "error": null,
+      "verdict": "pass"
+    },
+    "z2_tool_loop_and_process_recovery": {
+      "status": "completed",
+      "provider_request_budget": 2,
+      "required_final_markers": [
+        "G3-TOOL-OK",
+        "PAYNES-CREEK-G3"
+      ],
+      "run_id": "6554df485ddf4aa7a94d794784e87c50",
+      "first_process": {
+        "process_fingerprint": "541efc924374d409",
+        "execution_attempt": 1,
+        "model_call_id": "native:6554df485ddf4aa7a94d794784e87c50:attempt:1:call:1",
+        "provider_response_id": "019ff7260b991b8ba0408a8eccc55eb0",
+        "provider_response_id_is_fake": false,
+        "tool_call_id": "019ff72614b186ef4d1823c1d32c036b",
+        "tool_name": "echo_probe",
+        "arguments_delta_count": 3,
+        "arguments_done_count": 1,
+        "arguments": {
+          "probe_id": "g3-echo-01",
+          "value": "PAYNES-CREEK-G3"
+        },
+        "final_arguments_match_deltas": true,
+        "terminal_event_count": 1,
+        "usage": {
+          "input_tokens": 399,
+          "input_tokens_details": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0
+          },
+          "output_tokens": 86,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 485
+        },
+        "phase_terminal_status": "paused_after_tool_commit"
+      },
+      "persisted_tool": {
+        "step_id": "3ac779182cb94d5ebd984071dee864a4",
+        "execution_count": 1,
+        "input": {
+          "probe_id": "g3-echo-01",
+          "value": "PAYNES-CREEK-G3"
+        },
+        "output": {
+          "probe_id": "g3-echo-01",
+          "echo": "PAYNES-CREEK-G3"
+        },
+        "status": "succeeded"
+      },
+      "second_process": {
+        "process_fingerprint": "4be3d16b8d3015cf",
+        "execution_attempt": 2,
+        "model_call_id": "native:6554df485ddf4aa7a94d794784e87c50:attempt:2:call:1",
+        "provider_response_id": "019ff726334d77a56454e9f9e356c02c",
+        "provider_response_id_is_fake": false,
+        "completed_tool_reexecuted": false,
+        "session_item_count_before_request": 4,
+        "terminal_event_count": 1,
+        "usage": {
+          "input_tokens": 180,
+          "input_tokens_details": {
+            "cache_write_tokens": 0,
+            "cached_tokens": 0
+          },
+          "output_tokens": 15,
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          },
+          "total_tokens": 195
+        },
+        "final_markers_observed": true
+      },
+      "identity_assertions": {
+        "processes_are_distinct": true,
+        "model_call_ids_are_distinct": true,
+        "provider_response_ids_are_distinct": true,
+        "tool_call_id_is_consistent": true,
+        "fake_ids_persisted_count": 0,
+        "model_step_count": 2,
+        "tool_step_count": 1
+      },
+      "error": null,
+      "verdict": "pass"
+    },
+    "z3_messages_10": {
+      "status": "completed",
+      "provider_request_budget": 1,
+      "required_converted_message_count": 10,
+      "required_marker": "G3-MSG10-OK",
+      "run_id": "8646ae10343f454a9989c803c78d19eb",
+      "execution_attempt": 1,
+      "model_call_id": "native:8646ae10343f454a9989c803c78d19eb:attempt:1:call:1",
+      "model_step_id": "1b7310497e23401e9d053681e37874a9",
+      "wrapper_decision": "allowed",
+      "converted_message_count": 10,
+      "provider_response_id": "019ff726481de7dab75c3bdd9b962636",
+      "provider_response_id_is_fake": false,
+      "terminal_event_count": 1,
+      "usage": {
+        "input_tokens": 93,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 7,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 100
+      },
+      "latency_ms": 533,
+      "final_marker_observed": true,
+      "messages_truncated_or_summarized": false,
+      "error": null,
+      "verdict": "pass",
+      "text_delta_count": 2
+    },
+    "z4_messages_11_provider_boundary": {
+      "status": "completed",
+      "provider_request_budget": 1,
+      "required_converted_message_count": 11,
+      "probe_call_id": "g3-z4-boundary-01",
+      "production_wrapper_decision": "rejected_before_http",
+      "test_only_wrapper_bypass_used": true,
+      "converted_message_count": 11,
+      "provider_outcome": "accepted",
+      "accepted": {
+        "provider_response_id": "019ff72650a16d9e34a2ff4d092c582d",
+        "provider_response_id_is_fake": false,
+        "terminal_event_count": 1,
+        "usage": {
+          "completion_tokens": 52,
+          "prompt_tokens": 100,
+          "total_tokens": 152,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": null,
+            "cached_tokens": 0
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 100
+        },
+        "latency_ms": 12838,
+        "nonempty_text_observed": true
+      },
+      "rejected": {
+        "http_status": null,
+        "provider_error_code": null,
+        "safe_error_summary": null,
+        "provider_request_or_trace_id": null
+      },
+      "production_limit_remains_10": true,
+      "error": null,
+      "verdict": "pass"
+    }
+  },
+  "aggregate_observations": {
+    "provider_request_count": 5,
+    "successful_provider_request_count": 5,
+    "failed_provider_request_count": 0,
+    "retry_count": 0,
+    "fallback_count": 0,
+    "model_switch_count": 0,
+    "tool_execution_count": 1,
+    "registered_media_or_publish_tool_count": 0,
+    "image_call_count": 0,
+    "inspect_image_call_count": 0,
+    "speech_call_count": 0,
+    "subtitle_call_count": 0,
+    "video_call_count": 0,
+    "publish_call_count": 0,
+    "fake_id_persisted_count": 0,
+    "unknown_or_unmatched_event_count": 0
+  },
+  "persistence_cross_check": {
+    "run_snapshots_match_locked_profile": true,
+    "model_steps_match_calls": true,
+    "tool_steps_match_execution": true,
+    "events_have_unique_sequences": true,
+    "session_items_replay_in_order": true,
+    "completed_tool_not_reexecuted": true,
+    "provider_ids_are_nonfake_and_unique": true,
+    "usage_present_for_all_successful_requests": true,
+    "evidence_refs": [
+      "docs/contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md",
+      "docs/testing/siliconflow-native-agent-zero-media-gate-protocol.md",
+      "scripts/check_siliconflow_native_agent_compatibility.py"
+    ]
+  },
+  "security_review": {
+    "status": "pass",
+    "api_key_absent": true,
+    "authorization_header_absent": true,
+    "credentials_absent": true,
+    "absolute_database_path_absent": true,
+    "raw_prompt_absent": true,
+    "signed_url_absent": true,
+    "safe_error_allowlist_passed": true,
+    "reviewed_by": "g3-report-allowlist-validator",
+    "reviewed_at": "2026-08-12T18:05:23.955570Z"
+  },
+  "gate_decision": {
+    "allowed_statuses": [
+      "not_run",
+      "blocked_precondition",
+      "stop_before_media",
+      "pass_for_s03_single_image_review"
+    ],
+    "status": "pass_for_s03_single_image_review",
+    "z1_verdict": "pass",
+    "z2_verdict": "pass",
+    "z3_verdict": "pass",
+    "z4_verdict": "pass",
+    "decided_by": "workspace_owner_and_gate_script",
+    "decided_at": "2026-08-12T18:05:23.955570Z",
+    "decision_note": "All fixed zero-media cases passed within five requests.",
+    "next_allowed_gate": "G4_s03_single_image_review"
+  },
+  "audit": {
+    "template_contract": "docs/contracts/sprint-180-siliconflow-native-agent-zero-media-gate-evidence-packet.md",
+    "protocol": "docs/testing/siliconflow-native-agent-zero-media-gate-protocol.md",
+    "source_blueprint": "docs/architecture/siliconflow-native-agent-adapter-blueprint.md",
+    "source_compatibility_decision": "docs/integrations/siliconflow-native-agent-compatibility-decision.md",
+    "sensitive_values_removed": true,
+    "record_validated_at": "2026-08-12T18:05:23.955570Z",
+    "record_git_commit": null
+  }
+}

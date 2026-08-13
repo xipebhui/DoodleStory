@@ -932,6 +932,9 @@ class NativeAgentRun(Base, TimestampMixin):
         index=True,
     )
     model_snapshot: Mapped[str] = mapped_column(String(160))
+    model_route_snapshot: Mapped[str] = mapped_column(String(80))
+    model_provider_snapshot: Mapped[str] = mapped_column(String(80))
+    model_api_shape_snapshot: Mapped[str] = mapped_column(String(80))
     skill_name_snapshot: Mapped[str] = mapped_column(String(120))
     skill_version_snapshot: Mapped[int] = mapped_column(Integer)
     skill_content_hash_snapshot: Mapped[str] = mapped_column(String(80))
@@ -1467,6 +1470,10 @@ class NativeAgentStep(Base, TimestampMixin):
             "idempotency_key",
             name="uq_native_agent_steps_idempotency_key",
         ),
+        UniqueConstraint(
+            "model_call_id",
+            name="uq_native_agent_steps_model_call_id",
+        ),
         CheckConstraint(
             "sequence > 0",
             name="ck_native_agent_steps_sequence_positive",
@@ -1474,6 +1481,22 @@ class NativeAgentStep(Base, TimestampMixin):
         CheckConstraint(
             "attempts >= 0",
             name="ck_native_agent_steps_attempts_non_negative",
+        ),
+        CheckConstraint(
+            "execution_attempt IS NULL OR execution_attempt > 0",
+            name="ck_native_agent_steps_execution_attempt_positive",
+        ),
+        CheckConstraint(
+            "model_call_ordinal IS NULL OR model_call_ordinal > 0",
+            name="ck_native_agent_steps_model_call_ordinal_positive",
+        ),
+        CheckConstraint(
+            "converted_message_count IS NULL OR converted_message_count >= 0",
+            name="ck_native_agent_steps_message_count_non_negative",
+        ),
+        CheckConstraint(
+            "latency_ms IS NULL OR latency_ms >= 0",
+            name="ck_native_agent_steps_latency_non_negative",
         ),
         Index(
             "ix_native_agent_steps_run_sequence",
@@ -1506,6 +1529,21 @@ class NativeAgentStep(Base, TimestampMixin):
         String(255),
         nullable=True,
     )
+    model_call_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    model_provider: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    model_api_shape: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    model_name: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    provider_response_id: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    execution_attempt: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    model_call_ordinal: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    converted_message_count: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     input_summary_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     output_ref_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)

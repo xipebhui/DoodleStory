@@ -211,10 +211,9 @@ Scene，且不自动修改输入或重试。
 - `input_used`：锁定旁白、生产草案、Native Speech / Subtitle / Render / Follow-up 实现与本地样片章程。
 - `artifact`：本协议、12 镜 Profile、空白 attempt 模板、G7-0 架构蓝图与 Sprint 187 合同。
 - `decision`：先设 G7-0 跨 Run lineage 前置；之后按语言风险逐镜生成 Speech + Subtitle 对并人工验收。
-- `next_step`：维持 G7 关闭；Sprint 187 只进入设计评审，当前仍先等待用户明确批准或拒绝 Sprint 181 /
-  G2-A。
+- `next_step`：维持 G7 关闭；G2 已离线完成，当前先评审 G3；Sprint 187 / G7-0 仍需独立批准。
 
 本轮完成：发现并固定 G7 / G8 的真实 Run 边界，避免生成 12 段最终无法进入独立 G8 Run 的音频。
 
-下一步建议：先实施并验收 Sprint 181 / G2-A；Sprint 187 / G7-0 未获单独批准前不修改运行代码，也不
-调用火山语音或 Whisper。
+下一步建议：G3 已通过，先按顺序完成 G4–G6 视觉 Gate；Sprint 187 / G7-0 实施前不调用火山语音或
+Whisper，避免生成无法被独立 G8 Run 消费的音频。

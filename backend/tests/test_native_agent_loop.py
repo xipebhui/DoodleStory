@@ -68,7 +68,12 @@ from app.services.image_generation import (
     GeneratedImageFile,
     ImageProviderResponseError,
 )
-from app.services import agent_observability, native_agent_loop, native_agent_worker
+from app.services import (
+    agent_observability,
+    native_agent_loop,
+    native_agent_model_routes,
+    native_agent_worker,
+)
 from app.services.native_agent_loop import (
     NativeAgentLoopError,
     NativeImageToolContext,
@@ -198,6 +203,9 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=status,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=1,
                 skill_content_hash_snapshot=version.content_hash,
@@ -1517,6 +1525,9 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=AgentRunStatus.queued,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=version.version,
                 skill_content_hash_snapshot=version.content_hash,
@@ -1580,7 +1591,7 @@ class NativeAgentLoopTests(unittest.TestCase):
                         data=SimpleNamespace(
                             type="response.function_call_arguments.delta",
                             item_id="function-item-1",
-                            delta='{"prompt":"真实',
+                            delta='{"prompt":"真实参数"}',
                         ),
                     ),
                     SimpleNamespace(
@@ -1606,8 +1617,16 @@ class NativeAgentLoopTests(unittest.TestCase):
         )
         with (
             patch.object(native_agent_loop, "SessionLocal", self.Session),
-            patch.object(native_agent_loop, "AsyncOpenAI", return_value=fake_client),
-            patch.object(native_agent_loop, "OpenAIProvider", return_value=object()),
+            patch.object(
+                native_agent_model_routes,
+                "AsyncOpenAI",
+                return_value=fake_client,
+            ),
+            patch.object(
+                native_agent_model_routes,
+                "OpenAIProvider",
+                return_value=object(),
+            ),
             patch.object(
                 native_agent_loop.Runner,
                 "run_streamed",
@@ -2004,6 +2023,10 @@ class NativeAgentLoopTests(unittest.TestCase):
                 response.data.skill_version_id,
             )
             self.assertEqual(original_style_name, response.data.style_name)
+            self.assertEqual("huomiao_responses", response.data.model_route)
+            self.assertEqual("huomiao", response.data.model_provider)
+            self.assertEqual("responses", response.data.model_api_shape)
+            self.assertEqual("test-model", response.data.model)
 
         with self.Session() as db:
             persisted = db.get(NativeAgentRun, run_id)
@@ -2024,6 +2047,10 @@ class NativeAgentLoopTests(unittest.TestCase):
                 .limit(1)
             )
             self.assertEqual(AgentRunStatus.retrying, persisted.status)
+            self.assertEqual("huomiao_responses", persisted.model_route_snapshot)
+            self.assertEqual("huomiao", persisted.model_provider_snapshot)
+            self.assertEqual("responses", persisted.model_api_shape_snapshot)
+            self.assertEqual("test-model", persisted.model_snapshot)
             self.assertIsNone(persisted.final_output)
             self.assertEqual(NativeAgentStepStatus.prepared, step.status)
             self.assertEqual("retry", json.loads(retry_item.payload_json)["control"])
@@ -2114,6 +2141,9 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=AgentRunStatus.queued,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=version.version,
                 skill_content_hash_snapshot=version.content_hash,
@@ -2197,7 +2227,7 @@ class NativeAgentLoopTests(unittest.TestCase):
             )
 
         fake_client = SimpleNamespace(close=AsyncMock())
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
             tracking_uri = f"sqlite:///{Path(temp_dir) / 'mlflow.db'}"
             settings = SimpleNamespace(
                 mlflow_tracing_enabled=True,
@@ -2216,12 +2246,12 @@ class NativeAgentLoopTests(unittest.TestCase):
             with (
                 patch.object(native_agent_loop, "SessionLocal", self.Session),
                 patch.object(
-                    native_agent_loop,
+                    native_agent_model_routes,
                     "AsyncOpenAI",
                     return_value=fake_client,
                 ),
                 patch.object(
-                    native_agent_loop,
+                    native_agent_model_routes,
                     "OpenAIProvider",
                     return_value=object(),
                 ),
@@ -2323,6 +2353,9 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=AgentRunStatus.running,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=1,
                 skill_content_hash_snapshot=version.content_hash,
@@ -2332,6 +2365,9 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=AgentRunStatus.queued,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=1,
                 skill_content_hash_snapshot=version.content_hash,
@@ -2341,6 +2377,9 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=AgentRunStatus.retrying,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=1,
                 skill_content_hash_snapshot=version.content_hash,
@@ -2370,9 +2409,15 @@ class NativeAgentLoopTests(unittest.TestCase):
         self.assertEqual(interrupted_id, enqueued_ids[0])
         self.assertEqual({queued_id, retrying_id}, set(enqueued_ids[1:]))
         with self.Session() as db:
-            persisted = db.get(NativeAgentRun, interrupted_id)
-            self.assertEqual(AgentRunStatus.queued, persisted.status)
-            self.assertIsNone(persisted.error_code)
+            for run_id in (interrupted_id, queued_id, retrying_id):
+                persisted = db.get(NativeAgentRun, run_id)
+                self.assertEqual("huomiao_responses", persisted.model_route_snapshot)
+                self.assertEqual("huomiao", persisted.model_provider_snapshot)
+                self.assertEqual("responses", persisted.model_api_shape_snapshot)
+                self.assertEqual("test-model", persisted.model_snapshot)
+            interrupted_run = db.get(NativeAgentRun, interrupted_id)
+            self.assertEqual(AgentRunStatus.queued, interrupted_run.status)
+            self.assertIsNone(interrupted_run.error_code)
 
     def test_recovery_marks_inflight_tool_unknown_and_does_not_replay(self) -> None:
         run_id = self.create_durable_run(status=AgentRunStatus.running)
@@ -2423,10 +2468,13 @@ class NativeAgentLoopTests(unittest.TestCase):
     def test_native_worker_executes_enqueued_run_id(self) -> None:
         async def exercise_worker() -> AsyncMock:
             execute = AsyncMock()
-            with patch.object(
-                native_agent_worker,
-                "execute_native_agent_run",
-                execute,
+            with (
+                patch.object(native_agent_worker, "SessionLocal", self.Session),
+                patch.object(
+                    native_agent_worker,
+                    "execute_native_agent_run",
+                    execute,
+                ),
             ):
                 native_agent_worker.init_native_agent_queue()
                 try:
@@ -2593,6 +2641,9 @@ class NativeAgentLoopTests(unittest.TestCase):
                 skill_version_id=version.id,
                 status=AgentRunStatus.running,
                 model_snapshot="test-model",
+                model_route_snapshot="huomiao_responses",
+                model_provider_snapshot="huomiao",
+                model_api_shape_snapshot="responses",
                 skill_name_snapshot=version.name_snapshot,
                 skill_version_snapshot=1,
                 skill_content_hash_snapshot=version.content_hash,

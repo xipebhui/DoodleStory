@@ -119,6 +119,15 @@ from app.services.native_agent_follow_up import (
     create_follow_up_run,
     find_idempotent_follow_up,
 )
+from app.services.native_agent_model_routes import (
+    SILICONFLOW_CHAT_ROUTE,
+    NativeAgentModelRouteConfigError,
+    resolve_native_agent_model_route,
+)
+from app.services.native_agent_route_capabilities import (
+    NativeAgentRouteCapabilityError,
+    validate_native_agent_route_capability,
+)
 
 
 router = APIRouter(prefix="/agent-loop", tags=["native-agent-loop"])
@@ -306,6 +315,15 @@ def _step_to_read(step: NativeAgentStep) -> NativeAgentStepRead:
         status=step.status,
         name=step.name,
         tool_call_id=step.tool_call_id,
+        model_call_id=step.model_call_id,
+        model_provider=step.model_provider,
+        model_api_shape=step.model_api_shape,
+        model_name=step.model_name,
+        provider_response_id=step.provider_response_id,
+        execution_attempt=step.execution_attempt,
+        model_call_ordinal=step.model_call_ordinal,
+        converted_message_count=step.converted_message_count,
+        latency_ms=step.latency_ms,
         attempts=step.attempts,
         started_at=step.started_at,
         finished_at=step.finished_at,
@@ -393,6 +411,9 @@ def _run_to_read(run: NativeAgentRun) -> NativeAgentRunRead:
             else None
         ),
         status=run.status,
+        model_route=run.model_route_snapshot,
+        model_provider=run.model_provider_snapshot,
+        model_api_shape=run.model_api_shape_snapshot,
         model=run.model_snapshot,
         model_call_count=run.model_call_count,
         image_call_count=run.image_call_count,
@@ -727,6 +748,14 @@ async def create_native_agent_run(
         conversation_id=conversation_id,
         owner_user_id=user.id,
     )
+    if (
+        payload.model_route == SILICONFLOW_CHAT_ROUTE
+        and user.role != UserRole.admin
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有管理员可以显式选择 SiliconFlow Chat 路由",
+        )
     active_run = db.scalar(
         select(NativeAgentRun).where(
             NativeAgentRun.conversation_id == conversation.id,
@@ -879,12 +908,42 @@ async def create_native_agent_run(
             )
 
     settings = get_settings()
+    try:
+        model_route = resolve_native_agent_model_route(
+            settings,
+            requested_route=payload.model_route,
+        )
+    except NativeAgentModelRouteConfigError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    try:
+        validate_native_agent_route_capability(
+            model_route,
+            selected_tool_names=selected_tool_names,
+            style_id=style.id if style is not None else None,
+            creation_channel_id=payload.creation_channel_id,
+            youtube_channel_id=payload.youtube_channel_id,
+            youtube_publishable_video_id=payload.youtube_publishable_video_id,
+            has_youtube_publish_confirmation=(
+                payload.youtube_publish_confirmation is not None
+            ),
+        )
+    except NativeAgentRouteCapabilityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     run = NativeAgentRun(
         conversation_id=conversation.id,
         skill_version_id=skill_version.id,
         style_id=style.id if style is not None else None,
         status=AgentRunStatus.queued,
-        model_snapshot=settings.agent_model.strip(),
+        model_snapshot=model_route.model,
+        model_route_snapshot=model_route.route,
+        model_provider_snapshot=model_route.provider,
+        model_api_shape_snapshot=model_route.api_shape,
         skill_name_snapshot=skill_version.name_snapshot,
         skill_version_snapshot=skill_version.version,
         skill_content_hash_snapshot=skill_version.content_hash,

@@ -555,7 +555,18 @@ class NativeAgentStore:
             )
             db.commit()
 
-    def start_model_step(self, response_id: str) -> NativeAgentStep:
+    def start_model_step(
+        self,
+        *,
+        model_call_id: str,
+        model_provider: str,
+        model_api_shape: str,
+        model_name: str,
+        provider_response_id: str | None,
+        execution_attempt: int,
+        model_call_ordinal: int,
+        converted_message_count: int | None,
+    ) -> NativeAgentStep:
         with self._session_factory() as db:
             run = db.get(NativeAgentRun, self.run_id)
             if run is None:
@@ -578,47 +589,67 @@ class NativeAgentStore:
                     "checkpoint.saved",
                     {"through_step_sequence": previous.sequence},
                 )
+            response_sequence = int(
+                db.scalar(
+                    select(func.count(NativeAgentStep.id)).where(
+                        NativeAgentStep.run_id == self.run_id,
+                        NativeAgentStep.step_type == NativeAgentStepType.model_call,
+                    )
+                )
+                or 0
+            ) + 1
             step = NativeAgentStep(
                 run_id=self.run_id,
                 sequence=_next_sequence(db, NativeAgentStep, self.run_id),
                 step_type=NativeAgentStepType.model_call,
                 status=NativeAgentStepStatus.running,
                 name="model",
-                idempotency_key=f"native:{self.run_id}:model:{response_id}",
-                output_ref_json=_json_dumps({"response_id": response_id}),
+                idempotency_key=model_call_id,
+                model_call_id=model_call_id,
+                model_provider=model_provider,
+                model_api_shape=model_api_shape,
+                model_name=model_name,
+                provider_response_id=provider_response_id,
+                execution_attempt=execution_attempt,
+                model_call_ordinal=model_call_ordinal,
+                converted_message_count=converted_message_count,
+                output_ref_json=_json_dumps(
+                    {
+                        "model_call_id": model_call_id,
+                        "provider_response_id": provider_response_id,
+                    }
+                ),
                 attempts=1,
                 started_at=datetime.utcnow(),
             )
             db.add(step)
-            response_sequence = int(
-                db.scalar(
-                    select(func.count(NativeAgentStep.id)).where(
-                        NativeAgentStep.run_id == self.run_id,
-                        NativeAgentStep.step_type
-                        == NativeAgentStepType.model_call,
-                    )
-                )
-                or 0
-            ) + 1
             _add_event(
                 db,
                 self.run_id,
                 "response.started",
                 {
                     "step_sequence": step.sequence,
-                    "response_id": response_id,
+                    "response_id": model_call_id,
+                    "model_call_id": model_call_id,
+                    "provider_response_id": provider_response_id,
                     "model_call_count": response_sequence,
+                    "model_provider": model_provider,
+                    "model_api_shape": model_api_shape,
+                    "model_name": model_name,
+                    "execution_attempt": execution_attempt,
+                    "model_call_ordinal": model_call_ordinal,
+                    "converted_message_count": converted_message_count,
                 },
             )
             db.commit()
             db.refresh(step)
             return step
 
-    def complete_model_step(
+    def set_model_step_provider_response_id(
         self,
-        response_id: str,
+        model_call_id: str,
         *,
-        usage: dict[str, object] | None,
+        provider_response_id: str,
     ) -> None:
         with self._session_factory() as db:
             run = db.get(NativeAgentRun, self.run_id)
@@ -628,16 +659,69 @@ class NativeAgentStore:
             step = db.scalar(
                 select(NativeAgentStep).where(
                     NativeAgentStep.run_id == self.run_id,
-                    NativeAgentStep.idempotency_key
-                    == f"native:{self.run_id}:model:{response_id}",
+                    NativeAgentStep.model_call_id == model_call_id,
                 )
             )
             if step is None:
                 raise RuntimeError("Native Agent 模型 Step 不存在")
+            if (
+                step.provider_response_id is not None
+                and step.provider_response_id != provider_response_id
+            ):
+                raise RuntimeError("Native Agent Provider response ID 冲突")
+            if step.provider_response_id is None:
+                step.provider_response_id = provider_response_id
+                _add_event(
+                    db,
+                    self.run_id,
+                    "model.provider_response_id.resolved",
+                    {
+                        "response_id": model_call_id,
+                        "model_call_id": model_call_id,
+                        "provider_response_id": provider_response_id,
+                    },
+                )
+            db.commit()
+
+    def complete_model_step(
+        self,
+        model_call_id: str,
+        *,
+        provider_response_id: str | None,
+        usage: dict[str, object] | None,
+        latency_ms: int,
+    ) -> None:
+        with self._session_factory() as db:
+            run = db.get(NativeAgentRun, self.run_id)
+            if run is None:
+                raise RuntimeError("Native Agent Run 不存在")
+            _require_run_writable(run)
+            step = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.run_id == self.run_id,
+                    NativeAgentStep.model_call_id == model_call_id,
+                )
+            )
+            if step is None:
+                raise RuntimeError("Native Agent 模型 Step 不存在")
+            if (
+                step.provider_response_id is not None
+                and provider_response_id is not None
+                and step.provider_response_id != provider_response_id
+            ):
+                raise RuntimeError("Native Agent Provider response ID 冲突")
+            if step.provider_response_id is None:
+                step.provider_response_id = provider_response_id
             step.status = NativeAgentStepStatus.succeeded
             step.finished_at = datetime.utcnow()
+            step.latency_ms = latency_ms
             step.output_ref_json = _json_dumps(
-                {"response_id": response_id, "usage": usage or {}}
+                {
+                    "model_call_id": model_call_id,
+                    "provider_response_id": provider_response_id,
+                    "usage": usage or {},
+                    "latency_ms": latency_ms,
+                }
             )
             _add_event(
                 db,
@@ -645,8 +729,11 @@ class NativeAgentStore:
                 "response.completed",
                 {
                     "step_sequence": step.sequence,
-                    "response_id": response_id,
+                    "response_id": model_call_id,
+                    "model_call_id": model_call_id,
+                    "provider_response_id": provider_response_id,
                     "usage": usage or {},
+                    "latency_ms": latency_ms,
                 },
             )
             db.commit()
@@ -749,6 +836,7 @@ class NativeAgentStore:
         tool_call_id: str,
         prompt: str,
         provider: str,
+        max_provider_attempts: int | None = None,
     ) -> CompletedNativeTool | NativeAgentStep:
         idempotency_key = (
             f"native:{self.run_id}:generate_image:{tool_call_id}"
@@ -759,6 +847,28 @@ class NativeAgentStore:
                 raise RuntimeError("Native Agent Run 不存在")
             _require_run_writable(run)
             arguments = {"prompt": prompt, "provider": provider}
+            existing = db.scalar(
+                select(NativeAgentStep).where(
+                    NativeAgentStep.idempotency_key == idempotency_key
+                )
+            )
+            if existing is not None and existing.status == NativeAgentStepStatus.succeeded:
+                return self._completed_tool(db, existing)
+            if max_provider_attempts is not None:
+                provider_attempts = int(
+                    db.scalar(
+                        select(func.coalesce(func.sum(NativeAgentStep.attempts), 0)).where(
+                            NativeAgentStep.run_id == self.run_id,
+                            NativeAgentStep.step_type == NativeAgentStepType.tool_call,
+                            NativeAgentStep.name == "generate_image",
+                        )
+                    )
+                    or 0
+                )
+                if provider_attempts >= max_provider_attempts:
+                    raise RuntimeError(
+                        "当前 Native Agent Run 的 generate_image Provider attempt 预算已用尽"
+                    )
             retry_step = self._claim_retry_step(
                 db,
                 name="generate_image",
@@ -768,14 +878,7 @@ class NativeAgentStore:
             )
             if retry_step is not None:
                 return retry_step
-            existing = db.scalar(
-                select(NativeAgentStep).where(
-                    NativeAgentStep.idempotency_key == idempotency_key
-                )
-            )
             if existing is not None:
-                if existing.status == NativeAgentStepStatus.succeeded:
-                    return self._completed_tool(db, existing)
                 raise RuntimeError(
                     "同一 generate_image 调用已存在未确认执行，拒绝重复调用"
                 )
@@ -1955,6 +2058,49 @@ class NativeAgentStore:
             )
             db.commit()
             return self._completed_image_inspection(step)
+
+    def validate_single_image_inspection_completion(self) -> None:
+        with self._session_factory() as db:
+            image_ids = list(
+                db.scalars(
+                    select(NativeAgentImage.id).where(
+                        NativeAgentImage.run_id == self.run_id
+                    )
+                ).all()
+            )
+            if len(image_ids) != 1:
+                raise RuntimeError(
+                    "SiliconFlow Chat S03 Run 必须且只能生成一张图片"
+                )
+            inspections = list(
+                db.scalars(
+                    select(NativeAgentStep).where(
+                        NativeAgentStep.run_id == self.run_id,
+                        NativeAgentStep.step_type == NativeAgentStepType.tool_call,
+                        NativeAgentStep.name == "inspect_image",
+                        NativeAgentStep.status == NativeAgentStepStatus.succeeded,
+                    )
+                ).all()
+            )
+            matching = []
+            for step in inspections:
+                output = json.loads(step.output_ref_json or "{}")
+                if output.get("image_id") == image_ids[0]:
+                    matching.append(output)
+            if len(matching) != 1:
+                raise RuntimeError(
+                    "SiliconFlow Chat S03 Run 缺少唯一的 inspect_image 终态"
+                )
+            inspection = matching[0]
+            if (
+                inspection.get("verdict")
+                not in {"accept", "revise", "ask_user", "blocked"}
+                or not inspection.get("provider")
+                or not inspection.get("model")
+            ):
+                raise RuntimeError(
+                    "SiliconFlow Chat S03 Run 的 inspect_image 终态不完整"
+                )
 
     def complete_run(self, final_output: str) -> None:
         with self._session_factory() as db:

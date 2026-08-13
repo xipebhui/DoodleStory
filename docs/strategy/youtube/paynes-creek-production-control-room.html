@@ -727,7 +727,7 @@
     <!--
       THESIS: 首片控制台是一张影片接触印样与制作登记账本；拒绝把“文档已备齐”包装成“媒体已开工”。
       OWN-WORLD: 深海墨、沉积蓝灰、盐白纸面与青绿/琥珀/红三种证据语义；直角帧孔、登记线、测量字和无阴影平面。
-      STORY: 操作者先确认赛道与首片，再看十二镜、成片验收、唯一故障和十三道 Gate，最后只决定是否批准 G2-A。
+      STORY: 操作者先确认赛道与首片，再看十二镜、成片验收、唯一故障和十三道 Gate，最后看到 G3 真实零媒体 Gate 已通过且只开放 G4 的一张 S03。
       FIRST VIEWPORT: 左侧大标题与赛道结论，右侧红色停止判定；下方七站生产线停在媒体前，下一动作直接可见。
       FORM: 影片接触印样 + 命令账本，结构候选 5，seed d231c8ec。
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
@@ -746,11 +746,11 @@
             </p>
           </div>
           <aside class="decision-block" aria-label="当前决策">
-            <strong>可以开始制作验证，但现在不能生图。</strong>
+            <strong>G3 已真实通过；现在只做一张 S03。</strong>
             <p>
-              当前状态为 <code>stop_before_batch</code>。唯一一次 S03 尝试停在 Agent 文本规划，图片调用为 0。
+              当前状态为 <code>g3_pass / stop_before_g4</code>。G3 的 5 次真实请求全部成功，媒体调用仍为 0。
             </p>
-            <a href="#next-gate">查看唯一下一授权点：G2-A 路由快照</a>
+            <a href="#next-gate">查看唯一下一步：执行 G4 单张 S03 Gate</a>
           </aside>
         </div>
 
@@ -758,7 +758,7 @@
           <span><b>研究</b>来源与主张已审计</span>
           <span><b>分镜</b>12 镜 / 138 秒</span>
           <span><b>脚本</b>536 字 / 12 Prompt</span>
-          <span class="stopped"><b>Agent</b>429 后停止</span>
+          <span class="stopped"><b>Agent</b>G3 已通过，只开放 G4 单图</span>
           <span><b>媒体</b>图片 / 音频均为 0</span>
           <span><b>成片</b>未渲染；验收设计就绪</span>
           <span><b>发布</b>未授权</span>
@@ -768,7 +768,7 @@
           <div><b>赛道</b><span>已锁定，生产适配</span></div>
           <div><b>首片</b><span>Paynes Creek 盐业</span></div>
           <div><b>市场证据</b><span>未发布、未验证</span></div>
-          <div><b>当前 Gate</b><span class="stop">G2-A 等待明确批准</span></div>
+          <div><b>当前 Gate</b><span class="stop">G3 PASS / G4 单张 S03</span></div>
         </div>
       </div>
     </header>
@@ -999,9 +999,9 @@
           <div class="gate-list" id="gate-list" aria-live="polite">
             <article class="gate-row" data-state="pass"><div class="gate-code">G0</div><div class="gate-name">赛道与事实</div><div class="gate-state pass">PASS</div><div><p>来源、主张、许可和禁区可追溯。</p></div><div><p>研究 / 事实审核完成。</p></div></article>
             <article class="gate-row" data-state="pass"><div class="gate-code">G1</div><div class="gate-name">分镜与脚本</div><div class="gate-state pass">PASS</div><div><p>12 镜、536 字旁白、12 段 Prompt；四处不确定性进入原文。</p></div><div><p>内容 / 事实审核完成。</p></div></article>
-            <article class="gate-row current" data-state="next" id="next-gate"><div class="gate-code">G2</div><div class="gate-name">Native 离线适配（A → B）</div><div class="gate-state next">G2-A WAITING APPROVAL</div><div><p>当前只批准火苗 Responses 的 Run 路由快照、迁移与执行一致性；完成后再单独评审 G2-B Chat 适配。</p></div><div><p>G2-A 只改代码与测试；不调用外部模型。</p></div></article>
-            <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G3</div><div class="gate-name">SiliconFlow 零媒体</div><div class="gate-state stop">NOT OPEN</div><div><p>真实验证普通流、Tool Loop、恢复与 10 / 11 messages 边界。</p></div><div><p>需要第二次明确授权与成本上限。</p></div></article>
-            <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G4</div><div class="gate-name">S03 单镜媒体</div><div class="gate-state stop">NOT OPEN</div><div><p>只生成一张 S03，再做 VL 文本 verdict 与人工视觉复核。</p></div><div><p>失败不生成第二镜。</p></div></article>
+            <article class="gate-row" data-state="pass"><div class="gate-code">G2</div><div class="gate-name">Native 离线适配（A → B）</div><div class="gate-state pass">PASS OFFLINE</div><div><p>火苗 Run 快照与受限 SiliconFlow Chat Adapter、调用身份、能力 Profile、消息边界和迁移均已离线通过。</p></div><div><p>不代表真实 Provider 已验证。</p></div></article>
+            <article class="gate-row" data-state="pass"><div class="gate-code">G3</div><div class="gate-name">SiliconFlow 零媒体</div><div class="gate-state pass">PASS</div><div><p>5 次真实请求完成普通流、Tool Loop、恢复与 10 / 11 messages 边界验证。</p></div><div><p>Tool 仅执行一次，媒体与发布调用为 0。</p></div></article>
+            <article class="gate-row current" data-state="next" id="next-gate"><div class="gate-code">G4</div><div class="gate-name">S03 单镜媒体</div><div class="gate-state next">AUTHORIZED · NOT RUN</div><div><p>只生成一张 S03，再做 VL 文本 verdict 与人工事实、视觉复核。</p></div><div><p>失败保留证据并停止，不生成第二镜。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G5</div><div class="gate-name">视觉锚点</div><div class="gate-state stop">NOT OPEN</div><div><p>S01 地图锚点、S04 陶器 / 火候锚点；验证画幅与视觉语法。</p></div><div><p>S03 通过后才可评审。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G6</div><div class="gate-name">九镜串行余图</div><div class="gate-state stop">NOT OPEN</div><div><p>S02 → S08 → S11 → S05 → S09 → S07 → S06 → S10 → S12；每镜独立授权与留证。</p></div><div><p>首个失败镜停止；通过也不自动生成下一镜。</p></div></article>
             <article class="gate-row blocked" data-state="blocked"><div class="gate-code">G7</div><div class="gate-name">逐镜语音与字幕</div><div class="gate-state stop">BLOCKED BY G7-0</div><div><p>S01 → S02 → S08 → S03 → S07 → S09 → S10 → S11 → S12 → S04 → S05 → S06；每镜 Speech + Subtitle 成对验收。</p></div><div><p>G8 尚不能读取来源 Run 音频；未补 lineage 不调用 TTS。</p></div></article>
@@ -1014,20 +1014,21 @@
 
           <div class="next-gate">
             <div>
-              <h3>当前只做 G2-A，不提前接通 Chat。</h3>
+              <h3>G3 已真实通过；当前只开放 G4 的一张 S03。</h3>
               <ul>
-                <li>把当前火苗 Responses 的 route、provider、API shape、model 固定为 Run 快照。</li>
-                <li>普通执行、文章角色、重试、恢复与 Follow-up 只读取该 Run 快照。</li>
-                <li>历史 Run 回填当时唯一存在的 Responses 路径，保留原模型值。</li>
-                <li>旧 Router 的 <code>AGENT_MODEL</code> 与 Native 模型配置明确分离。</li>
-                <li>不新增 <code>siliconflow_chat_v1</code>、Chat Event Adapter、能力 Profile 或消息 wrapper。</li>
-                <li>迁移和离线测试通过后停止，再建立并批准 G2-B；G3 仍未开放。</li>
+                <li>已把火苗 Responses 的 route、provider、API shape、model 固定为 Run 快照。</li>
+                <li>普通执行、文章角色、重试、恢复与 Follow-up 已统一只读该 Run 快照。</li>
+                <li>历史 Run 已回填当时唯一存在的 Responses 路径，并保留原模型值。</li>
+                <li>旧 Router 的 <code>AGENT_MODEL</code> 已与 Native 模型配置明确分离。</li>
+                <li><code>siliconflow_chat_v1</code> 已实现稳定调用身份、Chat Event Adapter、精确 S03 Profile 和 10 / 11 消息 wrapper。</li>
+                <li>Chat 生图只返回文本 ID，同 Run 仅一次 attempt，必须检查唯一图片且不允许 Follow-up。</li>
+                <li>G3 共发送 5 次真实模型请求并全部成功；图片、VL、语音、视频与发布仍为 0。</li>
               </ul>
             </div>
             <aside class="authorization-copy">
-              <b>批准边界应当精确到这一句</b>
-              <p>如果决定进入开发，授权不应包含任何真实模型、图片或发布副作用。</p>
-              <code>批准 G2-A：只实施当前 Responses 路由快照、迁移与离线测试，不调用外部模型或媒体。</code>
+              <b>G4 必须锁住这一边界</b>
+              <p>只允许一个新 Run、一次图片 Provider attempt、一张 S03、一次 VL 和两类人工复核。</p>
+              <code>当前：g3_pass / stop_before_g4；图片调用数保持 0。</code>
             </aside>
           </div>
         </div>
@@ -1111,13 +1112,13 @@
           <div>
             <h2>现在不是继续研究更多赛道的时候。</h2>
             <p>
-              赛道、首片、来源、脚本和十二镜都已足够支持一次本地生产验证。当前唯一合理动作是先决定
-              是否实施 G2-A 路由快照；在这之前，继续翻榜不会让 S03 多出一张图。
+              赛道、首片、来源、脚本和十二镜都已足够支持一次本地生产验证。G3 真实零媒体 Gate 已经通过，
+              当前唯一合理动作是按重试协议生成并验收一张 S03；继续翻榜不会让样片更接近完成。
             </p>
           </div>
           <div class="verdict">
             <b>控制器判定：lane selected / media stopped</b>
-            <p>允许评审 G2-A；禁止提前进入 G2-B、跳过 G3–G4、批量生图或发布。</p>
+            <p>允许执行 G4 单张 S03；禁止同一 attempt 二次生图、提前批量生成或发布。</p>
             <a href="paynes-creek-production-control-room.md">阅读 Markdown 权威运行手册</a>
           </div>
         </div>

@@ -431,6 +431,28 @@
   取消或存在 unknown Tool 的 Run 必须明确拒绝。已知失败 Tool 在同一 Step 上增加 attempt，
   首次重试必须使用原 Tool 名和原参数；模型未执行指定 Tool、改写参数或仍有 failed Tool 时
   Run 不得被标成成功。`retrying` 状态必须在服务重启后重新入队。
+- Sprint 181 完成 Native Agent G2-A Run 路由快照基础。新 Run 创建前必须解析并验证部署默认
+  `huomiao_responses` route、`NATIVE_AGENT_HUOMIAO_MODEL`、当前 `TEXT_FALLBACK_API_KEY` 与合法 HTTP(S)
+  Base URL；失败返回 503，且不得写 Run、Item、Workflow 或 enqueue。成功后把
+  `model_route_snapshot / model_provider_snapshot / model_api_shape_snapshot / model_snapshot` 原子保存，
+  普通执行、文章 Workflow Compiler、Director、Writer、Reviewer、重试、恢复、Follow-up、API 与 trace
+  均只读取这四个快照。历史 Run 固定回填为 `huomiao_responses / huomiao / responses` 并保留原模型；未知或
+  矛盾的持久化组合必须在模型请求前使 Run 明确失败。`AGENT_MODEL` 继续只服务旧 Agent Router，不能作为
+  Native 模型隐式回退。
+- Sprint 192 完成 G2-B `siliconflow_chat_v1` 有界离线适配。默认 Route 仍只能是
+  `huomiao_responses`；只有 Admin 可在 Run API 显式选择 SiliconFlow，并固定快照为
+  `siliconflow_chat_v1 / siliconflow / chat_completions / deepseek-ai/DeepSeek-V3.2`。该 Route 只接受 Tool
+  集精确等于 `generate_image + inspect_image`、有可用 Style 且无创作账号或 YouTube 发布上下文的 Run；
+  普通用户、配置错误或能力越界必须在写库和 enqueue 前明确拒绝，不回退到火苗。
+- SiliconFlow Native Provider 使用 Chat Completions、关闭 client / Runner retry、关闭 thinking，并用 SDK
+  同一 Converter 对最终消息计数；含 system message 最多 10 条，11 条及以上必须在 HTTP 前失败，不截断、
+  摘要或删除上下文。模型 Step 使用应用 `model_call_id`，另存可空 Provider response ID、route、model、
+  execution attempt、ordinal、消息数、延迟与 usage；SDK `__fake_id__` 不得成为持久化身份。Chat 工具事件按
+  `output_index + call_id` 隔离并由 Item done 合成参数完成，累计参数不一致、Provider ID 冲突或未完成 Tool
+  参数都必须失败。
+- 该 Chat Route 只向模型返回生图结果的文本 ID，不回传图片 data URL；同一 Run 最多一次新的图片 Provider
+  attempt，必须对唯一图片完成一次真实 `inspect_image` 终态后才能正常结束，且不允许 Follow-up 绕过预算。
+  G2 只记为 `pass_offline`：尚未执行真实 SiliconFlow G3，也不授权 S03 生图、媒体制作或发布。
 - Agent 正常 `/agent` 与 `/agent/skills` 使用统一深色 Agent Studio 视觉；Native composer
   textarea 必须显式定义浅色文字、深色背景、placeholder、caret 和 focus，不能同时继承全局
   深色背景与局部深色文字。
@@ -495,7 +517,14 @@
   accepted 后才能打开 `image_quality_review` Gate。Panel 局部重跑只重置目标图片与质量 Task，
   其它 Panel、正文和 Review 保持不变。Sprint 146 新表必须通过独立 Alembic revision 添加，不能
   修改已经执行过的 Sprint 145 migration。
-- Agent 模型继续锁定 `openai-agents==0.18.3`、`openai==2.45.0` 和 Responses API；火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` 共用 `AGENT_MODEL`，当前默认模型为 `gpt-5.5`。底层 client/SDK retry 均关闭。Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream interrupted/disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整重放，不使用 Provider `previous_response_id` 或 remote conversation。
+- Agent SDK 继续锁定 `openai-agents==0.18.3` 与 `openai==2.45.0`。旧 `AgentModelRouter` 使用
+  `AGENT_MODEL`，在火苗 `TEXT_FALLBACK_*` 与 LIO `LIO_*` Responses 路径间执行既有有界重试和 fallback；
+  Native Agent 则使用 Run 创建时的独立 `NATIVE_AGENT_HUOMIAO_MODEL` 与
+  `huomiao_responses / huomiao / responses` 快照，不复用该 fallback。两条路径底层 client / SDK retry 均关闭。
+  旧 Router 只对连接、超时、429 与语义明确的临时 5xx（包括 Provider 以 HTTP 408/5xx 包装的明确 stream
+  interrupted / disconnected 错误）在火苗重试一次，仍失败时切换一次 LIO；其它 `invalid_request`、
+  401/403、schema、内容策略、`model_not_found`、无渠道或能力错误明确失败。每次模型输入从应用数据库完整
+  重放，不使用 Provider `previous_response_id` 或 remote conversation。
 - 认证：第一版需要邮箱/密码注册登录、找回密码和 `user/admin` 两级角色，不做组织或团队隔离。
 - 积分：使用关系型数据库保存 `user_credit_accounts`、`credit_transactions`、`credit_activation_codes` 和 `credit_activation_code_redemptions`。数据库是积分余额和流水的事实来源；不得只在前端或进程内维护余额。图片生成积分占用、成功扣费和失败释放必须通过数据库原子变更更新账户余额，避免同一用户多个图片 job 并发时丢失占用积分。
 - 后台工作流：图片生成是异步流程，第一版采用轻量工作流：进程内队列 + 数据库持久化任务状态。

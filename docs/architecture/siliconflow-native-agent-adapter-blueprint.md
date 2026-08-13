@@ -2,7 +2,7 @@
 
 日期：2026-08-12
 
-状态：设计冻结候选；代码、迁移、真实模型调用和 S03 媒体调用均未执行
+状态：G2=`pass_offline`；G3 Attempt 2 已用 5 次零媒体真实请求通过；S03 媒体尚未执行
 
 配套架构图：
 
@@ -85,7 +85,11 @@ Tool Output 中的文本部分；`deepseek-ai/DeepSeek-V3.2` 本身也是文本�
 `generate_image` 输出收敛为文本事实（`image_id`、宽、高），随后强制调用本地 `inspect_image`，由视觉
 Provider 返回文本 verdict、score 和 issue。Responses 路线继续保留当前图片 Tool Output。
 
-## 3. 当前还存在的路由快照缺口
+## 3. G2-A 实施前的路由快照缺口（现已修复）
+
+本节保留 2026-08-12 的实施前审计。Sprint 181 已于 2026-08-13 完成：Native Run 现已使用独立配置并
+保存四字段路由快照，执行、文章角色、重试、恢复、Follow-up、API 和 trace 都只读该快照。下述缺口不再是
+当前运行时事实，但仍解释为什么 G2-B 不能退回为单纯修改 Base URL。
 
 ### 3.1 `AGENT_MODEL` 被两条运行链共享
 
@@ -379,7 +383,7 @@ docs/testing/siliconflow-native-agent-compatibility-report.json
   路径并保留原 `model_snapshot`；
 - 新 Run、Follow-up、重试、恢复、文章角色、API 和 trace 统一只读四字段快照；
 - Provider factory 在本切片只接受 `huomiao_responses`，不产生 Chat 路径；
-- 完整范围和验收见 [Sprint 181 待批准合同](../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)。
+- 完整范围和验收见 [Sprint 181 已完成合同](../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)。
 
 #### G2-B：SiliconFlow Chat 有界适配
 
@@ -387,10 +391,13 @@ docs/testing/siliconflow-native-agent-compatibility-report.json
 - 模型 Step 观测字段、应用侧调用身份、Provider response ID 补写；
 - Model wrapper / Event Adapter、Tool 参数完成合成；
 - Chat Tool Output policy、S03 capability validator 与 10 条消息 wrapper；
-- 独立合同只在 G2-A 完成后冻结和批准。
+- 已按 [Sprint 192 完成合同](../contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md) 实施并离线验证；
+- Admin 显式路由、精确 S03 Profile、10 / 11 消息预检、稳定模型调用身份、Chat Event Adapter、文本 Tool
+  Output、单图 attempt 预算、检查终态与 Follow-up 禁止均已落地；
+- revision `w4x5y6z7a8b9` 保存未来模型调用证据，历史 Step 新字段保持 `NULL`。
 
-G2-A 通过不等于 G2 通过，也不能进入 G3。只有 G2-A 与 G2-B 的离线迁移、测试和文档全部通过，G2 才能
-留下 `pass_offline` 证据。
+G2-A 与 G2-B 的离线迁移、测试和文档现均已通过，因此 G2 留下 `pass_offline` 证据。它只开放对 G3 的
+独立授权评审，不等于 SiliconFlow 真实兼容已通过，更不开放 G4 媒体调用。
 
 ### 实施 Sprint B：真实兼容性 Gate
 
@@ -407,8 +414,8 @@ G2-A 通过不等于 G2 通过，也不能进入 G3。只有 G2-A 与 G2-B 的�
 ## 12. 最终决策
 
 ```text
-当前：g2a_contract_ready_for_user_approval
-允许：先实施 Sprint 181 / G2-A（需用户明确批准）
+当前：g3_pass_for_s03_single_image_review / stop_before_g4
+允许：评审 G3 零媒体真实兼容性 Gate 的独立小额调用授权
 禁止：真实模型调用、S03 生图、批量媒体、发布
 ```
 

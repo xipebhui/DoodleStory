@@ -1,7 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-from urllib.parse import quote
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -57,6 +55,9 @@ class Settings(BaseSettings):
     agent_retry_backoff_seconds: float = Field(default=0.5, ge=0)
     agent_worker_concurrency: int = Field(default=1, ge=1)
     agent_context_message_limit: int = Field(default=200, ge=1, le=1000)
+    native_agent_default_route: str = "huomiao_responses"
+    native_agent_huomiao_model: str = "gpt-5.5"
+    native_agent_siliconflow_model: str = "deepseek-ai/DeepSeek-V3.2"
     mlflow_tracing_enabled: bool = False
     mlflow_tracking_uri: str = ""
     mlflow_experiment_name: str = "doodlestory-agent-local"
@@ -172,7 +173,7 @@ class Settings(BaseSettings):
         if not db_path.is_absolute():
             db_path = PROJECT_ROOT / db_path
 
-        return f"sqlite:///{quote(str(db_path.resolve()))}"
+        return f"sqlite:///{db_path.resolve().as_posix()}"
 
     @property
     def frontend_origin_list(self) -> list[str]:

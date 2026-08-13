@@ -129,7 +129,7 @@ class WhisperSubtitleTests(unittest.TestCase):
         )
 
         model.transcribe.assert_called_once_with(
-            "/tmp/reference.mp3",
+            str(Path("/tmp/reference.mp3")),
             vad_filter=True,
             language="zh",
             word_timestamps=True,

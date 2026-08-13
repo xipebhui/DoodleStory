@@ -28,7 +28,6 @@ from agents.model_settings import ModelRetrySettings
 from agents.models.openai_provider import OpenAIProvider
 from agents.tool_context import ToolContext
 from agents.usage import serialize_usage
-from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload, sessionmaker
@@ -84,6 +83,13 @@ from app.services.native_agent_persistence import (
     NativeAgentDatabaseSession,
     NativeAgentStore,
 )
+from app.services.native_agent_model_routes import (
+    SILICONFLOW_CHAT_ROUTE,
+    NativeAgentModelProviderBinding,
+    NativeAgentModelRouteSnapshot,
+    resolve_native_agent_run_model_provider,
+)
+from app.services.native_agent_model_events import NativeModelEventAdapter
 from app.services.native_article_workflow import (
     ARTICLE_DRAFT,
     ARTICLE_REVIEW,
@@ -168,6 +174,8 @@ class NativeImageToolContext:
     image_model: str | None
     aspect_ratio: str | None
     reference_urls: tuple[str, ...]
+    text_only_output: bool = False
+    max_provider_attempts: int | None = None
 
 
 ImageGenerator = Callable[..., GeneratedImageFile]
@@ -451,11 +459,19 @@ def build_generate_image_tool(
         resolved_provider = resolve_image_provider(
             None if provider == "default" else provider
         )
-        prepared = store.prepare_tool(
-            tool_call_id=tool_context.tool_call_id,
-            prompt=cleaned_prompt,
-            provider=resolved_provider,
-        )
+        if context.max_provider_attempts is None:
+            prepared = store.prepare_tool(
+                tool_call_id=tool_context.tool_call_id,
+                prompt=cleaned_prompt,
+                provider=resolved_provider,
+            )
+        else:
+            prepared = store.prepare_tool(
+                tool_call_id=tool_context.tool_call_id,
+                prompt=cleaned_prompt,
+                provider=resolved_provider,
+                max_provider_attempts=context.max_provider_attempts,
+            )
         if isinstance(prepared, CompletedNativeTool):
             store.append_event(
                 "tool.reused",
@@ -466,7 +482,10 @@ def build_generate_image_tool(
                     "image_id": prepared.image_id,
                 },
             )
-            return await _tool_outputs(prepared)
+            return await _tool_outputs(
+                prepared,
+                include_image=not context.text_only_output,
+            )
         store.start_tool(prepared.id)
         with agent_span(
             "native_agent.generate_image",
@@ -603,7 +622,10 @@ def build_generate_image_tool(
                 "OK",
                 agent_run_id=context.run_id,
             )
-            return await _tool_outputs(completed)
+            return await _tool_outputs(
+                completed,
+                include_image=not context.text_only_output,
+            )
 
     return function_tool(
         generate_image,
@@ -1730,9 +1752,10 @@ def _completed_image_url(completed: CompletedNativeTool) -> str:
 
 async def _tool_outputs(
     completed: CompletedNativeTool,
+    *,
+    include_image: bool = True,
 ) -> list[ToolOutputText | ToolOutputImage]:
-    image_url = await asyncio.to_thread(_completed_image_url, completed)
-    return [
+    outputs: list[ToolOutputText | ToolOutputImage] = [
         ToolOutputText(
             text=json.dumps(
                 {
@@ -1743,12 +1766,12 @@ async def _tool_outputs(
                 },
                 ensure_ascii=False,
             )
-        ),
-        ToolOutputImage(
-            image_url=image_url,
-            detail="high",
-        ),
+        )
     ]
+    if include_image:
+        image_url = await asyncio.to_thread(_completed_image_url, completed)
+        outputs.append(ToolOutputImage(image_url=image_url, detail="high"))
+    return outputs
 
 
 def native_agent_instructions(
@@ -1793,6 +1816,14 @@ def native_agent_instructions(
             "不得自行猜测或在失败后切换 provider。\n"
             f"{image_generation_context}\n"
             "</image_generation_context>"
+        )
+    if run.model_route_snapshot == SILICONFLOW_CHAT_ROUTE:
+        instructions += (
+            "\n\n<siliconflow_s03_boundary>\n"
+            "本 Route 只允许一次 generate_image Provider attempt。生成成功后必须使用返回的 "
+            "image_id 调用 inspect_image，并等待真实 verdict；未完成检查前不得结束。"
+            "不得要求图片二进制、data URL、第二张候选图或同 Run 重试生图。\n"
+            "</siliconflow_s03_boundary>"
         )
     if run.youtube_publish_confirmation_json:
         instructions += (
@@ -2203,6 +2234,12 @@ async def execute_native_agent_run(
             image_model=run.image_model_snapshot,
             aspect_ratio=run.aspect_ratio_snapshot,
             reference_urls=reference_urls,
+            text_only_output=(
+                run.model_route_snapshot == SILICONFLOW_CHAT_ROUTE
+            ),
+            max_provider_attempts=(
+                1 if run.model_route_snapshot == SILICONFLOW_CHAT_ROUTE else None
+            ),
         )
         exposed_tool_names = native_runtime_tool_names(
             run.skill_version.tool_names_json
@@ -2235,23 +2272,42 @@ async def execute_native_agent_run(
         }
     resumed = await sdk_session.has_items()
     execution_attempt = store.start_run(resumed=resumed)
-    client = AsyncOpenAI(
-        api_key=resolved_settings.text_fallback_api_key.strip(),
-        base_url=resolved_settings.text_fallback_openai_base_url,
-        max_retries=0,
-        timeout=resolved_settings.agent_request_timeout_seconds,
+    provider_binding: NativeAgentModelProviderBinding | None = None
+    model_name = run.model_snapshot
+    event_adapter = NativeModelEventAdapter(
+        run_id=run_id,
+        execution_attempt=execution_attempt,
+        route=NativeAgentModelRouteSnapshot(
+            route=run.model_route_snapshot,
+            provider=run.model_provider_snapshot,
+            api_shape=run.model_api_shape_snapshot,
+            model=run.model_snapshot,
+        ),
+        store=store,
     )
-    provider = OpenAIProvider(openai_client=client, use_responses=True)
     with native_agent_run_span(
         native_agent_run_id=run_id,
         execution_attempt=execution_attempt,
         conversation_id=trace_context["conversation_id"],
         skill_version_id=trace_context["skill_version_id"],
         style_id=trace_context["style_id"],
-        model=resolved_settings.agent_model.strip(),
+        model_route=run.model_route_snapshot,
+        model_provider=run.model_provider_snapshot,
+        model_api_shape=run.model_api_shape_snapshot,
+        model=model_name,
         app_environment=resolved_settings.app_env,
     ) as root_span:
         try:
+            provider_binding = resolve_native_agent_run_model_provider(
+                run,
+                settings=resolved_settings,
+                chat_message_count_observer=(
+                    event_adapter.record_converted_message_count
+                    if run.model_route_snapshot == SILICONFLOW_CHAT_ROUTE
+                    else None
+                ),
+            )
+            provider = provider_binding.provider
             metric_hooks = NativeModelMetricHooks(
                 store,
                 phase=f"execution_attempt_{execution_attempt}",
@@ -2261,7 +2317,7 @@ async def execute_native_agent_run(
                 workflow = await compile_article_workflow(
                     run,
                     provider=provider,
-                    model=resolved_settings.agent_model.strip(),
+                    model=model_name,
                     store=store,
                     hooks=metric_hooks,
                 )
@@ -2352,7 +2408,7 @@ async def execute_native_agent_run(
                 article_tools = build_article_agent_tools(
                     run,
                     workflow=workflow,
-                    model=resolved_settings.agent_model.strip(),
+                    model=model_name,
                     store=store,
                     hooks=metric_hooks,
                     durable_task_key=durable_task_key,
@@ -2362,6 +2418,20 @@ async def execute_native_agent_run(
                     for tool in article_tools
                     if tool.name in exposed_tool_names
                 )
+            model_settings = (
+                ModelSettings(
+                    retry=ModelRetrySettings(max_retries=0),
+                    store=None,
+                    parallel_tool_calls=None,
+                    include_usage=None,
+                    extra_body={"enable_thinking": False},
+                )
+                if run.model_route_snapshot == SILICONFLOW_CHAT_ROUTE
+                else ModelSettings(
+                    retry=ModelRetrySettings(max_retries=0),
+                    store=False,
+                )
+            )
             agent = Agent(
                 name=(
                     "DoodleStoryArticleDirector"
@@ -2369,12 +2439,9 @@ async def execute_native_agent_run(
                     else "DoodleStoryNativeContentAgent"
                 ),
                 instructions=instructions,
-                model=resolved_settings.agent_model.strip(),
+                model=model_name,
                 tools=tools,
-                model_settings=ModelSettings(
-                    retry=ModelRetrySettings(max_retries=0),
-                    store=False,
-                ),
+                model_settings=model_settings,
                 hooks=metric_hooks,
             )
             model_loop_start_count = metric_hooks.started_count
@@ -2383,7 +2450,10 @@ async def execute_native_agent_run(
                 agent_run_id=run_id,
                 span_type="CHAT_MODEL",
                 attributes={
-                    "model": resolved_settings.agent_model.strip(),
+                    "model": model_name,
+                    "model_route": run.model_route_snapshot,
+                    "model_provider": run.model_provider_snapshot,
+                    "model_api_shape": run.model_api_shape_snapshot,
                     "max_turns": MAX_NATIVE_AGENT_TURNS,
                     "tool_count": len(tools),
                     "max_function_tool_concurrency": MAX_NATIVE_AGENT_TOOL_CONCURRENCY,
@@ -2412,121 +2482,11 @@ async def execute_native_agent_run(
                         max_turns=MAX_NATIVE_AGENT_TURNS,
                         session=sdk_session,
                     )
-                    text_delta_buffer = ""
-                    last_delta_flush = time.monotonic()
-                    current_response_id: str | None = None
-                    function_argument_buffers: dict[str, str] = {}
-                    function_argument_last_flush: dict[str, float] = {}
-                    function_call_metadata: dict[str, dict[str, object]] = {}
-
-                    def flush_text_delta() -> None:
-                        nonlocal text_delta_buffer, last_delta_flush
-                        if not text_delta_buffer or current_response_id is None:
-                            return
-                        store.append_response_text_delta(
-                            current_response_id,
-                            text_delta_buffer,
-                        )
-                        text_delta_buffer = ""
-                        last_delta_flush = time.monotonic()
-
-                    def flush_function_arguments(item_id: str) -> None:
-                        delta = function_argument_buffers.get(item_id, "")
-                        if not delta or current_response_id is None:
-                            return
-                        metadata = function_call_metadata.get(item_id, {})
-                        store.append_function_call_arguments_delta(
-                            response_id=current_response_id,
-                            item_id=item_id,
-                            tool_call_id=str(metadata.get("tool_call_id") or ""),
-                            name=str(metadata.get("name") or ""),
-                            delta=delta,
-                        )
-                        function_argument_buffers[item_id] = ""
-                        function_argument_last_flush[item_id] = time.monotonic()
-
                     async for event in result.stream_events():
                         if event.type != "raw_response_event":
                             continue
-                        raw_event = event.data
-                        raw_type = getattr(raw_event, "type", "")
-                        if raw_type == "response.created":
-                            current_response_id = raw_event.response.id
-                            store.start_model_step(current_response_id)
-                        elif raw_type == "response.output_text.delta":
-                            text_delta_buffer += raw_event.delta
-                            now = time.monotonic()
-                            if (
-                                len(text_delta_buffer) >= 80
-                                or now - last_delta_flush >= 0.25
-                            ):
-                                flush_text_delta()
-                        elif raw_type == "response.output_item.added":
-                            item = raw_event.item
-                            if getattr(item, "type", "") != "function_call":
-                                continue
-                            item_id = str(item.id)
-                            metadata = {
-                                "tool_call_id": str(item.call_id),
-                                "name": str(item.name),
-                                "output_index": int(raw_event.output_index),
-                            }
-                            function_call_metadata[item_id] = metadata
-                            function_argument_buffers[item_id] = ""
-                            function_argument_last_flush[item_id] = time.monotonic()
-                            store.start_function_call(
-                                response_id=current_response_id or "",
-                                item_id=item_id,
-                                tool_call_id=str(metadata["tool_call_id"]),
-                                name=str(metadata["name"]),
-                                output_index=int(metadata["output_index"]),
-                            )
-                        elif raw_type == "response.function_call_arguments.delta":
-                            item_id = str(raw_event.item_id)
-                            function_argument_buffers[item_id] = (
-                                function_argument_buffers.get(item_id, "")
-                                + raw_event.delta
-                            )
-                            now = time.monotonic()
-                            if (
-                                len(function_argument_buffers[item_id]) >= 80
-                                or now
-                                - function_argument_last_flush.get(item_id, now)
-                                >= 0.25
-                            ):
-                                flush_function_arguments(item_id)
-                        elif raw_type == "response.function_call_arguments.done":
-                            item_id = str(raw_event.item_id)
-                            flush_function_arguments(item_id)
-                            metadata = function_call_metadata.get(item_id, {})
-                            store.complete_function_call_arguments(
-                                response_id=current_response_id or "",
-                                item_id=item_id,
-                                tool_call_id=str(metadata.get("tool_call_id") or ""),
-                                name=str(
-                                    getattr(raw_event, "name", None)
-                                    or metadata.get("name")
-                                    or ""
-                                ),
-                                arguments=str(raw_event.arguments),
-                            )
-                        elif raw_type == "response.completed":
-                            flush_text_delta()
-                            for item_id in tuple(function_argument_buffers):
-                                flush_function_arguments(item_id)
-                            usage = getattr(raw_event.response, "usage", None)
-                            usage_payload = (
-                                usage.model_dump(mode="json")
-                                if usage is not None
-                                else None
-                            )
-                            store.complete_model_step(
-                                raw_event.response.id,
-                                usage=usage_payload,
-                            )
-                    flush_text_delta()
-                    for item_id in tuple(function_argument_buffers):
-                        flush_function_arguments(item_id)
+                        event_adapter.handle(event.data)
+                    event_adapter.finish()
                 except Exception as exc:
                     store.fail_active_model_step(exc)
                     set_span_status(
@@ -2552,6 +2512,8 @@ async def execute_native_agent_run(
                         agent_run_id=run_id,
                     )
                     raise NativeAgentLoopError("模型没有返回 final output")
+                if run.model_route_snapshot == SILICONFLOW_CHAT_ROUTE:
+                    store.validate_single_image_inspection_completion()
                 set_span_outputs(
                     model_span,
                     {
@@ -2663,4 +2625,5 @@ async def execute_native_agent_run(
                 error_code=type(exc).__name__,
             )
         finally:
-            await client.close()
+            if provider_binding is not None:
+                await provider_binding.client.close()

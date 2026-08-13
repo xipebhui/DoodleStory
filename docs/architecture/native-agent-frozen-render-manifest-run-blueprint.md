@@ -294,7 +294,7 @@ flowchart LR
   Profile、Paynes Creek G5–G7 审核协议与总验收模板。
 - `artifact`：本蓝图、Sprint 189 合同、G8 操作协议与空白 Manifest / attempt 模板。
 - `decision`：G8 必须使用认证用户确认、服务端编译和 Run 级不可变 hash；禁止 Prompt 转抄充当批准机制。
-- `next_step`：按 Sprint 190 设计实施逐镜帧证据包；实际开发顺序仍先等待 Sprint 181 批准。
+- `next_step`：按 Sprint 190 设计实施逐镜帧证据包；实际生产顺序仍先停在 G3 独立授权前。
 
 本轮完成：把 12 组已审核媒体到一次确定性渲染之间的批准、快照和恢复边界固定下来。
 

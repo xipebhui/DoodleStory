@@ -23,6 +23,7 @@ from app.schemas.native_agent import NativeAgentFollowUpCreate
 from app.services.agent_skill_management import parse_tool_names
 from app.services.durable_agent_runtime import initialize_workflow
 from app.services.native_agent_persistence import add_native_agent_event
+from app.services.native_agent_model_routes import SILICONFLOW_CHAT_ROUTE
 
 
 FOLLOW_UP_CONTEXT_MAX_BYTES = 64_000
@@ -199,6 +200,10 @@ def create_follow_up_run(
     user: User,
     payload: NativeAgentFollowUpCreate,
 ) -> tuple[NativeAgentRun, bool]:
+    if parent_run.model_route_snapshot == SILICONFLOW_CHAT_ROUTE:
+        raise NativeAgentFollowUpError(
+            "SiliconFlow Chat S03 Run 不允许创建 Follow-up"
+        )
     existing = find_idempotent_follow_up(
         db,
         user=user,
@@ -257,6 +262,9 @@ def create_follow_up_run(
         style_id=parent_run.style_id,
         status=AgentRunStatus.queued,
         model_snapshot=parent_run.model_snapshot,
+        model_route_snapshot=parent_run.model_route_snapshot,
+        model_provider_snapshot=parent_run.model_provider_snapshot,
+        model_api_shape_snapshot=parent_run.model_api_shape_snapshot,
         skill_name_snapshot=parent_run.skill_name_snapshot,
         skill_version_snapshot=parent_run.skill_version_snapshot,
         skill_content_hash_snapshot=parent_run.skill_content_hash_snapshot,

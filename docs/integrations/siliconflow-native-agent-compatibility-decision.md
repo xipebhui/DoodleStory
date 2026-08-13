@@ -172,32 +172,33 @@ NATIVE_AGENT_HUOMIAO_MODEL=gpt-5.5
 NATIVE_AGENT_SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2
 ```
 
-离线实现现已拆成串行 G2-A / G2-B。当前只允许先评审
-[Sprint 181 / G2-A 路由快照基础](../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)：它只把
-现有火苗 Responses 变成真实 Run 快照并消除模型漂移，不创建 SiliconFlow Chat 路径。Chat Event Adapter、
-Admin 显式选择、能力 Profile 和消息 wrapper 留给 G2-B；两者都通过后才算 G2 `pass_offline`。
+离线实现已按串行 G2-A / G2-B 完成：[Sprint 181 / G2-A](../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)
+固化现有火苗 Responses Run 快照，[Sprint 192 / G2-B](../contracts/sprint-192-native-agent-siliconflow-chat-bounded-adapter.md)
+实现 Admin 显式 Chat Route、Event Adapter、能力 Profile 与消息 wrapper。两者的迁移和离线测试均通过，
+因此 G2 当前为 `pass_offline`；它不是 SiliconFlow 真实兼容通过。
 
 实现时应满足：
 
 - `huomiao_responses` 继续保持当前行为；
 - `siliconflow_chat_v1` 复用现有 `SILICONFLOW_API_KEY` 与 `SILICONFLOW_BASE_URL`，构建
   `OpenAIProvider(use_responses=False)`；
-- Run 创建时固化 route、provider、api shape 和 model，Follow-up 原样继承，执行不再读当前环境模型；
+- Run 创建时固化 route、provider、api shape 和 model；Responses Follow-up 原样继承，SiliconFlow S03
+  Follow-up 明确禁止，执行不再读当前环境模型；
 - 现有 `AGENT_MODEL` 继续服务旧 Router，Native Agent 不隐式回退到该字段；
 - 非法 route、缺凭据或未开放能力在 Run 创建前失败，不自动改用另一个供应商；
 - 加入应用侧模型调用 ID、output index / call ID 参数映射与 arguments done 合成；
 - Chat Route 的 `generate_image` 只返回文本 `image_id`，并要求随后执行 `inspect_image`；
-- `buffer_streamed_tool_calls` 只在真实流测试证明必要后显式配置；
+- `strict_feature_validation=True` 且 `buffer_streamed_tool_calls=False`，不静默缓冲或降级；
 - 不改变 Session 的本地完整持久化，不在本 Sprint 预设截断或摘要方案；
 - 代码、`.env.example`、`docs/spec.md`、聚焦测试和兼容性检查脚本必须在同一实现 Sprint 更新。
 
 完整字段、迁移、事件、能力 Profile 与测试矩阵见
-[适配实施蓝图](../architecture/siliconflow-native-agent-adapter-blueprint.md)。当前仍没有修改任何配置或代码。
+[适配实施蓝图](../architecture/siliconflow-native-agent-adapter-blueprint.md)。当前运行时代码已离线实现，但没有
+发起真实 SiliconFlow 或媒体请求，默认 Route 仍为火苗。
 
 ## 8. 下一次真实兼容性 Gate
 
-前提：用户先批准并完成实施蓝图中的离线 Phase A，再明确批准一次小额模型调用，并确认该账号的 V3.2
-可用额度。
+前提：G2 离线 Phase A 已完成；下一步仍需用户单独批准一次小额模型调用，并确认该账号的 V3.2 可用额度。
 
 固定条件：
 
@@ -212,7 +213,7 @@ Admin 显式选择、能力 Profile 和消息 wrapper 留给 G2-B；两者都通
 
 未来执行的完整细则已冻结在 [G3 零媒体 Gate 协议](../testing/siliconflow-native-agent-zero-media-gate-protocol.md)
 和 [空白证据模板](../testing/siliconflow-native-agent-zero-media-gate-evidence-template.json)。总请求预算最多 5 次；
-协议和模板存在只代表准备完成，不代表 G2 已实施、G3 已授权或 SiliconFlow 已通过。
+协议和模板存在只代表准备完成；G2 已离线实施，但不代表 G3 已授权或 SiliconFlow 已通过。
 
 按顺序验证：
 

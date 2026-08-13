@@ -84,6 +84,9 @@ class NativeAgentFollowUpTests(unittest.TestCase):
             skill_version_id=self.version.id,
             status=AgentRunStatus.succeeded,
             model_snapshot="test-model",
+            model_route_snapshot="huomiao_responses",
+            model_provider_snapshot="huomiao",
+            model_api_shape_snapshot="responses",
             skill_name_snapshot=self.version.name_snapshot,
             skill_version_snapshot=self.version.version,
             skill_content_hash_snapshot=self.version.content_hash,
@@ -173,6 +176,19 @@ class NativeAgentFollowUpTests(unittest.TestCase):
         self.assertEqual(self.parent.id, child.parent_run_id)
         self.assertEqual(checkpoint_id, child.continued_from_checkpoint_id)
         self.assertEqual(self.parent.skill_version_id, child.skill_version_id)
+        self.assertEqual(self.parent.model_snapshot, child.model_snapshot)
+        self.assertEqual(
+            self.parent.model_route_snapshot,
+            child.model_route_snapshot,
+        )
+        self.assertEqual(
+            self.parent.model_provider_snapshot,
+            child.model_provider_snapshot,
+        )
+        self.assertEqual(
+            self.parent.model_api_shape_snapshot,
+            child.model_api_shape_snapshot,
+        )
         self.assertEqual(self.parent.style_prompt_snapshot, child.style_prompt_snapshot)
         self.assertIsNone(child.youtube_publish_confirmation_json)
         self.assertIsNone(child.youtube_publish_confirmed_at)
@@ -262,6 +278,9 @@ class NativeAgentFollowUpTests(unittest.TestCase):
             skill_version_id=self.version.id,
             status=AgentRunStatus.running,
             model_snapshot="test-model",
+            model_route_snapshot="huomiao_responses",
+            model_provider_snapshot="huomiao",
+            model_api_shape_snapshot="responses",
             skill_name_snapshot=self.version.name_snapshot,
             skill_version_snapshot=self.version.version,
             skill_content_hash_snapshot=self.version.content_hash,
@@ -291,6 +310,27 @@ class NativeAgentFollowUpTests(unittest.TestCase):
                     user=self.user,
                     payload=self._payload(),
                 )
+
+    def test_siliconflow_s03_parent_rejects_follow_up_without_child(self) -> None:
+        self.parent.model_route_snapshot = "siliconflow_chat_v1"
+        self.parent.model_provider_snapshot = "siliconflow"
+        self.parent.model_api_shape_snapshot = "chat_completions"
+        self.parent.model_snapshot = "deepseek-ai/DeepSeek-V3.2"
+        self.db.commit()
+        before = self.db.query(NativeAgentRun).count()
+
+        with self.assertRaisesRegex(
+            NativeAgentFollowUpError,
+            "不允许创建 Follow-up",
+        ):
+            create_follow_up_run(
+                self.db,
+                parent_run=self.parent,
+                user=self.user,
+                payload=self._payload(key="follow-up-s03-blocked"),
+            )
+
+        self.assertEqual(before, self.db.query(NativeAgentRun).count())
 
     def test_non_article_follow_up_with_empty_workflow_reaches_native_loop(self) -> None:
         self.version.tool_names_json = "[]"

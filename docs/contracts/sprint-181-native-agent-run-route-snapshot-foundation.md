@@ -1,12 +1,26 @@
 # Sprint 181：Native Agent Run 路由快照基础（G2-A）
 
-状态：Ready for user approval（未实施、未激活）
+状态：Complete（2026-08-13；仅离线代码、迁移与测试，未调用外部模型或媒体）
 
 ## Goal
 
 先完成 G2 的第一块离线基础：把当前唯一可执行的 `huomiao_responses` 路由在 Run 创建时固化为
 `route / provider / api_shape / model` 四字段快照，并让普通执行、文章工作流、重试、恢复、Follow-up、
 API 读取和追踪都只使用该快照。这个 Sprint 只消除现有模型配置漂移，不接入 SiliconFlow Chat。
+
+## Implementation result
+
+- 新增 `native_agent_model_routes.py`，默认解析只接受
+  `huomiao_responses / huomiao / responses`，并在 Run 入库前检查独立模型、当前凭据和合法 HTTP(S)
+  Base URL；错误以 503 返回，且不创建 Run、Item、Workflow 或队列消息。
+- Native 新 Run 使用 `NATIVE_AGENT_HUOMIAO_MODEL`；旧 `AgentModelRouter` 继续只读 `AGENT_MODEL`，两者没有
+  隐式回退或联动。
+- revision `v3w4x5y6z7a8` 已把历史 Run 固定回填为当前唯一历史路线，保留原
+  `model_snapshot`；三个新字段非空、无 server default、无新索引，downgrade 已验证。
+- 普通 Agent、文章 Compiler、Director、Writer、Reviewer、retry、startup recovery、Follow-up、API 与
+  MLflow trace 均使用同一 Run 四字段快照。未知或矛盾的持久化组合会让 Run 明确失败，Provider 调用为 0。
+- 当前本地开发库已升级到 `v3w4x5y6z7a8`；其中 1 条历史 Run 的路由快照对账为 0 条异常。
+- 没有加入 `siliconflow_chat_v1`、`use_responses=False`、Chat 事件适配器、能力 Profile 或任何外部调用。
 
 ## In scope
 
@@ -125,6 +139,16 @@ Focused assertions:
 - Follow-up、retry、startup recovery 的四字段不漂移。
 - API 响应和默认脱敏 trace 不含凭据或 Prompt。
 
+Verification record（2026-08-13，Windows 本地）：
+
+- Native 路由 / Follow-up / Loop 聚焦测试 47 项通过，相关账号、控制命令、恢复与文章工作流 32 项通过。
+- 完整后端测试 386 项通过；`compileall` 覆盖 `backend/app` 与全部 Alembic revision。
+- 前端测试 14 项与 production build 通过；Remotion 测试 5 项与 TypeScript typecheck 通过。
+- 内容迭代控制器状态校验返回 `ok=true`，`git diff --check` 通过。
+- 空库 upgrade、历史 Run 回填、downgrade 与当前开发库 head 对账均通过；未调用任何外部模型或媒体 API。
+- `npm ci` 对当前 lockfile 报告 frontend 3 个、Remotion 2 个 high severity 依赖告警；本 Sprint 不擅自升级
+  依赖，留给独立安全审计和升级切片处理。
+
 ## Risks / notes
 
 - 这是 G2 的第一块，不是完整 G2。完成后只解决路由事实与模型漂移；没有 Chat 事件适配，不能进入 G3。
@@ -136,6 +160,6 @@ Focused assertions:
 
 ## Handoff
 
-- 用户明确回复“批准 Sprint 181”或“批准 G2-A”后才能实施本合同。
-- Sprint 181 通过并提交后，再建立 G2-B 合同：加入 `siliconflow_chat_v1`、Admin 显式选择、Chat Event
+- Sprint 181 已完成并提交后，下一切片建立 G2-B 合同：加入 `siliconflow_chat_v1`、Admin 显式选择、Chat Event
   Adapter、Tool Output policy、capability profile 和 10 条消息 wrapper；G2-A 不自动激活 G2-B。
+- 在 G2-B 离线实现、迁移和测试也通过前，G2 不记录 `pass_offline`，G3 / G4 继续关闭。

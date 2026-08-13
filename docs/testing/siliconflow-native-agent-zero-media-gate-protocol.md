@@ -1,7 +1,7 @@
 # SiliconFlow Native Agent G3 零媒体真实兼容性 Gate 协议
 
 更新时间：2026-08-12<br>
-状态：`protocol_ready / g2_not_implemented / not_authorized / not_run`<br>
+状态：`attempt_02_pass_for_s03_single_image_review / 5_requests / zero_media`<br>
 适用范围：`siliconflow_chat_v1` 首次真实 Provider 兼容性验证
 
 配套空白记录：[G3 证据模板](siliconflow-native-agent-zero-media-gate-evidence-template.json)
@@ -12,18 +12,19 @@ G3 只回答一个问题：完成 G2 后，`deepseek-ai/DeepSeek-V3.2` 能否在
 稳定完成文本流、一个确定性 Tool、持久化恢复和 10 条消息请求。
 
 它不生成图片，不调用 S03，不开放生产默认路由，也不证明文章、多 Agent、YouTube 看图、发布或长对话
-兼容。当前代码仍固定走火苗 Responses，G2 尚未实施，所以这份文件是未来执行协议，不是测试报告。
+兼容。G2 已离线通过；G3 Attempt 2 已按本协议执行并通过。权威运行结果见
+[真实兼容性报告](siliconflow-native-agent-compatibility-report.json)，本文件继续作为协议而不是结果替代品。
 
 ## 1. 当前与目标状态
 
 ```text
 当前仓库
-  Native Provider                 huomiao / responses
-  model_route snapshot            不存在
-  Chat event adapter              不存在
-  converted message wrapper       不存在
-  G3 compatibility script         不存在
-  G3 Provider calls               0
+  Native default Provider         huomiao / responses
+  model_route snapshot            已实现
+  Chat event adapter              已实现并离线验证
+  converted message wrapper       已实现并离线验证
+  G3 compatibility script         已锁定并执行
+  G3 Provider calls               5 / PASS
 
 G3 执行前目标
   G2 offline result               pass_offline
@@ -237,7 +238,7 @@ thinking、Provider、上下文策略或重试；后续修复和再次验证必�
   代码、Agents SDK `0.18.3` 与 OpenAI client `2.45.0` 源码。
 - `artifact`：本协议与空白 JSON 模板。
 - `decision`：允许冻结未来 G3 的证据和成本边界；禁止把模板当成 G2 / G3 通过或发起外部调用。
-- `next_step`：仍等待用户批准 G2 离线适配；G2 通过后再单独请求 G3 最多 5 次调用授权。
+- `next_step`：先提交并锁定 G3 执行器源码，再按当前用户授权执行最多 5 次真实零媒体请求。
 
-本轮完成：把 S03 前的零媒体兼容性验证压缩为 5 次请求、四个用例和两个终态。<br>
-下一步建议：批准或拒绝 G2 离线适配，不跳过到 G3 或媒体制作。
+本轮完成：G2 已离线通过，G3 执行器已用真实 SDK 事件形态完成离线 Mock 验证，真实 Provider 请求仍为 0。<br>
+下一步建议：锁定执行器 commit 后执行一次 G3；不跳过到媒体制作。

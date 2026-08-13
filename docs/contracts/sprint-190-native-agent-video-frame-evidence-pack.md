@@ -10,7 +10,7 @@
 
 ## Preconditions and ordering
 
-- 当前实际开发入口仍是 Sprint 181 / G2-A；本合同不授权提前实现或运行真实媒体。
+- Sprint 181 / G2-A 已完成；当前仍须先完成 G2-B 与后续前置 Gate，本合同不授权提前实现或运行真实媒体。
 - 实施顺序固定为 Sprint 181 / G2-A → G2-B → G3–G6 → Sprint 187 / G7-0 → G7 →
   Sprint 188 / G8-A → Sprint 189 / G8-B → Sprint 190 / G8-C → 一次真实 G8 Render →
   同一 MP4 的证据包 → 人工完整观看。
