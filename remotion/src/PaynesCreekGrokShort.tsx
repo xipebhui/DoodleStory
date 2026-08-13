@@ -199,6 +199,7 @@ const HookOverlay: React.FC<{
     justifyContent: "center",
     background: "radial-gradient(circle at center, rgba(6,25,34,.42), rgba(6,25,34,.86))",
     opacity,
+    zIndex: 3,
   }}>
     <div style={{textAlign: "center", transform: `scale(${scale})`, marginTop: -40}}>
       <div style={{color: COLORS.teal, fontSize: 24, fontWeight: 900, letterSpacing: 7, marginBottom: 22}}>{hook.eyebrow}</div>
@@ -371,6 +372,7 @@ const GrokShortScene: React.FC<{
           gap: isRetention ? 10 : 22,
           textAlign: "center",
           textShadow: "0 4px 16px rgba(0,0,0,.96)",
+          zIndex: isRetention ? 5 : undefined,
         }}
       >
         {isRetention ? <div style={{

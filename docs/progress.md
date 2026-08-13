@@ -2026,3 +2026,9 @@
   没有静默改用其他 Provider 或占位配乐。
 - 下一步提交形成干净 source commit，再执行 Attempt 3 唯一一次英文 TTS、Remotion 与 FFmpeg；成片通过
   媒体和接触表检查后仍须用户完整观看，才可决定是否进入发布准备。
+- Attempt 3 已恰好执行一次 TTS、Remotion 与 FFmpeg，输出 44.096 秒 MP4；完整解码和 20 帧接触表通过，
+  retention 钩子、图层、短语字幕与无黑场切镜方向成立，但时长超过 43 秒合同上限，且钩子遮罩使首条
+  字幕对比度偏低，因此该 attempt 明确 rejected、未发布。
+- 新增不可变 `paynes-creek-grok-ai-short-en-v4.json`：保持脚本、视觉、媒体 hash 与 Provider 不变，只把
+  CosyVoice2 `alex` 速度从 1.00 调到 1.08，并把短语字幕提高到钩子遮罩之上。下一步完成离线复验并提交
+  新 source commit，再执行 Attempt 4 各一次 TTS / Remotion / FFmpeg。

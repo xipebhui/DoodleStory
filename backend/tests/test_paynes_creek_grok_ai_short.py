@@ -61,7 +61,7 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         )
         retention_path = (
             PROJECT_ROOT
-            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v3.json"
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v4.json"
         )
         retention = load_plan(retention_path)
         self.assertEqual(retention["edit_mode"], "retention")
@@ -71,9 +71,10 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         )
         self.assertEqual(retention["attempt_accounting"]["grok_video_calls"], 0)
         self.assertEqual(retention["attempt_accounting"]["music_calls"], 0)
+        self.assertEqual(retention["tts"]["speed"], 1.08)
         self.assertEqual(
             output_names(retention)["video"],
-            "paynes-creek-grok-ai-short-en-v3-yuv420p.mp4",
+            "paynes-creek-grok-ai-short-en-v4-yuv420p.mp4",
         )
         self.assertTrue(retention["scenes"][0]["hook"]["headline"])
         for scene in retention["scenes"]:
@@ -124,7 +125,7 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
     def test_retention_manifest_is_safe_at_expected_english_duration(self) -> None:
         plan_path = (
             PROJECT_ROOT
-            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v3.json"
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v4.json"
         )
         plan = load_plan(plan_path)
         with tempfile.TemporaryDirectory() as temporary_dir:

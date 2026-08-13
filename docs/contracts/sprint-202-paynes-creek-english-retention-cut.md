@@ -33,3 +33,12 @@
 - 最终时长位于 35–43 秒，五镜 playback rate 位于 0.65–1.35，完整音视频解码通过。
 - 高密度接触表确认钩子、地图 / 步骤提示、短语字幕和切镜没有明显溢出或黑场。
 - 记录未执行 BGM / ASR、零新增 Grok、零发布，并把用户完整观看保留为待确认。
+
+## Attempt records
+
+- Attempt 3（`paynes-creek-grok-ai-short-en-v3`）恰好执行一次 TTS、Remotion 与 FFmpeg，完整解码通过，
+  高密度接触表确认 retention 视觉方向成立；但真实成片为 44.096 秒，超过 43 秒合同上限，且前三秒钩子
+  遮罩使首条字幕对比度偏低，因此明确 rejected，不覆盖、不发布。
+- Attempt 4（`paynes-creek-grok-ai-short-en-v4`）保持相同脚本、五个 Grok 媒体 hash、Provider 和视觉处理，
+  只把同一 CosyVoice2 声音速度从 1.00 调整到 1.08，并提高字幕层级；允许各执行一次 TTS、Remotion 与
+  FFmpeg。新增 Grok、音乐和发布调用仍为 0，这不是 Attempt 3 内自动重试。
