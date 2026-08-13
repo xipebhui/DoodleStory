@@ -1986,7 +1986,7 @@
   标签与字幕稳定可读。终态 `pass_local_ai_short`，本地视频可播放；未运行 ASR 逐字核对，仍需用户完整
   观看，且 `publication_authorized=false`、上传调用为 0。
 
-# Sprint 201 Paynes Creek Grok AI 英文五镜短片（实现就绪，待真实渲染）
+# Sprint 201 Paynes Creek Grok AI 英文五镜短片（Attempt 2 待真实渲染）
 
 - 复盘中文版后保留五个已验收 Grok 镜头，英文版不逐句翻译：脚本改为问题钩子、制盐机制、独木舟
   证据和“过程可重建、具体旅程未知”的英语 Story-style 叙事，共约 126 词。
@@ -1997,4 +1997,8 @@
   之间加入 TTS 所需空格，中文版保持回归兼容。
 - 英文时长预演表明 45–55 秒区间的五镜 playback rate 为 0.76–1.24，无需循环镜头。Python 4 项、
   Remotion 12 项测试、TypeScript typecheck、JSON 校验、compileall 和 `git diff --check` 已通过。
-  下一步提交形成干净 source commit，再执行一次英文 TTS、一次 Remotion 和一次 FFmpeg 规范化。
+  Attempt 1 已用一次英文 TTS、一次 Remotion 和一次 FFmpeg 生成 46.293 秒 MP4，媒体完整解码、无长静音，
+  但最终英文校对发现首句 `How did salt made ...` 语法错误，因此该产物明确 rejected，未发布且不覆盖。
+- 新增不可变 `paynes-creek-grok-ai-short-en-v2.json`：修正 S01 / S03 语法并让 S09 更自然，保持同一视觉、
+  Provider、TTS 声音和媒体 hash；允许 Attempt 2 各执行一次 TTS、Remotion 与 FFmpeg。两次英文 attempt
+  的新增 Grok 图片 / 视频调用仍均为 0，也没有自动重试或 Provider fallback。

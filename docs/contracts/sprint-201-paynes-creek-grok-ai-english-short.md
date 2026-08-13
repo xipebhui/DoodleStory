@@ -16,8 +16,8 @@
    locale 选择字体、标题尺寸、证据标签与页脚，现有中文版保持兼容。
 3. 参数化现有 Runner 的生产计划路径，使英文计划可复用相同 hash / ffprobe / playback-rate / Remotion / 
    FFmpeg 验证，不复制第二套渲染逻辑。
-4. 英文版只调用一次 SiliconFlow `FunAudioLLM/CosyVoice2-0.5B:alex` TTS；如果真实音频导致任一镜头
-   playback rate 超出 0.65–1.35，明确停止，不循环镜头、不改用其他 TTS。
+4. 每个不可变英文 attempt 只调用一次 SiliconFlow `FunAudioLLM/CosyVoice2-0.5B:alex` TTS；如果真实音频
+   导致任一镜头 playback rate 超出 0.65–1.35，明确停止，不循环镜头、不改用其他 TTS。
 5. 输出独立 1920×1080、30fps、H.264/AAC、yuv420p MP4、接触表和审计报告。
 
 ## Out of scope
@@ -30,7 +30,15 @@
 
 - 英文生产计划固定五镜、英文标题、英文证据标签、英文旁白和复用媒体 hash。
 - 中文 Manifest 与英文 Manifest 的离线测试、Remotion typecheck / tests、Python 聚焦测试通过。
-- 只执行一次英文 TTS、一次 Remotion、一次 FFmpeg 规范化；所有 playback rate 在安全范围内。
+- 每个英文 attempt 只执行一次 TTS、一次 Remotion、一次 FFmpeg 规范化；最终被接受 attempt 的所有
+  playback rate 在安全范围内。
 - 最终视频可完整解码，字幕与标题在高密度接触表中可读，没有超过 1.5 秒的长静音。
 - 结果保存 `publication_authorized=false`，没有发布调用。
 
+## Attempt records
+
+- Attempt 1（`paynes-creek-grok-ai-short-en-v1`）已完成一次 TTS、Remotion 和 FFmpeg，但最终英文校对发现
+  首句 `How did salt made ...` 语法错误，因此明确标记为 rejected，不覆盖、不发布、不作为最终成片。
+- Attempt 2（`paynes-creek-grok-ai-short-en-v2`）只修正 S01 / S03 语法和 S09 英语自然度，复用相同五图、
+  五视频与媒体 hash；允许重新执行一次 TTS、Remotion 和 FFmpeg。新增 Grok 图片 / 视频调用仍为 0，
+  这不是自动重试，也不改变 Provider。

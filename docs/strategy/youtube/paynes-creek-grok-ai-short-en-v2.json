@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "status": "selected_media_awaiting_render",
+  "template_id": "paynes-creek-grok-ai-short-v1",
+  "locale": "en-US",
+  "footer": "PAYNES CREEK · EVIDENCE-LED AI SHORT",
+  "artifact_slug": "paynes-creek-grok-ai-short-en-v2",
+  "title": "How Maya Salt Traveled Inland—And What We Still Don't Know",
+  "publication_authorized": false,
+  "bgm": false,
+  "delivery": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30
+  },
+  "tts": {
+    "provider": "siliconflow",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "voice": "FunAudioLLM/CosyVoice2-0.5B:alex",
+    "speed": 1.0,
+    "response_format": "mp3",
+    "sample_rate": 32000,
+    "automatic_retry": false
+  },
+  "scenes": [
+    {
+      "id": "S01",
+      "title": "How Did Coastal Salt Reach Inland Communities?",
+      "evidence": "Interpretation",
+      "narration": "How did salt produced on the Maya coast reach communities far inland? At Paynes Creek, the answer survives as a chain of clues—not as a complete route.",
+      "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s01/20260813_181835_Create_a_cinematic_169_museum_cut-paper.png",
+      "image_sha256": "dada824dd968505ba6fb8e15312d7d16a12c8260e1fc9c6b8280178fd7470a64",
+      "video_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/paynes-creek-s01-grok-i2v-v1.mp4",
+      "video_sha256": "0c59d96b8d0a561b5076b0b0d143069612f42e34c1635ad7cfbf5b4c7cb5022a",
+      "video_duration_ms": 10042,
+      "video_report": "docs/testing/paynes-creek-grok-ai-short-s01-2026-08-13.json"
+    },
+    {
+      "id": "S03",
+      "title": "Concentrating the Brine",
+      "evidence": "Reconstruction",
+      "narration": "Workers may have first poured brine through salty earth, concentrating it before the liquid drained through a wooden funnel into a clay jar.",
+      "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s03-v2/20260813_181403_Create_a_cinematic_169_museum_cut-paper.png",
+      "image_sha256": "fabcd9ca9975f9031715fead03ddbafaafb501d55f415f4ba2ff4d181f6659d1",
+      "video_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/paynes-creek-s03-grok-i2v-v3.mp4",
+      "video_sha256": "5b6a1f9bb3e141eade11ec388be1b4e8ef0588b22193790c436ab026bb0457ec",
+      "video_duration_ms": 8042,
+      "video_report": "docs/testing/paynes-creek-grok-video-smoke-2026-08-13-attempt-04.json"
+    },
+    {
+      "id": "S04",
+      "title": "Heating Brine Until Salt Crystallized",
+      "evidence": "Interpretation",
+      "narration": "Next, clay basins rested on simple supports above a fire. As water evaporated, salt crystallized—probably in workshops beside ordinary homes, not in a factory.",
+      "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s04-v2/20260813_181942_Create_one_cinematic_169_handcrafted_cu.png",
+      "image_sha256": "58eb52ca2bdf8ac85fa2d77526a3d15b5a86fba7229428d447236feef212cd15",
+      "video_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/paynes-creek-s04-grok-i2v-v1.mp4",
+      "video_sha256": "7013267ee643f390598ae7958255a4395a3f016a070897a66417f2e621f58bc2",
+      "video_duration_ms": 10042,
+      "video_report": "docs/testing/paynes-creek-grok-ai-short-s04-2026-08-13.json"
+    },
+    {
+      "id": "S09",
+      "title": "A Canoe Makes Sense—But There Is No Cargo List",
+      "evidence": "Evidence limit",
+      "narration": "A full-size wooden paddle proves that people here could travel by water. Canoe transport makes sense, but no cargo list survives from any boat.",
+      "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s09/20260813_182032_Create_a_cinematic_169_handcrafted_cut-.png",
+      "image_sha256": "c825eaf4c5a3ad9f7c455198faef904472fa0b72dd0eba1e89d380ffd5cfd85d",
+      "video_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/paynes-creek-s09-grok-i2v-v1.mp4",
+      "video_sha256": "d707df98a68988c19838230149cbcfabc24bc9b0ad418f6a18973a66191cc71a",
+      "video_duration_ms": 10042,
+      "video_report": "docs/testing/paynes-creek-grok-ai-short-s09-2026-08-13.json"
+    },
+    {
+      "id": "S12",
+      "title": "We Know the Process, Not the Journey",
+      "evidence": "Evidence limit",
+      "narration": "So archaeology can reconstruct the process: concentrate, boil, crystallize, and move salt by water. What it cannot recover is the exact route, the buyer, or the journey of one shipment.",
+      "image_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/stills/s12/20260813_182138_Create_a_cinematic_169_handcrafted_cut-.png",
+      "image_sha256": "9ed601515b25d2f6cd0008c5365c8d1de60d96a1abea8671c9deeb8ee2130b35",
+      "video_path": "storage/exports/paynes-creek/grok-ai-pilot-v2/paynes-creek-s12-grok-i2v-v1.mp4",
+      "video_sha256": "2fda39b83d9f19455df8ef8beebda4948e87f1808a1117217c94ad73bc396755",
+      "video_duration_ms": 10042,
+      "video_report": "docs/testing/paynes-creek/grok-ai-short-s12-2026-08-13.json"
+    }
+  ],
+  "attempt_accounting": {
+    "grok_image_calls": 0,
+    "grok_video_calls": 0,
+    "reused_grok_images": 5,
+    "reused_grok_videos": 5,
+    "previous_rejected_english_attempts": 1,
+    "provider_fallback": false,
+    "automatic_retry": false
+  }
+}

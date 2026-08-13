@@ -28,7 +28,7 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         chinese = load_plan()
         english_path = (
             PROJECT_ROOT
-            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v1.json"
+            / "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v2.json"
         )
         english = load_plan(english_path)
         self.assertEqual(english["locale"], "en-US")
@@ -45,9 +45,11 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         )
         self.assertEqual(
             output_names(english)["video"],
-            "paynes-creek-grok-ai-short-en-v1-yuv420p.mp4",
+            "paynes-creek-grok-ai-short-en-v2-yuv420p.mp4",
         )
         narration = narration_text(english)
+        self.assertTrue(narration.startswith("How did salt produced on the Maya coast"))
+        self.assertNotIn("How did salt made", narration)
         self.assertIn("route. Workers", narration)
         self.assertNotIn("route.Workers", narration)
 

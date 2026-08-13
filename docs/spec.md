@@ -562,8 +562,9 @@
   `publication_authorized=false`；它不改写原 G4 随机图片 Gate，也不自动上传。
 - 同一五镜模板支持显式 `zh-CN` / `en-US` 本地化 Manifest。语言版本必须各自冻结标题、证据标签、
   逐镜旁白、页脚和独立 artifact slug；英文版复用已验收 Grok 媒体 hash 时不得新增 Grok 调用。Renderer
-  按 locale 选择字体、字号和标签白名单，Runner 为英文场景之间加入语音停连所需空格；任一语言版本仍
-  只能执行一次 TTS、一次 Remotion 和一次 FFmpeg 规范化，不覆盖其他语言成片。
+  按 locale 选择字体、字号和标签白名单，Runner 为英文场景之间加入语音停连所需空格；每个带独立
+  artifact slug 的不可变 attempt 只能执行一次 TTS、一次 Remotion 和一次 FFmpeg 规范化，不覆盖其他
+  语言或已拒绝 attempt 的成片。
 - 视频任务执行采用进程内队列 + 数据库状态。上游图片任务成功后自动入队视频任务；服务启动时恢复 `waiting_for_images`、`ready_for_audio`、`audio_generating`、`audio_ready` 和 `video_generating` 等可恢复状态。视频任务按 panel 生成旁白音频，因为 `comic-video-studio` 的 `episode.shots[*].audio` 是每个 shot 的时间基准。每段生成音频必须保存为 `generated_audio` 资产；最终 MP4 必须保存为 `generated_video` 资产。`comic-video-studio` 默认通过 `COMIC_VIDEO_SERVICE_BASE_URL` 指向 `http://127.0.0.1:51103`，如配置 `COMIC_VIDEO_SERVICE_API_KEY` 则请求必须携带 `X-API-Key`。TTS 第一版使用 SiliconFlow `/uploads/audio/voice` 和 `/audio/speech`；参考音频没有已注册 voice uri 时，必须用参考音频文件和参考文本注册声音。参考文本在音频参考创建时由本地 Whisper 自动转写并保存；转写失败或缺少参考文本时，音频参考不能保存或视频任务必须明确失败。视频任务生成旁白音频时必须使用创建任务时保存的音频参考语速快照，不受后续音频参考编辑影响。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 
