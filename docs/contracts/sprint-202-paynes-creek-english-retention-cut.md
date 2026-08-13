@@ -1,6 +1,6 @@
 # Sprint 202：Paynes Creek 英文留存优化剪辑
 
-状态：In progress
+状态：Complete（`pass_local_retention_candidate`）
 
 ## Goal
 
@@ -50,3 +50,18 @@
 - Attempt 5（`paynes-creek-grok-ai-short-en-v5`）复用 Attempt 4 音频 hash，不再调用 TTS；把 Whisper
   校准出的场景和短语边界冻结为帧数。为贴合两个较短的过程旁白，source-aligned 模式显式允许最高 1.45
   playback rate，计划实值最高约 1.44；只允许一次 Remotion 和一次 FFmpeg，其他 Provider 调用仍为 0。
+
+## Result
+
+- Attempt 5 使用 source commit `e4bc14b7213a314bae5609c85da31b13dbb7021b` 通过干净 preflight；五个
+  Grok 媒体与复用旁白的路径、hash、ffprobe 时长均一致。真实执行 TTS=0、Remotion=1、FFmpeg=1，
+  Grok / 音乐 / 发布调用均为 0。
+- 最终 MP4 为 39.061 秒、1920×1080、30fps、H.264/AAC、yuv420p/tv range、1170 帧、34,866,506
+  bytes，SHA-256 `dce4db625939372bd49d1d9031b8bc28af41ec7d75b6a34127e8ab34e8c60c56`。
+- 五镜 playback rate 为 0.94–1.44；完整解码、长静音、中点与 20 帧高密度接触表通过。钩子、证据图层、
+  短语字幕、轻微推镜和无黑场切镜未见明显溢出或技术故障。
+- 17 条短语的内部边界相对 Whisper 锚点最大误差为 17ms，最后一条字幕在语音结束后保留 140ms。两种
+  本地英文 Whisper 对原文匹配率分别为 98.6% 与 96.6%，但对 `Maya / Paynes Creek / canoes / route`
+  仍有近音误识别；正式发布前必须由用户完整听看确认发音。
+- 审计摘要保存于 `docs/testing/paynes-creek-grok-ai-short-en-retention-2026-08-13.json`；终态只表示本地
+  留存优化候选通过，不代表上传授权或市场验证。

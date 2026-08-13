@@ -2041,3 +2041,14 @@
 - `paynes-creek-grok-ai-short-en-v5.json` 复用 Attempt 4 的 38.988 秒旁白，冻结五镜帧数
   `228/173/209/241/319` 和 17 条短语帧数；计划最高 playback rate 约 1.44，新增 Grok / TTS / 音乐 / 发布
   调用均为 0。下一步离线复验并提交 source commit，再只执行一次 Remotion 与一次 FFmpeg。
+- Attempt 5 source commit `e4bc14b7213a314bae5609c85da31b13dbb7021b` 通过干净 preflight；五个 Grok
+  媒体以及复用旁白的项目内路径、SHA-256 和 38.988 秒时长全部一致。真实执行 TTS=0、Remotion=1、
+  FFmpeg=1，未调用 Grok、音乐或发布。
+- 最终视频为 39.061 秒、1920×1080、30fps、H.264/AAC、yuv420p/tv range、1170 帧、34,866,506
+  bytes，SHA-256 `dce4db625939372bd49d1d9031b8bc28af41ec7d75b6a34127e8ab34e8c60c56`；完整解码、无长静音，
+  五镜 playback rate 0.94–1.44。
+- 中点和 20 帧高密度接触表确认前三秒钩子、海岸到内陆 / 过程 / 木桨 / 边界图层、短语字幕、轻微推镜
+  与无黑场切镜通过。17 条短语内部边界相对 Whisper 锚点最大误差 17ms，最后字幕尾部 140ms。
+- Tiny 与 Base English 本地 Whisper 对 TTS 原文匹配率分别为 98.6% / 96.6%，但对 `Maya`、
+  `Paynes Creek`、`canoes` 和 `route` 有近音误识别，不能替代用户实际听感。终态为
+  `pass_local_retention_candidate`；用户完整听看、专名发音确认和发布授权仍未完成。

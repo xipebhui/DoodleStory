@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_grok_ai_english_retention_acceptance",
+  "date": "2026-08-13",
+  "status": "pass_local_retention_candidate",
+  "publication_authorized": false,
+  "accepted_attempt": 5,
+  "source_git_commit": "e4bc14b7213a314bae5609c85da31b13dbb7021b",
+  "source_plan": "docs/strategy/youtube/paynes-creek-grok-ai-short-en-v5.json",
+  "source_plan_sha256": "5e1d9c07631d860614df8eabefb817a23a0b7d3103f4a23c50d2b779a7dae55d",
+  "attempts": [
+    {
+      "attempt": 3,
+      "artifact_slug": "paynes-creek-grok-ai-short-en-v3",
+      "status": "rejected",
+      "reason": "The 44.096-second duration exceeded the 43-second contract limit and the hook mask reduced the first caption's contrast.",
+      "calls": {"siliconflow_tts": 1, "remotion": 1, "ffmpeg": 1, "grok": 0, "music": 0, "publish": 0}
+    },
+    {
+      "attempt": 4,
+      "artifact_slug": "paynes-creek-grok-ai-short-en-v4",
+      "status": "rejected",
+      "reason": "The duration and visuals passed, but weighted caption and scene timing drifted by as much as 1624 ms from local Whisper anchors.",
+      "calls": {"siliconflow_tts": 1, "remotion": 1, "ffmpeg": 1, "grok": 0, "music": 0, "publish": 0}
+    },
+    {
+      "attempt": 5,
+      "artifact_slug": "paynes-creek-grok-ai-short-en-v5",
+      "status": "pass_local_retention_candidate",
+      "reason": "It reuses the immutable Attempt 4 audio and freezes source-aligned scene and phrase frames.",
+      "calls": {"siliconflow_tts": 0, "remotion": 1, "ffmpeg": 1, "grok": 0, "music": 0, "publish": 0}
+    }
+  ],
+  "audio": {
+    "provider": "siliconflow",
+    "model": "FunAudioLLM/CosyVoice2-0.5B",
+    "voice": "FunAudioLLM/CosyVoice2-0.5B:alex",
+    "speed": 1.08,
+    "source_attempt": "paynes-creek-grok-ai-short-en-v4",
+    "duration_ms": 38988,
+    "bytes": 625087,
+    "sha256": "299ba986c8a1aaae5188b3826b870170a61a010fea0fdf911e6e34f3f06385ef"
+  },
+  "local_asr": {
+    "provider_calls": 0,
+    "tiny_model": "faster-whisper:tiny/cpu/int8",
+    "tiny_alignment_ratio": 0.9864253393665159,
+    "base_en_model": "faster-whisper:base.en/cpu/int8",
+    "base_en_alignment_ratio": 0.9655172413793104,
+    "weighted_timing_maximum_delta_ms": 1624,
+    "source_aligned_maximum_internal_boundary_delta_ms": 17,
+    "source_aligned_final_caption_tail_ms": 140,
+    "human_pronunciation_review": "pending for Maya, Paynes Creek, canoes, and route"
+  },
+  "video": {
+    "path": "storage/exports/paynes-creek/grok-ai-short-en-v5/paynes-creek-grok-ai-short-en-v5-yuv420p.mp4",
+    "sha256": "dce4db625939372bd49d1d9031b8bc28af41ec7d75b6a34127e8ab34e8c60c56",
+    "bytes": 34866506,
+    "duration_ms": 39061,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "frames": 1170,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "pixel_format": "yuv420p",
+    "color_range": "tv"
+  },
+  "scene_playback_rates": {
+    "S01": 1.3213157894736842,
+    "S03": 1.3945664739884391,
+    "S04": 1.4414354066985646,
+    "S09": 1.2500414937759337,
+    "S12": 0.9443887147335425
+  },
+  "checks": {
+    "clean_preflight": "pass",
+    "selected_media_hashes": "pass",
+    "reused_audio_hash_and_duration": "pass",
+    "complete_audio_video_decode": "pass",
+    "duration_35_to_43_seconds": "pass",
+    "source_aligned_playback_rate_0_65_to_1_45": "pass",
+    "silence_over_1_5_seconds": false,
+    "five_scene_midpoint_contact_sheet": "pass",
+    "twenty_frame_dense_contact_sheet": "pass",
+    "hook_graphics_titles_labels_and_phrase_captions": "pass",
+    "subtitle_overflow_seen": false,
+    "inter_scene_black_frame_seen": false,
+    "user_full_watch_and_pronunciation": "pending"
+  },
+  "evidence": {
+    "contact_sheet": "storage/exports/paynes-creek/grok-ai-short-en-v5/paynes-creek-grok-ai-short-en-v5-contact-sheet.png",
+    "dense_contact_sheet": "storage/exports/paynes-creek/grok-ai-short-en-v5/paynes-creek-grok-ai-short-en-v5-dense-contact-sheet.png",
+    "render_report": "storage/exports/paynes-creek/grok-ai-short-en-v5/paynes-creek-grok-ai-short-en-v5-report.json"
+  },
+  "notes": [
+    "The final candidate reuses all five approved Grok clips and makes no new Grok request.",
+    "The music skill could not be fully executed because its installed package lacks required shared configuration and authentication references; no alternate music provider or placeholder track was used.",
+    "Machine ASR remains ambiguous on several proper nouns and near-homophones, so a human full-watch pronunciation check remains mandatory before publication.",
+    "This local candidate status does not authorize upload or claim audience validation."
+  ]
+}
