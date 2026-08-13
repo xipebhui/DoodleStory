@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g8_render_manifest_request_template",
+  "record_status": "not_ready",
+  "pilot_id": "yt-pc-local-pilot-01",
+  "attempt_label": null,
+  "previous_manifest_key": null,
+  "publication_authorized": false,
+  "run_create_fragment": {
+    "skill_slug_expected": "youtube-frozen-render",
+    "skill_version_id": null,
+    "render_manifest": {
+      "schema_version": 1,
+      "manifest_key": "yt-pc-local-pilot-01-g8-v01",
+      "purpose": "local_production_validation",
+      "output_preset": "youtube_16_9_1080p",
+      "bgm_asset_id": null,
+      "scenes": [
+        {
+          "scene_key": "S01",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "zoom_in",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S02",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "static",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S03",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "pan_right",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S04",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "zoom_in",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S05",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "pan_down",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S06",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "zoom_out",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S07",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "static",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S08",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "zoom_out",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S09",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "pan_right",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S10",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "static",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S11",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "pan_down",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        },
+        {
+          "scene_key": "S12",
+          "image_id": null,
+          "audio_id": null,
+          "subtitle_id": null,
+          "motion_preset": "zoom_out",
+          "image_review_ref": null,
+          "image_review_sha256": null,
+          "audio_subtitle_review_ref": null,
+          "audio_subtitle_review_sha256": null
+        }
+      ]
+    },
+    "render_manifest_confirmation": {
+      "confirmed": false,
+      "expected_manifest_sha256": null
+    },
+    "style_id": null,
+    "creation_channel_id": null,
+    "youtube_channel_id": null,
+    "youtube_publishable_video_id": null,
+    "youtube_publish_confirmation": null
+  },
+  "preview_result": {
+    "canonical_manifest_sha256": null,
+    "canonical_manifest_snapshot_ref": null,
+    "previewed_at": null,
+    "human_reviewed_exact_hash": null,
+    "status": "not_run"
+  },
+  "preflight_review": {
+    "all_upstream_gate_refs_present": null,
+    "scene_keys_exactly_s01_to_s12": null,
+    "story_order_exact": null,
+    "motions_match_locked_draft": null,
+    "all_image_records_passed": null,
+    "all_audio_subtitle_records_passed": null,
+    "required_qualifiers_preserved": {
+      "S03_reconstruction_and_possibility": null,
+      "S07_possibility_and_not_universal_currency": null,
+      "S09_no_manifest": null,
+      "S10_route_city_buyer_unknown": null
+    },
+    "output_profile_exact": null,
+    "bgm_absent": null,
+    "authenticated_confirmer_ready": null,
+    "cost_authorization_ref": null,
+    "verdict": "not_reviewed",
+    "issues": []
+  },
+  "server_compiled_result": {
+    "run_id": null,
+    "canonical_manifest_sha256": null,
+    "canonical_manifest_snapshot_ref": null,
+    "confirmed_by_user_id": null,
+    "confirmed_at": null,
+    "skill_version_id": null,
+    "skill_content_hash": null,
+    "model_route": null,
+    "model_provider": null,
+    "model_api_shape": null,
+    "model": null,
+    "status": "not_run"
+  },
+  "audit": {
+    "created_at": "2026-08-12",
+    "validated_at": null,
+    "record_git_commit": null,
+    "sensitive_values_removed": null
+  }
+}

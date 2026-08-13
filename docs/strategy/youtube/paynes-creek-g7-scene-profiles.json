@@ -1,0 +1,477 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g7_scene_profiles",
+  "status": "ready_as_profiles_blocked_by_g7_0_not_authorized",
+  "updated_at": "2026-08-12",
+  "production_order_is_timeline_order": false,
+  "runtime_blocker": {
+    "gate_id": "G7-0",
+    "required_status": "pass_for_g7_scene_runs",
+    "reason": "render_story_video currently accepts only audio_id and subtitle_id owned by the rendering Run, while each reviewed G7 scene must use an independent Run",
+    "required_design": "conversation_scoped_cross_run_audio_and_subtitle_resolution_for_render_only",
+    "implemented": false
+  },
+  "common": {
+    "purpose": "local_production_validation",
+    "topic_id": "paynes-creek-salt-production-transport",
+    "source_documents": {
+      "production_draft": "docs/strategy/youtube/paynes-creek-production-draft.json",
+      "script_document": "docs/strategy/youtube/paynes-creek-chinese-script-prompt-pack.md",
+      "pilot_charter": "docs/strategy/youtube/paynes-creek-local-pilot-charter.md",
+      "g7_protocol": "docs/strategy/youtube/paynes-creek-g7-audio-subtitle-protocol.md"
+    },
+    "canonical_text": {
+      "encoding": "UTF-8",
+      "trim_outer_whitespace": true,
+      "text_change_within_attempt": false
+    },
+    "speech": {
+      "tool_name": "generate_speech",
+      "provider": "volcengine",
+      "base_url_config_key": "DOUBAO_VOICE_GEN_BASE_URL",
+      "resource_id": "seed-tts-2.0",
+      "model": "seed-tts-2.0-standard",
+      "speaker": "zh_female_xinlingjitang_uranus_bigtts",
+      "response_format": "mp3",
+      "sample_rate_hz": 24000,
+      "speed": 1.0,
+      "speech_rate": 0,
+      "loudness_rate": 0,
+      "duration_source": "provider_frame_or_ffprobe",
+      "ssml_or_pronunciation_override_supported": false
+    },
+    "subtitles": {
+      "tool_name": "generate_subtitles",
+      "provider": "faster-whisper",
+      "language_request": "zh",
+      "default_model_snapshot": "tiny:source-aligned-v1",
+      "vad_filter": true,
+      "word_timestamps": true,
+      "minimum_alignment_ratio_enforced": 0.5,
+      "alignment_ratio_persisted": false,
+      "maximum_alignment_characters_per_cue": 18,
+      "full_text_source": "NativeAgentAudio.text",
+      "output_format": "text/vtt; charset=utf-8"
+    },
+    "attempt_budget": {
+      "new_run_count": 1,
+      "generate_speech_tool_call_count": 1,
+      "speech_provider_request_count": 1,
+      "audio_candidate_count": 1,
+      "generate_subtitles_tool_call_count": 1,
+      "subtitle_candidate_count": 1,
+      "language_review_count": 1,
+      "automatic_retry": false,
+      "provider_switch": false,
+      "speaker_switch": false,
+      "speed_change": false,
+      "text_change": false,
+      "online_asr_fallback": false,
+      "automatic_next_gate": false
+    },
+    "machine_checks": {
+      "speech": [
+        "submitted_text_matches_profile_hash",
+        "provider_resource_model_speaker_format_rate_match",
+        "successful_terminal_and_nonempty_audio_asset",
+        "real_positive_duration_ms",
+        "file_sha256_and_byte_size_recorded",
+        "single_speech_call_and_provider_request"
+      ],
+      "subtitles": [
+        "audio_belongs_to_same_scene_run",
+        "provider_language_and_source_aligned_model_match",
+        "subtitle_full_text_equals_audio_source_text",
+        "concatenated_cue_text_equals_audio_source_text",
+        "cue_timeline_monotonic_and_within_audio_duration",
+        "subtitle_duration_equals_audio_duration",
+        "webvtt_header_and_asset_hash_valid",
+        "cue_alignment_character_limit_enforced",
+        "single_subtitle_call"
+      ]
+    },
+    "common_human_language_checks": [
+      "full_audio_listened_without_skip",
+      "required_segments_intelligible_and_in_order",
+      "no_truncation_repeat_abnormal_silence_noise_or_stitch",
+      "prosody_preserves_evidence_strength_and_negation",
+      "subtitle_cues_follow_audio_without_obvious_early_late_or_flash",
+      "speaker_speed_and_loudness_match_approved_predecessors",
+      "no_bgm_ambient_or_unapproved_sound"
+    ],
+    "final_total_duration_ms": {
+      "minimum": 120000,
+      "maximum": 150000,
+      "evaluate_only_after_all_12_scenes": true
+    }
+  },
+  "profiles": [
+    {
+      "profile_id": "G7-01-S01",
+      "sequence": 1,
+      "gate_id": "G7-01",
+      "risk_family": "proper_noun_and_opening_question",
+      "scene": {
+        "scene_id": "S01",
+        "timeline_order": 1,
+        "planned_duration_seconds": 8,
+        "han_characters": 34,
+        "narration": "海岸生产的盐，怎样到达内陆？佩恩斯克里克留下了一条不完整、却能追踪的证据链。",
+        "logical_audio_filename": "PC-S01-zh.mp3",
+        "logical_subtitle_filename": "PC-S01-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G6", "required_status": "pass_for_g7_audio_subtitle_plan_review"},
+        {"gate_id": "G7-0", "required_status": "pass_for_g7_scene_runs"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 38,
+        "text_utf8_bytes": 114,
+        "expected_text_sha256": "071b11fa931cc6c86acf32508677f6c878b5dadc7123371bbc8bf5a6965fbdbd"
+      },
+      "single_validation_question": "Can the fixed voice deliver the opening question and the name Paynes Creek intelligibly while preserving the contrast between an incomplete and traceable evidence chain?",
+      "must_hear_segments": ["怎样到达内陆", "佩恩斯克里克", "不完整", "却能追踪"],
+      "must_preserve_subtitle_segments": ["怎样到达内陆？", "佩恩斯克里克", "不完整、却能追踪"],
+      "prosody_boundary": "Pause after the question; do not merge the place name into the preceding clause or drop the contrast after 不完整.",
+      "pass_status": "pass_for_g7_02_s02",
+      "next_gate_review": "G7-02",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-02-S02",
+      "sequence": 2,
+      "gate_id": "G7-02",
+      "risk_family": "place_name_and_date_range",
+      "scene": {
+        "scene_id": "S02",
+        "timeline_order": 2,
+        "planned_duration_seconds": 10,
+        "han_characters": 42,
+        "narration": "它位于今天伯利兹南部海岸。考古年代显示，这套盐业系统的核心活动，大约发生在公元六百到九百年。",
+        "logical_audio_filename": "PC-S02-zh.mp3",
+        "logical_subtitle_filename": "PC-S02-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-01", "required_status": "pass_for_g7_02_s02"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 46,
+        "text_utf8_bytes": 138,
+        "expected_text_sha256": "0df8446ea3c552095befc36bd3d9c93b77de8117ac4c726bea35dbac4d58737d"
+      },
+      "single_validation_question": "Can the fixed voice pronounce southern Belize and the approximate 600-to-900 CE range clearly without losing the word approximately or running the place and date together?",
+      "must_hear_segments": ["伯利兹南部海岸", "大约", "公元六百到九百年"],
+      "must_preserve_subtitle_segments": ["今天伯利兹南部海岸", "大约发生在公元六百到九百年"],
+      "prosody_boundary": "Keep a sentence boundary after 海岸 and make 大约 modify the date range rather than disappear in fast delivery.",
+      "pass_status": "pass_for_g7_03_s08",
+      "next_gate_review": "G7-03",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-03-S08",
+      "sequence": 3,
+      "gate_id": "G7-03",
+      "risk_family": "spoken_measurement",
+      "scene": {
+        "scene_id": "S08",
+        "timeline_order": 8,
+        "planned_duration_seconds": 11,
+        "han_characters": 44,
+        "narration": "运输链里最直接的证据，是盐业遗址出土的一支全尺寸木桨，长约一米四三。它证明这里具备水上交通能力。",
+        "logical_audio_filename": "PC-S08-zh.mp3",
+        "logical_subtitle_filename": "PC-S08-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-02", "required_status": "pass_for_g7_03_s08"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 48,
+        "text_utf8_bytes": 144,
+        "expected_text_sha256": "17135cceccc3339fa30892dfa97323c150751c818e9ac65939fa2f83d6dd4592"
+      },
+      "single_validation_question": "Can the fixed voice make the complete paddle and spoken measurement one meter four three intelligible without turning the evidence into a specific shipment claim?",
+      "must_hear_segments": ["最直接的证据", "全尺寸木桨", "约一米四三", "具备水上交通能力"],
+      "must_preserve_subtitle_segments": ["全尺寸木桨", "长约一米四三", "具备水上交通能力"],
+      "prosody_boundary": "Read 一米四三 as the approved colloquial measurement, not 一百四十三米 or 一点四三 with an unintended pause.",
+      "pass_status": "pass_for_g7_04_s03",
+      "next_gate_review": "G7-04",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-04-S03",
+      "sequence": 4,
+      "gate_id": "G7-04",
+      "risk_family": "reconstruction_qualifier",
+      "scene": {
+        "scene_id": "S03",
+        "timeline_order": 3,
+        "planned_duration_seconds": 11,
+        "han_characters": 44,
+        "narration": "下面这一步，是依据遗迹和类比做的重建：盐工可能让盐水经过含盐土，提高浓度，再把更浓的卤水收进陶罐。",
+        "logical_audio_filename": "PC-S03-zh.mp3",
+        "logical_subtitle_filename": "PC-S03-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-03", "required_status": "pass_for_g7_04_s03"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 49,
+        "text_utf8_bytes": 147,
+        "expected_text_sha256": "4a4733669dc9025cab23fbd07804d281667cdeb25905b8dd4565d001db64faeb"
+      },
+      "single_validation_question": "Can the narration clearly frame the concentration step as a reconstruction based on remains and analogy, with the possibility qualifier audible before the mechanism?",
+      "must_hear_segments": ["依据遗迹和类比做的重建", "可能", "提高浓度", "更浓的卤水"],
+      "must_preserve_subtitle_segments": ["依据遗迹和类比做的重建", "盐工可能", "更浓的卤水"],
+      "prosody_boundary": "Use the colon as a clear boundary and do not rush or de-emphasize 重建 and 可能.",
+      "pass_status": "pass_for_g7_05_s07",
+      "next_gate_review": "G7-05",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-05-S07",
+      "sequence": 5,
+      "gate_id": "G7-05",
+      "risk_family": "possibility_and_currency_negation",
+      "scene": {
+        "scene_id": "S07",
+        "timeline_order": 7,
+        "planned_duration_seconds": 11,
+        "han_characters": 44,
+        "narration": "成品可以是散盐。相近的器形还支持制作尺寸相近盐饼的可能，但这不等于玛雅人已经把盐当成通用货币。",
+        "logical_audio_filename": "PC-S07-zh.mp3",
+        "logical_subtitle_filename": "PC-S07-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-04", "required_status": "pass_for_g7_05_s07"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 47,
+        "text_utf8_bytes": 141,
+        "expected_text_sha256": "cc2223499eb83eb5f43c80a37af856c5ace169ad6912c0c61ab58fafa869c38a"
+      },
+      "single_validation_question": "Can the voice preserve salt cakes as a possibility and make the negation not equal to universal currency more salient than the currency phrase itself?",
+      "must_hear_segments": ["散盐", "盐饼的可能", "但这不等于", "通用货币"],
+      "must_preserve_subtitle_segments": ["盐饼的可能", "但这不等于玛雅人已经把盐当成通用货币"],
+      "prosody_boundary": "Keep the contrast before 但这不等于 and do not stress 通用货币 in isolation.",
+      "pass_status": "pass_for_g7_06_s09",
+      "next_gate_review": "G7-06",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-06-S09",
+      "sequence": 6,
+      "gate_id": "G7-06",
+      "risk_family": "transport_interpretation_without_manifest",
+      "scene": {
+        "scene_id": "S09",
+        "timeline_order": 9,
+        "planned_duration_seconds": 12,
+        "han_characters": 46,
+        "narration": "船桨与当地舟船技术，让独木舟运输成为合理解释；但考古没有留下某一条船的货单，我们不知道它装了多少盐。",
+        "logical_audio_filename": "PC-S09-zh.mp3",
+        "logical_subtitle_filename": "PC-S09-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-05", "required_status": "pass_for_g7_06_s09"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 50,
+        "text_utf8_bytes": 150,
+        "expected_text_sha256": "617b931d7c3baebf16c0f76f3940963109b368629315d9bcc2d7c2c2115144ff"
+      },
+      "single_validation_question": "Can the narration separate a reasonable canoe interpretation from the missing manifest and unknown cargo amount?",
+      "must_hear_segments": ["合理解释", "但考古没有留下", "某一条船的货单", "我们不知道"],
+      "must_preserve_subtitle_segments": ["独木舟运输成为合理解释", "但考古没有留下某一条船的货单", "我们不知道它装了多少盐"],
+      "prosody_boundary": "Pause at the semicolon and make the negative evidence clause complete, not an afterthought.",
+      "pass_status": "pass_for_g7_07_s10",
+      "next_gate_review": "G7-07",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-07-S10",
+      "sequence": 7,
+      "gate_id": "G7-07",
+      "risk_family": "supported_network_with_unknown_list",
+      "scene": {
+        "scene_id": "S10",
+        "timeline_order": 10,
+        "planned_duration_seconds": 11,
+        "han_characters": 43,
+        "narration": "生产规模、船桨和沿海与内陆的物质联系，共同支持盐进入内陆交换网络；具体路线、城市和买家仍然未知。",
+        "logical_audio_filename": "PC-S10-zh.mp3",
+        "logical_subtitle_filename": "PC-S10-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-06", "required_status": "pass_for_g7_07_s10"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 48,
+        "text_utf8_bytes": 144,
+        "expected_text_sha256": "6c79d908837c13bf5bf4daf2e22c656d17d365953fa78e1e327103ed65f6a124"
+      },
+      "single_validation_question": "Can the voice clearly distinguish evidence that jointly supports an inland network from the still-unknown route, city and buyer list?",
+      "must_hear_segments": ["共同支持", "内陆交换网络", "具体路线、城市和买家", "仍然未知"],
+      "must_preserve_subtitle_segments": ["共同支持盐进入内陆交换网络", "具体路线、城市和买家仍然未知"],
+      "prosody_boundary": "Pause at the semicolon and keep all three unknown nouns audible before 仍然未知.",
+      "pass_status": "pass_for_g7_08_s11",
+      "next_gate_review": "G7-08",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-08-S11",
+      "sequence": 8,
+      "gate_id": "G7-08",
+      "risk_family": "misconception_negation_and_later_sequence",
+      "scene": {
+        "scene_id": "S11",
+        "timeline_order": 11,
+        "planned_duration_seconds": 12,
+        "han_characters": 46,
+        "narration": "今天这些遗址在浅水下，不代表古人在水里煮盐。它们废弃后被海水淹没，缺氧泥炭反而保存了木柱和作业布局。",
+        "logical_audio_filename": "PC-S11-zh.mp3",
+        "logical_subtitle_filename": "PC-S11-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-07", "required_status": "pass_for_g7_08_s11"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 50,
+        "text_utf8_bytes": 150,
+        "expected_text_sha256": "c735366c91033d8a1f06ae268dc24299cb55ed56a02e45f29ccb6c85cd6bf14a"
+      },
+      "single_validation_question": "Can the narration first reject ancient underwater salt boiling and then clearly place inundation after abandonment before explaining preservation?",
+      "must_hear_segments": ["不代表古人在水里煮盐", "废弃后", "被海水淹没", "反而保存"],
+      "must_preserve_subtitle_segments": ["不代表古人在水里煮盐", "它们废弃后被海水淹没", "缺氧泥炭反而保存"],
+      "prosody_boundary": "Use the sentence break to keep the negation separate, and preserve the temporal sequence in 废弃后.",
+      "pass_status": "pass_for_g7_09_s12",
+      "next_gate_review": "G7-09",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-09-S12",
+      "sequence": 9,
+      "gate_id": "G7-09",
+      "risk_family": "synthesis_and_known_unknown_contrast",
+      "scene": {
+        "scene_id": "S12",
+        "timeline_order": 12,
+        "planned_duration_seconds": 13,
+        "han_characters": 51,
+        "narration": "所以，证据能拼出浓缩、煮卤、成盐、水运和内陆交换的机制；它不能复原某一船盐的完整旅程。这正是我们知道与不知道的边界。",
+        "logical_audio_filename": "PC-S12-zh.mp3",
+        "logical_subtitle_filename": "PC-S12-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-08", "required_status": "pass_for_g7_09_s12"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 58,
+        "text_utf8_bytes": 174,
+        "expected_text_sha256": "6e1e446cc86a88a30ad8972f3987566505606568a11b2dc72b6691e36c1f5ef1"
+      },
+      "single_validation_question": "Can the longest sentence preserve the contrast between reconstructable mechanism and unrecoverable single journey, then land the known-versus-unknown ending without rushing?",
+      "must_hear_segments": ["能拼出", "不能复原", "某一船盐的完整旅程", "知道与不知道的边界"],
+      "must_preserve_subtitle_segments": ["证据能拼出", "它不能复原某一船盐的完整旅程", "我们知道与不知道的边界"],
+      "prosody_boundary": "Pause at the semicolon and full stop; do not flatten the can-versus-cannot contrast or rush the final boundary sentence.",
+      "pass_status": "pass_for_g7_10_s04",
+      "next_gate_review": "G7-10",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-10-S04",
+      "sequence": 10,
+      "gate_id": "G7-10",
+      "risk_family": "artifact_list_and_mechanism",
+      "scene": {
+        "scene_id": "S04",
+        "timeline_order": 4,
+        "planned_duration_seconds": 12,
+        "han_characters": 43,
+        "narration": "接着，陶碗、陶罐或陶盆被黏土支座托在火上。器物与支座的组合，支持人们在这里加热卤水，让盐逐渐结晶。",
+        "logical_audio_filename": "PC-S04-zh.mp3",
+        "logical_subtitle_filename": "PC-S04-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-09", "required_status": "pass_for_g7_10_s04"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 49,
+        "text_utf8_bytes": 147,
+        "expected_text_sha256": "8489f72c3cc2fe26524e14dcb85954a582a35c68f778fd10a6e69f3546735715"
+      },
+      "single_validation_question": "Can the narration keep the vessel list, clay supports and gradual crystallization mechanism distinct and natural at fixed speed?",
+      "must_hear_segments": ["陶碗、陶罐或陶盆", "黏土支座", "加热卤水", "逐渐结晶"],
+      "must_preserve_subtitle_segments": ["陶碗、陶罐或陶盆", "器物与支座的组合", "让盐逐渐结晶"],
+      "prosody_boundary": "Keep the three vessel forms as a list and do not make 支持 sound like direct proof of an intact stove.",
+      "pass_status": "pass_for_g7_11_s05",
+      "next_gate_review": "G7-11",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-11-S05",
+      "sequence": 11,
+      "gate_id": "G7-11",
+      "risk_family": "social_interpretation_boundary",
+      "scene": {
+        "scene_id": "S05",
+        "timeline_order": 5,
+        "planned_duration_seconds": 13,
+        "han_characters": 48,
+        "narration": "木柱布局还显示，盐厨房与居住空间彼此相邻。这支持家庭或亲属群体参与剩余生产，但我们不知道具体家谱和分工。",
+        "logical_audio_filename": "PC-S05-zh.mp3",
+        "logical_subtitle_filename": "PC-S05-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-10", "required_status": "pass_for_g7_11_s05"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 52,
+        "text_utf8_bytes": 156,
+        "expected_text_sha256": "a230864b14908ea55afada043b60e4ae5843dbd9b4a50a0fb9b2b9bc47994e67"
+      },
+      "single_validation_question": "Can the voice keep household or kin participation as a supported interpretation while making the unknown genealogy and division of labor equally clear?",
+      "must_hear_segments": ["彼此相邻", "这支持", "但我们不知道", "具体家谱和分工"],
+      "must_preserve_subtitle_segments": ["这支持家庭或亲属群体参与剩余生产", "但我们不知道具体家谱和分工"],
+      "prosody_boundary": "Keep the contrast at 但 and do not let the first clause sound like a confirmed genealogy.",
+      "pass_status": "pass_for_g7_12_s06",
+      "next_gate_review": "G7-12",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G7-12-S06",
+      "sequence": 12,
+      "gate_id": "G7-12",
+      "risk_family": "scale_without_quantity",
+      "scene": {
+        "scene_id": "S06",
+        "timeline_order": 6,
+        "planned_duration_seconds": 14,
+        "han_characters": 51,
+        "narration": "这里也不像偶尔为一户人家煮一锅盐。大量制盐粗陶和专门作业空间，共同支持超过日常自用的生产；确切年产量仍不知道。",
+        "logical_audio_filename": "PC-S06-zh.mp3",
+        "logical_subtitle_filename": "PC-S06-zh.vtt"
+      },
+      "prerequisites": [
+        {"gate_id": "G7-11", "required_status": "pass_for_g7_12_s06"}
+      ],
+      "text_lock": {
+        "text_characters_including_punctuation": 55,
+        "text_utf8_bytes": 165,
+        "expected_text_sha256": "14e9b033b7bd7c6b2fa41f263f0751e6b7a036961df60b7c79a2a72bc1b3f888"
+      },
+      "single_validation_question": "Can the narration support production beyond daily self-use while making the unknown exact annual output clear, then close G7 only if all twelve real durations total 120 to 150 seconds?",
+      "must_hear_segments": ["共同支持", "超过日常自用", "确切年产量", "仍不知道"],
+      "must_preserve_subtitle_segments": ["共同支持超过日常自用的生产", "确切年产量仍不知道"],
+      "prosody_boundary": "Pause at the semicolon and do not let the scale claim overpower the unknown annual output; evaluate the twelve-scene total after this review.",
+      "additional_final_checks": [
+        "all_12_scene_attempts_passed",
+        "all_12_audio_and_subtitle_pairs_have_distinct_lineage",
+        "all_provider_model_speaker_speed_and_subtitle_snapshots_match",
+        "total_real_duration_ms_between_120000_and_150000"
+      ],
+      "pass_status": "pass_for_g8_render_plan_review",
+      "next_gate_review": "G8",
+      "automatic_follow_on": false
+    }
+  ]
+}

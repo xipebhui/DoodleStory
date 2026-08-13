@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g8_human_acceptance_request",
+  "record_status": "not_ready",
+  "pilot_id": "yt-pc-local-pilot-01",
+  "attempt_label": null,
+  "publication_authorized": false,
+  "request": {
+    "evidence_pack_id": null,
+    "idempotency_key": null,
+    "expected_video_sha256": null,
+    "expected_render_manifest_sha256": null,
+    "expected_evidence_manifest_sha256": null,
+    "expected_evidence_archive_sha256": null,
+    "decision": null,
+    "full_watch_attested": null,
+    "dimensions": {
+      "visual_evidence_continuity": {
+        "verdict": "not_reviewed",
+        "issues": [],
+        "notes": null
+      },
+      "script_evidence_and_pacing": {
+        "verdict": "not_reviewed",
+        "issues": [],
+        "notes": null
+      },
+      "chinese_speech_and_subtitles": {
+        "verdict": "not_reviewed",
+        "issues": [],
+        "notes": null
+      },
+      "render_delivery_and_traceability": {
+        "verdict": "not_reviewed",
+        "issues": [],
+        "notes": null
+      }
+    },
+    "revision_summary": null,
+    "expected_acceptance_snapshot_sha256": null
+  },
+  "preflight": {
+    "video_id": null,
+    "video_asset_id": null,
+    "video_sha256_matches_asset_and_bytes": null,
+    "render_manifest_sha256_matches": null,
+    "evidence_pack_status": "not_run",
+    "required_evidence_pack_status": "succeeded",
+    "evidence_manifest_sha256_matches": null,
+    "evidence_archive_sha256_matches_asset_and_bytes": null,
+    "all_required_frames_present": null,
+    "same_conversation_owner": null,
+    "full_video_playback_completed": null,
+    "verdict_structure_valid": null,
+    "verdict": "not_reviewed",
+    "issues": []
+  },
+  "preview_result": {
+    "canonical_snapshot": null,
+    "acceptance_snapshot_sha256": null,
+    "previewed_at": null,
+    "status": "not_run"
+  },
+  "submission_result": {
+    "acceptance_id": null,
+    "status": "not_run",
+    "request_sha256": null,
+    "acceptance_snapshot_sha256": null,
+    "decided_by_user_id": null,
+    "decided_at": null,
+    "source_publishable_video_id": null,
+    "publication_authorized": false,
+    "safe_error_code": null,
+    "safe_error_summary": null
+  },
+  "audit": {
+    "created_at": "2026-08-13",
+    "submitted_at": null,
+    "record_git_commit": null,
+    "evidence_refs": [],
+    "sensitive_values_removed": null
+  }
+}

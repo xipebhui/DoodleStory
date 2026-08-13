@@ -1,0 +1,306 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_s03_single_image_gate",
+  "record_status": "not_run",
+  "created_at": "2026-08-12",
+  "gate": {
+    "gate_id": "G4",
+    "purpose": "local_production_validation",
+    "attempt_label": null,
+    "previous_attempt": {
+      "gate_record": "paynes-creek-s03-media-gate.md",
+      "run_id": "de8b148d122343fd984a9d646801c12b",
+      "outcome": "failed_before_image",
+      "image_call_count": 0
+    }
+  },
+  "locked_inputs": {
+    "topic_id": "paynes-creek-salt-production-transport",
+    "scene": {
+      "scene_id": "S03",
+      "target_duration_seconds": 11,
+      "han_characters": 44,
+      "narration": "下面这一步，是依据遗迹和类比做的重建：盐工可能让盐水经过含盐土，提高浓度，再把更浓的卤水收进陶罐。",
+      "fact_ids": [
+        "F3"
+      ],
+      "source_ids": [
+        "S3",
+        "S4"
+      ],
+      "rights_ids": [
+        "R2",
+        "R3"
+      ],
+      "evidence_level": "A_plus_B_reconstruction",
+      "motion_preset": "pan_right",
+      "expected_candidate_filename": "PC-S03-v01.png",
+      "approved_filename_only_after_full_pass": "PC-S03-approved.png"
+    },
+    "source_lock": {
+      "input_baseline_git_commit": "ff3033cefd1bf3ea0128f8719694b683b9b2e73a",
+      "production_draft": "docs/strategy/youtube/paynes-creek-production-draft.json",
+      "prompt_document": "docs/strategy/youtube/paynes-creek-chinese-script-prompt-pack.md",
+      "prompt_selector": "S03｜依据遗迹与类比重建浓缩步骤 / text code block",
+      "canonical_prompt_encoding": "UTF-8",
+      "canonical_prompt_newline": "LF",
+      "canonical_prompt_trailing_newline": false,
+      "expected_prompt_sha256": "3cd1a0820096f3b3804aad06ced282265559adf40460401a6b0b47f980303729",
+      "submitted_prompt_sha256": null,
+      "prompt_hash_matches": null
+    },
+    "style_and_skill": {
+      "required_style_name": "Paynes Creek Evidence Desk 16:9",
+      "required_image_model": "Qwen/Qwen-Image",
+      "required_aspect_ratio": "16:9",
+      "required_tool_names": [
+        "generate_image",
+        "inspect_image"
+      ],
+      "observed_style_id": null,
+      "observed_skill_version_id": null,
+      "observed_at": null
+    }
+  },
+  "preflight": {
+    "g2_offline_adapter": {
+      "required_status": "pass_offline",
+      "observed_status": null,
+      "evidence_ref": null,
+      "verified_at": null
+    },
+    "g3_zero_media_gate": {
+      "required_status": "pass_for_s03_single_image_review",
+      "observed_status": null,
+      "evidence_ref": null,
+      "verified_at": null
+    },
+    "g4_media_authorization": {
+      "authorized_by": null,
+      "authorized_at": null,
+      "authorization_ref": null,
+      "authorized_run_count": 1,
+      "authorized_image_tool_calls": 1,
+      "authorized_inspect_image_tool_calls": 1,
+      "automatic_retry_authorized": false,
+      "provider_switch_authorized": false,
+      "prompt_change_authorized": false
+    },
+    "cost_cap": {
+      "currency": null,
+      "amount": null,
+      "basis": "user_approved_maximum_for_this_gate",
+      "approved_by": null,
+      "approved_at": null
+    },
+    "reviewers": {
+      "fact_reviewer": null,
+      "visual_reviewer": null
+    },
+    "all_passed": null,
+    "blockers": []
+  },
+  "run_snapshot": {
+    "conversation_id": null,
+    "run_id": null,
+    "execution_attempt": null,
+    "created_at": null,
+    "finished_at": null,
+    "terminal_status": null,
+    "route_id": null,
+    "provider": null,
+    "api_shape": null,
+    "agent_model": null,
+    "image_provider": null,
+    "image_model": null,
+    "aspect_ratio": null
+  },
+  "observed_call_counts": {
+    "model_call_count": null,
+    "generate_image_tool_call_count": null,
+    "image_provider_call_count": null,
+    "inspect_image_tool_call_count": null,
+    "speech_call_count": null,
+    "subtitle_call_count": null,
+    "video_call_count": null,
+    "publish_call_count": null
+  },
+  "generate_image": {
+    "tool_call_id": null,
+    "step_id": null,
+    "status": "not_run",
+    "started_at": null,
+    "finished_at": null,
+    "provider": null,
+    "model": null,
+    "provider_request_id": null,
+    "image_id": null,
+    "asset_id": null,
+    "error_type": null,
+    "error_code": null,
+    "error_summary": null,
+    "retryable": null
+  },
+  "candidate_asset": {
+    "status": "not_observed",
+    "candidate_filename": null,
+    "approved_filename": null,
+    "mime_type": null,
+    "byte_size": null,
+    "sha256": null,
+    "actual_width_px": null,
+    "actual_height_px": null,
+    "actual_aspect_ratio": null,
+    "gateway_request_target_px": {
+      "width": 1792,
+      "height": 1024,
+      "status": "code_target_not_observed_output"
+    },
+    "delivery_target_px": {
+      "width": 1920,
+      "height": 1080,
+      "status": "target_not_observed_output"
+    },
+    "motion_probe": {
+      "preset": "pan_right",
+      "zoom_percent": 8,
+      "pan_percent": 3,
+      "safe_after_probe": null,
+      "evidence_ref": null
+    }
+  },
+  "inspect_image": {
+    "tool_call_id": null,
+    "step_id": null,
+    "status": "not_run",
+    "request": {
+      "image_id": null,
+      "checks": [
+        "historical_mechanism_alignment",
+        "reconstruction_boundary",
+        "modern_object_exclusion",
+        "composition_and_subtitle_safety",
+        "pan_right_crop_safety",
+        "visual_artifacts_and_text_exclusion"
+      ],
+      "expected": {
+        "story_beat": "A cautious non-photoreal horizontal reconstruction of brine concentration. Show only a simple elevated wooden container with low-detail saline earth, liquid passing through a funnel-like outlet into one rough unglazed ceramic jar. Use one teal liquid path and amber dashed reconstruction contours. Keep essential objects inside the central 84% and upper 70%, with the bottom 30% quiet for Chinese subtitles. Exclude modern filters, pipes, valves, precision machinery, copied Sacapulas installations, text, logos and watermarks.",
+        "characters": [],
+        "required_text": []
+      }
+    },
+    "response": {
+      "image_id": null,
+      "verdict": null,
+      "scores": {},
+      "issues": [],
+      "provider": null,
+      "model": null,
+      "latency_ms": null,
+      "error_type": null,
+      "error_summary": null
+    }
+  },
+  "human_fact_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "checks": [
+      {
+        "id": "fact_reconstruction_not_artifact_claim",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "fact_only_allowed_mechanism_objects",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "fact_no_modern_device_or_fixed_workstation",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "fact_no_sacapulas_or_paper_figure_copy",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "fact_no_unsupported_historical_claim",
+        "status": "not_reviewed",
+        "note": null
+      }
+    ],
+    "verdict": null
+  },
+  "human_visual_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "checks": [
+      {
+        "id": "visual_actual_ratio_recorded",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "visual_central84_upper70_bottom30",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "visual_pan_right_probe_safe",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "visual_teal_path_amber_dashed_reconstruction",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "visual_palette_and_editorial_cutaway",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "visual_no_text_logo_watermark_or_artifact",
+        "status": "not_reviewed",
+        "note": null
+      },
+      {
+        "id": "visual_mechanism_readable_at_video_size",
+        "status": "not_reviewed",
+        "note": null
+      }
+    ],
+    "verdict": null
+  },
+  "gate_decision": {
+    "allowed_statuses": [
+      "not_run",
+      "blocked_precondition",
+      "failed_before_image",
+      "failed_during_image",
+      "failed_during_inspection",
+      "needs_revision",
+      "pass_for_s01_anchor"
+    ],
+    "status": "not_run",
+    "machine_verdict": null,
+    "fact_verdict": null,
+    "visual_verdict": null,
+    "decided_by": null,
+    "decided_at": null,
+    "decision_note": null,
+    "stop_reason": null,
+    "next_allowed_gate": null
+  },
+  "audit": {
+    "evidence_refs": [],
+    "sensitive_values_removed": null,
+    "record_validated_at": null,
+    "record_git_commit": null
+  }
+}

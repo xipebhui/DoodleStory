@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g5_anchor_profiles",
+  "status": "ready_as_profiles_not_authorized",
+  "updated_at": "2026-08-12",
+  "common": {
+    "purpose": "local_production_validation",
+    "topic_id": "paynes-creek-salt-production-transport",
+    "source_documents": {
+      "production_draft": "docs/strategy/youtube/paynes-creek-production-draft.json",
+      "evidence_board": "docs/strategy/youtube/paynes-creek-shot-evidence-board.md",
+      "prompt_document": "docs/strategy/youtube/paynes-creek-chinese-script-prompt-pack.md",
+      "style_audit": "docs/strategy/youtube/paynes-creek-style-state-audit.md"
+    },
+    "canonical_prompt": {
+      "encoding": "UTF-8",
+      "newline": "LF",
+      "trailing_newline": false
+    },
+    "required_style": {
+      "name": "Paynes Creek Evidence Desk 16:9",
+      "image_model": "Qwen/Qwen-Image",
+      "aspect_ratio": "16:9",
+      "reference_image_count": 0,
+      "revalidate_at_attempt": true
+    },
+    "required_tool_names": [
+      "generate_image",
+      "inspect_image"
+    ],
+    "attempt_budget": {
+      "new_run_count": 1,
+      "generate_image_tool_call_count": 1,
+      "candidate_count": 1,
+      "inspect_image_tool_call_count": 1,
+      "automatic_retry": false,
+      "provider_switch": false,
+      "prompt_change": false,
+      "automatic_next_gate": false
+    },
+    "dimension_policy": {
+      "gateway_request_target_px": {
+        "width": 1792,
+        "height": 1024,
+        "status": "code_target_not_observed_output"
+      },
+      "delivery_target_px": {
+        "width": 1920,
+        "height": 1080,
+        "status": "target_not_observed_output"
+      },
+      "actual_dimensions_source": "candidate_file_probe",
+      "exact_pixel_dimensions_must_match_approved_predecessors": true,
+      "remotion_absolute_aspect_ratio_delta_max": 0.01,
+      "do_not_infer_actual_dimensions_from_targets": true
+    },
+    "motion_runtime": {
+      "preset": "zoom_in",
+      "start_scale": 1.0,
+      "end_scale": 1.08,
+      "transform_origin": "center center",
+      "pan_percent": 0,
+      "source_ref": "remotion/src/NarratedPanels.tsx",
+      "custom_focus_supported": false
+    }
+  },
+  "profiles": [
+    {
+      "profile_id": "G5-A-S01",
+      "sequence": 1,
+      "gate_id": "G5-A",
+      "scene": {
+        "scene_id": "S01",
+        "target_duration_seconds": 8,
+        "han_characters": 34,
+        "narration": "海岸生产的盐，怎样到达内陆？佩恩斯克里克留下了一条不完整、却能追踪的证据链。",
+        "fact_ids": ["F8"],
+        "source_ids": ["S1", "S4", "S5"],
+        "rights_ids": ["R1", "R2", "R3"],
+        "evidence_level": "B_interpretation",
+        "motion_preset": "zoom_in",
+        "candidate_filename": "PC-S01-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S01-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G4",
+        "required_status": "pass_for_s01_anchor",
+        "required_approved_scene_ids": ["S03"]
+      },
+      "source_lock": {
+        "prompt_selector": "S01｜海岸的盐怎样到达内陆 / text code block",
+        "prompt_characters": 1227,
+        "prompt_utf8_bytes": 1227,
+        "expected_prompt_sha256": "4c1c0198a549149ff0196356fab9fe2ee497f138b26549825b550dc1a8b245c3"
+      },
+      "single_validation_question": "Can one abstract map frame present an unresolved coast-to-inland access problem without inventing a confirmed route, buyer, ancient border or exact shoreline?",
+      "inspect_image_request": {
+        "checks": [
+          "map_abstraction_and_layout",
+          "unresolved_route_boundary",
+          "modern_cartography_exclusion",
+          "composition_and_subtitle_safety",
+          "center_zoom_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal editorial map question. Keep a simplified southern Belize coast and lagoon in the left 45%, one approximate coastal production node, several unnamed inland nodes in the upper right, and a large unresolved gap with only one interrupted directional trace. Keep essential objects in the central 84% and upper 70%, with the bottom 30% quiet. Exclude completed routes, named buyers or cities, modern borders presented as ancient borders, exact ancient shorelines, labels, text, logos, watermarks, satellite or Google-style maps, parchment and cinematic archaeology imagery.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_question_not_confirmed_route",
+        "fact_approximate_coast_node_gap_and_unnamed_inland_nodes",
+        "fact_no_buyer_city_price_or_world_supply_claim",
+        "fact_no_modern_border_or_exact_ancient_shoreline_claim",
+        "fact_no_third_party_map_or_figure_copy"
+      ],
+      "human_visual_checks": [
+        "visual_exact_dimensions_match_s03",
+        "visual_central84_upper70_bottom30",
+        "visual_center_zoom_1_08_safe",
+        "visual_flat_map_palette_continuity",
+        "visual_interrupted_trace_readable_at_video_size",
+        "visual_no_text_logo_watermark_or_artifact"
+      ],
+      "pass_status": "pass_for_s04_anchor",
+      "next_gate_review": "G5-B",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G5-B-S04",
+      "sequence": 2,
+      "gate_id": "G5-B",
+      "scene": {
+        "scene_id": "S04",
+        "target_duration_seconds": 12,
+        "han_characters": 43,
+        "narration": "接着，陶碗、陶罐或陶盆被黏土支座托在火上。器物与支座的组合，支持人们在这里加热卤水，让盐逐渐结晶。",
+        "fact_ids": ["F3"],
+        "source_ids": ["S1", "S3", "S4"],
+        "rights_ids": ["R2", "R3"],
+        "evidence_level": "A_plus_B_chain",
+        "motion_preset": "zoom_in",
+        "candidate_filename": "PC-S04-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S04-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G5-A",
+        "required_status": "pass_for_s04_anchor",
+        "required_approved_scene_ids": ["S03", "S01"]
+      },
+      "source_lock": {
+        "prompt_selector": "S04｜陶器与黏土支座加热卤水 / text code block",
+        "prompt_characters": 1139,
+        "prompt_utf8_bytes": 1139,
+        "expected_prompt_sha256": "39bac237ebeba2e78d019358d67feae07909bca03fbfc2fcae8f3608bc2d5381"
+      },
+      "single_validation_question": "Can one mechanism cutaway make the vessel-support-heat relationship legible without claiming an intact excavated stove or introducing modern, industrial or ceremonial objects?",
+      "inspect_image_request": {
+        "checks": [
+          "pottery_support_load_bearing_relationship",
+          "hearth_and_brine_heating_mechanism",
+          "reconstruction_not_intact_stove_claim",
+          "modern_and_ceremonial_object_exclusion",
+          "composition_and_subtitle_safety",
+          "center_zoom_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal editorial hearth cutaway. Center a shallow hearth in the upper half. Show rough unglazed bowl, jar and basin forms resting on simple cylindrical clay supports above a restrained amber fire, with limited diagrammatic steam and salt residue. Make the load-bearing contact between vessel bases and supports clear, while treating the scene as a mechanism reconstruction rather than an intact excavated stove. Keep essential objects in the central 84% and upper 70%, with the bottom 30% quiet. Exclude metal pots, chimneys, stone factories, modern stove racks, industrial equipment, glazed or painted ceremonial pottery, paper figure layouts, text, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_mechanism_not_intact_stove_claim",
+        "fact_rough_unglazed_vessels_and_clay_supports",
+        "fact_heat_steam_residue_only_support_brine_heating",
+        "fact_no_modern_industrial_or_ceremonial_objects",
+        "fact_no_paper_figure_copy_or_unsupported_people_claim"
+      ],
+      "human_visual_checks": [
+        "visual_exact_dimensions_match_s03_and_s01",
+        "visual_central84_upper70_bottom30",
+        "visual_center_zoom_1_08_safe",
+        "visual_vessel_support_contact_legible",
+        "visual_palette_pottery_and_editorial_continuity",
+        "visual_no_text_logo_watermark_or_artifact",
+        "visual_three_layer_mechanism_readable_at_video_size"
+      ],
+      "pass_status": "pass_for_remaining_image_plan",
+      "next_gate_review": "G6",
+      "automatic_follow_on": false
+    }
+  ]
+}

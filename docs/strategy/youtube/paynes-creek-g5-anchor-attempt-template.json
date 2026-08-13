@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g5_anchor_attempt",
+  "record_status": "not_run",
+  "created_at": "2026-08-12",
+  "profile_catalog_lock": {
+    "path": "docs/strategy/youtube/paynes-creek-g5-anchor-profiles.json",
+    "canonical_encoding": "UTF-8",
+    "canonical_newline": "LF",
+    "canonical_trailing_newline": false,
+    "expected_sha256": "4987a38eb97466fdf9f3c8d4c7202e8b6aae304c7d22add3a3cad1b0a8bf86a9"
+  },
+  "attempt": {
+    "attempt_label": null,
+    "previous_attempt": null,
+    "selected_profile_id": null,
+    "selected_gate_id": null,
+    "selected_scene_id": null,
+    "selected_profile_pass_status": null,
+    "profile_fields_match_catalog": null
+  },
+  "source_lock": {
+    "input_git_commit": null,
+    "prompt_document": "docs/strategy/youtube/paynes-creek-chinese-script-prompt-pack.md",
+    "prompt_selector": null,
+    "expected_prompt_sha256": null,
+    "submitted_prompt_sha256": null,
+    "prompt_hash_matches": null
+  },
+  "preflight": {
+    "required_gate_lineage": [],
+    "all_required_gates_passed": null,
+    "media_authorization": {
+      "authorized_by": null,
+      "authorized_at": null,
+      "authorization_ref": null,
+      "authorized_run_count": 1,
+      "authorized_image_tool_calls": 1,
+      "authorized_inspect_image_tool_calls": 1,
+      "automatic_retry_authorized": false,
+      "provider_switch_authorized": false,
+      "prompt_change_authorized": false,
+      "automatic_next_gate_authorized": false
+    },
+    "cost_cap": {
+      "currency": null,
+      "amount": null,
+      "basis": "user_approved_maximum_for_this_selected_sub_gate",
+      "approved_by": null,
+      "approved_at": null
+    },
+    "reviewers": {
+      "fact_reviewer": null,
+      "visual_reviewer": null
+    },
+    "style_and_skill": {
+      "observed_style_id": null,
+      "observed_style_status": null,
+      "observed_style_prompt_sha256": null,
+      "observed_reference_image_count": null,
+      "observed_skill_version_id": null,
+      "observed_tool_names": [],
+      "observed_at": null,
+      "matches_selected_profile": null
+    },
+    "approved_predecessor_assets": [],
+    "route_and_provider_match_predecessor": null,
+    "all_passed": null,
+    "blockers": []
+  },
+  "run_snapshot": {
+    "conversation_id": null,
+    "run_id": null,
+    "execution_attempt": null,
+    "created_at": null,
+    "finished_at": null,
+    "terminal_status": null,
+    "route_id": null,
+    "provider": null,
+    "api_shape": null,
+    "agent_model": null,
+    "image_provider": null,
+    "image_model": null,
+    "aspect_ratio": null
+  },
+  "observed_call_counts": {
+    "model_call_count": null,
+    "generate_image_tool_call_count": null,
+    "image_provider_call_count": null,
+    "inspect_image_tool_call_count": null,
+    "speech_call_count": null,
+    "subtitle_call_count": null,
+    "video_call_count": null,
+    "publish_call_count": null
+  },
+  "generate_image": {
+    "tool_call_id": null,
+    "step_id": null,
+    "status": "not_run",
+    "started_at": null,
+    "finished_at": null,
+    "provider": null,
+    "model": null,
+    "provider_request_id": null,
+    "image_id": null,
+    "asset_id": null,
+    "error_type": null,
+    "error_code": null,
+    "error_summary": null,
+    "retryable": null
+  },
+  "candidate_asset": {
+    "status": "not_observed",
+    "candidate_filename": null,
+    "approved_filename": null,
+    "mime_type": null,
+    "byte_size": null,
+    "sha256": null,
+    "actual_width_px": null,
+    "actual_height_px": null,
+    "actual_aspect_ratio": null,
+    "dimension_comparisons": [],
+    "all_exact_pixel_dimensions_match": null,
+    "all_aspect_ratio_deltas_within_0_01": null,
+    "gateway_request_target_px": {
+      "width": 1792,
+      "height": 1024,
+      "status": "code_target_not_observed_output"
+    },
+    "delivery_target_px": {
+      "width": 1920,
+      "height": 1080,
+      "status": "target_not_observed_output"
+    },
+    "motion_probe": {
+      "preset": "zoom_in",
+      "start_scale": 1.0,
+      "end_scale": 1.08,
+      "transform_origin": "center center",
+      "pan_percent": 0,
+      "start_frame_evidence_ref": null,
+      "end_frame_evidence_ref": null,
+      "safe_after_probe": null,
+      "capability_mismatch": null
+    }
+  },
+  "inspect_image": {
+    "tool_call_id": null,
+    "step_id": null,
+    "status": "not_run",
+    "request": {
+      "image_id": null,
+      "checks": [],
+      "expected": {
+        "story_beat": null,
+        "characters": [],
+        "required_text": []
+      },
+      "matches_selected_profile": null
+    },
+    "response": {
+      "image_id": null,
+      "verdict": null,
+      "scores": {},
+      "issues": [],
+      "provider": null,
+      "model": null,
+      "latency_ms": null,
+      "error_type": null,
+      "error_summary": null
+    }
+  },
+  "human_fact_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "checks": [],
+    "checks_match_selected_profile": null,
+    "verdict": null
+  },
+  "human_visual_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "checks": [],
+    "checks_match_selected_profile": null,
+    "verdict": null
+  },
+  "gate_decision": {
+    "allowed_statuses": [
+      "not_run",
+      "blocked_precondition",
+      "failed_before_image",
+      "failed_during_image",
+      "failed_during_inspection",
+      "needs_revision",
+      "pass_for_s04_anchor",
+      "pass_for_remaining_image_plan"
+    ],
+    "status": "not_run",
+    "expected_pass_status_from_profile": null,
+    "machine_verdict": null,
+    "fact_verdict": null,
+    "visual_verdict": null,
+    "decided_by": null,
+    "decided_at": null,
+    "decision_note": null,
+    "stop_reason": null,
+    "next_allowed_gate_review": null,
+    "automatic_follow_on": false
+  },
+  "audit": {
+    "evidence_refs": [],
+    "sensitive_values_removed": null,
+    "record_validated_at": null,
+    "record_git_commit": null
+  }
+}

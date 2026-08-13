@@ -1,0 +1,693 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g6_scene_profiles",
+  "status": "ready_as_profiles_not_authorized",
+  "updated_at": "2026-08-12",
+  "production_order_is_timeline_order": false,
+  "common": {
+    "purpose": "local_production_validation",
+    "topic_id": "paynes-creek-salt-production-transport",
+    "source_documents": {
+      "production_draft": "docs/strategy/youtube/paynes-creek-production-draft.json",
+      "evidence_board": "docs/strategy/youtube/paynes-creek-shot-evidence-board.md",
+      "prompt_document": "docs/strategy/youtube/paynes-creek-chinese-script-prompt-pack.md",
+      "style_audit": "docs/strategy/youtube/paynes-creek-style-state-audit.md",
+      "g5_protocol": "docs/strategy/youtube/paynes-creek-g5-serial-anchor-protocol.md"
+    },
+    "canonical_prompt": {
+      "encoding": "UTF-8",
+      "newline": "LF",
+      "trailing_newline": false
+    },
+    "required_style": {
+      "name": "Paynes Creek Evidence Desk 16:9",
+      "image_model": "Qwen/Qwen-Image",
+      "aspect_ratio": "16:9",
+      "reference_image_count": 0,
+      "revalidate_at_attempt": true
+    },
+    "required_tool_names": [
+      "generate_image",
+      "inspect_image"
+    ],
+    "attempt_budget": {
+      "new_run_count": 1,
+      "generate_image_tool_call_count": 1,
+      "candidate_count": 1,
+      "inspect_image_tool_call_count": 1,
+      "fact_review_count": 1,
+      "visual_review_count": 1,
+      "automatic_retry": false,
+      "provider_switch": false,
+      "prompt_change": false,
+      "image_resample": false,
+      "automatic_next_gate": false
+    },
+    "dimension_policy": {
+      "gateway_request_target_px": {
+        "width": 1792,
+        "height": 1024,
+        "status": "code_target_not_observed_output"
+      },
+      "delivery_target_px": {
+        "width": 1920,
+        "height": 1080,
+        "status": "target_not_observed_output"
+      },
+      "actual_dimensions_source": "candidate_file_probe",
+      "exact_pixel_dimensions_must_match_all_approved_predecessors": true,
+      "remotion_absolute_aspect_ratio_delta_max": 0.01,
+      "do_not_infer_actual_dimensions_from_targets": true
+    },
+    "motion_runtime_catalog": {
+      "static": {
+        "start_scale": 1.0,
+        "end_scale": 1.0,
+        "transform_origin": "center center",
+        "start_translate_x_percent": 0,
+        "end_translate_x_percent": 0,
+        "start_translate_y_percent": 0,
+        "end_translate_y_percent": 0
+      },
+      "zoom_out": {
+        "start_scale": 1.08,
+        "end_scale": 1.0,
+        "transform_origin": "center center",
+        "start_translate_x_percent": 0,
+        "end_translate_x_percent": 0,
+        "start_translate_y_percent": 0,
+        "end_translate_y_percent": 0
+      },
+      "pan_right": {
+        "start_scale": 1.08,
+        "end_scale": 1.08,
+        "transform_origin": "center center",
+        "start_translate_x_percent": -3,
+        "end_translate_x_percent": 3,
+        "start_translate_y_percent": 0,
+        "end_translate_y_percent": 0
+      },
+      "pan_down": {
+        "start_scale": 1.08,
+        "end_scale": 1.08,
+        "transform_origin": "center center",
+        "start_translate_x_percent": 0,
+        "end_translate_x_percent": 0,
+        "start_translate_y_percent": -3,
+        "end_translate_y_percent": 3
+      }
+    },
+    "motion_runtime_source_ref": "remotion/src/NarratedPanels.tsx",
+    "common_human_fact_checks": [
+      "fact_unique_claim_and_evidence_level_match_profile",
+      "fact_interpretation_not_promoted_to_direct_record",
+      "fact_no_source_figure_or_photo_copy",
+      "fact_no_unsupported_buyer_price_manifest_genealogy_yield_border_or_complete_journey"
+    ],
+    "common_human_visual_checks": [
+      "visual_exact_dimensions_match_all_approved_predecessors",
+      "visual_central84_upper70_bottom30",
+      "visual_selected_motion_endpoints_safe",
+      "visual_palette_shape_and_evidence_language_continuity",
+      "visual_unique_claim_readable_at_video_size_without_text",
+      "visual_no_text_logo_watermark_or_artifact"
+    ]
+  },
+  "profiles": [
+    {
+      "profile_id": "G6-01-S02",
+      "sequence": 1,
+      "gate_id": "G6-01",
+      "risk_tier": "medium",
+      "visual_family": "abstract_coast_map_and_unlabeled_time_band",
+      "scene": {
+        "scene_id": "S02",
+        "target_duration_seconds": 10,
+        "han_characters": 42,
+        "narration": "它位于今天伯利兹南部海岸。考古年代显示，这套盐业系统的核心活动，大约发生在公元六百到九百年。",
+        "fact_ids": ["F1"],
+        "source_ids": ["S1", "S3", "S4"],
+        "rights_ids": ["R1", "R2", "R3"],
+        "evidence_level": "A_direct",
+        "motion_preset": "static",
+        "candidate_filename": "PC-S02-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S02-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G5-B",
+        "required_status": "pass_for_remaining_image_plan",
+        "required_approved_scene_ids": ["S03", "S01", "S04"]
+      },
+      "source_lock": {
+        "prompt_selector": "S02｜时间与地点 / text code block",
+        "prompt_characters": 1165,
+        "prompt_utf8_bytes": 1165,
+        "expected_prompt_sha256": "3a7f50d66afa6d2ce31bee0ba2d627682c1fadfc548eb22d2fb857fe4ce09e9e"
+      },
+      "single_validation_question": "Can an abstract coast and broad unlabeled time band establish present-day southern Belize and the approximate 600-900 CE activity window without generating text, modern political borders or a falsely exact ancient shoreline?",
+      "inspect_image_request": {
+        "checks": [
+          "coast_lagoon_abstraction",
+          "broad_unlabeled_time_band",
+          "modern_border_and_exact_shoreline_exclusion",
+          "map_text_and_numeric_exclusion",
+          "composition_and_subtitle_safety",
+          "visual_style_continuity"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal editorial map frame with a simplified southern Belize coast and approximate lagoon, plus one broad geometric time band without dates or labels. Present location and period as approximate context, not a precise ancient map. Keep essential evidence in the central 84% and upper 70%, with the bottom 30% quiet. Exclude modern or ancient political borders, exact ancient shorelines, site coordinates, flags, satellite imagery, labels, words, letters, numerals, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_present_day_southern_belize_not_ancient_border",
+        "fact_approximately_600_to_900_ce_not_exact_site_life_span",
+        "fact_approximate_lagoon_not_exact_ancient_shoreline",
+        "fact_no_site_coordinate_or_named_route"
+      ],
+      "human_visual_checks": [
+        "visual_coast_lagoon_and_time_band_separable",
+        "visual_static_full_frame_safe",
+        "visual_no_map_label_date_numeral_or_flag"
+      ],
+      "pass_status": "pass_for_g6_02_s08",
+      "next_gate_review": "G6-02",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-02-S08",
+      "sequence": 2,
+      "gate_id": "G6-02",
+      "risk_tier": "medium",
+      "visual_family": "single_artifact_evidence_plate",
+      "scene": {
+        "scene_id": "S08",
+        "target_duration_seconds": 11,
+        "han_characters": 44,
+        "narration": "运输链里最直接的证据，是盐业遗址出土的一支全尺寸木桨，长约一米四三。它证明这里具备水上交通能力。",
+        "fact_ids": ["F7"],
+        "source_ids": ["S1"],
+        "rights_ids": ["R4"],
+        "evidence_level": "A_direct",
+        "motion_preset": "zoom_out",
+        "candidate_filename": "PC-S08-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S08-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-01",
+        "required_status": "pass_for_g6_02_s08",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02"]
+      },
+      "source_lock": {
+        "prompt_selector": "S08｜全尺寸木桨是直接证据 / text code block",
+        "prompt_characters": 1191,
+        "prompt_utf8_bytes": 1191,
+        "expected_prompt_sha256": "34ca492c947b49c6555a62164783a0c198d6967c86b6fd959d8d8526363ed842"
+      },
+      "single_validation_question": "Can an original geometric object plate show a complete full-size canoe paddle and its measurable form without copying the source figure, substituting a short stirring paddle, generating numbers or implying a specific salt shipment?",
+      "inspect_image_request": {
+        "checks": [
+          "complete_canoe_paddle_anatomy",
+          "unlabeled_length_line_and_cross_section",
+          "short_stirring_paddle_exclusion",
+          "published_figure_copy_exclusion",
+          "shipment_and_cargo_claim_exclusion",
+          "composition_and_subtitle_safety",
+          "zoom_out_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "An original non-photoreal editorial object plate. Place one simplified complete wooden canoe paddle horizontally across the upper half with a plain blade, shaft and grip. Add one clean unlabeled full-length line and one tiny unlabeled circular shaft cross-section. The narration carries the approximate 1.43 meter measurement; the image contains no numeric scale. Keep essential evidence in the central 84% and upper 70%, with the bottom 30% quiet. Exclude the PNAS figure arrangement and breakage, short stirring paddles, ornament, museum cases, cargo, crew, destinations, words, letters, numerals, labels, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_complete_canoe_paddle_not_short_stirring_paddle",
+        "fact_measurement_carried_by_narration_not_image_numbers",
+        "fact_water_transport_capability_not_specific_shipment",
+        "fact_original_reconstruction_not_pnas_figure_copy"
+      ],
+      "human_visual_checks": [
+        "visual_blade_shaft_and_grip_legible",
+        "visual_unlabeled_length_line_and_cross_section_legible",
+        "visual_zoom_out_1_08_to_1_00_safe",
+        "visual_no_numeral_label_museum_case_cargo_or_crew"
+      ],
+      "pass_status": "pass_for_g6_03_s11",
+      "next_gate_review": "G6-03",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-03-S11",
+      "sequence": 3,
+      "gate_id": "G6-03",
+      "risk_tier": "high",
+      "visual_family": "present_shallow_water_and_preservation_cutaway",
+      "scene": {
+        "scene_id": "S11",
+        "target_duration_seconds": 12,
+        "han_characters": 46,
+        "narration": "今天这些遗址在浅水下，不代表古人在水里煮盐。它们废弃后被海水淹没，缺氧泥炭反而保存了木柱和作业布局。",
+        "fact_ids": ["F2"],
+        "source_ids": ["S3", "S4", "S6"],
+        "rights_ids": ["R2", "R3", "R7"],
+        "evidence_level": "A_direct",
+        "motion_preset": "pan_down",
+        "candidate_filename": "PC-S11-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S11-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-02",
+        "required_status": "pass_for_g6_03_s11",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02", "S08"]
+      },
+      "source_lock": {
+        "prompt_selector": "S11｜遗址是后来被淹没的 / text code block",
+        "prompt_characters": 1241,
+        "prompt_utf8_bytes": 1241,
+        "expected_prompt_sha256": "bb8fbe9894b61dae7cb6e580abf20e74a8b9e3517c18c36ac1b873edd250a947"
+      },
+      "single_validation_question": "Can one present-day environmental cutaway separate shallow water, sediment and peat, preserved posts and former ground without depicting ancient underwater salt production or claiming peat is the sole preservation cause?",
+      "inspect_image_request": {
+        "checks": [
+          "present_shallow_water_line",
+          "sediment_peat_post_and_old_ground_layers",
+          "later_inundation_sequence",
+          "ancient_underwater_worker_exclusion",
+          "deep_sea_treasure_and_intact_factory_exclusion",
+          "sole_cause_claim_exclusion",
+          "composition_and_subtitle_safety",
+          "pan_down_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal present-day environmental cutaway. Show a shallow water line, a restrained modern survey flag or one low-detail researcher, sediment and oxygen-poor peat preserving wooden posts, and a clearly separate former ground layer below. The scene explains later inundation and preservation, not ancient underwater work. Keep essential relations in the central 84% and upper 70%, with the bottom 30% quiet. Exclude deep sea, scuba treasure imagery, ancient workers boiling salt underwater, an intact underwater factory, a sole-cause claim, words, letters, numerals, labels, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_present_submerged_state_not_ancient_working_condition",
+        "fact_inundation_after_abandonment",
+        "fact_peat_supports_preservation_without_sole_cause_claim",
+        "fact_no_intact_underwater_factory_claim"
+      ],
+      "human_visual_checks": [
+        "visual_water_sediment_peat_posts_and_old_ground_separable",
+        "visual_modern_research_cue_not_ancient_worker",
+        "visual_pan_down_minus3_to_plus3_safe",
+        "visual_no_deep_sea_scuba_treasure_or_underwater_boiling"
+      ],
+      "pass_status": "pass_for_g6_04_s05",
+      "next_gate_review": "G6-04",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-04-S05",
+      "sequence": 4,
+      "gate_id": "G6-04",
+      "risk_tier": "high",
+      "visual_family": "adjacent_domestic_and_salt_work_spaces",
+      "scene": {
+        "scene_id": "S05",
+        "target_duration_seconds": 13,
+        "han_characters": 48,
+        "narration": "木柱布局还显示，盐厨房与居住空间彼此相邻。这支持家庭或亲属群体参与剩余生产，但我们不知道具体家谱和分工。",
+        "fact_ids": ["F5"],
+        "source_ids": ["S3", "S4"],
+        "rights_ids": ["R2", "R3"],
+        "evidence_level": "A_plus_B_chain",
+        "motion_preset": "pan_down",
+        "candidate_filename": "PC-S05-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S05-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-03",
+        "required_status": "pass_for_g6_04_s05",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02", "S08", "S11"]
+      },
+      "source_lock": {
+        "prompt_selector": "S05｜居住空间与盐厨房相邻 / text code block",
+        "prompt_characters": 1153,
+        "prompt_utf8_bytes": 1153,
+        "expected_prompt_sha256": "87b56505d359b3e94f6a018a82b98caaac89a1de1578fc827ffd7c79cc83495a"
+      },
+      "single_validation_question": "Can an editorial plan-cutaway make domestic and salt-working spaces visibly adjacent while preserving the limited household or kin-group interpretation and refusing specific genealogy, gender, rank, division of labor or simultaneous occupation?",
+      "inspect_image_request": {
+        "checks": [
+          "adjacent_space_layout",
+          "domestic_and_salt_work_object_separation",
+          "household_interpretation_boundary",
+          "genealogy_gender_rank_and_labor_exclusion",
+          "simultaneous_occupation_claim_exclusion",
+          "composition_and_subtitle_safety",
+          "pan_down_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal editorial plan-cutaway of neighboring pole-and-thatch spaces. One side uses ordinary domestic vessels; the salt-working side uses a restrained hearth, rough pottery and simple clay supports. At most two neutral low-detail silhouettes may show scale, without roles or identities. Keep the adjacency in the central 84% and upper 70%, with the bottom 30% quiet. Exclude genealogy, gendered tasks, rank, royal or palace cues, named families, claims that all buildings stood at once, modern or industrial equipment, words, letters, numerals, labels, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_spaces_adjacent_not_identical",
+        "fact_household_or_kin_participation_remains_interpretation",
+        "fact_no_genealogy_gender_rank_or_exact_labor_division",
+        "fact_no_all_buildings_simultaneous_claim"
+      ],
+      "human_visual_checks": [
+        "visual_domestic_and_salt_work_objects_distinguishable",
+        "visual_shared_boundary_or_nearby_layout_legible",
+        "visual_pan_down_minus3_to_plus3_safe",
+        "visual_no_palace_factory_genealogy_line_or_role_costume"
+      ],
+      "pass_status": "pass_for_g6_05_s09",
+      "next_gate_review": "G6-05",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-05-S09",
+      "sequence": 5,
+      "gate_id": "G6-05",
+      "risk_tier": "high",
+      "visual_family": "low_detail_canoe_transport_interpretation",
+      "scene": {
+        "scene_id": "S09",
+        "target_duration_seconds": 12,
+        "han_characters": 46,
+        "narration": "船桨与当地舟船技术，让独木舟运输成为合理解释；但考古没有留下某一条船的货单，我们不知道它装了多少盐。",
+        "fact_ids": ["F7", "F8"],
+        "source_ids": ["S1", "S4"],
+        "rights_ids": ["R2", "R4"],
+        "evidence_level": "A_plus_B_interpretation",
+        "motion_preset": "pan_right",
+        "candidate_filename": "PC-S09-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S09-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-04",
+        "required_status": "pass_for_g6_05_s09",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02", "S08", "S11", "S05"]
+      },
+      "source_lock": {
+        "prompt_selector": "S09｜独木舟运输合理，但没有货单 / text code block",
+        "prompt_characters": 1174,
+        "prompt_utf8_bytes": 1174,
+        "expected_prompt_sha256": "1b5ad27a67714f157ba74b5f55f3d2b7f1babc0d68a650ac3c06aeadf833a529"
+      },
+      "single_validation_question": "Can a low-detail canoe, the approved paddle language and water movement support transport plausibility while keeping occupants, cargo amount, route, destination and shipment record unknown?",
+      "inspect_image_request": {
+        "checks": [
+          "canoe_paddle_and_water_movement",
+          "approved_paddle_object_continuity",
+          "indistinct_uncountable_interior_shapes",
+          "cargo_crew_and_manifest_exclusion",
+          "route_destination_and_buyer_exclusion",
+          "composition_and_subtitle_safety",
+          "pan_right_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal low-detail canoe moving through a quiet lagoon. The paddle and water movement are clearer than any occupants. Interior shapes remain indistinct and uncountable, and one incomplete amber dashed wake may indicate motion as interpretation. Reuse the approved paddle shape language without turning the artifact into a documented shipment. Keep essential evidence in the central 84% and upper 70%, with the bottom 30% quiet. Exclude countable salt cargo, exact crew, manifests, routes, destinations, buyers, prices, docks, labels, words, letters, numerals, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_canoe_transport_is_reasonable_interpretation",
+        "fact_no_specific_boat_manifest_or_cargo_amount",
+        "fact_no_route_destination_buyer_or_price",
+        "fact_paddle_evidence_not_specific_shipment_record"
+      ],
+      "human_visual_checks": [
+        "visual_paddle_and_water_movement_primary",
+        "visual_canoe_interior_uncountable_and_people_indistinct",
+        "visual_pan_right_minus3_to_plus3_safe",
+        "visual_no_countable_cargo_route_or_destination"
+      ],
+      "pass_status": "pass_for_g6_06_s07",
+      "next_gate_review": "G6-06",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-06-S07",
+      "sequence": 6,
+      "gate_id": "G6-06",
+      "risk_tier": "high",
+      "visual_family": "certain_loose_salt_and_possible_salt_block_comparison",
+      "scene": {
+        "scene_id": "S07",
+        "target_duration_seconds": 11,
+        "han_characters": 44,
+        "narration": "成品可以是散盐。相近的器形还支持制作尺寸相近盐饼的可能，但这不等于玛雅人已经把盐当成通用货币。",
+        "fact_ids": ["F6"],
+        "source_ids": ["S4", "S5"],
+        "rights_ids": ["R3", "R6"],
+        "evidence_level": "B_interpretation",
+        "motion_preset": "static",
+        "candidate_filename": "PC-S07-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S07-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-05",
+        "required_status": "pass_for_g6_06_s07",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02", "S08", "S11", "S05", "S09"]
+      },
+      "source_lock": {
+        "prompt_selector": "S07｜散盐与可能的盐饼 / text code block",
+        "prompt_characters": 1103,
+        "prompt_utf8_bytes": 1103,
+        "expected_prompt_sha256": "61b4cb6f1bc54b687f72862032fe3e796a4d97432ebb6f4737ffcc9e8562c042"
+      },
+      "single_validation_question": "Can one object comparison keep loose salt certain and one plain compact salt block visibly hypothetical without turning it into universal currency, a standardized product or a pristine excavated artifact?",
+      "inspect_image_request": {
+        "checks": [
+          "loose_salt_and_storage_vessel_certainty",
+          "single_possible_salt_block",
+          "incomplete_interpretive_contour",
+          "currency_price_and_market_exclusion",
+          "pristine_artifact_and_countable_pile_exclusion",
+          "composition_and_subtitle_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal editorial object comparison. Loose salt crystals and one simple storage vessel are the certain subject on the left two-thirds. One plain compact salt block occupies the right third as a cautious possibility, edged by a soft incomplete amber dashed contour. Keep essential evidence in the central 84% and upper 70%, with the bottom 30% quiet. Exclude coins, stamps, brands, denomination, prices, market stalls, universal currency, piles of countable money-like cakes, pristine excavated blocks, treasure lighting, words, letters, numerals, labels, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_loose_salt_certain_and_salt_block_possible",
+        "fact_similar_vessel_forms_not_direct_finished_block_evidence",
+        "fact_not_universal_currency_or_price_system",
+        "fact_not_pristine_excavated_finished_artifact"
+      ],
+      "human_visual_checks": [
+        "visual_left_two_thirds_certain_right_third_possible",
+        "visual_incomplete_amber_contour_not_product_outline",
+        "visual_static_full_frame_safe",
+        "visual_no_coin_stamp_market_countable_pile_or_museum_display"
+      ],
+      "pass_status": "pass_for_g6_07_s06",
+      "next_gate_review": "G6-07",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-07-S06",
+      "sequence": 7,
+      "gate_id": "G6-07",
+      "risk_tier": "high",
+      "visual_family": "repeated_evidence_distribution_without_quantity",
+      "scene": {
+        "scene_id": "S06",
+        "target_duration_seconds": 14,
+        "han_characters": 51,
+        "narration": "这里也不像偶尔为一户人家煮一锅盐。大量制盐粗陶和专门作业空间，共同支持超过日常自用的生产；确切年产量仍不知道。",
+        "fact_ids": ["F4"],
+        "source_ids": ["S1", "S3", "S4"],
+        "rights_ids": ["R2", "R3"],
+        "evidence_level": "A_plus_B_chain",
+        "motion_preset": "zoom_out",
+        "candidate_filename": "PC-S06-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S06-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-06",
+        "required_status": "pass_for_g6_07_s06",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02", "S08", "S11", "S05", "S09", "S07"]
+      },
+      "source_lock": {
+        "prompt_selector": "S06｜证据支持超过日常自用的生产 / text code block",
+        "prompt_characters": 1146,
+        "prompt_utf8_bytes": 1146,
+        "expected_prompt_sha256": "51687fe432c25a5f6c5843367e8e67aa8cafed4aaa35db1b2d688c4ee4dc79db"
+      },
+      "single_validation_question": "Can repeated pottery fragments, post traces and specialized work-space cues support production beyond occasional household use without inventing annual output, simultaneous factory counts or an industrial production line?",
+      "inspect_image_request": {
+        "checks": [
+          "repeated_pottery_and_post_trace_distribution",
+          "specialized_work_space_cue",
+          "beyond_occasional_self_use_boundary",
+          "annual_yield_and_numeric_chart_exclusion",
+          "simultaneous_factory_count_exclusion",
+          "industrial_line_and_workforce_exclusion",
+          "composition_and_subtitle_safety",
+          "zoom_out_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal editorial evidence-distribution frame. Repeated rough salt-making pottery fragments, post traces and one specialized work-space cue support production beyond occasional household self-use through accumulation and pattern, not through a numerical chart. Reuse the approved pottery and work-space language. Keep essential evidence in the central 84% and upper 70%, with the bottom 30% quiet. Exclude annual tonnage, factory counts, 110 simultaneous sites, inventories, standardized workstations, industrial lines, large synchronized labor scenes, words, letters, numerals, labels, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_multiple_evidence_classes_support_beyond_self_use",
+        "fact_exact_annual_output_unknown",
+        "fact_no_simultaneous_site_or_factory_count_claim",
+        "fact_no_industrial_scale_or_workforce_claim"
+      ],
+      "human_visual_checks": [
+        "visual_repetition_reads_as_distribution_not_chart",
+        "visual_approved_pottery_and_space_language_reused",
+        "visual_zoom_out_1_08_to_1_00_safe",
+        "visual_no_numbers_graph_factory_line_or_mass_labor"
+      ],
+      "pass_status": "pass_for_g6_08_s10",
+      "next_gate_review": "G6-08",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-08-S10",
+      "sequence": 8,
+      "gate_id": "G6-08",
+      "risk_tier": "very_high",
+      "visual_family": "open_coast_to_inland_direction_network",
+      "scene": {
+        "scene_id": "S10",
+        "target_duration_seconds": 11,
+        "han_characters": 43,
+        "narration": "生产规模、船桨和沿海与内陆的物质联系，共同支持盐进入内陆交换网络；具体路线、城市和买家仍然未知。",
+        "fact_ids": ["F8"],
+        "source_ids": ["S1", "S4", "S5"],
+        "rights_ids": ["R1", "R3", "R4", "R6"],
+        "evidence_level": "B_interpretation",
+        "motion_preset": "static",
+        "candidate_filename": "PC-S10-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S10-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-07",
+        "required_status": "pass_for_g6_08_s10",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02", "S08", "S11", "S05", "S09", "S07", "S06"]
+      },
+      "source_lock": {
+        "prompt_selector": "S10｜内陆方向网络不是确定路线 / text code block",
+        "prompt_characters": 1097,
+        "prompt_utf8_bytes": 1097,
+        "expected_prompt_sha256": "fd6867563dbba496de9c1660d6f25c235c1768a33cbf4c6eaa9cb69246e5d398"
+      },
+      "single_validation_question": "Can one abstract network connect a coastal production node toward unnamed inland nodes with visibly interrupted interpretive traces while refusing a specific route, river, city, buyer, price or national supply claim?",
+      "inspect_image_request": {
+        "checks": [
+          "coastal_and_unnamed_inland_nodes",
+          "three_interrupted_directional_traces",
+          "network_interpretation_boundary",
+          "named_route_river_city_exclusion",
+          "buyer_price_quantity_and_national_supply_exclusion",
+          "composition_and_subtitle_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal abstract direction network. Place one coastal production node on the left and several unnamed inland nodes in the upper right. Use three restrained amber dashed traces that stop in the middle, leaving a large visible gap. The image supports possible inland exchange connections, not a recovered itinerary. Keep essential evidence in the central 84% and upper 70%, with the bottom 30% quiet. Exclude named routes, rivers, cities, buyers, prices, cargo quantities, political borders, complete arrows, national supply claims, words, letters, numerals, labels, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_inland_exchange_network_is_supported_interpretation",
+        "fact_specific_route_city_and_buyer_unknown",
+        "fact_no_price_quantity_or_national_supply_claim",
+        "fact_no_modern_border_presented_as_ancient_network"
+      ],
+      "human_visual_checks": [
+        "visual_coastal_and_inland_nodes_distinct",
+        "visual_three_traces_stop_before_inland_nodes",
+        "visual_static_gap_readable_at_video_size",
+        "visual_no_complete_arrow_route_city_buyer_price_or_border"
+      ],
+      "pass_status": "pass_for_g6_09_s12",
+      "next_gate_review": "G6-09",
+      "automatic_follow_on": false
+    },
+    {
+      "profile_id": "G6-09-S12",
+      "sequence": 9,
+      "gate_id": "G6-09",
+      "risk_tier": "very_high",
+      "visual_family": "five_object_open_evidence_chain",
+      "scene": {
+        "scene_id": "S12",
+        "target_duration_seconds": 13,
+        "han_characters": 51,
+        "narration": "所以，证据能拼出浓缩、煮卤、成盐、水运和内陆交换的机制；它不能复原某一船盐的完整旅程。这正是我们知道与不知道的边界。",
+        "fact_ids": ["F3", "F6", "F7", "F8"],
+        "source_ids": ["S1", "S3", "S4", "S5"],
+        "rights_ids": ["R2", "R3", "R4", "R6"],
+        "evidence_level": "A_plus_B_chain",
+        "motion_preset": "zoom_out",
+        "candidate_filename": "PC-S12-v01.png",
+        "approved_filename_only_after_full_pass": "PC-S12-approved.png"
+      },
+      "prerequisite": {
+        "gate_id": "G6-08",
+        "required_status": "pass_for_g6_09_s12",
+        "required_approved_scene_ids": ["S03", "S01", "S04", "S02", "S08", "S11", "S05", "S09", "S07", "S06", "S10"]
+      },
+      "source_lock": {
+        "prompt_selector": "S12｜机制可以重建，单次旅程不能 / text code block",
+        "prompt_characters": 1285,
+        "prompt_utf8_bytes": 1285,
+        "expected_prompt_sha256": "69290bf1f1d8a4be5cc6bfce81d5af1422af730859535bb50e7ff8552e65cd75"
+      },
+      "single_validation_question": "Can one synthesis frame reuse five approved evidence objects and distinguish solid evidence from dashed interpretation while leaving the final segment open instead of inventing a complete salt journey?",
+      "inspect_image_request": {
+        "checks": [
+          "five_approved_evidence_object_chain",
+          "solid_and_dashed_connection_semantics",
+          "final_open_segment",
+          "new_evidence_object_exclusion",
+          "complete_journey_manifest_buyer_and_destination_exclusion",
+          "currency_market_and_price_exclusion",
+          "composition_and_subtitle_safety",
+          "zoom_out_crop_safety",
+          "visual_style_and_text_exclusion"
+        ],
+        "expected": {
+          "story_beat": "A non-photoreal five-object evidence chain that reuses approved visual language: brine funnel and collection jar, pottery-support-heat mechanism, loose salt with one possible salt block, complete paddle, and coastal-to-inland nodes. Use restrained solid links for direct evidence and incomplete amber dashed links for interpretation. The final segment remains visibly open. Keep all five objects in the central 84% and upper 70%, with the bottom 30% quiet. Exclude new evidence objects, a complete voyage, manifest, buyer, destination, price, coins, market proof, closed loop, words, letters, numerals, labels, logos and watermarks.",
+          "characters": [],
+          "required_text": []
+        }
+      },
+      "human_fact_checks": [
+        "fact_chain_synthesizes_mechanism_not_specific_journey",
+        "fact_direct_and_interpretive_links_remain_distinct",
+        "fact_no_manifest_buyer_destination_price_or_market_validation",
+        "fact_no_new_evidence_beyond_approved_scenes"
+      ],
+      "human_visual_checks": [
+        "visual_five_approved_object_languages_recognizable",
+        "visual_solid_and_dashed_links_distinguishable",
+        "visual_final_segment_visibly_open",
+        "visual_zoom_out_1_08_to_1_00_safe",
+        "visual_no_closed_loop_complete_route_or_new_object"
+      ],
+      "pass_status": "pass_for_g7_audio_subtitle_plan_review",
+      "next_gate_review": "G7",
+      "automatic_follow_on": false
+    }
+  ]
+}

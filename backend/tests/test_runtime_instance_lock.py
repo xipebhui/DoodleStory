@@ -1,5 +1,8 @@
 import asyncio
+import os
 from pathlib import Path
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -27,6 +30,43 @@ class RuntimeInstanceLockTest(unittest.TestCase):
         first.release()
         second.acquire()
         second.release()
+
+    def test_same_database_cannot_hold_lock_in_second_process(self) -> None:
+        database_url = "sqlite:////tmp/doodlestory-lock-process.db"
+        instance_lock = RuntimeInstanceLock.for_database(database_url)
+        backend_root = Path(__file__).resolve().parents[1]
+        child_environment = os.environ.copy()
+        existing_python_path = child_environment.get("PYTHONPATH")
+        child_environment["PYTHONPATH"] = os.pathsep.join(
+            path
+            for path in (str(backend_root), existing_python_path)
+            if path
+        )
+        child_script = (
+            "from app.core.runtime_instance_lock import RuntimeInstanceLock\n"
+            f"lock = RuntimeInstanceLock.for_database({database_url!r})\n"
+            "try:\n"
+            "    lock.acquire()\n"
+            "except RuntimeError:\n"
+            "    raise SystemExit(23)\n"
+            "else:\n"
+            "    lock.release()\n"
+        )
+
+        instance_lock.acquire()
+        try:
+            child_result = subprocess.run(
+                [sys.executable, "-c", child_script],
+                capture_output=True,
+                check=False,
+                env=child_environment,
+                text=True,
+                timeout=10,
+            )
+        finally:
+            instance_lock.release()
+
+        self.assertEqual(child_result.returncode, 23, child_result.stderr)
 
     def test_different_databases_use_different_runtime_locks(self) -> None:
         first = RuntimeInstanceLock.for_database("sqlite:////tmp/doodlestory-lock-c.db")

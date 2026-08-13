@@ -751,3 +751,698 @@ Oddlyhuman 不同的稳定包装结构，而不是继续翻 LuluJAI 榜单。
 
 频道扩样研究结束。下一轮为 Paynes Creek V1–V7 建立视觉来源与授权清单，确认地图、盐业陶器、木构、
 船桨、独木舟、服饰与考古现场哪些可以准确、合法地进入非写实解释性样片。
+
+## 2026-08-12：Paynes Creek 视觉来源与授权 Gate
+
+### 新证据
+
+- Natural Earth 明确把站内矢量和栅格地图数据置于公共领域，允许修改与商业使用；V1 因而不需要截取
+  Google / 出版物地图，可自行绘制伯利兹南部与泻湖位置，点位标近似、运输只画虚线方向。
+- Ek Way Nal 的 Ancient Mesoamerica 论文和 Ta'ab Nuk Na 的 Antiquity 论文均明确采用
+  `CC BY 4.0`。本轮逐图注核对了浅水旗标现场、木柱平面、粗陶、黏土支座、漏斗与小船模型等作者 /
+  项目图件，没有发现单列排除说明；如直接使用，仍必须按图号和创作者署名并说明裁切、标注等改动。
+- Ta'ab Nuk Na Figure 1 基于 1976 年 Overseas Surveys 地形图，底层权利链不够干净，单独降为
+  `reference_only`；V1 继续使用 Natural Earth 独立制图。
+- 2005 PNAS 论文为 National Academy of Sciences 版权，未显示 CC 许可；全尺寸船桨照片不进入商业
+  样片，只使用约 1.43 米长度、约 5 厘米圆轴和公元 680–880 年等事实建立简化比例图。
+- 2018 PNAS 石器论文与 2024 Taylor & Francis 淹没景观论文均为 `CC BY-NC-ND 4.0`，不覆盖商业
+  改编；AIA 条款也把网页内容限为个人、非商业用途。相关图片全部标为需许可，不作为默认素材。
+- The Met 的带 OA / Public Domain 标记的古典期玛雅藏品图可按 CC0 使用，但已核对例子来自 Mexico /
+  Guatemala、Campeche / Jaina，且包含神话或王室身份，不足以复原 Paynes Creek 普通盐工服饰。
+
+完整许可矩阵、对象边界、署名字段和停止条件见
+[Paynes Creek 样片视觉来源与授权清单](paynes-creek-visual-source-rights-ledger.md)。
+
+### 对样片的影响
+
+- `V1、V3、V7` 可进入原创视觉规格；`V2、V4、V5` 必须在画面内保留 `reconstruction / possible`
+  证据强度，不添加精确装置、标准货币或可计数运盐载荷。
+- 原 `V6 市场交换` 不通过：没有来源确认市场建筑、买家、价格或单一路线，固定改为海岸节点到多个
+  未命名内陆节点的虚线网络图。
+- 人物降为小比例劳动剪影，不使用王室羽冠、神话器物、兽皮洞穴人或精确身份服饰；真实证据插图如
+  有需要，只在两篇 `CC BY 4.0` 论文中按图件选择。
+- 整体视觉 Gate 有条件通过。下一步是 16:9 逐镜证据板与原创视觉规格；仍未创建脚本、媒体、实验、
+  生成任务或发布任务，也不更新 `strategy_memory.md` 和 Skill。
+
+### 下一次研究问题
+
+把 V1–V7 收敛为逐镜证据板：每镜只绑定一个主张 ID、视觉对象和来源 ID，并在开始媒体制作前明确目标
+频道、原始语言、审核人、数据回流方式、AI 内容披露边界和 16:9 画风绑定。
+
+## 2026-08-12：Paynes Creek 12 镜证据板与本地生产 Gate
+
+### 新证据
+
+- 当前 `render_story_video` 接受 1–30 个 Scene，每镜为一张图片、一段音频与整段字幕或时间轴字幕；
+  所有图片必须与首图比例一致，合法运动只有静止、四向平移和缩放。
+- 当前 Seed-TTS 默认绑定中文音色，Whisper 字幕生成固定使用 `language="zh"`。因此英语 / 全球受众仍是
+  市场研究假设，现有代码可直接验证的是中文本地生产链，而不是英语成片。
+- 当前字幕在 1080p 画面左右各留 72 px、距底 150 px、最大宽 936 px、字号 58 px；为两行字幕和
+  8% 缩放 / 3% 平移留余量，原创图固定把底部 320 px 设为关键证据禁区。
+- 现有账号画风绑定只有两个 3:4 抖音账号，没有核验过的 YouTube 16:9 风格，因此在脚本与 Prompt
+  完成后仍不能直接提交真实生成任务。
+
+完整 S01–S12、138 秒时长、事实 / 视觉来源映射、对象锚点、Prompt 共用头和工具 Gate 见
+[Paynes Creek 逐镜证据板](paynes-creek-shot-evidence-board.md)与
+[本地 HTML 阅读板](paynes-creek-shot-board.html)。
+
+### 对样片的影响
+
+- V1–V7 被收敛为 12 镜；每镜只有一个主张，目标时长相加为 138 秒，全部使用当前 Remotion 支持的
+  `static`、`zoom_in`、`zoom_out`、`pan_right` 或 `pan_down`。
+- S03 卤水浓缩、S07 可能盐饼、S09 独木舟运输和 S10 内陆方向网络必须让“重建 / 可能 / 具体未知”
+  进入旁白和字幕，避免依赖当前模板没有的独立文字叠加层。
+- 首版不使用 BGM 或第三方证据图，只验证原创图一致性、中文语音、字幕和单图 Remotion 合成；这条片
+  只能证明生产可行性，不能证明频道、语言或赛道市场表现。
+- 本轮没有写最终旁白，没有生成图片、音频、字幕或视频，也没有创建实验、任务或发布记录；
+  `strategy_memory.md` 和 Skill 保持不变。
+
+### 下一次研究问题
+
+将 S01–S12 写成最终中文旁白和逐镜图片 Prompt：逐句映射 F / S / R 编号，控制真实 TTS 总时长在
+120–150 秒，并先完成事实、语言和 16:9 画风人工审核，再判断是否允许一个本地生成任务。
+
+## 2026-08-12：Paynes Creek 中文旁白与逐镜 Prompt Gate
+
+### 新证据
+
+- 当前 Native `generate_image` 只接收完整 `prompt` 与 `provider`；Style 提供图片模型、参考图与比例
+  快照，但 Runtime 不会在 Provider 调用前自动补写或改写 Prompt。因此事实禁止项、画风与字幕安全区
+  必须进入每一段完整 Prompt，不能依赖一个未实现的 `negative_prompt` 字段。
+- 用户限定的 SiliconFlow 免费模型清单中，当前项目已接入的生成图片模型只有
+  `Qwen/Qwen-Image` 明确落在允许范围；本地 Style 草案因而固定该模型，不把 Z-Image、ERNIE 或其他
+  Provider 当作默认备用。
+- `generate_speech` 当前支持 `0.5/0.75/1.0/1.25/1.5/2.0` 六档速度，真实时长由 Provider 或
+  ffprobe 返回；本片固定 `1.0`，不通过逐镜混速硬凑目标。
+- 统一图片 Gateway 对 `16:9` 当前映射到 `1792×1024` 请求；Native Remotion 的 manifest 又直接取
+  首图真实宽高，且只检查后续图片宽高比与首图差值不超过 `0.01`。所以 1920×1080 只能写成交付
+  目标，不能在首张真实图片生成前写成已验证输出。
+
+完整旁白、12 段 Prompt、Style 草案、制作顺序与单镜 Gate 见
+[Paynes Creek 中文旁白与逐镜 Prompt 包](paynes-creek-chinese-script-prompt-pack.md)，机器可读 Scene 草案见
+[生产草案 JSON](paynes-creek-production-draft.json)。
+
+### 对样片的影响
+
+- S01–S12 最终旁白共 536 个汉字，按每秒约 4 个汉字估算约 134 秒，仍落在 120–150 秒计划窗口；
+  实际时长等待真实 TTS，不把估算写成成片事实。
+- 四个关键证据边界已经落进原文：S03 为“依据遗迹和类比做的重建”，S07 为盐饼“可能”且不是通用
+  货币，S09 明说没有某条船的货单，S10 明说路线、城市和买家未知。
+- 12 段图片 Prompt 都把关键对象限制在中央 84% 与上方 70%，禁用画内文字，并逐镜排除现代滤水器、
+  金属锅、家谱、产量、钱币、可数载荷、确定路线和水下古代作业等事实漂移。
+- 本轮没有创建 Style、图片、音频、字幕、视频、实验或发布任务；`strategy_memory.md` 与 Skill 不更新。
+
+### 下一次研究问题
+
+不再继续选赛道。下一步进入第一道真实媒体 Gate：创建专用 16:9 Style，只生成 S03 一张候选并记录
+真实宽高；通过尺寸、机制对象、重建表达、字幕安全区和 `inspect_image` 后，再生成 S01 地图锚点。
+
+## 2026-08-12：Paynes Creek S03 单镜真实媒体 Gate
+
+### 新证据
+
+- Windows 后端原本因单实例锁无条件导入 Unix-only `fcntl` 而无法启动。本轮改为 Windows 使用
+  `msvcrt` 文件区间锁、POSIX 保持 `flock`；6 项聚焦测试含真实子进程竞争并通过。
+- 按仓库既有配置启动本地 MLflow 后，后端健康检查通过，startup 恢复扫描没有发现待恢复 Run。
+- 本地建立 `Qwen/Qwen-Image`、`16:9`、Prompt 模式、零参考图 Style，并发布只授权
+  `generate_image`、`inspect_image` 的用户 Skill。
+- 唯一一次 Native Run 在第一轮 Agent 文本规划请求中失败：模型快照 `gpt-5.5`，当前火苗兼容地址
+  返回 HTTP 429 `usage_limit_reached`。持久化事实为模型调用 1、图片调用 0、Tool Step 0、图片 / 资产
+  / 语音 / 字幕 / 视频 0。
+- 图片 Provider `qy` 和 `Qwen/Qwen-Image` 从未收到请求，因此本轮不能评价 S03 Prompt、真实尺寸、
+  机制对象、字幕安全区或图片质量。
+
+完整 Run ID、Style / Skill 快照、事件序列和未执行项见
+[S03 单镜真实媒体 Gate 记录](paynes-creek-s03-media-gate.md)。
+
+### 对样片的影响
+
+- Gate 结论固定为 `stop_before_batch`；没有重试、Provider 切换、第二张候选或批准图。
+- S01、其余 10 镜、TTS、字幕、Remotion 和发布继续停止；当前问题不是图片画风调整。
+- `strategy_memory.md` 与内容 Skill 不更新：一次前置额度失败没有产生内容效果证据。
+
+### 下一次研究问题
+
+先恢复当前火苗 `gpt-5.5` 额度，或由用户明确批准一个独立的 Agent 模型路由兼容性 Gate。主路径恢复
+后仍只重做一张 S03，不直接进入批量生产。
+
+## 2026-08-12：SiliconFlow Native Agent 静态兼容性 Gate
+
+### 新证据
+
+- 当前 Native Agent 明确使用 `TEXT_FALLBACK_*` 与 `OpenAIProvider(use_responses=True)`，请求火苗
+  `/v1/responses`；`SILICONFLOW_MODEL=deepseek-ai/DeepSeek-V3.2` 不进入该 Loop。
+- SiliconFlow 官方公开 API 索引列出 OpenAI Chat Completions 与 Anthropic Messages，没有列出
+  Responses；官方 Function Calling 示例通过 `/v1/chat/completions` 完成工具调用和结果回传。
+- 官方模型中心将 `deepseek-ai/DeepSeek-V3.2` 标为支持工具调用，足以作为用户允许清单内的首个
+  兼容性候选；这不证明它已能运行 DoodleStory Agent。
+- 当前已安装 Agents SDK 的 Chat Completions 模式会把工具调用流归一化为现有代码消费的
+  `response.output_item.added`、`response.function_call_arguments.delta` 和 `response.completed`。
+- SiliconFlow Chat API 文档把 `messages` 记录为 1–10 条；当前数据库 Session 完整重放全部 Item，
+  Runner 最多 12 回合。这个边界必须真实验证，不能通过静默截断或摘要绕过。
+- 官方公开价格页对 V3.2 输入和输出列有非零单价；用户模型清单继续解释为账号额度 / 运营白名单，
+  不写成平台全局永久免费。
+
+完整协议矩阵、SDK 证据、成本边界和下一 Gate 见
+[SiliconFlow Native Agent 兼容性决策](../../integrations/siliconflow-native-agent-compatibility-decision.md)。
+
+### 对样片的影响
+
+- 静态结论为 `adapter_required`；直接配置替换不兼容，真实生产兼容仍未验证。
+- 本轮没有修改 `.env`、Provider、模型或 Agent 代码，没有调用 SiliconFlow 模型，也没有重试 S03。
+- S03 的 `stop_before_batch` 继续有效；Prompt、Style 和 Qwen-Image 仍没有获得新的质量证据。
+- `strategy_memory.md` 与内容 Skill 不更新：本轮只解决基础设施决策，不产生内容效果证据。
+
+### 下一次研究问题
+
+在用户批准后，先开发显式 `siliconflow + chat_completions` 路由，再用
+`deepseek-ai/DeepSeek-V3.2`、一个无副作用本地工具和临时数据库验证普通流、Tool Loop、恢复重放与
+10 / 11 条消息边界。任一失败即 `stop_before_media`，不自动换模型或调用图片。
+
+## 2026-08-12：SiliconFlow Native Agent 适配实施蓝图
+
+### 新证据
+
+- 当前安装的 Agents SDK 在 Chat Completions 路径把每次模型 Response 和每个 Function Item 的 ID
+  固定为 `__fake_id__`；真实 Chat completion ID 到流后段才进入 Output Item 的
+  `provider_data.response_id`。
+- 当前 Native Agent 把 Response ID 用作模型 Step 幂等键，并按 Item ID 保存 Function metadata 与
+  arguments buffer。直接切 Chat 后，第二个模型回合会撞第一步，多 Tool 参数也会相互覆盖。
+- Chat Stream Handler 不发当前持久化逻辑等待的 `response.function_call_arguments.done`，只在
+  `response.output_item.done` 的 Function Item 中提供最终参数；应用必须显式合成完成语义。
+- 当前 `AGENT_MODEL` 同时服务旧 `AgentModelRouter` 和 Native Agent；Run 只存模型名，实际执行仍读
+  当前环境模型。全局改成 V3.2 会误伤旧 Router，也会让排队 / 恢复 Run 发生模型漂移。
+- `generate_image` 的文本 + 图片 Tool Output 在 Chat Converter 中只保留文本；V3.2 不能直接看图。
+  S03 首版只能读取 `image_id`，再强制调用 `inspect_image` 获取文本 verdict。
+
+完整配置、迁移、事件身份、消息计数、能力 Profile、测试矩阵与 SVG / PNG 见
+[SiliconFlow Native Agent 适配实施蓝图](../../architecture/siliconflow-native-agent-adapter-blueprint.md)。
+
+### 对样片的影响
+
+- 首个实际制作赛道和题目不再变化：仍是 Paynes Creek 考古证据驱动的历史机制解释。
+- S03 `stop_before_batch` 继续有效；本轮没有修改 `.env`、代码或数据库，没有模型、图片或媒体调用。
+- 下一路径被拆成三个不可合并的 Gate：离线实现与测试 → SiliconFlow 零媒体真实 Gate → 一张 S03
+  生成、视觉检查和人工审核。
+- Chat V1 只允许 `generate_image + inspect_image` 的 S03 Profile；文章多 Agent、YouTube 频道看图、
+  发布和其他 Skill 不因一条样片 Gate 自动开放。
+- `strategy_memory.md` 与内容 Skill 不更新：这是基础设施设计证据，不是发布效果证据。
+
+### 下一次研究问题
+
+不再增加赛道或改 S03 Prompt。等待用户批准后，只实施蓝图 Phase A 的配置隔离、Run 路由快照、事件
+适配、能力 Gate、迁移和离线测试；该阶段仍不调用 SiliconFlow 或任何媒体 Provider。
+
+## 2026-08-12：Paynes Creek 首片生产控制室
+
+### 新证据
+
+- 前序研究已经足以锁定首个实际制作赛道，不必继续靠增加同类频道或题目推迟生产验证：赛道固定为
+  “考古证据驱动的古代技术与日常生活机制解释”，首片固定为 Paynes Creek 玛雅盐业。
+- 当前“可制作”只表示产品适配：静态原创图、中文旁白、字幕与有限镜头运动能够承载这条机制链；尚无
+  真实发布、频道基线和数据回流，因此市场适配仍为未验证。
+- 首片已有 12 镜、138 秒计划、536 字中文旁白、12 段图片 Prompt、来源 / 权利边界和机器可读 Scene；
+  真实媒体仍为图片 0、语音 0、字幕 0、视频 0。
+- 生产路径被整理为 G0–G9。G0 赛道 / 事实和 G1 分镜 / 脚本已通过；当前唯一可授权下一步是 G2
+  SiliconFlow Native Agent 离线适配。G3 零媒体真实调用与 G4 S03 一张图片必须分别再次授权。
+- S03 通过后不直接批量：先检查 S01 地图锚点和 S04 陶器 / 火候锚点，再决定剩余图片顺序；任何失败
+  都停在当前 Gate，不自动换模型、Provider、截断或摘要策略。
+- 频道 owner、发布语言、事实 / 视觉 / 语言审核人、成本上限、数据回流和频道基线仍为空，因此即使本地
+  样片完成，也不能自动建立市场实验或公开发布。
+
+完整运行手册与产物导航见
+[Paynes Creek 首片生产控制室](paynes-creek-production-control-room.md)，直观入口见
+[HTML 生产控制台](paynes-creek-production-control-room.html)。
+
+### 对样片的影响
+
+- 不再重新选择首个赛道或改写 S03 Prompt；下一决策聚焦基础设施 Gate，而不是继续翻榜。
+- 本轮没有修改 `.env`、运行时代码或数据库，没有调用模型、图片、VL、TTS、字幕、视频或发布服务。
+- `strategy_memory.md` 与内容 Skill 不更新：生产入口设计不构成市场表现证据。
+
+### 下一次研究问题
+
+等待用户明确批准或拒绝 G2。批准时只实施 SiliconFlow Native Agent 配置隔离、Run 快照、事件适配、
+能力 Profile、迁移与离线测试；G2 完成即停，不自动进入真实模型调用。
+
+## 2026-08-12：Paynes Creek S03 单镜重试证据包
+
+### 新证据
+
+- 当前 Native `inspect_image` 对单张当前 Run 图片接收 `image_id`、1–10 个不重复 checks，以及
+  `story_beat / characters / required_text` 预期；成功结果包含 `accept / revise / ask_user / blocked`、
+  各 check 的 0–1 分数、问题列表、Provider、模型与耗时。
+- S03 的完整 Prompt 已按 UTF-8、LF、无末尾换行计算 SHA-256：
+  `3cd1a0820096f3b3804aad06ced282265559adf40460401a6b0b47f980303729`。未来提交文本不一致时应停止，
+  不能在媒体 Gate 内顺手改 Prompt。
+- 单次 G4 的证据边界固定为一个 Run、最多一次 `generate_image`、一张候选、一次 `inspect_image`、
+  一次事实复核和一次视觉复核；任何失败都结束该次授权。
+- 机器 `accept` 不能单独通过。还必须核验历史重建边界、现代器件禁区、真实宽高、中央 84% / 上方 70%、
+  底部 30% 字幕区、8% 放大 + 3% 右移裁切安全，以及无文字、Logo、水印和明显伪影。
+- 空白 JSON 对所有未观测字段使用 `null` 或 `not_run / not_reviewed`，并把第一次 429 Run 作为只读
+  lineage；没有伪造新的 Run、资产、成本、尺寸或 verdict。
+
+完整执行与终态矩阵见 [S03 单镜重试协议](paynes-creek-s03-retry-protocol.md)，机器可读空白记录见
+[S03 Gate 证据模板](paynes-creek-s03-gate-evidence-template.json)。
+
+### 对样片的影响
+
+- G4 的验收方法已准备，但 G2 未获批准、G3 未开放、G4 未授权；图片、VL、语音、字幕和视频数量不变。
+- 本轮没有修改运行时代码、配置、数据库、Provider、模型、Style 或 Skill，也没有调用任何外部服务。
+- `strategy_memory.md` 与内容 Skill 不更新：验收模板不是市场数据，也不是媒体质量结果。
+
+### 下一次研究问题
+
+等待用户明确批准或拒绝 G2。G2 只实施离线适配并完成聚焦验证；通过后再单独请求 G3 零媒体真实调用
+授权，不因证据模板已经存在而跳过任何 Gate。
+
+## 2026-08-12：SiliconFlow G3 零媒体 Gate 证据包
+
+### 新证据
+
+- 当前仓库仍只有 `huomiao_responses` 的实际 Native 路径：Run 没有 route / provider / API shape 快照，
+  Chat Event Adapter、消息计数 wrapper 和 G3 脚本均不存在，因此 G2 尚未实施，G3 不能执行。
+- 已安装版本保持 `openai-agents==0.18.3`、`openai==2.45.0`。SDK Chat 转换路径仍使用
+  `__fake_id__`，真实 Chat response ID 进入 `provider_data.response_id`；当前 Native Loop 仍只监听
+  Responses 路径的 arguments done。
+- G3 被压缩为四个用例、最多 5 次 SiliconFlow 请求：普通流 1 次；单 Tool 两回合与跨 Python 子进程
+  恢复合并为 2 次；转换后 10 条消息 1 次；测试专用 11 条 Provider 边界探针 1 次。
+- 测试 Tool 固定为无网络、无文件、无随机状态的 `echo_probe`。输入和输出 marker 锁定，整个 Tool +
+  恢复用例必须只执行一次；媒体与发布 Tool 既不注册也不调用。
+- 11 条消息必须先被生产 wrapper 拒绝，再由测试专用入口绕过本地上限探测 Provider。Provider 接受或带
+  request / trace ID 的结构化拒绝都可作为边界证据，但生产上限仍保持 10 条。
+- Gate 只有 `pass_for_s03_single_image_review` 或 `stop_before_media`。即使通过，也只允许评审是否另行
+  授权一张 S03，不自动生成图片。
+
+完整请求预算、进程恢复和停止条件见
+[G3 零媒体 Gate 协议](../../testing/siliconflow-native-agent-zero-media-gate-protocol.md)，空白记录见
+[G3 证据模板](../../testing/siliconflow-native-agent-zero-media-gate-evidence-template.json)。
+
+### 对样片的影响
+
+- S03 仍为图片 0；G2 未实施、G3 未授权，协议准备完成没有改变任何运行 Gate。
+- 本轮没有修改配置、代码、迁移、数据库或默认路由，没有模型、媒体、发布或账单调用。
+- `strategy_memory.md` 与内容 Skill 不更新：Provider 验收设计不是市场数据或内容表现证据。
+
+### 下一次研究问题
+
+等待用户批准或拒绝 G2。获批后只实施离线路由与事件适配并运行聚焦测试；G2 提交后再填写 G3 模板的
+授权、成本和脚本哈希，不自动发送 5 次请求。
+
+## 2026-08-12：G2-A Run 路由快照基础合同
+
+### 新证据
+
+- 当前新 Run 直接把 `settings.agent_model` 写入 `model_snapshot`；执行时普通 Agent、文章 Compiler、
+  Director / Writer / Reviewer 和 trace 又重新读取当前环境模型。Run 排队后环境变化会让持久化快照与
+  真实执行模型不一致。
+- 当前 Follow-up 只继承 `model_snapshot`，Run 表和 API 没有 route、provider、API shape 字段；历史 Run
+  也无法从数据库独立说明自己走的是哪种协议。
+- 当前唯一 Native Provider 构造仍固定使用 `TEXT_FALLBACK_*` 和 `use_responses=True`。因此最小安全切片
+  应先把现有 `huomiao_responses` 路径变成真实四字段快照，再单独引入 Chat 事件适配。
+- G2 已拆成串行 G2-A / G2-B。G2-A 只新增当前 Responses 路由快照、迁移、Provider factory 和执行一致性；
+  G2-B 才增加 `siliconflow_chat_v1`、Admin 显式选择、事件身份、参数完成、能力 Profile 和消息 wrapper。
+- 历史迁移应把三字段固定回填为当时唯一存在的路径，并逐字保留历史 `model_snapshot`；不存在 route 查询
+  路径，所以不新增索引，也不把凭据或 Base URL 写入 Run。
+
+完整待批准范围见
+[Sprint 181 / G2-A 合同](../../contracts/sprint-181-native-agent-run-route-snapshot-foundation.md)。
+
+### 对样片的影响
+
+- 合同已准备但未激活；没有配置、代码、迁移、数据库或 API 改动，S03 仍为图片 0。
+- G2-A 即使未来通过，也不构成 G2 `pass_offline`，不能进入 G3；必须再独立完成 G2-B。
+- 本轮没有调用模型、图片、VL、TTS、字幕、视频、发布或账单接口，也不更新策略记忆和 Skill。
+
+### 下一次研究问题
+
+等待用户明确批准或拒绝 Sprint 181 / G2-A。获批时只实施当前 Responses 路由快照和离线测试，不提前
+接通 SiliconFlow Chat，不自动进入 G2-B。
+
+## 2026-08-12：Paynes Creek 本地样片生产验证章程
+
+### 新证据
+
+- 首片开始前的来源、视觉权利、12 镜、旁白和 Prompt 已有独立 Gate，但整支视频完成后此前缺少统一终态；
+  仅有“渲染成功”不足以证明事实限定词、视觉锚点、字幕安全区和全链路证据同时合格。
+- 本地样片固定为单变量生产验证：只把锁定纸面包推进到真实端到端媒体，不在同一 attempt 改题目、脚本、
+  画风、模型、Provider、时长或发布包装。
+- 最终验收收敛为四项：12 镜视觉证据连续性；536 字脚本、证据与 120–150 秒节奏；中文语音、专名与
+  字幕同义性；1920×1080 / 30 fps 渲染、完整播放与 Run / Step / Tool / Asset 可追溯性。
+- 只有 G0–G8 和四维验收全部通过，才可记录 `pass_local_pilot`；该状态不开放 G9，也不能写成点击、留存、
+  频道增长、获利或赛道成立。
+- 空白 JSON 已固定五个终态和未观测字段语义；当前仍是 `not_run`，没有伪造 Run、资产、尺寸、成本、时长、
+  审核人或 verdict。
+
+完整定义见 [本地样片生产验证章程](paynes-creek-local-pilot-charter.md)，机器可读结构见
+[空白成片验收模板](paynes-creek-local-pilot-acceptance-template.json)。
+
+### 对样片的影响
+
+- 当前验收设计已齐，但媒体仍为图片 0、语音 0、字幕 0、视频 0；准备完成不等于生产已经开始。
+- 本轮没有修改代码、配置、迁移、数据库、Provider、模型、Style 或 Skill，也没有调用任何外部服务。
+- `strategy_memory.md` 与内容 Skill 不更新：本地生产标准不是市场表现证据。
+
+### 下一次研究问题
+
+不再追加验收维度或新赛道。等待用户明确批准或拒绝 Sprint 181 / G2-A；批准后只实现当前 Responses
+路由快照与离线测试，不接通 SiliconFlow Chat，不自动进入真实调用。
+
+## 2026-08-12：Paynes Creek 16:9 Style 状态对账
+
+### 新证据
+
+- 仓库当前配置的本地验证库已经存在 `Paynes Creek Evidence Desk 16:9`，状态为
+  `active / prompt / Qwen/Qwen-Image / 16:9`；因此旧 Prompt 包中的“待建立 Style”和生产草案中的
+  `binding_created=false` 已不能准确表达当前事实。
+- Style Prompt 共 883 字符，SHA-256 为
+  `5b8b5a7d144b13d6cdecc2ba2949205090df0958d8563b69968e8940a23b0d1b`，与当前色板、证据 / 重建表达、
+  字幕安全区和禁止项一致；这种文本一致性不等于模型输出验证。
+- 当前 Style API 的激活条件只要求 Prompt 非空；Prompt 模式允许零参考图。只读计数显示参考图 0、
+  Style Test 0、生成任务 0、关联 Native Agent 图片 0、YouTube 频道绑定 0。
+- 唯一关联 Native Run 只保存了 Style 快照，并在首轮 Agent 文本规划时因 `gpt-5.5` 429 停止；图片调用
+  为 0，所以不能从该 Run 推断 `Qwen/Qwen-Image`、真实尺寸、构图或视觉质量。
+- 机器可读生产草案已升级为 schema v2 的 `style_snapshot`；样片输入锁定改为逐文件 SHA-256，避免依赖
+  会随文档更新过期的单一 Git commit 字段。
+
+完整四层状态和未来重新解析规则见
+[Paynes Creek 16:9 Style 状态审计](paynes-creek-style-state-audit.md)。
+
+### 对样片的影响
+
+- 不再创建第二条 Style；现有本地记录保留，但其状态只能写成“配置已建立、视觉未验证”。
+- G4 前必须重新读取 Style ID、状态、模型、比例、Prompt 哈希和参考图数量；任一变化都停止当前 attempt，
+  不能自动重建、切换模型 / Provider 或把历史本地 ID 填入空白证据模板。
+- G0–G9 状态不变：G2-A 仍待批准，G3 / G4 未开放，媒体与发布计数仍为 0。
+- 本轮只读数据库并更新文档；没有 Style 写操作、Style Test、模型、媒体、发布或账单调用，
+  `strategy_memory.md` 与内容 Skill 不更新。
+
+### 下一次研究问题
+
+当前生产资料已经没有 Style 生命周期歧义。等待用户明确批准或拒绝 Sprint 181 / G2-A；批准后只做
+Responses 路由快照、迁移和离线测试，不提前进入 G2-B、G3 或 S03 生图。
+
+## 2026-08-12：Paynes Creek G5 串行视觉锚点 Gate
+
+### 新证据
+
+- S03 只覆盖卤水浓缩机制切面，不能代表抽象地图和陶器 / 火候两类画面已经稳定；原 G5 把 S01、S04
+  放在同一行，缺少各自授权、停止和失败证据。
+- S01 的唯一验证问题是能否提出未闭合的海岸—内陆距离，而不画成确定路线、买家、城市或古代政治边界；
+  S04 的唯一验证问题是器物—黏土支座—热源关系，而不画成完整出土炉灶或现代 / 礼仪设备。
+- S01 和 S04 规范 Prompt SHA-256 分别为
+  `4c1c0198a549149ff0196356fab9fe2ee497f138b26549825b550dc1a8b245c3` 与
+  `39bac237ebeba2e78d019358d67feae07909bca03fbfc2fcae8f3608bc2d5381`。
+- 当前 Native `inspect_image` 可接收 1–10 个不重复 checks，但机器 `accept` 不能证明来源、版权或考古
+  解释强度，仍需事实和视觉人工 verdict。
+- 当前 Remotion `zoom_in` 只做中心 `scale(1.00 → 1.08)`，没有可配置焦点；逐镜证据板原先写“收向泻湖
+  点位”超过真实能力。现已改为中心缩放探针，不更换 motion 预设。
+- Remotion 只硬拒绝宽高比差大于 `0.01`，但首支样片的三个锚点采用更严格的“实际像素尺寸完全相同”
+  生产门槛；尺寸漂移不在当前 attempt 内缩放或重采样。
+
+完整顺序、判定和停止条件见
+[G5 串行视觉锚点协议](paynes-creek-g5-serial-anchor-protocol.md)，机器输入见
+[Gate Profile](paynes-creek-g5-anchor-profiles.json)，未来记录使用
+[空白 attempt 模板](paynes-creek-g5-anchor-attempt-template.json)。
+
+### 对样片的影响
+
+- G5-A 只有完整通过才开放 G5-B 的授权评审；G5-B 只有完整通过才开放 G6 余图计划评审。两者均不自动
+  生成下一张图片。
+- 每次 attempt 只允许一个 Run、一次图片调用、一张候选、一次 VL 和两类人工复核；失败后另建 attempt。
+- G2-A、G2-B、G3、G4 当前状态不变，G5 仍未授权，媒体和发布数量仍为 0。
+- 本轮没有修改 Prompt、Style、模型、Provider 或运行代码，没有外部调用，也不更新策略记忆或 Skill。
+
+### 下一次研究问题
+
+G5 已有可执行验收结构。下一块可继续设计 G6 的剩余九镜生产顺序与“首个失败即停”调度，但它仍不会
+改变当前唯一可授权下一步：等待用户明确批准或拒绝 Sprint 181 / G2-A。
+
+## 2026-08-12：Paynes Creek G6 九镜依赖与风险排序
+
+### 新证据
+
+- 原 G6 只有“余下九镜、首个失败即停”一句，仍无法回答先做哪张、每张验证什么、通过后能否自动继续，
+  也没有机器可读的前置状态和唯一终态。
+- 按成片顺序从 S02 直接做到 S12 会把最高新颖度的 S11 环境切面拖到后段；如果模型把“后来被淹没”
+  画成古人在水下煮盐，前面投入的多张图都失去连续性价值。因此 S11 被提前为第三张做 fail-fast。
+- S08 是运输链唯一直接器物证据，应在 S09 独木舟和 S10 交换网络之前固定对象语言；S10 必须等地图、
+  船桨和独木舟都通过后再做，避免抽象网络自动闭合成路线、城市和买家。
+- S12 只能复用此前通过的五类对象并保留最终断口，不能在终镜新增证据；因此固定为最后一张。
+- 逐镜核对发现控制室把 S07 / S08 / S10 / S11 / S12 时长分别写成 12 / 10 / 13 / 13 / 10 秒，和生产
+  草案 11 / 11 / 11 / 12 / 13 秒不一致；S11 主张也被误写成交换可能，现已统一纠正。
+- S08 证据板要求画面生成 `0–1.43 米` 与 `5 厘米`，但锁定 Prompt 明确禁止数字和标签。现以 Prompt 为准：
+  画面只保留无标签长度线与无标签圆形剖面，一米四三由旁白 / 字幕承载。
+
+完整顺序、单镜问题与停止条件见
+[G6 九镜串行生产协议](paynes-creek-g6-serial-production-protocol.md)，机器输入见
+[九镜 Profile](paynes-creek-g6-scene-profiles.json)，未来逐镜记录使用
+[空白 attempt 模板](paynes-creek-g6-scene-attempt-template.json)。
+
+### 对样片的影响
+
+- G6 固定为 S02 → S08 → S11 → S05 → S09 → S07 → S06 → S10 → S12；这是生产 Gate 顺序，不改变
+  S01–S12 成片时间线。
+- 每镜独立授权、独立成本上限、独立 attempt，只允许一张候选；机器 `accept`、事实 `pass`、视觉 `pass`
+  全部成立后也必须停止，不能自动生成下一镜。
+- 九镜分别使用 `static`、`zoom_out`、`pan_right`、`pan_down` 的真实运行时端点做裁切探针，且实际像素
+  尺寸必须与所有 approved 前序图完全相同。
+- G2-A、G2-B、G3、G4、G5、G6 当前状态不变；媒体、语音、字幕、视频与发布计数仍为 0。
+- 本轮没有修改 Prompt、Style、模型、Provider 或运行代码，没有外部调用，也不更新策略记忆或 Skill。
+
+### 下一次研究问题
+
+G4、G5 和 G6 的视觉生产 Gate 已经覆盖从第一张候选到十二镜齐备的完整停止链。继续设计的最高价值方向
+不再是增加图片规则，而是拆解 G7 中文语音与字幕：先验证专名 / 数字 / 限定词的单镜语音锚点，再决定
+十二段 TTS 与 VTT 的串行生产顺序；当前执行入口仍是等待用户明确批准或拒绝 Sprint 181 / G2-A。
+
+## 2026-08-12：Paynes Creek G7 语音字幕与跨 Run 媒体边界
+
+### 新证据
+
+- `generate_speech` 将 Audio 绑定当前 `NativeAgentRun`；同 Run 相同文本 / speed 可复用，但其他 Run 不能
+  直接用该复用路径。
+- `generate_subtitles(audio_id)` 明确要求 Audio 属于当前 Run，并使用保存的语音原文校准 Whisper 词级
+  时间戳。成功字幕能保留“可能 / 不等于 / 未知”等原文，但不能证明 TTS 实际发音正确。
+- `render_story_video` 当前只查询渲染 Run 自己的 Audio / Subtitle。Native Image 可以来自同一 Conversation
+  的历史 Run，但 Audio / Subtitle 没有同等查询范围。
+- Follow-up 会新建 Run 并继承 Skill / Style / route 快照及 Artifact 上下文，不会改挂父 Run 媒体。
+- 当前等待输入只为文章审批或图片质量工作流服务，没有逐镜语音人工审核暂停。因此单 Run 生成 12 段再渲染
+  会绕过语言 Gate，12 个独立 Run 又无法进入独立 G8 Run。
+- 火山语音固定 `seed-tts-2.0-standard`、固定中文音色、MP3 24 kHz、speed 1.0；没有 SSML 或发音覆盖。
+  Whisper 固定中文、词级时间戳、原文对齐最低 50%，每 cue 最多 18 个规范化对齐字符；具体匹配率不持久化。
+
+完整边界、G7-0 最小方向和逐镜顺序见
+[G7 中文语音与字幕协议](paynes-creek-g7-audio-subtitle-protocol.md)，机器输入见
+[十二镜 Profile](paynes-creek-g7-scene-profiles.json)，未来记录使用
+[空白 attempt 模板](paynes-creek-g7-scene-attempt-template.json)。
+
+### 对样片的影响
+
+- 在任何真实 TTS 前新增 G7-0：G8 必须能只读取同一 Conversation 中成功来源 Run 的 Audio / Subtitle，
+  验证 owner 与音频—字幕配对，并把来源 Run ID 保存到 Scene 快照。
+- G8 应使用只暴露 `render_story_video` 的专用 Skill Version；图片质量由 G4–G6 来源 Run 的机器与人工记录
+  证明，不在 G8 用当前 Run 限定的 `inspect_image` 重复检查。
+- G7 按 S01 → S02 → S08 → S03 → S07 → S09 → S10 → S11 → S12 → S04 → S05 → S06 执行；
+  每镜一个 Run、一组 Speech + Subtitle、一次人工语言复核，失败不自动重试或改音色 / 速度 / 文本。
+- 只有 12 对音频 / 字幕全部通过且真实总时长为 120–150 秒，才写 `pass_for_g8_render_plan_review`。
+- G2-A、G2-B、G3–G7 当前状态不变；媒体与发布计数仍为 0。本轮没有运行代码或外部调用，也不更新
+  策略记忆或 Skill。
+
+### 下一次研究问题
+
+G7 已有内容层生产协议，但被 G7-0 运行时 lineage 阻断。下一块应把 G7-0 收敛成小型可验证开发合同：
+仅扩展 `render_story_video` 的同 Conversation Audio / Subtitle 解析、权限、配对、来源 Run 快照与聚焦测试；
+不在该 Sprint 调用 TTS、Whisper 或 Remotion。当前实际执行顺序仍先等待 Sprint 181 / G2-A 的明确批准。
+
+## 2026-08-12：G7-0 同会话跨 Run 媒体 Lineage 实施设计
+
+### 新证据
+
+- `NativeVideoSceneInput` 无需增加来源 Run ID；Image、Audio 和 Subtitle 记录已经各自保存 `run_id`，应由
+  服务端推导来源，避免把授权事实交给模型声明。
+- 当前 `NativeAgentVideo.scenes_json` 与 `NativeAgentVideoRead.scenes` 能原样保存 / 返回新增字典字段，
+  G7-0 不需要实体列、迁移、API endpoint 或前端改造。
+- 当前渲染 Run 在 `running` 等状态下会消费自己刚生成的媒体，因此“来源必须成功”只能约束历史 Run；
+  对当前 Run 也要求 `succeeded` 会造成现有行为回归。
+- `NativeAgentSubtitle.audio_id` 有外键，但数据库没有约束 Subtitle 与 Audio 的 `run_id` 相同；G7-0 必须
+  同时校验 ID 配对和来源 Run 配对。
+- 渲染上限为 30 个 Scene，Audio / Subtitle 可按 ID 集合批量查询；现有主键、Run 外键和 Conversation
+  索引足够，不需要新索引。
+
+完整设计见
+[同会话跨 Run 媒体 Lineage 蓝图](../../architecture/native-agent-cross-run-media-lineage-blueprint.md)，
+可审核切片见
+[Sprint 187 / G7-0 合同](../../contracts/sprint-187-native-agent-cross-run-media-lineage.md)。
+
+### 设计结论
+
+- 允许当前 Run 媒体，或同 Conversation、同 owner、`succeeded` 历史 Run 媒体；同 owner 不同 Conversation
+  与 Admin 跨 owner 均拒绝。
+- 新 Scene 快照记录图片、音频、字幕三个来源 Run ID；Generation Task 图片和内联字幕对应值为 `null`。
+- 不复制资产、不放宽 `generate_subtitles`、不改变 BGM / `inspect_image` / Tool 幂等 / Remotion，也不创建
+  G8 Skill。
+- Sprint 187 只设计就绪，未授权实施；媒体与发布调用仍为 0，当前开发顺序继续先处理 Sprint 181 /
+  G2-A。
+
+### 下一次研究问题
+
+G7-0 已具备可实施合同，不再扩写同一边界。后续设计可转向 G8 的 12 镜 render manifest、整片自动检查与
+人工完整观看交接；实际代码仍必须先获得对应 Sprint 的明确批准。
+
+## 2026-08-12：G8-A YouTube 1080p 固定渲染 Profile
+
+### 新证据
+
+- `IMAGE_SIZE_BY_ASPECT_RATIO["16:9"]` 当前为 1792×1024，图片结果允许相对 16:9 最多 2% 偏差；这只是
+  请求目标和比例 Gate，不是 1920×1080 输出事实。
+- Python Remotion bridge 把 Composition 设为首图偶数化宽高；Node 的 `calculateMetadata` 直接使用该值，
+  因此 1792×1024 源图会生成同尺寸视频。
+- React Scene 已用 `objectFit: cover` 和中心变换。若新增固定 1920×1080 Composition，1792×1024 只需
+  上下各裁 8 px，即每边 0.78125%；现有 2% 比例容差的数学上界对应每边最多约 1% 基准裁切。
+- 当前 Python 只解析 Node stdout 的宽高、fps 和帧数，不 probe 最终 MP4；本地样片的技术验收不能把 stdout
+  当文件事实。
+- 现有 `FFPROBE_EXECUTABLE` 可复用，不需要新依赖；但 probe 失败必须明确终止，不能回退到 stdout。
+
+完整设计见
+[YouTube 1080p 固定渲染 Profile 蓝图](../../architecture/native-agent-youtube-1080p-render-profile-blueprint.md)，
+可审核开发切片见
+[Sprint 188 / G8-A 合同](../../contracts/sprint-188-native-agent-youtube-1080p-render-profile.md)。
+
+### 设计结论
+
+- 不修改旧 `narrated-panel-v1`；新增显式 `youtube_16_9_1080p` preset 和
+  `narrated-panel-16x9-1080p-v1` 模板。
+- 新模板只接受合格 16:9 源图，固定等比 cover、每边最多 1% 基准中心裁切、1920×1080 / 30fps；禁止
+  任意 crop、拉伸、黑边、模糊填充和交付尺寸降级。
+- 保存前用真实 ffprobe 校验 H.264 / yuv420p、AAC、流、尺寸、fps 与时长，并把源图尺寸和 crop 事实写入
+  Scene 快照。
+- Sprint 188 只设计就绪，未修改 Runtime，未运行 Remotion 或外部媒体；当前实际开发入口仍是
+  Sprint 181 / G2-A。
+
+### 下一次研究问题
+
+固定输出 Profile 的行为与验收已收敛。下一步应设计 G8 机器 Render Manifest：把 12 个 approved 图片、
+12 对已审核 Audio / Subtitle、成片时间顺序、Motion、来源 Gate、调用上限和自动 / 人工验收交接锁成一份
+不可伪造的执行输入；仍不运行真实 Remotion。
+
+## 2026-08-12：G8-B 冻结 Render Manifest Run
+
+### 新证据
+
+- 当前 `NativeVideoSceneInput` 已有图片、音频、字幕和 Motion，但参数直到模型调用 Tool 才进入 Step / Item；
+  它不是“人先批准、系统后执行”的 Manifest 边界。
+- 把 12 组 ID 放进用户消息或专用 Skill 再让模型照抄，无法机械证明顺序和参数未被改写，也不能保证恢复时
+  使用同一批准版本。
+- Run 已经承载 Skill、模型和发布确认等不可变快照；有界的 12 镜单次渲染不需要新工作流引擎，适合继续
+  使用 Run + Step + in-process queue。
+- Sprint 187 能从数据库推导媒体来源 Run，Sprint 188 能固定输出 Profile；因此客户端 Manifest 不应再
+  声明 lineage、尺寸、时长或文件 hash，而应由服务端编译。
+- 当前没有通用视频人工审批实体。G8 前的确认可作为 Run 创建授权事实，G8 后的完整观看继续进入本地
+  acceptance packet，避免在一个样片上过早抽象通用审批系统。
+
+完整设计见
+[冻结 Render Manifest Run 蓝图](../../architecture/native-agent-frozen-render-manifest-run-blueprint.md)，
+可审核开发切片见
+[Sprint 189 / G8-B 合同](../../contracts/sprint-189-native-agent-frozen-render-manifest-run.md)，
+Paynes Creek 操作层见
+[G8 Render Manifest 与单次成片协议](paynes-creek-g8-render-manifest-protocol.md)。
+
+### 设计结论
+
+- 认证用户先提交 Scene key / 顺序、Native 媒体 ID、Motion、review ref / hash、BGM 和固定 preset 做无副作用
+  preview；服务端补全来源 Run、Asset、SHA-256、尺寸、时长和 cue 事实并计算 canonical hash。Run Create
+  必须携带该 expected hash，服务端重编译一致后才记录确认并 enqueue。
+- 专用 `youtube-frozen-render` Skill 只暴露零参数 `render_story_video()`；模型不能重传 scenes、BGM 或
+  preset。Manifest-bound Run 不允许 Follow-up，也不能带 Style、创作账号或发布上下文。
+- 运行时重新核对 snapshot、lineage 和实际文件 bytes；任何漂移在 Remotion 前失败，不自动寻找最新资产、
+  重试、切 Provider 或降级规格。
+- Paynes Creek 成片顺序固定为 S01 → S02 → S03 → S04 → S05 → S06 → S07 → S08 → S09 → S10 →
+  S11 → S12，不能沿用 G6 图片生产顺序或 G7 语言风险顺序。
+- Tool 技术成功只开放逐镜抽帧与人工完整观看；只有总验收四维全部通过才能写 `pass_local_pilot`，G9 仍
+  不自动开放。
+
+### 下一次研究问题
+
+Manifest 的批准与执行边界已收敛。下一步设计 G8 evidence pack：用实际 Scene 时长确定抽帧时间，覆盖每镜
+中点、运动安全端点、四处限定词字幕帧和 Scene 边界黑帧检查，并把自动证据与人工完整观看 verdict 分开。
+
+## 2026-08-12：G8-C 成片逐镜帧证据包
+
+### 新证据
+
+- 当前 Remotion 模板不是硬切：每镜本地帧 0 透明度为 0，帧 8 完全显影，倒数第 9 帧仍完全显影，末帧再
+  淡到 0。首尾黑帧是模板语义，不能直接算故障；真正需要人工检查的是安全端点、中点、限定词 cue 与完整
+  播放。
+- 当前 Video 实体和 Asset 权限足以把证据归属回 Conversation owner，但没有 Evidence Pack 实体、采样计划、
+  抽帧状态或离线审核索引。把 ffmpeg 后处理塞进 Render Tool 会让有效 MP4 因派生证据失败而陷入不清楚的
+  终态，因此应在视频保存后单独排队。
+- Windows 本机 ffmpeg / ffprobe 8.0.1 的 30 帧无网络合成校准中，一次 `select` 精确产出五张目标 PNG；片头
+  和片尾 endpoint 都是预期黑场，但 `blackdetect` 只报告片头，没有在 EOF 报告片尾。因此 endpoint PNG 与
+  像素统计必须始终存在，`blackdetect` 只能是补充观察。
+- 限定词不应由客户端填写 cue 索引或时间戳。客户端只提交 Scene key 与锁定脚本中的逐字片段，服务端从
+  持久化 Subtitle cues 唯一定位并计算离散 30fps 中点，避免手工时间漂移和模型同义改写。
+
+完整设计见
+[成片逐镜帧证据包蓝图](../../architecture/native-agent-video-frame-evidence-pack-blueprint.md)，
+可审核开发切片见
+[Sprint 190 / G8-C 合同](../../contracts/sprint-190-native-agent-video-frame-evidence-pack.md)，
+Paynes Creek 操作层见
+[G8-C 帧证据与完整观看交接协议](paynes-creek-g8-frame-evidence-protocol.md)。
+
+### 设计结论
+
+- 固定 Profile `narrated_panel_review_v1` 只接受 Manifest-bound、1920×1080、30fps 的已保存视频；owner 创建时
+  同时提交 Video 与 Render Manifest 的 exact SHA-256，不接受路径、帧号、时间戳、filter 或阈值。
+- 每镜固定五个角色：淡入黑端点、完全显影安全起点、中点、淡出前安全终点和淡出黑端点。30 镜与最多
+  20 个 qualifier cue 合计不超过 170 个逻辑目标；实际抽取按绝对帧去重，角色映射不能丢。
+- Worker 重做 ffprobe、完整解码和一次 select，逐 PNG 验证尺寸 / hash / 亮度，再保存只含 manifest、离线
+  HTML 和帧图的一个 ZIP Asset。失败保留原视频，不自动重抽或重渲染。
+- Render 成功终态修正为 `rendered_awaiting_frame_evidence`；同一 Video hash 的 Pack 成功后才进入
+  `ready_for_full_watch_review`。任何自动观察都不能替代人工观看，也不开放 G9。
+
+### 下一次研究问题
+
+G8 的机器证据与人工判断边界已经收敛。下一步应设计 G8 → G9 的不可变人工观看记录与发布准备交接：如何
+绑定同一个 Video / Evidence Manifest hash、记录事实 / 视觉 / 语言 / 完整观看四方 verdict，并确保后续标题、
+缩略图或发布元数据不会把未通过母版包装成可发布资产；仍不实施公开发布。
+
+## 2026-08-13：G8 不可变人工验收与 G9 严格入口
+
+### 新证据
+
+- 当前前端“审核并登记 Agent 视频”会在同一个表单中直接提交 `review_status="approved"`；后端只检查 Admin、
+  owner、未重复登记和公网 URL，`PublishableVideo` 没有保存 Video / Manifest / Evidence exact hash 或四维
+  verdict。现有状态能证明“有人登记”，不能证明“有人完整观看并通过了这份 bytes”。
+- 当前 PublishTask 只复验 `review_status == approved` 与公网 URL，因此视频文件、证据包或 Manifest 在登记后
+  漂移时，没有 Acceptance lineage 可供远程调用前复核。
+- 漫画 `AgentApprovalRequest` 和文案 `NativeAgentArticleApproval` 都绑定各自 Run / Artifact 并驱动不同
+  Workflow；强行复用会制造错误状态联动。当前又没有团队 Reviewer RBAC，不能用四个名字冒充四个独立身份。
+- `FileAsset.checksum_sha256` 与 materialize 能力足以在 preview、提交和发布前重新读取真实 bytes；不需要
+  依赖客户端 hash、公开 URL 或新增工作流引擎。
+
+完整设计见
+[不可变验收与发布登记交接蓝图](../../architecture/native-agent-local-pilot-acceptance-handoff-blueprint.md)，
+可审核开发切片见
+[Sprint 191 合同](../../contracts/sprint-191-native-agent-immutable-local-pilot-acceptance.md)，
+Paynes Creek 操作层见
+[G8 人工完整观看与不可变验收协议](paynes-creek-g8-human-acceptance-protocol.md)。
+
+### 设计结论
+
+- 新建 Video + Evidence Pack 专用的不可变 Acceptance，而不是在 `PublishableVideo.review_status` 或旧 Approval
+  上扩展。一个认证 owner 对四个固定维度统一签署；终态只能是 `pass_local_pilot | needs_revision`。
+- preview 零写入，提交携带 exact acceptance snapshot hash；两次都重算 Video、Render Manifest、Evidence
+  Manifest 和 Archive hash。`pass_local_pilot` 必须四维全 pass 且明确 attestation 已完整观看，终态不能更新、
+  删除或强制改为通过。
+- Manifest-bound Video 只能从通过的 Acceptance 进入严格 `PublishableVideo` 登记；服务端推导 source Video、
+  `review_status=approved` 和 synthetic 标志，并保存验收 lineage。历史普通视频保留 Sprint 134 行为，但不作为
+  Manifest 路径失败后的 fallback。
+- 创建 PublishTask 前再次复验 Acceptance 与实际 Video bytes；任一漂移都必须在 YouTube 远程调用前失败。
+  Acceptance 永久记录 `publication_authorized=false`，所以通过 G8 仍不是发布许可。
+
+### 下一次研究问题
+
+进入 G9-A：把目标频道、`prediction.json`、单一实验变量、标题、封面 FileAsset / SHA-256 / 权利、描述、
+标签、AI 合成披露、可见性、计划时间、发布责任人与 24 / 72 小时回流检查点锁成不可变发布包；仍不调用
+YouTube。

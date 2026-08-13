@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g8_frame_evidence_request",
+  "record_status": "not_ready",
+  "pilot_id": "yt-pc-local-pilot-01",
+  "attempt_label": null,
+  "publication_authorized": false,
+  "request": {
+    "profile_id": "narrated_panel_review_v1",
+    "idempotency_key": null,
+    "video_id": null,
+    "expected_video_sha256": null,
+    "expected_render_manifest_sha256": null,
+    "previous_pack_id": null,
+    "qualifier_groups": [
+      {
+        "qualifier_key": "S03-reconstruction-and-possibility",
+        "scene_key": "S03",
+        "required_exact_fragments": [
+          "依据遗迹和类比做的重建",
+          "可能"
+        ]
+      },
+      {
+        "qualifier_key": "S07-possibility-not-currency",
+        "scene_key": "S07",
+        "required_exact_fragments": [
+          "可能",
+          "不等于玛雅人已经把盐当成通用货币"
+        ]
+      },
+      {
+        "qualifier_key": "S09-no-manifest-unknown-load",
+        "scene_key": "S09",
+        "required_exact_fragments": [
+          "没有留下某一条船的货单",
+          "不知道它装了多少盐"
+        ]
+      },
+      {
+        "qualifier_key": "S10-route-city-buyer-unknown",
+        "scene_key": "S10",
+        "required_exact_fragments": [
+          "具体路线、城市和买家仍然未知"
+        ]
+      }
+    ]
+  },
+  "preflight": {
+    "video_status": "not_checked",
+    "video_asset_sha256_matches": null,
+    "render_manifest_sha256_matches": null,
+    "template_id_matches": null,
+    "dimensions_and_fps_match": null,
+    "scene_count": null,
+    "required_scene_count": 12,
+    "scene_timeline_frame_sum_matches_video": null,
+    "all_scenes_have_persisted_subtitles": null,
+    "all_qualifier_fragments_unique_and_exact": null,
+    "resolved_qualifier_cue_frame_count": null,
+    "resolved_qualifier_cue_frame_max": 20,
+    "verdict": "not_reviewed",
+    "issues": []
+  },
+  "submission_result": {
+    "evidence_pack_id": null,
+    "request_sha256": null,
+    "sampling_plan_sha256": null,
+    "status": "not_run",
+    "queued_at": null,
+    "safe_error_code": null,
+    "safe_error_summary": null
+  },
+  "audit": {
+    "created_at": "2026-08-12",
+    "submitted_by_user_id": null,
+    "submitted_at": null,
+    "record_git_commit": null,
+    "evidence_refs": [],
+    "sensitive_values_removed": null
+  }
+}

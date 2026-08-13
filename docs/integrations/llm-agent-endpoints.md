@@ -58,12 +58,16 @@ SiliconFlow 是独立的后端直连链路，不是 Native Agent 的固定地址
 https://api.siliconflow.cn/v1/chat/completions
 ```
 
-### 2.1.1 SiliconFlow 免费额度模型白名单
+### 2.1.1 SiliconFlow 账号免费额度模型白名单
 
-以下范围是本项目的 SiliconFlow 免费额度使用约束：任何配置到
+以下范围是用户为本项目指定的 SiliconFlow 账号免费额度 / 可用模型约束：任何配置到
 SILICONFLOW_BASE_URL 的模型，必须从此表选择。表中使用产品名称；环境变量应填写
 SiliconFlow 当前公布的精确 model ID，不能根据名称自行猜测别名。带 Pro/ 前缀的同名优化
 部署版本也在允许范围内。
+
+这里的“免费额度”指用户账号侧可用额度或运营约束，不等于 SiliconFlow 对所有账号公开承诺输入、
+输出永久零价。2026-08-12 读取的[官方价格页](https://siliconflow.cn/pricing)对清单中的多种模型列有
+非零单价；实际调用前仍需以账号控制台的余额、赠送额度或优惠券为准。本文不读取或记录私有账单。
 
 | 赛道 | 允许模型 | 简要选型 |
 | --- | --- | --- |
@@ -87,6 +91,10 @@ SiliconFlow 当前公布的精确 model ID，不能根据名称自行猜测别�
 2. Qwen-Image、Wan2.2、Embedding、Reranker 与部分全模态/代码模型虽然属于允许范围，但当前没有对应的 DoodleStory SiliconFlow 直连客户端；不能仅改环境变量就假定功能已经接入。
 3. QY 统一生图网关中的模型路由仍以 IMAGE_GATEWAY_BASE_URL 为准，即使模型属于上表，也不能把网关调用误记为 DoodleStory 直接请求 SiliconFlow。
 4. 当前代码不对模型名做运行时白名单校验；本表是配置和运营约束。若需要强制拦截白名单外模型，应单独实施并验证所有既有图片风格与媒体配置。
+5. `deepseek-ai/DeepSeek-V3.2` 虽由官方模型中心标注支持工具调用，但 SiliconFlow 的公开工具调用入口
+   是 Chat Completions；当前 Native Agent 固定使用 Responses，不能仅修改模型名和 Base URL。静态
+   兼容结论和下一 Gate 见
+   [SiliconFlow Native Agent 兼容性决策](siliconflow-native-agent-compatibility-decision.md)。
 
 ### 2.2 普通 OpenAI-compatible 文本/视觉链路
 
@@ -132,6 +140,17 @@ https://api.huomiao.art/v1/responses
 | 工具 | Native Agent Function Tool，工具执行后再把结果返回给模型 |
 
 Native Agent 的 generate_image、generate_speech、generate_subtitles、render_story_video、capture_wechat_article、inspect_youtube_channel、publish_youtube_video 等是本地工具，不是模型供应商地址；工具内部会继续调用本文后面的各个 Provider。
+
+SiliconFlow 不能直接替换该地址。其[官方 API 索引](https://docs.siliconflow.cn/llms.txt)当前列出
+Chat Completions 与 Anthropic Messages，没有列出 Responses；官方 Function Calling 也使用
+`/v1/chat/completions`。已安装 Agents SDK 可通过 `OpenAIProvider(use_responses=False)` 把 Chat
+Completions 流转换为部分 `response.*` 事件，因此静态结论是 `adapter_required`，而不是
+`direct_config_compatible`。完整源码审计进一步确认 Chat 兼容层为 Response / Item 复用固定
+`__fake_id__`，且不发当前持久化代码等待的 arguments done；直接切换会造成第二模型回合 Step 冲突和
+多 Tool 参数覆盖。官方文档另把 `messages` 数组记录为 1–10 条，与当前完整 Session 重放和 12 回合
+上限存在待验证风险。详见
+[兼容性决策](siliconflow-native-agent-compatibility-decision.md)与
+[适配实施蓝图](../architecture/siliconflow-native-agent-adapter-blueprint.md)。
 
 ### 2.4 旧 AgentModelRouter
 
@@ -395,10 +414,10 @@ GET {VITE_API_BASE_URL}/api/v1/agent-loop/runs/{run_id}/events
 
 | 项目 | 结论 |
 | --- | --- |
-| SiliconFlow 与 Native Agent | SiliconFlow 使用 chat.completions 和语音接口；Native Agent 主模型使用 TEXT_FALLBACK_BASE_URL/v1/responses，两者不是同一条固定地址 |
-| TEXT_FALLBACK_MODEL 与 AGENT_MODEL | 前者是普通文本/视觉模型；后者是 Native Agent/旧 Agent Router 模型，不能混看 |
+| SiliconFlow 与 Native Agent | SiliconFlow 使用 chat.completions 和语音接口；Native Agent 当前主模型使用 TEXT_FALLBACK_BASE_URL/v1/responses，两者不是同一条固定地址；SiliconFlow Chat Route 只有设计蓝图，尚未实现 |
+| TEXT_FALLBACK_MODEL 与 AGENT_MODEL | 前者是普通文本/视觉模型；后者当前同时被 Native Agent 与旧 Agent Router 使用；未来适配必须为 Native Agent 单独配置模型，不能改全局字段造成旧 Router 路由漂移 |
 | SILICONFLOW_API_BASE | 根目录 .env 中存在历史变量，但 Settings 使用的是 SILICONFLOW_BASE_URL；当前代码以后一项为准 |
-| SiliconFlow 免费额度模型 | 只能选择第 2.1.1 节列出的模型；产品名称需映射为 SiliconFlow 当前有效的精确 model ID，当前代码尚未强制校验 |
+| SiliconFlow 账号免费额度模型 | 只能选择第 2.1.1 节列出的模型；产品名称需映射为 SiliconFlow 当前有效的精确 model ID，当前代码尚未强制校验，公开价格不等于账号赠送额度 |
 | APEXERAPI_BASE | 当前只有配置字段和统一生图模型归类，没有 DoodleStory 直连请求 |
 | DOUYIN_IMPORT_SERVICE_BASE_URL | 变量名较旧，实际同时承载抖音、微信/多平台导入和 YouTube 频道研究 |
 | YTB_PUBLISH_URL | 指向视频发布平台服务；DoodleStory 调用的是其 /api/youtube/... 服务 API，不是直接调用 Google YouTube SDK |

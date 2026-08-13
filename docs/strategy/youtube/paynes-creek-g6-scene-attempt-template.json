@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_g6_scene_attempt",
+  "record_status": "not_run",
+  "created_at": "2026-08-12",
+  "profile_catalog_lock": {
+    "path": "docs/strategy/youtube/paynes-creek-g6-scene-profiles.json",
+    "canonical_encoding": "UTF-8",
+    "canonical_newline": "LF",
+    "canonical_trailing_newline": false,
+    "expected_sha256": "56f5ea4b77908f2af5c10af7822d38b3a68f7bc36b30e4358f64a463618b87bf"
+  },
+  "attempt": {
+    "attempt_label": null,
+    "previous_attempt": null,
+    "selected_profile_id": null,
+    "selected_gate_id": null,
+    "selected_scene_id": null,
+    "selected_profile_pass_status": null,
+    "profile_fields_match_catalog": null
+  },
+  "source_lock": {
+    "input_git_commit": null,
+    "prompt_document": "docs/strategy/youtube/paynes-creek-chinese-script-prompt-pack.md",
+    "prompt_selector": null,
+    "expected_prompt_sha256": null,
+    "submitted_prompt_sha256": null,
+    "prompt_hash_matches": null
+  },
+  "preflight": {
+    "required_gate_lineage": [],
+    "all_required_gates_passed": null,
+    "media_authorization": {
+      "authorized_by": null,
+      "authorized_at": null,
+      "authorization_ref": null,
+      "authorized_profile_id": null,
+      "authorized_run_count": 1,
+      "authorized_image_tool_calls": 1,
+      "authorized_inspect_image_tool_calls": 1,
+      "authorized_fact_reviews": 1,
+      "authorized_visual_reviews": 1,
+      "automatic_retry_authorized": false,
+      "provider_switch_authorized": false,
+      "prompt_change_authorized": false,
+      "image_resample_authorized": false,
+      "automatic_next_gate_authorized": false
+    },
+    "cost_cap": {
+      "currency": null,
+      "amount": null,
+      "basis": "user_approved_maximum_for_this_selected_g6_scene_gate",
+      "approved_by": null,
+      "approved_at": null
+    },
+    "reviewers": {
+      "fact_reviewer": null,
+      "visual_reviewer": null
+    },
+    "style_and_skill": {
+      "observed_style_id": null,
+      "observed_style_status": null,
+      "observed_style_prompt_sha256": null,
+      "observed_reference_image_count": null,
+      "observed_skill_version_id": null,
+      "observed_tool_names": [],
+      "observed_at": null,
+      "matches_selected_profile": null
+    },
+    "approved_predecessor_assets": [],
+    "route_and_provider_match_predecessors": null,
+    "all_passed": null,
+    "blockers": []
+  },
+  "run_snapshot": {
+    "conversation_id": null,
+    "run_id": null,
+    "execution_attempt": null,
+    "created_at": null,
+    "finished_at": null,
+    "terminal_status": null,
+    "route_id": null,
+    "provider": null,
+    "api_shape": null,
+    "agent_model": null,
+    "image_provider": null,
+    "image_model": null,
+    "aspect_ratio": null
+  },
+  "observed_call_counts": {
+    "model_call_count": null,
+    "generate_image_tool_call_count": null,
+    "image_provider_call_count": null,
+    "inspect_image_tool_call_count": null,
+    "speech_call_count": null,
+    "subtitle_call_count": null,
+    "video_call_count": null,
+    "publish_call_count": null
+  },
+  "generate_image": {
+    "tool_call_id": null,
+    "step_id": null,
+    "status": "not_run",
+    "started_at": null,
+    "finished_at": null,
+    "provider": null,
+    "model": null,
+    "provider_request_id": null,
+    "image_id": null,
+    "asset_id": null,
+    "error_type": null,
+    "error_code": null,
+    "error_summary": null,
+    "retryable": null
+  },
+  "candidate_asset": {
+    "status": "not_observed",
+    "candidate_filename": null,
+    "approved_filename": null,
+    "mime_type": null,
+    "byte_size": null,
+    "sha256": null,
+    "actual_width_px": null,
+    "actual_height_px": null,
+    "actual_aspect_ratio": null,
+    "dimension_comparisons": [],
+    "all_exact_pixel_dimensions_match": null,
+    "all_aspect_ratio_deltas_within_0_01": null,
+    "gateway_request_target_px": {
+      "width": 1792,
+      "height": 1024,
+      "status": "code_target_not_observed_output"
+    },
+    "delivery_target_px": {
+      "width": 1920,
+      "height": 1080,
+      "status": "target_not_observed_output"
+    },
+    "motion_probe": {
+      "preset": null,
+      "expected_runtime_values_from_profile": {},
+      "observed_start_frame_evidence_ref": null,
+      "observed_end_frame_evidence_ref": null,
+      "essential_objects_safe_at_both_endpoints": null,
+      "capability_mismatch": null
+    }
+  },
+  "inspect_image": {
+    "tool_call_id": null,
+    "step_id": null,
+    "status": "not_run",
+    "request": {
+      "image_id": null,
+      "checks": [],
+      "expected": {
+        "story_beat": null,
+        "characters": [],
+        "required_text": []
+      },
+      "matches_selected_profile": null
+    },
+    "response": {
+      "image_id": null,
+      "verdict": null,
+      "scores": {},
+      "issues": [],
+      "provider": null,
+      "model": null,
+      "latency_ms": null,
+      "error_type": null,
+      "error_summary": null
+    }
+  },
+  "human_fact_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "common_checks": [],
+    "scene_checks": [],
+    "checks_match_selected_profile": null,
+    "verdict": null
+  },
+  "human_visual_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "reviewed_at": null,
+    "common_checks": [],
+    "scene_checks": [],
+    "checks_match_selected_profile": null,
+    "verdict": null
+  },
+  "gate_decision": {
+    "allowed_statuses": [
+      "not_run",
+      "blocked_precondition",
+      "failed_before_image",
+      "failed_during_image",
+      "failed_during_inspection",
+      "needs_revision",
+      "pass_for_g6_02_s08",
+      "pass_for_g6_03_s11",
+      "pass_for_g6_04_s05",
+      "pass_for_g6_05_s09",
+      "pass_for_g6_06_s07",
+      "pass_for_g6_07_s06",
+      "pass_for_g6_08_s10",
+      "pass_for_g6_09_s12",
+      "pass_for_g7_audio_subtitle_plan_review"
+    ],
+    "status": "not_run",
+    "expected_pass_status_from_profile": null,
+    "machine_verdict": null,
+    "fact_verdict": null,
+    "visual_verdict": null,
+    "decided_by": null,
+    "decided_at": null,
+    "decision_note": null,
+    "stop_reason": null,
+    "next_allowed_gate_review": null,
+    "automatic_follow_on": false
+  },
+  "audit": {
+    "evidence_refs": [],
+    "sensitive_values_removed": null,
+    "record_validated_at": null,
+    "record_git_commit": null
+  }
+}

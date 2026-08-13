@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Paynes Creek 玛雅盐业中文生产验证片的 12 镜证据板、16:9 视觉边界和当前工具 Gate。"
+    />
+    <title>Paynes Creek 逐镜证据板｜DoodleStory</title>
+    <style>
+      :root {
+        --ink: #102a33;
+        --ink-2: #1f3b43;
+        --paper: #f4f6f1;
+        --bench: #d8e4e5;
+        --bench-deep: #bfd1d2;
+        --line: #8ba5a7;
+        --direct: #176c69;
+        --direct-pale: #c5dfdc;
+        --recon: #a45f1c;
+        --recon-pale: #f0d4ad;
+        --blocked: #91342d;
+        --blocked-pale: #ebc4be;
+        --white: #ffffff;
+        --shadow: 0 18px 48px rgba(16, 42, 51, 0.14);
+        --measure: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --body: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bench);
+        color: var(--ink);
+        font-family: var(--body);
+        font-size: 16px;
+        line-height: 1.68;
+      }
+      a { color: inherit; text-underline-offset: 0.2em; }
+      a:hover { color: var(--direct); }
+      a:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid #efad53;
+        outline-offset: 4px;
+      }
+      h1, h2, h3, p { margin-top: 0; }
+      h1, h2, h3 { text-wrap: balance; }
+      code, .measure { font-family: var(--measure); }
+      code { padding: 0.08em 0.28em; background: #e2ebeb; }
+      .skip {
+        position: fixed;
+        z-index: 100;
+        top: 12px;
+        left: 12px;
+        transform: translateY(-180%);
+        opacity: 0;
+        background: var(--paper);
+        padding: 10px 14px;
+      }
+      .skip:focus-visible { transform: translateY(0); opacity: 1; }
+
+      .masthead {
+        min-height: min(860px, 100vh);
+        color: var(--paper);
+        background: var(--ink);
+        border-bottom: 8px solid var(--direct);
+      }
+      .masthead-inner,
+      .page {
+        width: min(1500px, calc(100% - 48px));
+        margin: 0 auto;
+      }
+      .masthead-inner { padding: clamp(30px, 5vw, 76px) 0 36px; }
+      .title-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.55fr);
+        gap: clamp(32px, 7vw, 110px);
+        align-items: end;
+      }
+      .title-block h1 {
+        max-width: 14ch;
+        margin-bottom: 24px;
+        font-size: clamp(2.8rem, 6.5vw, 6rem);
+        line-height: 0.98;
+        letter-spacing: -0.04em;
+      }
+      .title-block p {
+        max-width: 62ch;
+        margin-bottom: 0;
+        color: #d5e1e1;
+        font-size: clamp(1rem, 1.5vw, 1.24rem);
+      }
+      .gate {
+        border-top: 3px solid var(--recon-pale);
+        border-bottom: 1px solid #4a656c;
+        padding: 24px 0;
+      }
+      .gate strong {
+        display: block;
+        max-width: none;
+        margin-bottom: 12px;
+        color: #f2ca94;
+        font-size: clamp(1.45rem, 2vw, 2rem);
+        line-height: 1.14;
+        word-break: keep-all;
+      }
+      .gate p { margin: 0; color: #bed0d2; }
+      .mechanism {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        margin: clamp(42px, 6vw, 78px) 0 20px;
+        border-top: 1px solid #517079;
+        border-bottom: 1px solid #517079;
+      }
+      .mechanism span {
+        position: relative;
+        min-height: 94px;
+        padding: 20px 20px 18px 2px;
+        color: #c7d8da;
+        font-size: 0.9rem;
+      }
+      .mechanism strong {
+        display: block;
+        color: var(--paper);
+        font-size: clamp(1.08rem, 1.7vw, 1.42rem);
+      }
+      .mechanism span:not(:last-child)::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        right: 12%;
+        width: 28%;
+        border-top: 1px dashed #84aaa9;
+      }
+      .timeline-shell { position: relative; margin-top: 34px; }
+      .timeline-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 8px;
+        color: #b9cccf;
+        font-family: var(--measure);
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+      }
+      .timeline {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(138, minmax(0, 1fr));
+        min-height: 104px;
+        overflow: hidden;
+        border-top: 1px solid #8dacaf;
+        border-bottom: 1px solid #8dacaf;
+      }
+      .timeline::after {
+        content: "";
+        position: absolute;
+        z-index: 4;
+        top: 0;
+        bottom: 0;
+        left: -1px;
+        border-left: 2px solid #f3b562;
+        animation: scan 1.8s cubic-bezier(.16, 1, .3, 1) 0.25s both;
+        pointer-events: none;
+      }
+      @keyframes scan { from { left: 0; } to { left: 100%; } }
+      .timeline-segment {
+        grid-column: span var(--seconds);
+        min-width: 0;
+        padding: 16px 8px 12px;
+        border-right: 1px solid #48656d;
+        background: #17333c;
+        color: #d5e3e3;
+      }
+      .timeline-segment:nth-child(even) { background: #1b3b43; }
+      .timeline-segment b,
+      .timeline-segment small { display: block; }
+      .timeline-segment b { font-family: var(--measure); font-size: 0.8rem; }
+      .timeline-segment small { margin-top: 13px; color: #a9c3c5; font-size: 0.68rem; }
+      .timeline-segment.recon { box-shadow: inset 0 -5px 0 var(--recon); }
+      .timeline-segment.direct { box-shadow: inset 0 -5px 0 #47a6a0; }
+      .timeline-segment.mixed { box-shadow: inset 0 -5px 0 #88a99b; }
+
+      .status-ledger {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-top: 26px;
+        border-top: 1px solid #517079;
+      }
+      .status-item { padding: 18px 20px 0 0; }
+      .status-item b { display: block; color: var(--paper); }
+      .status-item span { color: #a9c0c3; font-size: 0.88rem; }
+      .status-item .warn { color: #f2ca94; }
+      .status-item .stop { color: #efb8b1; }
+
+      .page { padding: clamp(36px, 5vw, 78px) 0 64px; }
+      .workbench {
+        display: grid;
+        grid-template-columns: 250px minmax(0, 1fr);
+        gap: clamp(34px, 5vw, 78px);
+        align-items: start;
+      }
+      .legend-rail { position: sticky; top: 24px; }
+      .legend-rail h2 {
+        margin-bottom: 14px;
+        font-size: 1.08rem;
+      }
+      .legend-rail p { color: #365159; font-size: 0.9rem; }
+      .legend {
+        margin: 24px 0 0;
+        padding: 0;
+        list-style: none;
+        border-top: 1px solid var(--line);
+      }
+      .legend li {
+        display: grid;
+        grid-template-columns: 16px 1fr;
+        gap: 10px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.84rem;
+      }
+      .swatch { width: 12px; height: 12px; margin-top: 0.38em; background: var(--direct); }
+      .swatch.recon { background: var(--recon); }
+      .swatch.blocked { background: var(--blocked); }
+      .rail-links { display: grid; gap: 8px; margin-top: 24px; font-size: 0.85rem; }
+      .rail-links a { width: fit-content; }
+
+      .shots { border-top: 3px solid var(--ink); }
+      .shot {
+        display: grid;
+        grid-template-columns: 116px minmax(280px, 0.72fr) minmax(360px, 1.28fr);
+        gap: clamp(20px, 3vw, 44px);
+        padding: clamp(34px, 4vw, 58px) 0;
+        border-bottom: 1px solid var(--line);
+        scroll-margin-top: 24px;
+      }
+      .shot-stamp {
+        align-self: stretch;
+        border-top: 5px solid var(--direct);
+        padding-top: 12px;
+      }
+      .shot.recon .shot-stamp { border-color: var(--recon); }
+      .shot.mixed .shot-stamp { border-color: #638f83; }
+      .shot-id {
+        display: block;
+        font-family: var(--measure);
+        font-size: clamp(1.5rem, 2.4vw, 2.2rem);
+        font-weight: 700;
+        line-height: 1;
+      }
+      .timecode,
+      .duration {
+        display: block;
+        margin-top: 8px;
+        color: #405d64;
+        font-family: var(--measure);
+        font-size: 0.76rem;
+      }
+      .evidence-class {
+        display: inline-block;
+        margin-top: 20px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        padding: 3px 8px;
+        color: var(--direct);
+        font-size: 0.7rem;
+        font-weight: 700;
+      }
+      .recon .evidence-class { color: var(--recon); }
+      .mixed .evidence-class { color: #416f65; }
+
+      .frame-aperture {
+        position: relative;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        border: 1px solid #6d8a8d;
+        background-color: var(--paper);
+        background-image:
+          linear-gradient(to right, transparent 49.8%, rgba(60, 93, 99, 0.18) 50%, transparent 50.2%),
+          linear-gradient(to bottom, transparent 69.6%, rgba(145, 52, 45, 0.22) 70%, transparent 70.4%);
+      }
+      .frame-aperture::before,
+      .frame-aperture::after {
+        content: "";
+        position: absolute;
+        z-index: 2;
+        top: 9px;
+        bottom: 9px;
+        width: 6px;
+        background: var(--ink);
+      }
+      .frame-aperture::before { left: 9px; }
+      .frame-aperture::after { right: 9px; }
+      .frame-aperture svg { display: block; width: 100%; height: 100%; }
+      .frame-caption {
+        margin: 10px 0 0;
+        color: #365159;
+        font-size: 0.83rem;
+      }
+      .claim-label {
+        margin-bottom: 8px;
+        color: #476168;
+        font-family: var(--measure);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .shot h3 {
+        max-width: 23ch;
+        margin-bottom: 14px;
+        font-size: clamp(1.35rem, 2.2vw, 2rem);
+        line-height: 1.18;
+        letter-spacing: -0.02em;
+      }
+      .source-line {
+        margin-bottom: 20px;
+        color: #3a555d;
+        font-size: 0.88rem;
+      }
+      .shot-copy > p { max-width: 68ch; }
+      .bounds {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        margin-top: 24px;
+        background: var(--line);
+        border: 1px solid var(--line);
+      }
+      .bound { background: #e8eeee; padding: 14px 16px; }
+      .bound.block { background: #ead5d1; }
+      .bound b {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 0.78rem;
+      }
+      .bound p { margin: 0; color: #334f56; font-size: 0.84rem; }
+      .motion {
+        display: inline-flex;
+        margin-top: 18px;
+        border-bottom: 1px solid var(--ink);
+        padding-bottom: 2px;
+        font-family: var(--measure);
+        font-size: 0.74rem;
+      }
+
+      .section-block {
+        margin-top: clamp(54px, 8vw, 110px);
+        border-top: 5px solid var(--ink);
+        padding-top: 26px;
+      }
+      .section-heading {
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) minmax(320px, 1.2fr);
+        gap: 40px;
+        align-items: start;
+        margin-bottom: 34px;
+      }
+      .section-heading h2 {
+        margin-bottom: 0;
+        font-size: clamp(2rem, 4vw, 3.7rem);
+        line-height: 1.05;
+        letter-spacing: -0.035em;
+      }
+      .section-heading p { max-width: 66ch; margin-bottom: 0; color: #365159; }
+      .safe-frame {
+        position: relative;
+        min-height: 360px;
+        border: 1px solid var(--ink);
+        background: var(--paper);
+      }
+      .safe-core {
+        position: absolute;
+        top: 8%;
+        right: 8%;
+        bottom: 30%;
+        left: 8%;
+        display: grid;
+        place-items: center;
+        border: 2px solid var(--direct);
+        color: var(--direct);
+        font-weight: 700;
+      }
+      .subtitle-zone {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 30%;
+        display: grid;
+        place-items: center;
+        border-top: 1px dashed var(--blocked);
+        background: var(--blocked-pale);
+        color: #6f2722;
+        text-align: center;
+      }
+      .safe-note {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        font-family: var(--measure);
+        font-size: 0.73rem;
+      }
+      .token-strip {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        margin-top: 28px;
+        border: 1px solid var(--line);
+      }
+      .token { min-height: 112px; padding: 14px; color: var(--paper); background: var(--ink); }
+      .token:nth-child(2) { background: var(--direct); }
+      .token:nth-child(3) { color: var(--ink); background: var(--recon-pale); }
+      .token:nth-child(4) { color: var(--ink); background: var(--bench-deep); }
+      .token:nth-child(5) { background: var(--blocked); }
+      .token b, .token code { display: block; }
+      .token code { margin-top: 12px; background: transparent; padding: 0; color: inherit; font-size: 0.75rem; }
+
+      .table-wrap { overflow-x: auto; border-top: 1px solid var(--line); }
+      table { width: 100%; border-collapse: collapse; min-width: 820px; }
+      th, td {
+        padding: 15px 14px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+        text-align: left;
+      }
+      th { background: #cbdadb; font-size: 0.78rem; }
+      td { background: rgba(244, 246, 241, 0.48); font-size: 0.88rem; }
+      .gate-ok { color: #155b58; font-weight: 700; }
+      .gate-warn { color: #7c450f; font-weight: 700; }
+      .gate-stop { color: #782b25; font-weight: 700; }
+      .checklist {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1px;
+        margin: 0;
+        padding: 1px;
+        background: var(--line);
+        list-style: none;
+      }
+      .checklist li {
+        position: relative;
+        min-height: 96px;
+        background: var(--paper);
+        padding: 20px 20px 20px 54px;
+      }
+      .checklist li::before {
+        content: "";
+        position: absolute;
+        top: 23px;
+        left: 20px;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--direct);
+      }
+      .final-decision {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 0.45fr);
+        gap: 54px;
+        margin-top: 80px;
+        background: var(--ink);
+        color: var(--paper);
+        padding: clamp(30px, 5vw, 70px);
+      }
+      .final-decision h2 {
+        margin-bottom: 18px;
+        font-size: clamp(2rem, 4vw, 4rem);
+        line-height: 1.05;
+        letter-spacing: -0.03em;
+      }
+      .final-decision p { max-width: 65ch; color: #c7d8da; }
+      .next-gate {
+        align-self: center;
+        border-top: 3px solid #efad53;
+        padding-top: 18px;
+      }
+      .next-gate b { display: block; color: #f1c78e; font-size: 1.35rem; }
+      .next-gate span { color: #bfd0d2; }
+      .footer {
+        width: min(1500px, calc(100% - 48px));
+        margin: 0 auto;
+        padding: 28px 0 48px;
+        color: #425d64;
+        font-size: 0.82rem;
+      }
+
+      @media (max-width: 1120px) {
+        .title-row,
+        .workbench,
+        .section-heading,
+        .final-decision { grid-template-columns: 1fr; }
+        .legend-rail { position: static; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .legend-rail .rail-links { align-content: start; margin-top: 0; }
+        .shot { grid-template-columns: 100px minmax(260px, 0.8fr) minmax(320px, 1.2fr); }
+      }
+      @media (max-width: 820px) {
+        .masthead-inner,
+        .page,
+        .footer { width: min(100% - 28px, 720px); }
+        .masthead { min-height: auto; }
+        .mechanism { grid-template-columns: 1fr; }
+        .mechanism span { min-height: 68px; padding-left: 0; border-bottom: 1px solid #44626a; }
+        .mechanism span:last-child { border-bottom: 0; }
+        .mechanism span:not(:last-child)::after { top: auto; right: auto; bottom: -1px; left: 0; width: 54px; }
+        .timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .timeline::after { display: none; }
+        .timeline-segment { grid-column: span 1; min-height: 82px; }
+        .status-ledger { grid-template-columns: 1fr 1fr; }
+        .legend-rail { grid-template-columns: 1fr; }
+        .shot { grid-template-columns: 1fr; }
+        .shot-stamp { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; align-items: end; }
+        .shot-stamp .evidence-class { grid-column: 1 / -1; width: fit-content; margin-top: 6px; }
+        .timecode, .duration { margin-top: 0; }
+        .bounds,
+        .checklist { grid-template-columns: 1fr; }
+        .token-strip { grid-template-columns: 1fr 1fr; }
+        .token:last-child { grid-column: 1 / -1; }
+        .table-wrap { overflow: visible; border-top: 0; }
+        .table-wrap table,
+        .table-wrap tbody,
+        .table-wrap tr,
+        .table-wrap td { display: block; min-width: 0; width: 100%; }
+        .table-wrap thead {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          white-space: nowrap;
+        }
+        .table-wrap tr {
+          margin-bottom: 18px;
+          border-top: 2px solid var(--ink);
+          background: rgba(244, 246, 241, 0.48);
+          padding: 8px 0;
+        }
+        .table-wrap td {
+          display: grid;
+          grid-template-columns: 96px minmax(0, 1fr);
+          gap: 12px;
+          border-bottom: 1px solid var(--line);
+          background: transparent;
+          padding: 9px 12px;
+        }
+        .table-wrap td:last-child { border-bottom: 0; }
+        .table-wrap td::before {
+          color: #49636a;
+          font-family: var(--measure);
+          font-size: 0.7rem;
+          font-weight: 700;
+        }
+        .table-wrap td:nth-child(1)::before { content: "要求"; }
+        .table-wrap td:nth-child(2)::before { content: "当前证据"; }
+        .table-wrap td:nth-child(3)::before { content: "Gate"; }
+        .table-wrap td:nth-child(4)::before { content: "下一动作"; }
+      }
+      @media (max-width: 520px) {
+        body { font-size: 15px; }
+        .title-block h1 { font-size: 2.65rem; }
+        .status-ledger,
+        .token-strip { grid-template-columns: 1fr; }
+        .token:last-child { grid-column: auto; }
+        .frame-caption { font-size: 0.78rem; }
+        .safe-frame { min-height: 250px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        .timeline::after { animation: none; left: 100%; }
+      }
+      @media print {
+        body { background: #fff; }
+        .masthead { min-height: 0; }
+        .legend-rail { position: static; }
+        .shot, .section-block, .final-decision { break-inside: avoid; }
+        .timeline::after { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+    THESIS: 每一镜先展示证据强度与事实边界，再展示画面；拒绝通用深色仪表盘和仿旧考古页面。
+    OWN-WORLD: 水下考古证据台结合影片接触印样；沉积蓝灰底、深海墨线、青绿直接证据、琥珀重建、红色禁区。
+    STORY: 读者先看 138 秒机制链，再逐镜核对主张、来源与禁区，最后判断现有工具允许做到哪一步。
+    FIRST VIEWPORT: 大标题与有条件 Gate 并置，五段机制横贯中部，S01–S12 时间带与四项状态账本压住底部。
+    FORM: 七个自有方向中的第六项“水下证据台 × 影片接触印样”，seed db0b0135。
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
+    <a class="skip" href="#shot-board">跳到逐镜证据板</a>
+
+    <header class="masthead">
+      <div class="masthead-inner">
+        <div class="title-row">
+          <div class="title-block">
+            <h1>Paynes Creek 逐镜证据板</h1>
+            <p>
+              一条 138 秒中文生产验证片：把卤水、火、陶器、盐、船桨和内陆方向网络逐一绑定到可回查证据。
+              这里验证的是 DoodleStory 能不能可靠出片，不是 YouTube 市场是否成立。
+            </p>
+          </div>
+          <aside class="gate" aria-label="当前总体 Gate">
+            <strong>生产验证：有条件通过</strong>
+            <p>允许进入最终中文旁白与逐镜 Prompt；禁止生成媒体、提交任务、上传或创建市场实验。</p>
+          </aside>
+        </div>
+
+        <div class="mechanism" aria-label="视频的五步机制链">
+          <span><strong>卤水</strong>海岸资源</span>
+          <span><strong>火</strong>陶器煮卤</span>
+          <span><strong>盐</strong>散盐 / 可能盐饼</span>
+          <span><strong>船桨</strong>直接运输证据</span>
+          <span><strong>内陆</strong>方向网络，路线未知</span>
+        </div>
+
+        <div class="timeline-shell">
+          <div class="timeline-head"><span>00:00</span><span>总目标 02:18</span></div>
+          <div class="timeline" aria-label="12 镜时间带，总计 138 秒">
+            <div class="timeline-segment recon" style="--seconds: 8"><b>S01</b><small>8s</small></div>
+            <div class="timeline-segment direct" style="--seconds: 10"><b>S02</b><small>10s</small></div>
+            <div class="timeline-segment recon" style="--seconds: 11"><b>S03</b><small>11s</small></div>
+            <div class="timeline-segment mixed" style="--seconds: 12"><b>S04</b><small>12s</small></div>
+            <div class="timeline-segment mixed" style="--seconds: 13"><b>S05</b><small>13s</small></div>
+            <div class="timeline-segment mixed" style="--seconds: 14"><b>S06</b><small>14s</small></div>
+            <div class="timeline-segment recon" style="--seconds: 11"><b>S07</b><small>11s</small></div>
+            <div class="timeline-segment direct" style="--seconds: 11"><b>S08</b><small>11s</small></div>
+            <div class="timeline-segment mixed" style="--seconds: 12"><b>S09</b><small>12s</small></div>
+            <div class="timeline-segment recon" style="--seconds: 11"><b>S10</b><small>11s</small></div>
+            <div class="timeline-segment direct" style="--seconds: 12"><b>S11</b><small>12s</small></div>
+            <div class="timeline-segment mixed" style="--seconds: 13"><b>S12</b><small>13s</small></div>
+          </div>
+        </div>
+
+        <div class="status-ledger" aria-label="当前四项状态">
+          <div class="status-item"><b>1920×1080</b><span>12 张同一比例原创画面</span></div>
+          <div class="status-item"><b>中文链路可验证</b><span>Seed-TTS + Whisper zh + Remotion</span></div>
+          <div class="status-item"><b class="warn">16:9 画风待绑定</b><span>现有账号绑定只有 3:4</span></div>
+          <div class="status-item"><b class="stop">市场 Gate 未通过</b><span>频道、语言、基线、审核人未定</span></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page">
+      <div class="workbench">
+        <aside class="legend-rail" aria-label="证据图例与相关文档">
+          <div>
+            <h2>读板方法</h2>
+            <p>一镜一主张。绿色表示直接证据，琥珀表示必须在旁白中保留的重建或解释，红色表示不能进入画面的未知项。</p>
+            <ul class="legend">
+              <li><span class="swatch"></span><span><b>A 直接证据</b><br />器物、测绘、年代或沉积直接观察</span></li>
+              <li><span class="swatch recon"></span><span><b>B 重建 / 解释</b><br />必须说“支持、可能、未知”</span></li>
+              <li><span class="swatch blocked"></span><span><b>C 禁止补全</b><br />不让生成模型替证据编细节</span></li>
+            </ul>
+          </div>
+          <div class="rail-links">
+            <a href="paynes-creek-shot-evidence-board.md">完整 Markdown 规格</a>
+            <a href="ancient-salt-access-source-ledger.md">事实来源账本</a>
+            <a href="paynes-creek-visual-source-rights-ledger.md">视觉授权清单</a>
+            <a href="../../contracts/sprint-173-youtube-paynes-creek-shot-evidence-board.md">Sprint 173 契约</a>
+          </div>
+        </aside>
+
+        <main id="shot-board" class="shots">
+          <article id="s01" class="shot recon">
+            <div class="shot-stamp">
+              <span class="shot-id">S01</span><span class="timecode">00:00–00:08</span><span class="duration">8 秒 · V1</span>
+              <span class="evidence-class">B 解释</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="伯利兹南部海岸与多个未命名内陆节点之间留有断开的距离">
+                  <path d="M96 42 C178 86 122 139 192 180 C247 213 203 275 280 319 L60 319 L60 42 Z" fill="#bfd8d8" stroke="#102a33" stroke-width="4"/>
+                  <circle cx="226" cy="210" r="11" fill="#176c69"/><circle cx="470" cy="96" r="8" fill="#a45f1c"/><circle cx="522" cy="170" r="8" fill="#a45f1c"/><circle cx="454" cy="250" r="8" fill="#a45f1c"/>
+                  <path d="M244 210 C325 190 350 138 444 105 M244 218 C332 230 375 200 496 174 M244 226 C310 278 366 273 430 254" fill="none" stroke="#a45f1c" stroke-width="4" stroke-dasharray="12 12"/>
+                </svg>
+              </div>
+              <p class="frame-caption">海岸生产点与内陆方向之间保持可见断点，不画唯一航线。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F8 · 主张</p>
+              <h3>生产在含盐海岸，交换网络向内陆延伸。</h3>
+              <p class="source-line">事实 S1 / S4 / S5 · 视觉 R1 / R2 / R3</p>
+              <p>先提出没有现代矿场与卡车的具体限制，不扩写营养剂量，也不把 Paynes Creek 放大成整个玛雅世界的唯一盐源。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>原创区域图、近似点位、多个方向节点。</p></div><div class="bound block"><b>禁止</b><p>确定买家、古代精确岸线、单一路线。</p></div></div>
+              <span class="motion">motion: zoom_in</span>
+            </div>
+          </article>
+
+          <article id="s02" class="shot">
+            <div class="shot-stamp">
+              <span class="shot-id">S02</span><span class="timecode">00:08–00:18</span><span class="duration">10 秒 · V1</span>
+              <span class="evidence-class">A 直接证据</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="Paynes Creek 近似位置与公元 600 至 900 年时间尺">
+                  <path d="M100 58 C183 96 145 148 207 191 C264 230 222 284 291 320 L62 320 L62 58 Z" fill="#bfd8d8" stroke="#102a33" stroke-width="4"/>
+                  <circle cx="242" cy="220" r="13" fill="#176c69"/><circle cx="242" cy="220" r="28" fill="none" stroke="#176c69" stroke-width="3"/>
+                  <path d="M340 92 H568 M340 82 V102 M568 82 V102" stroke="#102a33" stroke-width="4"/>
+                  <path d="M390 92 H520" stroke="#176c69" stroke-width="10"/>
+                  <text x="382" y="70" fill="#102a33" font-family="monospace" font-size="18">600</text><text x="510" y="70" fill="#102a33" font-family="monospace" font-size="18">900 CE</text>
+                </svg>
+              </div>
+              <p class="frame-caption">地图与宽年代带同屏，静止 10 秒完成定位。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F1 · 主张</p>
+              <h3>核心活动位于公元 600–900 年、今日伯利兹南部海岸。</h3>
+              <p class="source-line">事实 S1 / S3 / S4 · 视觉 R1 / R2 / R3</p>
+              <p>年代是系统活动范围，不是每座建筑统一开工与结束的日期。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>现代位置参照、宽年代带、近似点位。</p></div><div class="bound block"><b>禁止</b><p>所有作坊同时运行、现代国界等同古代政治边界。</p></div></div>
+              <span class="motion">motion: static</span>
+            </div>
+          </article>
+
+          <article id="s03" class="shot recon">
+            <div class="shot-stamp">
+              <span class="shot-id">S03</span><span class="timecode">00:18–00:29</span><span class="duration">11 秒 · V2</span>
+              <span class="evidence-class">A+B 重建</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="含盐土、漏斗和下方收集罐组成的卤水浓缩重建">
+                  <path d="M110 88 H340 L310 150 H140 Z" fill="#c98234" stroke="#102a33" stroke-width="4"/>
+                  <circle cx="172" cy="116" r="8" fill="#f4f6f1"/><circle cx="238" cy="120" r="6" fill="#f4f6f1"/><circle cx="292" cy="110" r="9" fill="#f4f6f1"/>
+                  <path d="M205 150 L225 235 H315 L335 150" fill="#d8e4e5" stroke="#102a33" stroke-width="4"/>
+                  <path d="M270 166 V260" stroke="#176c69" stroke-width="8" stroke-dasharray="12 10"/>
+                  <path d="M220 268 Q270 242 320 268 L302 318 H238 Z" fill="#a45f1c" stroke="#102a33" stroke-width="4"/>
+                </svg>
+              </div>
+              <p class="frame-caption">液体路径只有一次，字幕先说“依据遗迹与类比重建”。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F3 · 主张</p>
+              <h3>盐水经过含盐土提高浓度，再收集成更浓的卤水。</h3>
+              <p class="source-line">事实 S3 / S4 · 视觉 R2 / R3</p>
+              <p>装置关系有依据，完整工位不是现场录像。限制词必须进入旁白与字幕。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>木容器、土层、漏斗、液体与收集罐。</p></div><div class="bound block"><b>禁止</b><p>现代滤水器、精确尺寸、复制 Sacapulas 现场。</p></div></div>
+              <span class="motion">motion: pan_right</span>
+            </div>
+          </article>
+
+          <article id="s04" class="shot mixed">
+            <div class="shot-stamp">
+              <span class="shot-id">S04</span><span class="timecode">00:29–00:41</span><span class="duration">12 秒 · V3</span>
+              <span class="evidence-class">A+B 证据链</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="无釉粗陶器被黏土支座托住，在火上煮卤">
+                  <path d="M160 110 Q250 74 340 110 L322 205 Q250 238 178 205 Z" fill="#c98234" stroke="#102a33" stroke-width="4"/>
+                  <path d="M190 215 L160 286 H212 L228 215 M310 215 L326 286 H378 L340 215" fill="#a45f1c" stroke="#102a33" stroke-width="4"/>
+                  <path d="M220 298 Q250 240 280 298 Q310 244 338 300" fill="none" stroke="#91342d" stroke-width="9"/>
+                  <path d="M410 140 Q468 118 526 140 L514 216 Q468 237 422 216 Z" fill="#d6a96f" stroke="#102a33" stroke-width="4"/>
+                </svg>
+              </div>
+              <p class="frame-caption">器物、支座与火的受力关系是焦点，不复刻论文排版。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F3 · 主张</p>
+              <h3>粗陶容器由黏土支座托住，在火上加热卤水制盐。</h3>
+              <p class="source-line">事实 S1 / S3 / S4 · 视觉 R2 Fig.12 / R3 Fig.9</p>
+              <p>画面解释器物组合，不声称考古现场保存了原封不动的锅灶。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>无釉粗陶、圆柱支座、火与少量蒸汽。</p></div><div class="bound block"><b>禁止</b><p>金属锅、烟囱、石砌工厂、彩绘礼器。</p></div></div>
+              <span class="motion">motion: zoom_in</span>
+            </div>
+          </article>
+
+          <article id="s05" class="shot mixed">
+            <div class="shot-stamp">
+              <span class="shot-id">S05</span><span class="timecode">00:41–00:54</span><span class="duration">13 秒 · V3</span>
+              <span class="evidence-class">A+B 证据链</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="相邻的居住建筑与盐厨房柱位平面">
+                  <g fill="#176c69"><circle cx="118" cy="88" r="9"/><circle cx="198" cy="88" r="9"/><circle cx="118" cy="222" r="9"/><circle cx="198" cy="222" r="9"/></g>
+                  <rect x="118" y="88" width="80" height="134" fill="none" stroke="#102a33" stroke-width="4"/>
+                  <g fill="#a45f1c"><circle cx="374" cy="72" r="9"/><circle cx="512" cy="72" r="9"/><circle cx="374" cy="240" r="9"/><circle cx="512" cy="240" r="9"/></g>
+                  <rect x="374" y="72" width="138" height="168" fill="none" stroke="#102a33" stroke-width="4"/>
+                  <circle cx="443" cy="156" r="38" fill="#f0d4ad" stroke="#91342d" stroke-width="4"/>
+                  <path d="M236 155 H340" stroke="#638f83" stroke-width="4" stroke-dasharray="8 9"/>
+                </svg>
+              </div>
+              <p class="frame-caption">相邻功能区支持组织解释，但不画家谱或固定分工。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F5 · 主张</p>
+              <h3>住宅与盐厨房并存，支持家庭或亲属组织的剩余生产。</h3>
+              <p class="source-line">事实 S3 / S4 · 视觉 R2 / R3</p>
+              <p>“支持”不能改成一个有姓名、有完整家史的虚构家庭故事。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>柱位、相邻空间、低细节茅顶、少量剪影。</p></div><div class="bound block"><b>禁止</b><p>家谱、性别分工、王室管理者、所有建筑同时使用。</p></div></div>
+              <span class="motion">motion: pan_down</span>
+            </div>
+          </article>
+
+          <article id="s06" class="shot mixed">
+            <div class="shot-stamp">
+              <span class="shot-id">S06</span><span class="timecode">00:54–01:08</span><span class="duration">14 秒 · V3</span>
+              <span class="evidence-class">A+B 证据链</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="从一个煮卤器物组合退出到多组粗陶与柱位分布">
+                  <g fill="#c98234" stroke="#102a33" stroke-width="3"><path d="M96 92 H172 L160 148 H108 Z"/><path d="M218 76 H298 L286 136 H230 Z"/><path d="M354 112 H430 L418 170 H366 Z"/><path d="M478 68 H548 L536 122 H490 Z"/></g>
+                  <g fill="none" stroke="#176c69" stroke-width="4"><rect x="80" y="206" width="130" height="92"/><rect x="256" y="194" width="112" height="104"/><rect x="414" y="210" width="134" height="88"/></g>
+                  <g fill="#176c69"><circle cx="80" cy="206" r="7"/><circle cx="210" cy="298" r="7"/><circle cx="256" cy="194" r="7"/><circle cx="368" cy="298" r="7"/><circle cx="414" cy="210" r="7"/><circle cx="548" cy="298" r="7"/></g>
+                </svg>
+              </div>
+              <p class="frame-caption">重复建立规模感，但画面不提供伪精确总量。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F4 · 主张</p>
+              <h3>大量制盐粗陶与专门作业空间支持超过日常自用的剩余生产。</h3>
+              <p class="source-line">事实 S1 / S3 / S4 · 视觉 R2 / R3</p>
+              <p>可以说“超过偶尔自用”，不能说“110 座帝国工厂”或给出吨数。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>粗陶类型重复、柱位和作业区分布。</p></div><div class="bound block"><b>禁止</b><p>现代流水线、精确产量、所有点位同时运行。</p></div></div>
+              <span class="motion">motion: zoom_out</span>
+            </div>
+          </article>
+
+          <article id="s07" class="shot recon">
+            <div class="shot-stamp">
+              <span class="shot-id">S07</span><span class="timecode">01:08–01:19</span><span class="duration">11 秒 · V4</span>
+              <span class="evidence-class">B 解释</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="散盐为主体，右侧并列一个可能的简单盐饼">
+                  <g fill="#ffffff" stroke="#102a33" stroke-width="2"><circle cx="146" cy="198" r="20"/><circle cx="183" cy="176" r="24"/><circle cx="225" cy="201" r="18"/><circle cx="179" cy="218" r="27"/></g>
+                  <path d="M100 240 Q184 284 268 240 L248 306 H120 Z" fill="#c98234" stroke="#102a33" stroke-width="4"/>
+                  <rect x="402" y="128" width="118" height="132" rx="18" fill="#f4f6f1" stroke="#a45f1c" stroke-width="5" stroke-dasharray="10 9"/>
+                  <path d="M332 64 V310" stroke="#8ba5a7" stroke-width="2"/>
+                </svg>
+              </div>
+              <p class="frame-caption">散盐是确定主体；盐饼只占三分之一并使用解释性虚线。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F6 · 主张</p>
+              <h3>散盐可以储存；标准化器形支持尺寸相近盐饼的可能性。</h3>
+              <p class="source-line">事实 S4 / S5 · 视觉 R3 / R6</p>
+              <p>字幕必须说“可能的盐饼”，并明确这不等于通用货币制度已被证明。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>散盐、简单盐块、器形相近的解释。</p></div><div class="bound block"><b>禁止</b><p>钱币符号、面额、价格、完整出土成品感。</p></div></div>
+              <span class="motion">motion: static</span>
+            </div>
+          </article>
+
+          <article id="s08" class="shot">
+            <div class="shot-stamp">
+              <span class="shot-id">S08</span><span class="timecode">01:19–01:30</span><span class="duration">11 秒 · V5</span>
+              <span class="evidence-class">A 直接证据</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="简化完整木桨与 1.43 米比例尺">
+                  <path d="M102 165 C160 136 226 132 314 150 L507 186 L512 205 L308 186 C222 177 156 184 104 213 Q72 192 102 165 Z" fill="#a97947" stroke="#102a33" stroke-width="4"/>
+                  <path d="M92 286 H514 M92 274 V298 M514 274 V298" stroke="#176c69" stroke-width="4"/>
+                  <text x="270" y="326" fill="#102a33" font-family="monospace" font-size="22">1.43 m</text>
+                </svg>
+              </div>
+              <p class="frame-caption">只取比例事实，不复制 PNAS 照片的破损、光线与摆放。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F7 · 主张</p>
+              <h3>约 1.43 米全尺寸木桨，是水上交通能力的直接证据。</h3>
+              <p class="source-line">事实 S1 · 视觉 R4 仅作事实参考</p>
+              <p>船桨证明能力，不是某一次运盐的货物清单。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>事实比例、简化完整轮廓、5 厘米轴径说明。</p></div><div class="bound block"><b>禁止</b><p>描摹论文照片、0.9 米搅拌桨、无证据装饰。</p></div></div>
+              <span class="motion">motion: zoom_out</span>
+            </div>
+          </article>
+
+          <article id="s09" class="shot mixed">
+            <div class="shot-stamp">
+              <span class="shot-id">S09</span><span class="timecode">01:30–01:42</span><span class="duration">12 秒 · V5</span>
+              <span class="evidence-class">A+B 解释</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="低细节独木舟远景，船桨和水路方向为主体">
+                  <path d="M76 252 Q310 310 554 246 Q520 314 310 322 Q112 312 76 252 Z" fill="#102a33"/>
+                  <path d="M306 110 L420 265" stroke="#a97947" stroke-width="12"/><path d="M409 250 L448 296" stroke="#a97947" stroke-width="28" stroke-linecap="round"/>
+                  <path d="M60 212 H578 M92 190 H530" stroke="#176c69" stroke-width="3" stroke-dasharray="18 12"/>
+                  <rect x="230" y="226" width="48" height="20" fill="#a45f1c" opacity=".65"/><rect x="286" y="222" width="58" height="24" fill="#a45f1c" opacity=".65"/>
+                </svg>
+              </div>
+              <p class="frame-caption">货物保持不可计数；画面不能替来源生成载重信息。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F7 / F8 边界 · 主张</p>
+              <h3>独木舟运输有证据支持，但没有逐船盐货物记录。</h3>
+              <p class="source-line">事实 S1 / S4 · 视觉 R2 / R4</p>
+              <p>旁白必须把“运输解释”与“单次货运事实”分开。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>远景舟船、水路方向、低矮不可计数体块。</p></div><div class="bound block"><b>禁止</b><p>船长、载重、船员数、满载盐饼、目的地。</p></div></div>
+              <span class="motion">motion: pan_right</span>
+            </div>
+          </article>
+
+          <article id="s10" class="shot recon">
+            <div class="shot-stamp">
+              <span class="shot-id">S10</span><span class="timecode">01:42–01:53</span><span class="duration">11 秒 · V6 替代</span>
+              <span class="evidence-class">B 解释</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="海岸节点通往多个未命名内陆节点的断续方向网络">
+                  <circle cx="128" cy="184" r="30" fill="#176c69"/><circle cx="490" cy="84" r="18" fill="#a45f1c"/><circle cx="542" cy="184" r="18" fill="#a45f1c"/><circle cx="470" cy="282" r="18" fill="#a45f1c"/>
+                  <path d="M160 174 C256 142 302 108 438 90 M160 184 C284 184 358 184 488 184 M160 194 C268 240 334 266 418 278" fill="none" stroke="#a45f1c" stroke-width="5" stroke-dasharray="18 16"/>
+                  <rect x="312" y="158" width="44" height="52" fill="#f4f6f1" stroke="#91342d" stroke-width="3"/>
+                </svg>
+              </div>
+              <p class="frame-caption">断点就是未知项；静止镜头避免把方向误读为确定路线。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F8 · 主张</p>
+              <h3>证据支持盐进入内陆交换网络，但具体路线仍未知。</h3>
+              <p class="source-line">事实 S1 / S4 / S5 · 视觉 R1 / R3 / R4 / R6</p>
+              <p>这是对原 V6 市场戏的固定替代，不再画买卖现场。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>海岸节点、多个内陆节点、虚线与未知断点。</p></div><div class="bound block"><b>禁止</b><p>市场、买家、价格、税收、命名城市、唯一航线。</p></div></div>
+              <span class="motion">motion: static</span>
+            </div>
+          </article>
+
+          <article id="s11" class="shot">
+            <div class="shot-stamp">
+              <span class="shot-id">S11</span><span class="timecode">01:53–02:05</span><span class="duration">12 秒 · V7</span>
+              <span class="evidence-class">A 直接证据</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="今日浅水、旗标与泥炭中保存的木柱剖面">
+                  <rect x="48" y="50" width="544" height="126" fill="#bfd8d8"/><path d="M48 176 Q180 162 310 177 T592 176" fill="none" stroke="#176c69" stroke-width="5"/>
+                  <rect x="48" y="181" width="544" height="139" fill="#8fa9a0" opacity=".65"/>
+                  <g fill="#6d4527" stroke="#102a33" stroke-width="3"><rect x="150" y="120" width="18" height="166"/><rect x="286" y="140" width="18" height="156"/><rect x="454" y="105" width="18" height="174"/></g>
+                  <path d="M132 70 V125 M132 70 H174" stroke="#91342d" stroke-width="4"/><path d="M436 58 V110 M436 58 H480" stroke="#91342d" stroke-width="4"/>
+                </svg>
+              </div>
+              <p class="frame-caption">镜头从今日水面向下移动；“后来被淹”必须先于保存解释。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F2 · 主张</p>
+              <h3>遗址后来被淹，缺氧泥炭反而保存了木柱与作业布局。</h3>
+              <p class="source-line">事实 S3 / S4 / S6 · 视觉 R2 / R3 / R7</p>
+              <p>今日水下景观不能被剪成“古人在水下煮盐”的奇观。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>浅水、旗标、现代研究者剪影、海床木柱与泥炭。</p></div><div class="bound block"><b>禁止</b><p>水下古工厂、深海潜水、单因果灭亡故事。</p></div></div>
+              <span class="motion">motion: pan_down</span>
+            </div>
+          </article>
+
+          <article id="s12" class="shot mixed">
+            <div class="shot-stamp">
+              <span class="shot-id">S12</span><span class="timecode">02:05–02:18</span><span class="duration">13 秒 · 收束</span>
+              <span class="evidence-class">A+B 证据链</span>
+            </div>
+            <div>
+              <div class="frame-aperture">
+                <svg viewBox="0 0 640 360" role="img" aria-label="漏斗、火上陶器、盐、船桨与内陆节点组成的开放证据链">
+                  <path d="M76 104 H146 L130 164 H92 Z" fill="#c98234" stroke="#102a33" stroke-width="3"/><path d="M110 164 V220" stroke="#176c69" stroke-width="5" stroke-dasharray="7 7"/>
+                  <path d="M194 134 H264 L250 210 H208 Z" fill="#a45f1c" stroke="#102a33" stroke-width="3"/><path d="M212 235 Q228 205 244 235" fill="none" stroke="#91342d" stroke-width="6"/>
+                  <circle cx="332" cy="190" r="32" fill="#ffffff" stroke="#102a33" stroke-width="3"/>
+                  <path d="M394 112 L478 230" stroke="#a97947" stroke-width="9"/><path d="M466 215 L500 256" stroke="#a97947" stroke-width="20" stroke-linecap="round"/>
+                  <circle cx="556" cy="134" r="13" fill="#a45f1c"/><circle cx="572" cy="226" r="13" fill="#a45f1c"/>
+                  <path d="M146 182 H190 M264 182 H298 M366 182 H420" stroke="#176c69" stroke-width="4"/><path d="M500 194 H548" stroke="#a45f1c" stroke-width="4" stroke-dasharray="10 10"/>
+                </svg>
+              </div>
+              <p class="frame-caption">实线是硬证据，最后的断线保留具体运输未知。</p>
+            </div>
+            <div class="shot-copy">
+              <p class="claim-label">F3 / F6 / F7 / F8 · 主张</p>
+              <h3>我们知道机制链，但不知道某一船盐的完整旅程。</h3>
+              <p class="source-line">事实 S1 / S3 / S4 / S5</p>
+              <p>用“知道什么 / 仍不知道什么”结束，不把限制说明删掉换取爽点。</p>
+              <div class="bounds"><div class="bound"><b>允许</b><p>漏斗、火上陶器、盐、船桨、开放节点链。</p></div><div class="bound block"><b>禁止</b><p>完整路线宣称、市场成功结论、强行下一集 CTA。</p></div></div>
+              <span class="motion">motion: zoom_out</span>
+            </div>
+          </article>
+        </main>
+      </div>
+
+      <section class="section-block" aria-labelledby="visual-system">
+        <div class="section-heading">
+          <h2 id="visual-system">16:9 原创视觉系统</h2>
+          <p>画面像水下考古证据台上的接触印样：平面、克制、证据优先。所有源图固定 1920×1080；历史现场不追求脸部、服饰和戏剧光影，地图与比例关系使用可核对的几何。</p>
+        </div>
+        <div class="safe-frame" aria-label="16 比 9 字幕与运动安全区示意">
+          <span class="safe-note">1920×1080 · MOTION CROP + SUBTITLE SAFE</span>
+          <div class="safe-core">关键证据对象：左右各留 8%，顶部留 8%</div>
+          <div class="subtitle-zone"><b>底部 320 px 禁放唯一证据</b><br />当前字幕距底 150 px，字号 58 px，最大宽 936 px</div>
+        </div>
+        <div class="token-strip" aria-label="视觉色彩角色">
+          <div class="token"><b>深海墨蓝</b><code>#102A33</code></div>
+          <div class="token"><b>直接证据</b><code>#176C69</code></div>
+          <div class="token"><b>重建琥珀</b><code>#F0D4AD</code></div>
+          <div class="token"><b>沉积蓝灰</b><code>#BFD1D2</code></div>
+          <div class="token"><b>禁止项</b><code>#91342D</code></div>
+        </div>
+      </section>
+
+      <section class="section-block" aria-labelledby="runtime-gate">
+        <div class="section-heading">
+          <h2 id="runtime-gate">当前工具兼容 Gate</h2>
+          <p>逐镜板不是愿望清单。每个决定都对照当前代码：单图 Scene、统一比例、有限运动预设、中文语音与中文识别。模板不存在的独立标签与第三方图署名层，本版不假装已经具备。</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>要求</th><th>当前证据</th><th>Gate</th><th>下一动作</th></tr></thead>
+            <tbody>
+              <tr><td>12 个 Scene</td><td>渲染工具支持 1–30 个</td><td class="gate-ok">通过</td><td>保持 S01–S12</td></tr>
+              <tr><td>16:9 输出</td><td>跟随首图比例，拒绝混合比例</td><td class="gate-ok">通过</td><td>全部 1920×1080</td></tr>
+              <tr><td>单镜运动</td><td>本板全部来自现有白名单</td><td class="gate-ok">通过</td><td>不增加自定义镜头运动</td></tr>
+              <tr><td>中文语音</td><td>Seed-TTS 默认中文音色</td><td class="gate-warn">有条件</td><td>试听专名、年代、停顿</td></tr>
+              <tr><td>中文字幕</td><td>Whisper 固定 <code>zh</code> 并可校准原文</td><td class="gate-warn">有条件</td><td>核对专名与限制词</td></tr>
+              <tr><td>重建标签</td><td>模板没有独立叠加层</td><td class="gate-warn">有条件</td><td>写进旁白与字幕</td></tr>
+              <tr><td>第三方证据图</td><td>没有署名图层，本版也不需要</td><td class="gate-ok">本版不用</td><td>全部原创解释图</td></tr>
+              <tr><td>英语原声</td><td>TTS / Whisper 未完成英语验收</td><td class="gate-stop">不通过</td><td>另立开发 Sprint</td></tr>
+              <tr><td>YouTube 16:9 画风</td><td>现有账号绑定只有 3:4</td><td class="gate-stop">不通过</td><td>媒体提交前核验绑定</td></tr>
+              <tr><td>公开发布</td><td>频道、审核人与真实媒体均缺</td><td class="gate-stop">不通过</td><td>成片验收后另开 Gate</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section-block" aria-labelledby="preflight">
+        <div class="section-heading">
+          <h2 id="preflight">脚本阶段预检</h2>
+          <p>下一步不是点“生成”。先把每个 8–14 秒镜头压成一段只服务唯一主张的中文旁白，并让所有不确定性随字幕一起出现。</p>
+        </div>
+        <ul class="checklist">
+          <li>S03、S07、S09、S10 的旁白明确出现“重建、可能、解释或具体未知”。</li>
+          <li>S04 不出现金属锅，S05 不编家谱，S06 不写吨数，S07 不画钱币。</li>
+          <li>S09 不显示可数货物；S10 只有方向网络；S11 明确是后来被淹。</li>
+          <li>关键对象避开底部 320 px，并留出平移与 8% 缩放裁切区。</li>
+          <li>中文专名、年代与限定词试听通过；字幕保持 TTS 原文。</li>
+          <li>16:9 账号画风未绑定前，不提交真实 DoodleStory 任务。</li>
+        </ul>
+      </section>
+
+      <section class="final-decision" aria-labelledby="decision">
+        <div>
+          <h2 id="decision">逐镜证据 Gate：有条件通过</h2>
+          <p>V1–V7 已收敛为当前 Remotion 能表达的 12 镜，并删除了没有来源支持的具象市场戏。允许继续写最终中文旁白和逐镜 Prompt；仍禁止生图、配音、渲染、上传或创建市场实验。</p>
+        </div>
+        <div class="next-gate"><b>下一道 Gate</b><span>最终中文旁白 + 12 镜 Prompt 包，逐句映射 F / S / R 编号。</span></div>
+      </section>
+    </div>
+
+    <footer class="footer">
+      DoodleStory · Sprint 173 · 本页不含外部图片、字体、脚本或网络请求。视觉图为证据关系的代码几何，不是古代现场复原。
+    </footer>
+  </body>
+</html>

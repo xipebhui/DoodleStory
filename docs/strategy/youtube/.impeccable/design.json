@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-12T19:35:16.9844572+08:00",
+  "title": "Design System: DoodleStory YouTube Research Boards",
+  "extensions": {
+    "colorMeta": {
+      "marine-ink": {
+        "role": "primary",
+        "displayName": "深海墨线",
+        "canonical": "#102a33"
+      },
+      "salt-paper": {
+        "role": "neutral",
+        "displayName": "盐白纸面",
+        "canonical": "#f4f6f1"
+      },
+      "sediment-bench": {
+        "role": "neutral",
+        "displayName": "沉积证据台",
+        "canonical": "#d8e4e5"
+      },
+      "direct-evidence": {
+        "role": "secondary",
+        "displayName": "直接证据青绿",
+        "canonical": "#176c69"
+      },
+      "reconstruction": {
+        "role": "tertiary",
+        "displayName": "矿物重建琥珀",
+        "canonical": "#a45f1c"
+      },
+      "blocked-claim": {
+        "role": "tertiary",
+        "displayName": "Gate 红",
+        "canonical": "#91342d"
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "工作台标题",
+        "purpose": "首屏与章节标题；以尺度建立层级，不模仿古代文字。"
+      },
+      "body": {
+        "displayName": "中文阅读正文",
+        "purpose": "事实、边界和制作说明。"
+      },
+      "measure": {
+        "displayName": "测量标签",
+        "purpose": "时间码、Scene ID、来源 ID 和运动预设。"
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "timeline-scan",
+        "value": "1.8s cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "页面首次打开时沿 138 秒时间带完成一次登记扫描；减少动态时关闭。"
+      }
+    ],
+    "breakpoints": [
+      { "name": "rail-collapse", "value": "1120px" },
+      { "name": "single-column", "value": "820px" },
+      { "name": "compact", "value": "520px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Evidence chip",
+      "kind": "chip",
+      "refersTo": "evidence-chip",
+      "description": "只读证据等级，不表现为可点击筛选器。",
+      "html": "<span class=\"ds-evidence-chip\">A 直接证据</span>",
+      "css": ".ds-evidence-chip { display:inline-block; border:1px solid #176c69; border-radius:999px; padding:3px 8px; color:#176c69; background:transparent; font:700 .7rem/1.4 'Segoe UI','Microsoft YaHei',sans-serif; }"
+    },
+    {
+      "name": "Timeline segment",
+      "kind": "custom",
+      "description": "按秒数占宽的连续影片时间段。",
+      "html": "<div class=\"ds-timeline-segment\"><b>S03</b><small>11s</small></div>",
+      "css": ".ds-timeline-segment { min-height:82px; padding:16px 8px 12px; border-right:1px solid #48656d; box-shadow:inset 0 -5px 0 #a45f1c; background:#17333c; color:#d5e3e3; font-family:'Cascadia Mono',Consolas,monospace; } .ds-timeline-segment b,.ds-timeline-segment small { display:block; } .ds-timeline-segment small { margin-top:13px; color:#a9c3c5; }"
+    },
+    {
+      "name": "Frame aperture",
+      "kind": "custom",
+      "refersTo": "frame-aperture",
+      "description": "16:9 证据几何孔，带两侧登记条。",
+      "html": "<div class=\"ds-frame-aperture\"><span>16:9 evidence geometry</span></div>",
+      "css": ".ds-frame-aperture { position:relative; display:grid; place-items:center; aspect-ratio:16/9; overflow:hidden; border:1px solid #6d8a8d; background:#f4f6f1; color:#102a33; } .ds-frame-aperture::before,.ds-frame-aperture::after { content:''; position:absolute; top:9px; bottom:9px; width:6px; background:#102a33; } .ds-frame-aperture::before { left:9px; } .ds-frame-aperture::after { right:9px; }"
+    },
+    {
+      "name": "Evidence bounds",
+      "kind": "custom",
+      "description": "共边的允许与禁止事实边界。",
+      "html": "<div class=\"ds-bounds\"><div><b>允许</b><p>可核对对象</p></div><div class=\"ds-block\"><b>禁止</b><p>不可补全细节</p></div></div>",
+      "css": ".ds-bounds { display:grid; grid-template-columns:1fr 1fr; gap:1px; border:1px solid #8ba5a7; background:#8ba5a7; color:#102a33; font:400 14px/1.55 'Segoe UI','Microsoft YaHei',sans-serif; } .ds-bounds>div { background:#e8eeee; padding:14px 16px; } .ds-bounds>.ds-block { background:#ead5d1; } .ds-bounds b { display:block; margin-bottom:4px; } .ds-bounds p { margin:0; }"
+    },
+    {
+      "name": "Shot ledger row",
+      "kind": "custom",
+      "refersTo": "shot-ledger",
+      "description": "时间、画面与唯一主张构成的连续登记行。",
+      "html": "<article class=\"ds-shot\"><div class=\"ds-stamp\">S03<br><small>00:18–00:29</small></div><div class=\"ds-frame\">16:9</div><div><b>一镜一主张</b><p>来源与边界跟随主张。</p></div></article>",
+      "css": ".ds-shot { display:grid; grid-template-columns:116px minmax(220px,.72fr) minmax(280px,1.28fr); gap:32px; border-top:5px solid #a45f1c; border-bottom:1px solid #8ba5a7; padding:34px 0; background:#d8e4e5; color:#102a33; font:400 16px/1.68 'Segoe UI','Microsoft YaHei',sans-serif; } .ds-stamp { font:700 22px/1.1 'Cascadia Mono',Consolas,monospace; } .ds-stamp small { font-size:12px; font-weight:400; } .ds-frame { display:grid; place-items:center; aspect-ratio:16/9; border:1px solid #6d8a8d; background:#f4f6f1; } .ds-shot p { margin:8px 0 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "水下考古证据台",
+    "overview": "YouTube 研究板像研究人员把器物、柱位、地图和解释限制铺在冷光证据台上，同时用影片接触印样组织时间。它服务的是阅读和审核：证据强度、镜头顺序与当前 Gate 必须先于气氛和装饰被看见。页面不模仿古代现场，也不使用羊皮纸式历史感。",
+    "keyCharacteristics": [
+      "冷色实验台底面承载高密度中文阅读。",
+      "直接证据、支持性解释和禁止补全拥有稳定的语义颜色。",
+      "镜头是连续登记行，不是同尺寸卡片网格。",
+      "比例尺、时间码、字幕安全区和 Gate 都以真实制作约束出现。"
+    ],
+    "rules": [
+      { "name": "The Evidence Color Rule", "body": "同一种颜色在所有研究板中保持同一种证据强度；不得为了页面更活泼而随机换色。", "section": "colors" },
+      { "name": "The Measurement Rule", "body": "等宽体表示可测量或可追溯数据，不能当作技术感装饰整段正文。", "section": "typography" },
+      { "name": "The Flat Evidence Rule", "body": "阴影不能替代证据分组；如果一个区域需要层级，先用底面、线和空间关系表达。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 让每一镜只有一个主张，并把 F / S / R 来源 ID 放在同一阅读路径内。",
+      "Do 用线型、断点、节点和实线 / 虚线差异表达直接证据与解释边界。",
+      "Do 为键盘焦点提供高对比轮廓，并让跳转链接只在 focus-visible 时出现。"
+    ],
+    "donts": [
+      "Don't 使用仿旧纸张、宫殿金色、电影海报光影或装饰性民族纹样制造历史感。",
+      "Don't 把镜头、状态或来源改成重复的圆角卡片网格。",
+      "Don't 用颜色单独传达 Gate；始终同时写明直接证据、重建、有条件或不通过。"
+    ]
+  }
+}

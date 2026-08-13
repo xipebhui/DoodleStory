@@ -41,7 +41,8 @@
 - 本地开发保持前后端双服务：FastAPI 后端默认监听 `127.0.0.1:8000`，Vite 前端默认监听 `127.0.0.1:3000`。
 - 同一主机上指向同一数据库的 DoodleStory 后端必须保持单实例。后端在任何 startup 恢复动作前
   获取基于数据库标识的跨进程锁；第二实例必须明确启动失败，不能先恢复任务再因端口冲突退出。
-  正常关闭与 startup 失败释放锁，进程异常退出时由操作系统释放锁。
+  Windows 使用系统文件区间锁，POSIX 使用 `flock`；正常关闭与 startup 失败释放锁，进程异常退出时
+  由操作系统释放锁。
 - Docker 生产部署中，DoodleStory 应用镜像使用单容器形态：构建阶段生成前端静态文件，运行阶段由 FastAPI 同时提供前端页面和 `/api/v1/*` API。
 - Docker Compose 部署同时编排 DoodleStory 和同级目录的多平台 `douyin-import-service`；该服务组合 `douyin-downloader`、`wechat-article-crawler` 与 `XHS-Downloader` 的隔离运行环境，并以 Compose 服务名 `douyin-import-service` 暴露内部端口 `8010`。DoodleStory 通过 `http://douyin-import-service:8010` 调用，导入服务不暴露公网入口。
 - 生产容器内部只监听 HTTP 端口 `8000`；在 Coolify + Traefik 节点上只能通过 `expose: "8000"` 暴露给 Traefik，不手动映射宿主机 `80/443`。
@@ -351,6 +352,36 @@
   中成功且 current 的图片，不能读取其他用户资产。火山语音在 Provider 未返回 duration 时
   必须使用本地 `ffprobe` 读取真实 MP3/WAV/OGG 时长，探测失败则语音 Tool 明确失败，不能把
   空时长或估算时长交给视频 Tool。
+- 当前跟随首图尺寸的行为不能直接满足 Paynes Creek 锁定的 1920×1080 交付：Gateway 对 16:9 当前请求
+  1792×1024，若 Provider 返回该尺寸，现有模板也会输出 1792×1024。Sprint 188 / G8-A 已设计但尚未实施
+  版本化 `youtube_16_9_1080p` preset：保留旧 `source / narrated-panel-v1` 行为，新模板固定
+  1920×1080、30 fps；源图仍需通过 2% 的 16:9 比例 Gate 和跨 Scene 0.01 规则，等比 `cover` 的基准中心
+  裁切每边不得超过 1%，并在视频保存前用显式 `FFPROBE_EXECUTABLE` 核对真实 H.264 / yuv420p、AAC、
+  尺寸、fps、流和时长。不得降低交付尺寸、拉伸、补黑边或信任 Node stdout 代替文件事实。
+- Sprint 189 / G8-B 已设计但尚未实施冻结 Render Manifest Run：认证用户先通过无写入 / 无 enqueue 的
+  preview 检查由服务端编译的 canonical snapshot 与 SHA-256，再携带 exact expected hash 明确确认 Scene
+  顺序、Native 图片 / 音频 / 字幕 ID、Motion、审核记录 ref / hash、BGM 和固定 1080p preset；Run 创建时
+  服务端从同 owner、同 Conversation、已成功来源 Run 和实际 FileAsset 重新编译，hash 一致才保存并
+  enqueue。专用 `youtube-frozen-render` Skill 只暴露零参数 `render_story_video()`，运行时复验 snapshot、
+  lineage 与实际文件 hash，模型不能重传或改变 Scene。同一 Manifest-bound Run 跨不同 Tool Call ID 也只能
+  进入一次 Render；技术成功只进入 `rendered_awaiting_frame_evidence`，不得自动写 `pass_local_pilot`、
+  创建发布任务或通过 Follow-up 修改 Manifest。
+- Sprint 190 / G8-C 已设计但尚未实施成片逐镜帧证据包：只接受绑定上述 Manifest、固定
+  `youtube_16_9_1080p / narrated-panel-16x9-1080p-v1`、1920×1080、30 fps 的已保存 Video。owner 携带
+  Video 与 Render Manifest 的 exact SHA-256 创建独立数据库作业；服务端按每镜真实帧区间固定抽取淡入端点、
+  安全起点、中点、安全终点和淡出端点，并从持久化 Subtitle cues 唯一定位事实限定词帧。Worker 必须重做
+  ffprobe、完整解码和一次性 ffmpeg select，生成只含 canonical manifest、离线 HTML 和 PNG 的一个 ZIP
+  Asset。Pack 成功才允许进入 `ready_for_full_watch_review`；像素统计、`blackdetect` 与证据完整性都不能
+  代替审核人观看同一 Video SHA-256 后签字，也不得触发重渲染、自动重试或发布。
+- Sprint 191 已设计但尚未实施 G8 不可变人工验收与严格发布登记门禁：当前客户端可在登记
+  `PublishableVideo` 时直接提交 `review_status="approved"`，该状态不能证明某个 exact Video bytes、Render
+  Manifest 和 Evidence Pack 已被完整观看。未来只允许成功 Pack 的 owner 先调用零写入 preview，由服务端
+  复验 Video / Archive 实际 bytes 与四类 SHA-256，编译包含四个固定维度和
+  `publication_authorized=false` 的 canonical snapshot；再携带 exact snapshot hash 提交一次不可编辑的
+  `pass_local_pilot | needs_revision`。Manifest-bound 视频只能从通过的 Acceptance 进入严格
+  `PublishableVideo` 路径，来源 Video、`approved` 与 synthetic 标志由服务端推导；创建 PublishTask 前再次
+  复验 Acceptance lineage 和实际 Video hash，漂移时远程调用必须为 0。历史普通视频保持 Sprint 134 / 135
+  路径，不把它当作 Manifest 成片的兼容 fallback。
 - Sprint 127 把 Native 多媒体链路拆为三个可组合 Tool：
   `generate_speech(text, speed)` 只接受 0.5、0.75、1.0、1.25、1.5、2.0 六档倍速，并映射到
   Seed-TTS 2.0 的 `speech_rate=-50/-25/0/25/50/100`；`generate_subtitles(audio_id)`
@@ -364,6 +395,16 @@
   Whisper 识别字符与原文规范化字符通过单调序列匹配映射时间，模型快照追加
   `source-aligned-v1`；原文为空、缺少词级时间戳或匹配率不足时明确失败，不保存未经校准的
   Whisper 文本，也不自动切换在线服务。
+- 当前 Native 媒体仍有明确的 Run 边界：`generate_subtitles` 只接受本 Run 音频，
+  `render_story_video` 只读取本 Run 的 `audio_id` / `subtitle_id`；Follow-up 会创建新 Run，不能把父 Run
+  的音频或字幕当成新 Run 资产。需要“逐镜独立人工语音 Gate → 独立成片 Run”的流程在真实媒体前必须
+  另行实现同一 Conversation 内的跨 Run 渲染引用：来源 Run 必须成功、Conversation 与 owner 必须匹配、
+  Subtitle 必须绑定 Scene Audio，并在视频 Scene 快照中保存音频与字幕来源 Run ID。不得通过复制 / 移动
+  资产、跨 Conversation 放宽权限，或把全部语音与渲染塞进一个未暂停 Run 来绕过人工审核。
+  Sprint 187 / G7-0 已把未来实现固定为：保持 Tool 输入不变，由服务端推导来源；当前渲染 Run 继续可用
+  自己的媒体，历史来源只接受同 Conversation、同 owner 且 `succeeded` 的 Run；Subtitle 还必须与 Audio
+  的 ID 和来源 Run 同时匹配，新 Scene 快照保存图片、音频和字幕来源 Run ID。该合同当前仅设计就绪，
+  尚未改变上述运行时事实。
 - Sprint 129 将火山语音缺失 duration 时使用的媒体探测器改为显式
   `FFPROBE_EXECUTABLE`。本地启动脚本必须在启动后端前解析并校验可执行文件绝对路径，再将其
   传入服务进程；容器继续由 `ffmpeg` 包提供 `ffprobe`。不得依赖不确定的子进程 PATH，也不得
