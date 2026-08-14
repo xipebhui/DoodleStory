@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "record_kind": "paynes_creek_footerless_manual_publish_acceptance",
+  "status": "ready_for_user_manual_upload_footerless",
+  "source_git_commit": "66da00ff08c1207deae0bca69b7ffd381419b8b7",
+  "source_plan": "docs/strategy/youtube/paynes-creek-maya-salt-publish-en-v2.json",
+  "source_plan_sha256": "a96dc75aec86cf1ffe0ce0266197803ce810b64be01042dce7e4fd54f23aa460",
+  "presentation": {
+    "mode": "manual_publish",
+    "show_footer": false,
+    "artifact_slug": "paynes-creek-maya-salt-publish-en-v2",
+    "visible_ai_token_guard": "pass",
+    "phrase_counter_hidden": "pass",
+    "bottom_series_name": "absent",
+    "bottom_short_label": "absent",
+    "bottom_scene_counter": "absent",
+    "mechanical_visual_detector": "pass_no_findings"
+  },
+  "render": {
+    "video": "storage/exports/paynes-creek/maya-salt-publish-en-v2/paynes-creek-maya-salt-publish-en-v2-yuv420p.mp4",
+    "sha256": "4d56635a8bacc897507de4346dc79fc1e57148b789c4d04c56a5d1c0e791a5e4",
+    "bytes": 34956118,
+    "duration_ms": 39061,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "frames": 1170,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "pixel_format": "yuv420p",
+    "color_range": "tv"
+  },
+  "verification": {
+    "backend_tests": "439_passed",
+    "remotion_tests": "15_passed",
+    "remotion_typecheck": "pass",
+    "full_decode": "pass",
+    "silence_over_1500ms": "none_detected",
+    "black_segment_over_100ms": "none_detected",
+    "scene_midpoint_contact_sheet": "pass",
+    "dense_contact_sheet_20_frames": "pass",
+    "bottom_strip_contact_sheet_12_frames": "pass_footer_absent",
+    "caption_overflow": "none_observed",
+    "prior_source_aligned_audio_timeline": "reused_unchanged"
+  },
+  "calls": {
+    "grok_image": 0,
+    "grok_video": 0,
+    "siliconflow_tts": 0,
+    "music": 0,
+    "remotion_render": 1,
+    "ffmpeg_normalization": 1,
+    "external_publish": 0
+  },
+  "handoff": {
+    "automatic_publication_authorized": false,
+    "manual_upload_requested_by_user": true,
+    "delivery_status": "ready"
+  }
+}

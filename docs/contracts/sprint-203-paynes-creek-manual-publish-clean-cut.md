@@ -1,6 +1,6 @@
 # Sprint 203：Paynes Creek 英文手动发布清理版
 
-状态：In progress（用户反馈修正）
+状态：Complete（`ready_for_user_manual_upload_footerless`）
 
 ## Goal
 
@@ -59,7 +59,7 @@ ffmpeg -v error -i <final.mp4> -f null NUL
 - Attempt 1（`paynes-creek-maya-salt-publish-en-v1`）虽通过自动检查，但用户观看后发现底部仍显示
   `PAYNES CREEK · ARCHAEOLOGY SHORT · x/5`。该页脚不符合“直接发布版”要求，原
   `ready_for_user_manual_upload` 结论撤销，成片明确 rejected，不再作为交付文件。
-- Attempt 2 使用独立 v2 计划和 `show_footer=false`，待重新渲染与验收。
+- Attempt 2 使用独立 v2 计划和 `show_footer=false`，已重新渲染并通过底部安全区专项验收。
 
 - Attempt 1 基于 source commit `8cf258646ce650ecbdaf1a0fb07e3b9867e47114` 通过干净 preflight；五个
   源镜头与 v5 旁白的路径、hash 和 ffprobe 时长均一致。
@@ -72,3 +72,11 @@ ffmpeg -v error -i <final.mp4> -f null NUL
   Remotion typecheck 与空库 Alembic migration 均成功。
 - Attempt 1 的原终态已由用户反馈推翻；项目没有调用外部发布接口。审计记录：
   `docs/testing/paynes-creek-maya-salt-publish-en-v1-2026-08-14.json`。
+- Attempt 2 基于 source commit `66da00ff08c1207deae0bca69b7ffd381419b8b7` 通过干净 preflight；复用
+  同一旁白与五个镜头，TTS、Grok、音乐和发布调用为 0，Remotion 与 FFmpeg 各执行 1 次。
+- v2 MP4 为 39.061 秒、1920×1080、30fps、1170 帧、H.264/AAC、yuv420p/tv range，大小
+  34,956,118 bytes，SHA-256 `4d56635a8bacc897507de4346dc79fc1e57148b789c4d04c56a5d1c0e791a5e4`。
+- 全片解码、长静音、黑场、20 帧密集接触表与 12 帧底部安全区专项接触表通过；底部系列名、
+  `SHORT`、`x/5` 和 `PHRASE x/y` 全部不存在，字幕与进度线正常。
+- 439 项后端测试、15 项 Remotion 测试与 Remotion typecheck 通过。v2 审计记录：
+  `docs/testing/paynes-creek-maya-salt-publish-en-v2-2026-08-14.json`。

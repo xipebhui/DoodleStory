@@ -1,6 +1,6 @@
 # 进度记录
 
-## Sprint 203（用户反馈修正中）
+## Sprint 203（已完成，用户反馈已修正）
 
 - 已锁定为 Sprint 202 v5 的发布表层清理：复用同一旁白、五个 Grok 镜头和 source-aligned 帧边界，
   不重做内容或调用 Provider。
@@ -22,6 +22,13 @@
 - 用户观看后指出 v1 底部仍有 `PAYNES CREEK · ARCHAEOLOGY SHORT · x/5` 三段页脚；这与直接发布
   要求冲突，因此撤销 v1 的 ready 结论并明确 rejected。当前新增 `show_footer=false` 的 v2 独立计划，
   只删除整条底部页脚，不修改字幕、旁白、证据标签、五个镜头或同步时间轴。
+- v2 基于 source commit `66da00f` 一次性完成 Remotion 与 FFmpeg，Provider 与发布调用均为 0；最终
+  MP4 仍为 39.061 秒、1920×1080、30fps、1170 帧、H.264/AAC、yuv420p/tv range，SHA-256
+  `4d56635a8bacc897507de4346dc79fc1e57148b789c4d04c56a5d1c0e791a5e4`。
+- 全片解码、长静音、黑场、20 帧密集接触表和 12 帧底部安全区专项抽查通过；底部系列名、`SHORT`、
+  `x/5` 与 `PHRASE x/y` 均不存在。439 项后端测试、15 项 Remotion 测试与 typecheck 通过，终态为
+  `ready_for_user_manual_upload_footerless`，审计见
+  `docs/testing/paynes-creek-maya-salt-publish-en-v2-2026-08-14.json`。
 
 ## Sprint 199（进行中）
 
