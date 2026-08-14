@@ -21,6 +21,7 @@ const EVIDENCE_LEVELS_BY_LOCALE = {
 };
 const EDIT_MODES = new Set(["classic", "retention"]);
 const TIMING_MODES = new Set(["weighted", "source_aligned"]);
+const PRESENTATION_MODES = new Set(["review", "manual_publish"]);
 const RETENTION_MOTIONS = new Set(["push_in", "drift_left", "drift_right"]);
 const RETENTION_VISUAL_TREATMENTS = [
   "coast_to_inland",
@@ -45,6 +46,9 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
   if (!TIMING_MODES.has(manifest.timingMode)) {
     throw new Error("Paynes Creek Grok 样片 timingMode 无效");
   }
+  if (!PRESENTATION_MODES.has(manifest.presentationMode)) {
+    throw new Error("Paynes Creek Grok 样片 presentationMode 无效");
+  }
   const expectedMaximumPlaybackRate = manifest.timingMode === "source_aligned"
     ? 1.45
     : 1.35;
@@ -56,6 +60,23 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
   }
   if (manifest.editMode === "retention" && manifest.locale !== "en-US") {
     throw new Error("Paynes Creek Grok retention edit 当前只支持 en-US");
+  }
+  if (manifest.presentationMode === "manual_publish") {
+    if (manifest.editMode !== "retention" || manifest.locale !== "en-US") {
+      throw new Error("manual_publish 当前只支持英文 retention edit");
+    }
+    if (/(?:^|-)ai(?:-|$)/i.test(String(manifest.artifactSlug ?? ""))) {
+      throw new Error("manual_publish artifactSlug 不得包含独立 AI 标识");
+    }
+    const visibleCopy = [manifest.title, manifest.footer];
+    for (const scene of manifest.scenes ?? []) {
+      visibleCopy.push(scene.title, scene.evidence, scene.narration);
+      visibleCopy.push(...(scene.captions ?? []).map((caption) => caption.text));
+      visibleCopy.push(...Object.values(scene.hook ?? {}));
+    }
+    if (visibleCopy.some((text) => /\bAI\b/i.test(String(text ?? "")))) {
+      throw new Error("manual_publish 可见文案不得包含独立 AI 标识");
+    }
   }
   if (manifest.publicationAuthorized !== false || manifest.bgm !== false) {
     throw new Error(
@@ -199,6 +220,7 @@ export const stagePaynesCreekGrokShortManifest = async (
     title: manifest.title,
     locale: manifest.locale,
     editMode: manifest.editMode,
+    presentationMode: manifest.presentationMode,
     footer: manifest.footer,
     scenes,
     narrationAudio: audioName,

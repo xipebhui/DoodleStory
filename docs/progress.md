@@ -1,5 +1,14 @@
 # 进度记录
 
+## Sprint 203（进行中）
+
+- 已锁定为 Sprint 202 v5 的发布表层清理：复用同一旁白、五个 Grok 镜头和 source-aligned 帧边界，
+  不重做内容或调用 Provider。
+- 五镜模板新增显式 `review` / `manual_publish` presentation mode。后者隐藏 `PHRASE x/y` 制作期计数，
+  并在 Python 计划与 Remotion Manifest 两层拒绝可见文案及 artifact slug 中的独立 `AI` 标识。
+- 新计划：`docs/strategy/youtube/paynes-creek-maya-salt-publish-en-v1.json`；合同：
+  `docs/contracts/sprint-203-paynes-creek-manual-publish-clean-cut.md`。待完成测试、渲染与最终视觉验收。
+
 ## Sprint 199（进行中）
 
 - 已审计 `ele-yufo/grokcli` 最新主线并把依赖从 0.1.0 精确升级到 commit

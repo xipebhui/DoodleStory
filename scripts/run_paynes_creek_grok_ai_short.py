@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -28,6 +29,7 @@ HEIGHT = 1080
 SUPPORTED_LOCALES = frozenset({"zh-CN", "en-US"})
 SUPPORTED_EDIT_MODES = frozenset({"classic", "retention"})
 SUPPORTED_TIMING_MODES = frozenset({"weighted", "source_aligned"})
+SUPPORTED_PRESENTATION_MODES = frozenset({"review", "manual_publish"})
 RETENTION_MOTIONS = frozenset({"push_in", "drift_left", "drift_right"})
 RETENTION_VISUAL_TREATMENTS = (
     "coast_to_inland",
@@ -69,6 +71,8 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
         raise RuntimeError("Grok AI 短片 edit_mode 只支持 classic 或 retention")
     if value.get("timing_mode") not in SUPPORTED_TIMING_MODES:
         raise RuntimeError("Grok AI 短片 timing_mode 只支持 weighted 或 source_aligned")
+    if value.get("presentation_mode") not in SUPPORTED_PRESENTATION_MODES:
+        raise RuntimeError("Grok AI 短片 presentation_mode 只支持 review 或 manual_publish")
     if value["timing_mode"] == "source_aligned" and value["edit_mode"] != "retention":
         raise RuntimeError("source_aligned timing 只能用于 retention edit")
     if not str(value.get("footer") or "").strip():
@@ -83,6 +87,21 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
         raise RuntimeError("Grok AI 短片 artifact_slug 无效")
     if value.get("publication_authorized") is not False or value.get("bgm") is not False:
         raise RuntimeError("Grok AI 短片必须保持禁止发布且无 BGM")
+    if value["presentation_mode"] == "manual_publish":
+        if value["locale"] != "en-US" or value["edit_mode"] != "retention":
+            raise RuntimeError("manual_publish 当前只支持英文 retention edit")
+        if re.search(r"(?:^|-)ai(?:-|$)", artifact_slug, flags=re.IGNORECASE):
+            raise RuntimeError("manual_publish artifact_slug 不得包含独立 AI 标识")
+        visible_copy = [str(value.get(key) or "") for key in ("title", "footer")]
+        for scene in value["scenes"]:
+            visible_copy.extend(
+                str(scene.get(key) or "")
+                for key in ("title", "evidence", "narration")
+            )
+            visible_copy.extend(str(caption) for caption in scene.get("captions") or [])
+            visible_copy.extend(str(item) for item in (scene.get("hook") or {}).values())
+        if any(re.search(r"\bAI\b", text, flags=re.IGNORECASE) for text in visible_copy):
+            raise RuntimeError("manual_publish 可见文案不得包含独立 AI 标识")
     scene_ids = tuple(str(scene.get("id")) for scene in value["scenes"])
     if scene_ids != SCENE_IDS:
         raise RuntimeError("Grok AI 短片场景顺序必须固定为 S01/S03/S04/S09/S12")
@@ -375,6 +394,8 @@ def build_render_manifest(
         "locale": plan["locale"],
         "editMode": plan["edit_mode"],
         "timingMode": plan["timing_mode"],
+        "presentationMode": plan["presentation_mode"],
+        "artifactSlug": plan["artifact_slug"],
         "maxPlaybackRate": maximum_playback_rate,
         "footer": plan["footer"],
         "width": WIDTH,
@@ -655,6 +676,7 @@ def execute(
             "plan_sha256": sha256_file(plan_path),
             "locale": plan["locale"],
             "edit_mode": plan["edit_mode"],
+            "presentation_mode": plan["presentation_mode"],
             "scene_count": 5,
         },
         "calls": {

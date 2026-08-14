@@ -81,6 +81,7 @@ const paynesCreekGrokShortDefaultProps: PaynesCreekGrokShortProps = {
   title: "Paynes Creek Grok AI 样片",
   locale: "zh-CN",
   editMode: "classic",
+  presentationMode: "review",
   footer: "PAYNES CREEK · AI VISUAL PILOT",
   scenes: [{
     id: "S01",

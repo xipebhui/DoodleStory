@@ -13,6 +13,8 @@ const validManifest = {
   locale: "zh-CN",
   editMode: "classic",
   timingMode: "weighted",
+  presentationMode: "review",
+  artifactSlug: "paynes-creek-grok-ai-short-v1",
   maxPlaybackRate: 1.35,
   footer: "PAYNES CREEK · AI VISUAL PILOT",
   width: 1920,
@@ -184,5 +186,50 @@ test("accepts source-aligned retention timing up to the explicit rate ceiling", 
   assert.throws(
     () => validatePaynesCreekGrokShortManifest({...sourceAligned, maxPlaybackRate: 1.35}),
     /播放速率上限无效/,
+  );
+});
+
+test("accepts a clean manual-publish surface and rejects production labels", () => {
+  const treatments = [
+    "coast_to_inland",
+    "process_filter",
+    "process_boil",
+    "transport_clue",
+    "evidence_chain",
+  ];
+  const scenes = validManifest.scenes.map((scene, index) => ({
+    ...scene,
+    narration: `Clue ${index + 1} survives here today.`,
+    evidence: "Interpretation",
+    captions: [
+      {text: `Clue ${index + 1}`, startFrame: 0, endFrame: 120},
+      {text: "survives here today.", startFrame: 120, endFrame: 270},
+    ],
+    motion: "push_in",
+    visualTreatment: treatments[index],
+    hook: index === 0 ? {
+      eyebrow: "A LOST SUPPLY CHAIN",
+      headline: "NO RECORDS SURVIVE.",
+      question: "SO HOW DID IT MOVE?",
+    } : null,
+  }));
+  const publish = {
+    ...validManifest,
+    title: "How Did Maya Salt Travel Inland?",
+    locale: "en-US",
+    editMode: "retention",
+    presentationMode: "manual_publish",
+    artifactSlug: "paynes-creek-maya-salt-publish-en-v1",
+    footer: "PAYNES CREEK · ARCHAEOLOGY SHORT",
+    scenes,
+  };
+  assert.doesNotThrow(() => validatePaynesCreekGrokShortManifest(publish));
+  assert.throws(
+    () => validatePaynesCreekGrokShortManifest({...publish, footer: "AI SHORT"}),
+    /可见文案/,
+  );
+  assert.throws(
+    () => validatePaynesCreekGrokShortManifest({...publish, artifactSlug: "maya-ai-short"}),
+    /artifactSlug/,
   );
 });

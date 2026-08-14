@@ -54,6 +54,7 @@ export type PaynesCreekGrokShortProps = {
   title: string;
   locale: "zh-CN" | "en-US";
   editMode: "classic" | "retention";
+  presentationMode: "review" | "manual_publish";
   footer: string;
   scenes: PaynesCreekGrokShortScene[];
   narrationAudio: string;
@@ -215,8 +216,9 @@ const GrokShortScene: React.FC<{
   count: number;
   locale: "zh-CN" | "en-US";
   editMode: "classic" | "retention";
+  presentationMode: "review" | "manual_publish";
   footer: string;
-}> = ({scene, index, count, locale, editMode, footer}) => {
+}> = ({scene, index, count, locale, editMode, presentationMode, footer}) => {
   const frame = useCurrentFrame();
   const end = Math.max(1, scene.durationInFrames - 1);
   const classicOpacity = interpolate(
@@ -375,7 +377,7 @@ const GrokShortScene: React.FC<{
           zIndex: isRetention ? 5 : undefined,
         }}
       >
-        {isRetention ? <div style={{
+        {isRetention && presentationMode === "review" ? <div style={{
           color,
           fontSize: 17,
           fontWeight: 900,
@@ -446,6 +448,7 @@ export const PaynesCreekGrokShort: React.FC<PaynesCreekGrokShortProps> = (
             count={props.scenes.length}
             locale={props.locale}
             editMode={props.editMode}
+            presentationMode={props.presentationMode}
             footer={props.footer}
           />
         </Series.Sequence>

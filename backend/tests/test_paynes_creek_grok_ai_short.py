@@ -25,6 +25,7 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
         self.assertFalse(plan["bgm"])
         self.assertEqual(plan["locale"], "zh-CN")
         self.assertEqual(plan["timing_mode"], "weighted")
+        self.assertEqual(plan["presentation_mode"], "review")
 
     def test_english_plan_reuses_exact_selected_media(self) -> None:
         chinese = load_plan()
@@ -159,6 +160,24 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
             )
         self.assertEqual(manifest["timingMode"], "source_aligned")
         self.assertEqual(manifest["maxPlaybackRate"], 1.45)
+
+    def test_manual_publish_plan_has_clean_visible_copy_and_artifact_name(self) -> None:
+        plan_path = (
+            PROJECT_ROOT
+            / "docs/strategy/youtube/paynes-creek-maya-salt-publish-en-v1.json"
+        )
+        plan = load_plan(plan_path)
+        self.assertEqual(plan["presentation_mode"], "manual_publish")
+        self.assertEqual(
+            output_names(plan)["video"],
+            "paynes-creek-maya-salt-publish-en-v1-yuv420p.mp4",
+        )
+        visible_copy = [plan["title"], plan["footer"]]
+        for scene in plan["scenes"]:
+            visible_copy.extend([scene["title"], scene["evidence"], scene["narration"]])
+            visible_copy.extend(scene["captions"])
+            visible_copy.extend((scene.get("hook") or {}).values())
+        self.assertTrue(all(" ai " not in f" {text.lower()} " for text in visible_copy))
 
 
 if __name__ == "__main__":
