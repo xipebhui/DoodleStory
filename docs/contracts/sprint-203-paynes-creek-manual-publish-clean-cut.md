@@ -1,6 +1,6 @@
 # Sprint 203：Paynes Creek 英文手动发布清理版
 
-状态：In progress
+状态：Complete（`ready_for_user_manual_upload`）
 
 ## Goal
 
@@ -52,3 +52,17 @@ ffmpeg -v error -i <final.mp4> -f null NUL
 
 向用户提供不含 `AI` 命名的最终 MP4 绝对路径；`publication_authorized=false` 只表示项目未被授权
 自动操作外部频道，不限制用户自行上传该本地文件。
+
+## Result
+
+- 发布版基于 source commit `8cf258646ce650ecbdaf1a0fb07e3b9867e47114` 通过干净 preflight；五个
+  源镜头与 v5 旁白的路径、hash 和 ffprobe 时长均一致。
+- TTS、Grok、音乐和发布调用均为 0；Remotion 与 FFmpeg 各执行 1 次。
+- 最终 MP4 为 39.061 秒、1920×1080、30fps、1170 帧、H.264/AAC、yuv420p/tv range，大小
+  34,793,890 bytes，SHA-256 `7c107a16d40bc598e809f34d201855bb0101212e0195f82f24254d21411d9a6c`。
+- 全片解码、1.5 秒长静音、100ms 黑场、中点接触表和 20 帧密集接触表检查通过；未见画面溢出、
+  `AI`、`PHRASE x/y` 或其他制作期标签。机械视觉扫描无发现。
+- Windows 本地全量检查通过：439 项后端测试、14 项前端测试、前端生产构建、15 项 Remotion 测试、
+  Remotion typecheck 与空库 Alembic migration 均成功。
+- 终态为可交给用户手动上传；项目没有调用外部发布接口。审计记录：
+  `docs/testing/paynes-creek-maya-salt-publish-en-v1-2026-08-14.json`。

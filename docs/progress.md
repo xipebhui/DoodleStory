@@ -1,13 +1,24 @@
 # 进度记录
 
-## Sprint 203（进行中）
+## Sprint 203（已完成）
 
 - 已锁定为 Sprint 202 v5 的发布表层清理：复用同一旁白、五个 Grok 镜头和 source-aligned 帧边界，
   不重做内容或调用 Provider。
 - 五镜模板新增显式 `review` / `manual_publish` presentation mode。后者隐藏 `PHRASE x/y` 制作期计数，
   并在 Python 计划与 Remotion Manifest 两层拒绝可见文案及 artifact slug 中的独立 `AI` 标识。
 - 新计划：`docs/strategy/youtube/paynes-creek-maya-salt-publish-en-v1.json`；合同：
-  `docs/contracts/sprint-203-paynes-creek-manual-publish-clean-cut.md`。待完成测试、渲染与最终视觉验收。
+  `docs/contracts/sprint-203-paynes-creek-manual-publish-clean-cut.md`。
+- Python 7 项、Remotion Manifest 7 项与 TypeScript typecheck 通过，Impeccable 机械扫描无发现。发布版
+  以 source commit `8cf2586` 一次性完成 Remotion 与 FFmpeg；TTS、Grok、音乐和发布调用均为 0。
+- Windows 本地全量检查继续通过 439 项后端测试、14 项前端测试、前端生产构建、15 项 Remotion
+  测试、Remotion typecheck 与空库 Alembic migration。
+- 最终 MP4 为 39.061 秒、1920×1080、30fps、1170 帧、H.264/AAC、yuv420p/tv range，SHA-256
+  `7c107a16d40bc598e809f34d201855bb0101212e0195f82f24254d21411d9a6c`。完整解码、长静音、黑场、
+  中点与 20 帧密集接触表检查通过，未见 `AI`、`PHRASE x/y`、溢出或制作期标签；终态为
+  `ready_for_user_manual_upload`，审计见
+  `docs/testing/paynes-creek-maya-salt-publish-en-v1-2026-08-14.json`。
+- 本机仓库 `.env` 的 ffprobe 配置仍是 macOS 路径；本次渲染只在进程内显式使用现有 Windows
+  `C:\ProgramData\chocolatey\bin\ffprobe.exe`，未修改用户环境配置。
 
 ## Sprint 199（进行中）
 
