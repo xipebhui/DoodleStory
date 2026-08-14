@@ -1,6 +1,6 @@
 # 进度记录
 
-## Sprint 203（已完成）
+## Sprint 203（用户反馈修正中）
 
 - 已锁定为 Sprint 202 v5 的发布表层清理：复用同一旁白、五个 Grok 镜头和 source-aligned 帧边界，
   不重做内容或调用 Provider。
@@ -19,6 +19,9 @@
   `docs/testing/paynes-creek-maya-salt-publish-en-v1-2026-08-14.json`。
 - 本机仓库 `.env` 的 ffprobe 配置仍是 macOS 路径；本次渲染只在进程内显式使用现有 Windows
   `C:\ProgramData\chocolatey\bin\ffprobe.exe`，未修改用户环境配置。
+- 用户观看后指出 v1 底部仍有 `PAYNES CREEK · ARCHAEOLOGY SHORT · x/5` 三段页脚；这与直接发布
+  要求冲突，因此撤销 v1 的 ready 结论并明确 rejected。当前新增 `show_footer=false` 的 v2 独立计划，
+  只删除整条底部页脚，不修改字幕、旁白、证据标签、五个镜头或同步时间轴。
 
 ## Sprint 199（进行中）
 

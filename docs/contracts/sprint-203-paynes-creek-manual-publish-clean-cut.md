@@ -1,6 +1,6 @@
 # Sprint 203：Paynes Creek 英文手动发布清理版
 
-状态：Complete（`ready_for_user_manual_upload`）
+状态：In progress（用户反馈修正）
 
 ## Goal
 
@@ -12,7 +12,8 @@
 
 1. 为五镜 Remotion 模板新增显式 `manual_publish` presentation mode；既有计划显式保留 `review`，
    历史复跑语义不变。
-2. `manual_publish` 渲染隐藏短语计数器，保留短语字幕、钩子、镜头标题、证据等级、证据图层和页脚。
+2. `manual_publish` 渲染隐藏短语计数器；最终发布计划还必须显式关闭整个底部页脚，只保留短语字幕、
+   钩子、镜头标题、证据等级和证据图层。
 3. 发布计划复用 Sprint 202 Attempt 5 的旁白 hash、1170 帧 source-aligned 时间轴和五个 Grok 镜头
    hash，不新增 Provider 调用。
 4. Runner 与 Manifest 在渲染前拒绝可见文案中的独立 `AI` 字样，并拒绝 artifact slug 中独立的
@@ -29,8 +30,8 @@
 ## Done means
 
 - 既有 review 计划与新的 manual-publish 计划均通过 Python、Manifest 与 TypeScript 校验。
-- 新产物文件名、页脚和全部画面可见文案不包含独立 `AI` 标识，短语字幕上方不显示
-  `PHRASE x/y`。
+- 新产物文件名和全部画面可见文案不包含独立 `AI` 标识，短语字幕上方不显示 `PHRASE x/y`，
+  底部不显示系列名、`SHORT` 或 `x/5` 镜头计数。
 - 最终 MP4 保持 39 秒级、1920×1080、30fps、H.264/AAC、yuv420p/tv range，完整解码通过。
 - 高密度接触表覆盖钩子、字幕切换、五个场景及收尾，并确认无黑场、溢出和制作期标签。
 - 调用账本记录 TTS=0、Grok=0、音乐=0、发布=0、Remotion=1、FFmpeg=1。
@@ -55,14 +56,19 @@ ffmpeg -v error -i <final.mp4> -f null NUL
 
 ## Result
 
-- 发布版基于 source commit `8cf258646ce650ecbdaf1a0fb07e3b9867e47114` 通过干净 preflight；五个
+- Attempt 1（`paynes-creek-maya-salt-publish-en-v1`）虽通过自动检查，但用户观看后发现底部仍显示
+  `PAYNES CREEK · ARCHAEOLOGY SHORT · x/5`。该页脚不符合“直接发布版”要求，原
+  `ready_for_user_manual_upload` 结论撤销，成片明确 rejected，不再作为交付文件。
+- Attempt 2 使用独立 v2 计划和 `show_footer=false`，待重新渲染与验收。
+
+- Attempt 1 基于 source commit `8cf258646ce650ecbdaf1a0fb07e3b9867e47114` 通过干净 preflight；五个
   源镜头与 v5 旁白的路径、hash 和 ffprobe 时长均一致。
-- TTS、Grok、音乐和发布调用均为 0；Remotion 与 FFmpeg 各执行 1 次。
-- 最终 MP4 为 39.061 秒、1920×1080、30fps、1170 帧、H.264/AAC、yuv420p/tv range，大小
+- Attempt 1 的 TTS、Grok、音乐和发布调用均为 0；Remotion 与 FFmpeg 各执行 1 次。
+- Attempt 1 MP4 为 39.061 秒、1920×1080、30fps、1170 帧、H.264/AAC、yuv420p/tv range，大小
   34,793,890 bytes，SHA-256 `7c107a16d40bc598e809f34d201855bb0101212e0195f82f24254d21411d9a6c`。
-- 全片解码、1.5 秒长静音、100ms 黑场、中点接触表和 20 帧密集接触表检查通过；未见画面溢出、
-  `AI`、`PHRASE x/y` 或其他制作期标签。机械视觉扫描无发现。
+- Attempt 1 的全片解码、1.5 秒长静音、100ms 黑场、中点接触表和 20 帧密集接触表检查通过；自动
+  检查确认没有 `AI` 和 `PHRASE x/y`，但错误地把底部系列页脚当作可保留内容，用户复核后否决。
 - Windows 本地全量检查通过：439 项后端测试、14 项前端测试、前端生产构建、15 项 Remotion 测试、
   Remotion typecheck 与空库 Alembic migration 均成功。
-- 终态为可交给用户手动上传；项目没有调用外部发布接口。审计记录：
+- Attempt 1 的原终态已由用户反馈推翻；项目没有调用外部发布接口。审计记录：
   `docs/testing/paynes-creek-maya-salt-publish-en-v1-2026-08-14.json`。

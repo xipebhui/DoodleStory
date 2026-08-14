@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "record_kind": "paynes_creek_manual_publish_acceptance",
-  "status": "ready_for_user_manual_upload",
+  "status": "rejected_by_user_review_footer_present",
   "source_git_commit": "8cf258646ce650ecbdaf1a0fb07e3b9867e47114",
   "source_plan": "docs/strategy/youtube/paynes-creek-maya-salt-publish-en-v1.json",
   "source_plan_sha256": "1ec2c0190f424d65702775119769705777f83525cc728c818bb48e309eb69b0a",
@@ -11,6 +11,7 @@
     "footer": "PAYNES CREEK · ARCHAEOLOGY SHORT",
     "visible_ai_token_guard": "pass",
     "phrase_counter_hidden": "pass",
+    "bottom_series_footer": "fail_present",
     "mechanical_visual_detector": "pass_no_findings"
   },
   "render": {
@@ -55,6 +56,6 @@
   "handoff": {
     "automatic_publication_authorized": false,
     "manual_upload_requested_by_user": true,
-    "delivery_status": "ready"
+    "delivery_status": "rejected_superseded_by_v2"
   }
 }

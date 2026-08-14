@@ -49,6 +49,9 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
   if (!PRESENTATION_MODES.has(manifest.presentationMode)) {
     throw new Error("Paynes Creek Grok 样片 presentationMode 无效");
   }
+  if (typeof manifest.showFooter !== "boolean") {
+    throw new Error("Paynes Creek Grok 样片 showFooter 无效");
+  }
   const expectedMaximumPlaybackRate = manifest.timingMode === "source_aligned"
     ? 1.45
     : 1.35;
@@ -68,7 +71,10 @@ export const validatePaynesCreekGrokShortManifest = (manifest) => {
     if (/(?:^|-)ai(?:-|$)/i.test(String(manifest.artifactSlug ?? ""))) {
       throw new Error("manual_publish artifactSlug 不得包含独立 AI 标识");
     }
-    const visibleCopy = [manifest.title, manifest.footer];
+    const visibleCopy = [manifest.title];
+    if (manifest.showFooter) {
+      visibleCopy.push(manifest.footer);
+    }
     for (const scene of manifest.scenes ?? []) {
       visibleCopy.push(scene.title, scene.evidence, scene.narration);
       visibleCopy.push(...(scene.captions ?? []).map((caption) => caption.text));
@@ -221,6 +227,7 @@ export const stagePaynesCreekGrokShortManifest = async (
     locale: manifest.locale,
     editMode: manifest.editMode,
     presentationMode: manifest.presentationMode,
+    showFooter: manifest.showFooter,
     footer: manifest.footer,
     scenes,
     narrationAudio: audioName,

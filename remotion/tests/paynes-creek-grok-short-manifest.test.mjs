@@ -14,6 +14,7 @@ const validManifest = {
   editMode: "classic",
   timingMode: "weighted",
   presentationMode: "review",
+  showFooter: true,
   artifactSlug: "paynes-creek-grok-ai-short-v1",
   maxPlaybackRate: 1.35,
   footer: "PAYNES CREEK · AI VISUAL PILOT",
@@ -219,17 +220,22 @@ test("accepts a clean manual-publish surface and rejects production labels", () 
     locale: "en-US",
     editMode: "retention",
     presentationMode: "manual_publish",
+    showFooter: false,
     artifactSlug: "paynes-creek-maya-salt-publish-en-v1",
     footer: "PAYNES CREEK · ARCHAEOLOGY SHORT",
     scenes,
   };
   assert.doesNotThrow(() => validatePaynesCreekGrokShortManifest(publish));
   assert.throws(
-    () => validatePaynesCreekGrokShortManifest({...publish, footer: "AI SHORT"}),
+    () => validatePaynesCreekGrokShortManifest({...publish, showFooter: true, footer: "AI SHORT"}),
     /可见文案/,
   );
   assert.throws(
     () => validatePaynesCreekGrokShortManifest({...publish, artifactSlug: "maya-ai-short"}),
     /artifactSlug/,
+  );
+  assert.throws(
+    () => validatePaynesCreekGrokShortManifest({...publish, showFooter: "false"}),
+    /showFooter/,
   );
 });

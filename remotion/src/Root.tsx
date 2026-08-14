@@ -82,6 +82,7 @@ const paynesCreekGrokShortDefaultProps: PaynesCreekGrokShortProps = {
   locale: "zh-CN",
   editMode: "classic",
   presentationMode: "review",
+  showFooter: true,
   footer: "PAYNES CREEK · AI VISUAL PILOT",
   scenes: [{
     id: "S01",

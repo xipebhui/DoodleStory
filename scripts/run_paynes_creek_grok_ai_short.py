@@ -77,6 +77,8 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
         raise RuntimeError("source_aligned timing 只能用于 retention edit")
     if not str(value.get("footer") or "").strip():
         raise RuntimeError("Grok AI 短片计划缺少页脚")
+    if "show_footer" in value and not isinstance(value["show_footer"], bool):
+        raise RuntimeError("Grok AI 短片 show_footer 必须是布尔值")
     artifact_slug = str(value.get("artifact_slug") or "")
     if (
         not artifact_slug
@@ -92,7 +94,9 @@ def load_plan(plan_path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
             raise RuntimeError("manual_publish 当前只支持英文 retention edit")
         if re.search(r"(?:^|-)ai(?:-|$)", artifact_slug, flags=re.IGNORECASE):
             raise RuntimeError("manual_publish artifact_slug 不得包含独立 AI 标识")
-        visible_copy = [str(value.get(key) or "") for key in ("title", "footer")]
+        visible_copy = [str(value.get("title") or "")]
+        if value.get("show_footer", True):
+            visible_copy.append(str(value.get("footer") or ""))
         for scene in value["scenes"]:
             visible_copy.extend(
                 str(scene.get(key) or "")
@@ -395,6 +399,7 @@ def build_render_manifest(
         "editMode": plan["edit_mode"],
         "timingMode": plan["timing_mode"],
         "presentationMode": plan["presentation_mode"],
+        "showFooter": bool(plan.get("show_footer", True)),
         "artifactSlug": plan["artifact_slug"],
         "maxPlaybackRate": maximum_playback_rate,
         "footer": plan["footer"],
@@ -677,6 +682,7 @@ def execute(
             "locale": plan["locale"],
             "edit_mode": plan["edit_mode"],
             "presentation_mode": plan["presentation_mode"],
+            "show_footer": bool(plan.get("show_footer", True)),
             "scene_count": 5,
         },
         "calls": {

@@ -179,6 +179,17 @@ class PaynesCreekGrokAiShortTests(unittest.TestCase):
             visible_copy.extend((scene.get("hook") or {}).values())
         self.assertTrue(all(" ai " not in f" {text.lower()} " for text in visible_copy))
 
+        footerless_path = (
+            PROJECT_ROOT
+            / "docs/strategy/youtube/paynes-creek-maya-salt-publish-en-v2.json"
+        )
+        footerless = load_plan(footerless_path)
+        self.assertFalse(footerless["show_footer"])
+        self.assertEqual(
+            output_names(footerless)["video"],
+            "paynes-creek-maya-salt-publish-en-v2-yuv420p.mp4",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

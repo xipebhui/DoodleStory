@@ -55,6 +55,7 @@ export type PaynesCreekGrokShortProps = {
   locale: "zh-CN" | "en-US";
   editMode: "classic" | "retention";
   presentationMode: "review" | "manual_publish";
+  showFooter: boolean;
   footer: string;
   scenes: PaynesCreekGrokShortScene[];
   narrationAudio: string;
@@ -217,8 +218,18 @@ const GrokShortScene: React.FC<{
   locale: "zh-CN" | "en-US";
   editMode: "classic" | "retention";
   presentationMode: "review" | "manual_publish";
+  showFooter: boolean;
   footer: string;
-}> = ({scene, index, count, locale, editMode, presentationMode, footer}) => {
+}> = ({
+  scene,
+  index,
+  count,
+  locale,
+  editMode,
+  presentationMode,
+  showFooter,
+  footer,
+}) => {
   const frame = useCurrentFrame();
   const end = Math.max(1, scene.durationInFrames - 1);
   const classicOpacity = interpolate(
@@ -402,7 +413,7 @@ const GrokShortScene: React.FC<{
         >
           {isRetention ? activeCaption.text : scene.narration}
         </div>
-        <div
+        {showFooter ? <div
           style={{
             color: COLORS.muted,
             fontSize: 22,
@@ -411,7 +422,7 @@ const GrokShortScene: React.FC<{
           }}
         >
           {footer} · {index + 1}/{count}
-        </div>
+        </div> : null}
       </div>
 
       {isRetention && scene.hook ? <HookOverlay hook={scene.hook} frame={frame} /> : null}
@@ -449,6 +460,7 @@ export const PaynesCreekGrokShort: React.FC<PaynesCreekGrokShortProps> = (
             locale={props.locale}
             editMode={props.editMode}
             presentationMode={props.presentationMode}
+            showFooter={props.showFooter}
             footer={props.footer}
           />
         </Series.Sequence>
