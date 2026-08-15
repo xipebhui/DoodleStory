@@ -153,7 +153,6 @@ def current_local_state(checksum_sha256: str) -> dict[str, Any]:
         )
         return {
             "owner_user_id": owner.id,
-            "owner_email": owner.email,
             "skill_version_id": skill.id,
             "asset_id": asset.id if asset else None,
             "native_agent_video_id": video.id if video else None,

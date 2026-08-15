@@ -1,6 +1,6 @@
 # Sprint 204：Paynes Creek 已验收成片正式登记与 YouTube 发布
 
-状态：Implementation ready / awaiting clean-source real execution（用户已于 2026-08-15 明确授权选择低发布量频道并真实发布）
+状态：Completed（2026-08-15 已发布并完成远端与公开页面核验）
 
 ## Goal
 
@@ -64,3 +64,13 @@ git diff --check
 - 成功后交付 YouTube URL、目标频道、远程任务 ID、本地追踪 ID 和审计报告路径。
 - 如果远程任务仍在 `pending` / `running`，继续使用既有任务 ID 手动获取状态；不得再次提交。
 - 本轮形成的特定导入脚本只服务已存在且有冻结 acceptance 的本地成片，不把任意本机 MP4 自动批准为可发布视频。
+
+## Result
+
+- 来源 commit：`675026918a73efdf33255c8e781888cc25752901`，真实预检在干净 worktree 上通过。
+- 目标频道：`Strandburg Behler / UCjOzKTQ7NzrNtkBbBYoCX_w`；发布前 40 条，发布后远端清单 41 条。
+- 仅创建一个远程任务：`01a0033a-cc8c-7f21-b303-37467ae5eb09`；状态依次为 `pending → running → succeeded`。
+- YouTube Video ID：`ivIZbTPG8t0`；公开地址：`https://www.youtube.com/watch?v=ivIZbTPG8t0`。
+- 发布后远端频道清单命中同一 Video ID 与冻结标题，公开页面返回 HTTP 200。
+- 调用计数：OSS 上传 1 次、远程发布创建 1 次、状态查询 3 次、模型 / 生图 / 视频生成 / TTS 调用均为 0。
+- 审计报告：`docs/testing/paynes-creek-maya-salt-youtube-publication-2026-08-15.json`，不保存密钥、管理员邮箱或 OSS URL。

@@ -2082,7 +2082,7 @@
 - Tiny 与 Base English 本地 Whisper 对 TTS 原文匹配率分别为 98.6% / 96.6%，但对 `Maya`、
   `Paynes Creek`、`canoes` 和 `route` 有近音误识别，不能替代用户实际听感。终态为
   `pass_local_retention_candidate`；用户完整听看、专名发音确认和发布授权仍未完成。
-# Sprint 204 Paynes Creek 已验收成片正式登记与 YouTube 发布（执行器已就绪，真实写入 0）
+# Sprint 204 Paynes Creek 已验收成片正式登记与 YouTube 发布（已完成）
 
 - 用户已明确授权按仓库正式链路选择历史发布量较少的正常频道并真实发布 Sprint 203 无页脚英文成片。
 - 只读统计 17 个正常频道后，`Strandburg Behler / UCjOzKTQ7NzrNtkBbBYoCX_w` 以 40 条远程视频最少，
@@ -2096,5 +2096,16 @@
   使用稳定幂等键，不自动重试、不自动轮询、不在结果未知时创建第二个任务。
 - 聚焦导入 3 项、YouTube 发布与 Native Agent 回归共 54 项测试通过；后端全量 442 项、前端 14 项、
   Remotion 15 项测试通过，前端生产构建、Remotion typecheck、Python compileall、空 SQLite 从零迁移和
-  `git diff --check` 均通过。当前 OSS、数据库和发布平台真实写入仍为 0；下一步提交执行器形成干净来源
-  commit，再运行一次真实 preflight 和唯一一次 execute。
+  `git diff --check` 均通过。
+- 执行器来源 commit `675026918a73efdf33255c8e781888cc25752901` 的干净 worktree 预检通过；最终 MP4
+  SHA-256 为 `4d56635a8bacc897507de4346dc79fc1e57148b789c4d04c56a5d1c0e791a5e4`，35 MB、39.061 秒、
+  1920×1080、30 fps、H.264/AAC、`yuv420p`，与 Sprint 203 acceptance 一致。
+- 已执行 1 次 OSS 上传和 1 次远程发布创建，远程任务 `01a0033a-cc8c-7f21-b303-37467ae5eb09` 从
+  `pending → running → succeeded`，3 次状态查询均针对同一任务，没有重试或第二次提交。
+- 成片已公开发布到 `Strandburg Behler / UCjOzKTQ7NzrNtkBbBYoCX_w`，YouTube Video ID 为
+  `ivIZbTPG8t0`，地址 `https://www.youtube.com/watch?v=ivIZbTPG8t0`。频道远端视频数由 40 增至 41，
+  清单命中同一 ID 和冻结标题，公开页面 HTTP 200。
+- 本地追踪链完整：FileAsset `abec8b74b2f84153b684cc19b892e703` → NativeAgentVideo
+  `839d1320f79745488d83f1b3bfab4076` → PublishableVideo `684065d704784e748562586524486a28` →
+  YoutubePublishTask `4b5547f0cf044ebcb11a595bde9f6d85`。审计报告位于
+  `docs/testing/paynes-creek-maya-salt-youtube-publication-2026-08-15.json`。

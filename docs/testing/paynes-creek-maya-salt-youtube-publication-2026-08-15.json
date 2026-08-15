@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "status": "succeeded",
+  "source_git_commit": "675026918a73efdf33255c8e781888cc25752901",
+  "video": {
+    "acceptance_path": "docs/testing/paynes-creek-maya-salt-publish-en-v2-2026-08-14.json",
+    "source_video_path": "storage/exports/paynes-creek/maya-salt-publish-en-v2/paynes-creek-maya-salt-publish-en-v2-yuv420p.mp4",
+    "checksum_sha256": "4d56635a8bacc897507de4346dc79fc1e57148b789c4d04c56a5d1c0e791a5e4",
+    "byte_size": 34956118,
+    "duration_ms": 39061,
+    "frames": 1170,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "pixel_format": "yuv420p"
+  },
+  "channel_selection": {
+    "rule": "normal_then_published_count_then_channel_id",
+    "selected": {
+      "channel_id": "UCjOzKTQ7NzrNtkBbBYoCX_w",
+      "title": "Strandburg Behler",
+      "status": "normal",
+      "published_video_count": 40
+    },
+    "runner_up": {
+      "channel_id": "UCsNN_sqqA0L5FivjY5BG8Dw",
+      "title": "Camilavpj Wood",
+      "published_video_count": 51
+    },
+    "normal_channel_count": 17
+  },
+  "publication": {
+    "title": "No Shipping Records: How Did Maya Salt Travel Inland?",
+    "visibility": "public",
+    "contains_synthetic_media": true,
+    "notify_subscribers": false,
+    "made_for_kids": false,
+    "paid_product_placement": false,
+    "thumbnail_url": null
+  },
+  "local_state": {
+    "owner_user_id": "ab0980d794b544b0a550db231c1fe92e",
+    "skill_version_id": "ba3a4875771248c4870b1ab6cf6afabd",
+    "asset_id": null,
+    "native_agent_video_id": null,
+    "publishable_video_id": null,
+    "channel_pk": null,
+    "publish_task_id": null,
+    "remote_task_id": null,
+    "task_status": null
+  },
+  "executed_at": "2026-08-15T02:23:00.271147+00:00",
+  "result": {
+    "asset_id": "abec8b74b2f84153b684cc19b892e703",
+    "native_agent_video_id": "839d1320f79745488d83f1b3bfab4076",
+    "publishable_video_id": "684065d704784e748562586524486a28",
+    "channel_pk": "3e53ea4a435b460da00f771511e3a2ee",
+    "publish_task_id": "4b5547f0cf044ebcb11a595bde9f6d85",
+    "remote_task_id": "01a0033a-cc8c-7f21-b303-37467ae5eb09",
+    "status": "succeeded",
+    "youtube_video_id": "ivIZbTPG8t0",
+    "youtube_url": "https://www.youtube.com/watch?v=ivIZbTPG8t0"
+  },
+  "calls": {
+    "object_storage_upload": 1,
+    "remote_publish_create": 1,
+    "remote_status_get": 3,
+    "model": 0,
+    "image": 0,
+    "video_generation": 0,
+    "tts": 0
+  },
+  "post_publish_verification": {
+    "checked_at": "2026-08-15T02:24:49.8721950Z",
+    "channel_video_count": 41,
+    "matching_video_id": "ivIZbTPG8t0",
+    "matching_title": "No Shipping Records: How Did Maya Salt Travel Inland?",
+    "youtube_page_http_status": 200
+  },
+  "sensitive_values_removed": true,
+  "last_status_checked_at": "2026-08-15T02:24:10.416428+00:00"
+}
