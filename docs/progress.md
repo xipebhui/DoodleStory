@@ -2082,3 +2082,19 @@
 - Tiny 与 Base English 本地 Whisper 对 TTS 原文匹配率分别为 98.6% / 96.6%，但对 `Maya`、
   `Paynes Creek`、`canoes` 和 `route` 有近音误识别，不能替代用户实际听感。终态为
   `pass_local_retention_candidate`；用户完整听看、专名发音确认和发布授权仍未完成。
+# Sprint 204 Paynes Creek 已验收成片正式登记与 YouTube 发布（执行器已就绪，真实写入 0）
+
+- 用户已明确授权按仓库正式链路选择历史发布量较少的正常频道并真实发布 Sprint 203 无页脚英文成片。
+- 只读统计 17 个正常频道后，`Strandburg Behler / UCjOzKTQ7NzrNtkBbBYoCX_w` 以 40 条远程视频最少，
+  第二名为 51 条；目标按“正常状态、视频数升序、Channel ID 升序”冻结，不凭普通文本猜测或换号。
+- 新增 `reviewed_local_video_publication` 服务和一次性执行脚本：重新计算 acceptance 锁定 MP4 的 hash、
+  大小与 ffprobe 事实，使用现有对象存储保存同一 bytes，幂等登记 `FileAsset / NativeAgentVideo /
+  PublishableVideo`，再通过现有 `create_youtube_publish_task()` 创建真实任务。
+- 导入 Run 明确标记 `reviewed_local_video_import`，模型、图片、TTS、视频生成调用均记为 0；本轮不冒充
+  尚未实施的 Sprint 191 通用不可变 Evidence Pack 验收。
+- 固定发布参数为 `public`、合成媒体 `true`、儿童内容 `false`、付费植入 `false`、订阅者通知关闭、立即执行；
+  使用稳定幂等键，不自动重试、不自动轮询、不在结果未知时创建第二个任务。
+- 聚焦导入 3 项、YouTube 发布与 Native Agent 回归共 54 项测试通过；后端全量 442 项、前端 14 项、
+  Remotion 15 项测试通过，前端生产构建、Remotion typecheck、Python compileall、空 SQLite 从零迁移和
+  `git diff --check` 均通过。当前 OSS、数据库和发布平台真实写入仍为 0；下一步提交执行器形成干净来源
+  commit，再运行一次真实 preflight 和唯一一次 execute。

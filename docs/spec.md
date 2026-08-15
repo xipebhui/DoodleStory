@@ -581,6 +581,13 @@
   标签、旁白、字幕、媒体 hash 或上传授权；`publication_authorized=false` 仍阻止项目自动操作外部频道。
 - 发布计划可显式设置 `show_footer=false`，Renderer 必须整块移除底部系列页脚及其 `x/5` 镜头计数，
   不能只改写 `SHORT` 文案。历史计划未设置该字段时继续显示页脚，保持既有复跑语义。
+- Sprint 203 已冻结且通过 footerless 验收的 Paynes Creek 本地成片允许通过受控一次性脚本进入现有发布链：
+  脚本必须重新核对 acceptance 状态、项目内路径、视频 SHA-256、大小和 ffprobe 媒体事实，使用当前
+  `STORAGE_BACKEND` 保存同一 bytes，并明确登记为 `reviewed_local_video_import` 的 `FileAsset →
+  NativeAgentVideo → PublishableVideo`。该入口只接受合同固定的 acceptance 和 MP4，不是任意本机视频上传
+  API；不得伪造模型 / 媒体调用，也不得绕过 `create_youtube_publish_task()` 的审核、确认、频道状态、
+  公网 URL、幂等和远程结果未知门禁。真实提交前必须从发布服务重新统计正常频道的已发布视频数量，并按
+  数量升序、Channel ID 升序确定唯一目标；创建远程任务不自动重试，状态只通过既有单任务接口手动获取。
 - 视频任务执行采用进程内队列 + 数据库状态。上游图片任务成功后自动入队视频任务；服务启动时恢复 `waiting_for_images`、`ready_for_audio`、`audio_generating`、`audio_ready` 和 `video_generating` 等可恢复状态。视频任务按 panel 生成旁白音频，因为 `comic-video-studio` 的 `episode.shots[*].audio` 是每个 shot 的时间基准。每段生成音频必须保存为 `generated_audio` 资产；最终 MP4 必须保存为 `generated_video` 资产。`comic-video-studio` 默认通过 `COMIC_VIDEO_SERVICE_BASE_URL` 指向 `http://127.0.0.1:51103`，如配置 `COMIC_VIDEO_SERVICE_API_KEY` 则请求必须携带 `X-API-Key`。TTS 第一版使用 SiliconFlow `/uploads/audio/voice` 和 `/audio/speech`；参考音频没有已注册 voice uri 时，必须用参考音频文件和参考文本注册声音。参考文本在音频参考创建时由本地 Whisper 自动转写并保存；转写失败或缺少参考文本时，音频参考不能保存或视频任务必须明确失败。视频任务生成旁白音频时必须使用创建任务时保存的音频参考语速快照，不受后续音频参考编辑影响。
 - 规范：`docs/standards/` 下保存 Python、Java、数据库、后端工作流、前端、UI 交互和通用模块规范。
 
